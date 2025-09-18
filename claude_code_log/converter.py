@@ -62,13 +62,16 @@ def convert_jsonl_to_html(
             output_path = input_path.with_suffix(".html")
         messages = load_transcript(input_path, silent=silent)
         title = f"Claude Transcript - {input_path.stem}"
+        cache_was_updated = False  # No cache in single file mode
     else:
         # Directory mode - Cache-First Approach
         if output_path is None:
             output_path = input_path / "combined_transcripts.html"
 
         # Phase 1: Ensure cache is fresh and populated
-        ensure_fresh_cache(input_path, cache_manager, from_date, to_date, silent)
+        cache_was_updated = ensure_fresh_cache(
+            input_path, cache_manager, from_date, to_date, silent
+        )
 
         # Phase 2: Load messages (will use fresh cache when available)
         messages = load_directory_transcripts(
@@ -101,6 +104,9 @@ def convert_jsonl_to_html(
         or from_date is not None
         or to_date is not None
         or not output_path.exists()
+        or (
+            input_path.is_dir() and cache_was_updated
+        )  # Regenerate if JSONL files changed
     )
 
     if should_regenerate:
@@ -112,7 +118,7 @@ def convert_jsonl_to_html(
     # Generate individual session files if requested and in directory mode
     if generate_individual_sessions and input_path.is_dir():
         _generate_individual_session_files(
-            messages, input_path, from_date, to_date, cache_manager
+            messages, input_path, from_date, to_date, cache_manager, cache_was_updated
         )
 
     return output_path
@@ -138,11 +144,12 @@ def ensure_fresh_cache(
     cached_project_data = cache_manager.get_cached_project_data()
 
     # Check various invalidation conditions
+    modified_files = cache_manager.get_modified_files(jsonl_files)
     needs_update = (
         cached_project_data is None
         or from_date is not None
         or to_date is not None
-        or cache_manager.get_modified_files(jsonl_files)  # Files changed
+        or bool(modified_files)  # Files changed
         or (cached_project_data.total_message_count == 0 and jsonl_files)  # Stale cache
     )
 
@@ -441,6 +448,7 @@ def _generate_individual_session_files(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     cache_manager: Optional["CacheManager"] = None,
+    cache_was_updated: bool = False,
 ) -> None:
     """Generate individual HTML files for each session."""
     # Find all unique session IDs
@@ -504,6 +512,7 @@ def _generate_individual_session_files(
             or from_date is not None
             or to_date is not None
             or not session_file_path.exists()
+            or cache_was_updated  # Regenerate if JSONL files changed
         )
 
         if should_regenerate_session:
@@ -545,6 +554,7 @@ def process_projects_hierarchy(
 
     # Process each project directory
     project_summaries: List[Dict[str, Any]] = []
+    any_cache_updated = False  # Track if any project had cache updates
     for project_dir in sorted(project_dirs):
         try:
             # Initialize cache manager for this project
@@ -556,7 +566,11 @@ def process_projects_hierarchy(
                     print(f"Warning: Failed to initialize cache for {project_dir}: {e}")
 
             # Phase 1: Ensure cache is fresh and populated
-            ensure_fresh_cache(project_dir, cache_manager, from_date, to_date)
+            cache_was_updated = ensure_fresh_cache(
+                project_dir, cache_manager, from_date, to_date
+            )
+            if cache_was_updated:
+                any_cache_updated = True
 
             # Phase 2: Generate HTML for this project (including individual session files)
             output_path = convert_jsonl_to_html(
@@ -700,7 +714,7 @@ def process_projects_hierarchy(
 
     # Generate index HTML (always regenerate if outdated)
     index_path = projects_path / "index.html"
-    if is_html_outdated(index_path) or from_date or to_date:
+    if is_html_outdated(index_path) or from_date or to_date or any_cache_updated:
         index_html = generate_projects_index_html(project_summaries, from_date, to_date)
         index_path.write_text(index_html, encoding="utf-8")
     else:
