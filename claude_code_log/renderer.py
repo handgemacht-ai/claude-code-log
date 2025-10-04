@@ -517,6 +517,7 @@ class TemplateMessage:
         content_html: str,
         formatted_timestamp: str,
         css_class: str,
+        raw_timestamp: Optional[str] = None,
         session_summary: Optional[str] = None,
         session_id: Optional[str] = None,
         is_session_header: bool = False,
@@ -526,6 +527,7 @@ class TemplateMessage:
         self.content_html = content_html
         self.formatted_timestamp = formatted_timestamp
         self.css_class = css_class
+        self.raw_timestamp = raw_timestamp
         self.display_type = message_type.title()
         self.session_summary = session_summary
         self.session_id = session_id
@@ -1203,6 +1205,7 @@ def generate_html(
                 content_html=content_html,
                 formatted_timestamp=formatted_timestamp,
                 css_class=level_css,
+                raw_timestamp=timestamp,
                 session_id=session_id,
             )
             template_messages.append(system_template_message)
@@ -1298,6 +1301,7 @@ def generate_html(
                     content_html=session_title,
                     formatted_timestamp="",
                     css_class="session-header",
+                    raw_timestamp=None,
                     session_summary=current_session_summary,
                     session_id=session_id,
                     is_session_header=True,
@@ -1412,6 +1416,7 @@ def generate_html(
                 content_html=content_html,
                 formatted_timestamp=formatted_timestamp,
                 css_class=css_class,
+                raw_timestamp=timestamp,
                 session_summary=session_summary,
                 session_id=session_id,
                 token_usage=token_usage_str,
@@ -1506,6 +1511,7 @@ def generate_html(
                 content_html=tool_content_html,
                 formatted_timestamp=tool_formatted_timestamp,
                 css_class=tool_css_class,
+                raw_timestamp=tool_timestamp,
                 session_summary=session_summary,
                 session_id=session_id,
             )
@@ -1554,6 +1560,8 @@ def generate_html(
                 "id": session_id,
                 "summary": session_info["summary"],
                 "timestamp_range": timestamp_range,
+                "first_timestamp": first_ts,
+                "last_timestamp": last_ts,
                 "message_count": session_info["message_count"],
                 "first_user_message": session_info["first_user_message"]
                 if session_info["first_user_message"] != ""

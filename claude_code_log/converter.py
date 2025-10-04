@@ -612,6 +612,8 @@ def process_projects_hierarchy(
                                         session_data.first_timestamp,
                                         session_data.last_timestamp,
                                     ),
+                                    "first_timestamp": session_data.first_timestamp,
+                                    "last_timestamp": session_data.last_timestamp,
                                     "message_count": session_data.message_count,
                                     "first_user_message": session_data.first_user_message
                                     or "[No user message found in session.]",

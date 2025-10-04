@@ -8,9 +8,9 @@
     <title>{{ title }}</title>
     {% from 'components/session_nav.html' import render_session_nav %}
     <style>
-{% include 'components/global_styles.css' %}
-{% include 'components/session_nav_styles.css' %}
-{% include 'components/project_card_styles.css' %}
+        {% include 'components/global_styles.css' %}
+        {% include 'components/session_nav_styles.css' %}
+        {% include 'components/project_card_styles.css' %}
 
         /* Session navigation overrides for better text readability */
         .project-sessions .session-link {
@@ -47,7 +47,7 @@
             {% if summary.formatted_time_range %}
             <div class='summary-stat'>
                 <div class='number'>🕐</div>
-                <div class='label'>{{ summary.formatted_time_range }}</div>
+                <div class='label'><span class="timestamp"{% if summary.earliest_interaction %} data-timestamp="{{ summary.earliest_interaction }}"{% endif %}{% if summary.latest_interaction and summary.latest_interaction != summary.earliest_interaction %} data-timestamp-end="{{ summary.latest_interaction }}"{% endif %}>{{ summary.formatted_time_range }}</span></div>
             </div>
             {% endif %}
         </div>
@@ -64,7 +64,7 @@
                 <div class='stat'>📁 {{ project.jsonl_count }} transcript files</div>
                 <div class='stat'>💬 {{ project.message_count }} messages</div>
                 {% if project.formatted_time_range %}
-                <div class='stat'>🕒 {{ project.formatted_time_range }}</div>
+                <div class='stat'>🕒 <span class="timestamp"{% if project.earliest_timestamp %} data-timestamp="{{ project.earliest_timestamp }}"{% endif %}{% if project.latest_timestamp and project.latest_timestamp != project.earliest_timestamp %} data-timestamp-end="{{ project.latest_timestamp }}"{% endif %}>{{ project.formatted_time_range }}</span></div>
                 {% else %}
                 <div class='stat'>🕒 {{ project.formatted_date }}</div>
                 {% endif %}
@@ -84,6 +84,12 @@
         </div>
         {% endfor %}
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            {% include 'components/timezone_converter.js' %}
+        });
+    </script>
 </body>
 
 </html>

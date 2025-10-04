@@ -8,12 +8,12 @@
     <title>{{ title }}</title>
     {% from 'components/session_nav.html' import render_session_nav %}
     <style>
-{% include 'components/global_styles.css' %}
-{% include 'components/message_styles.css' %}
-{% include 'components/session_nav_styles.css' %}
-{% include 'components/filter_styles.css' %}
-{% include 'components/todo_styles.css' %}
-{% include 'components/timeline_styles.css' %}
+        {% include 'components/global_styles.css' %}
+        {% include 'components/message_styles.css' %}
+        {% include 'components/session_nav_styles.css' %}
+        {% include 'components/filter_styles.css' %}
+        {% include 'components/todo_styles.css' %}
+        {% include 'components/timeline_styles.css' %}
     </style>
 </head>
 
@@ -79,7 +79,7 @@
                 message.css_class == 'tool_result' %}🧰 {% elif message.css_class == 'thinking' %}💭 {% elif
                 message.css_class == 'image' %}🖼️ {% endif %}{{ message.display_type }}</span>
             <div style='display: flex; flex-direction: column; align-items: flex-end; gap: 2px;'>
-                <span class='timestamp'>{{ message.formatted_timestamp }}</span>
+                <span class='timestamp'{% if message.raw_timestamp %} data-timestamp='{{ message.raw_timestamp }}'{% endif %}>{{ message.formatted_timestamp }}</span>
                 {% if message.token_usage %}
                 <span class='token-usage' style='font-size: 0.75em; color: #888;'>{{ message.token_usage }}</span>
                 {% endif %}
@@ -105,6 +105,9 @@
             const selectNoneButton = document.getElementById('selectNone');
             const closeFiltersButton = document.getElementById('closeFilters');
             const filterToggles = document.querySelectorAll('.filter-toggle');
+
+            // Timezone conversion (included as component)
+            {% include 'components/timezone_converter.js' %}
 
             // Timeline toggle functionality
             if (timelineButton) {

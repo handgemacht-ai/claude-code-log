@@ -1,13 +1,13 @@
 {
   "version": "0.4.2",
   "cache_created": "2025-07-18T11:49:42.477146",
-  "last_updated": "2025-07-18T11:49:42.487092",
+  "last_updated": "2025-09-18T23:27:38.678414",
   "project_path": "test/test_data",
   "cached_files": {
     "system_model_change.jsonl": {
       "file_path": "test/test_data/system_model_change.jsonl",
-      "source_mtime": 1751556007.8746295,
-      "cached_mtime": 1752835782.4781585,
+      "source_mtime": 1753912492.7209404,
+      "cached_mtime": 1758234458.66824,
       "message_count": 1,
       "session_ids": [
         "4ed13788-7e10-46ed-8c14-a6c2f2457225"
@@ -15,8 +15,8 @@
     },
     "session_b.jsonl": {
       "file_path": "test/test_data/session_b.jsonl",
-      "source_mtime": 1751556007.8748333,
-      "cached_mtime": 1752835782.4806166,
+      "source_mtime": 1753912492.7204108,
+      "cached_mtime": 1758234458.6712978,
       "message_count": 3,
       "session_ids": [
         "session_b"
@@ -24,8 +24,8 @@
     },
     "representative_messages.jsonl": {
       "file_path": "test/test_data/representative_messages.jsonl",
-      "source_mtime": 1751556007.8752434,
-      "cached_mtime": 1752835782.4818327,
+      "source_mtime": 1753912492.7201397,
+      "cached_mtime": 1758234458.6729577,
       "message_count": 12,
       "session_ids": [
         "test_session"
@@ -33,8 +33,8 @@
     },
     "todowrite_examples.jsonl": {
       "file_path": "test/test_data/todowrite_examples.jsonl",
-      "source_mtime": 1751556007.875755,
-      "cached_mtime": 1752835782.4832296,
+      "source_mtime": 1753912492.7211952,
+      "cached_mtime": 1758234458.6745002,
       "message_count": 12,
       "session_ids": [
         "todowrite_session"
@@ -42,8 +42,8 @@
     },
     "sidechain.jsonl": {
       "file_path": "test/test_data/sidechain.jsonl",
-      "source_mtime": 1751556007.8762715,
-      "cached_mtime": 1752835782.4844983,
+      "source_mtime": 1753912492.720711,
+      "cached_mtime": 1758234458.675699,
       "message_count": 8,
       "session_ids": [
         "df749439-8556-41bf-9965-9f49cf38bf2a"
@@ -51,12 +51,12 @@
     },
     "edge_cases.jsonl": {
       "file_path": "test/test_data/edge_cases.jsonl",
-      "source_mtime": 1751412850.5969663,
-      "cached_mtime": 1752835782.4860222,
+      "source_mtime": 1753912492.7198453,
+      "cached_mtime": 1758234458.6773577,
       "message_count": 13,
       "session_ids": [
-        "todowrite_session",
-        "edge_cases"
+        "edge_cases",
+        "todowrite_session"
       ]
     }
   },
@@ -146,9 +146,9 @@
     }
   },
   "working_directories": [
-    "/Users/dain/workspace/document-processing",
     "/tmp",
-    "/Users/dain/workspace/claude-code-log"
+    "/Users/dain/workspace/claude-code-log",
+    "/Users/dain/workspace/document-processing"
   ],
   "earliest_timestamp": "2025-06-14T10:02:00Z",
   "latest_timestamp": "2025-07-03T16:10:07.875368Z"

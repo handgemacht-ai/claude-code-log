@@ -59,19 +59,22 @@
                     // Look for standard message types
                     messageType = classList.find(cls =>
                         ['user', 'assistant', 'tool_use', 'tool_result', 'thinking', 'system', 'image'].includes(cls)
-                    ) || 'system';
+                    ) ?? 'system';
                 }
 
                 const timestampEl = messageEl.querySelector('.timestamp');
                 if (!timestampEl) return; // Skip if no timestamp
-                const timestamp = timestampEl.textContent.trim();
+
+                // Use raw timestamp from data attribute if available, otherwise fall back to text content
+                const rawTimestamp = timestampEl.getAttribute('data-timestamp');
+                const timestamp = rawTimestamp ?? timestampEl.textContent.trim();
                 if (timestamp > latestTimeString) latestTimeString = timestamp;
 
                 // Get message content preview
                 const contentEl = messageEl.querySelector('.content');
                 let content = '';
                 if (contentEl) {
-                    let textContent = contentEl.textContent || contentEl.innerText || '';
+                    let textContent = contentEl.textContent ?? contentEl.innerText ?? '';
 
                     // For system messages, try to extract just the message without the prefix
                     if (messageType === 'system') {
@@ -96,7 +99,7 @@
                         // Fallback: try to extract from header if available
                         const headerEl = messageEl.querySelector('.header span');
                         if (headerEl) {
-                            const headerText = headerEl.textContent || '';
+                            const headerText = headerEl.textContent ?? '';
                             const toolMatch = headerText.match(/🛠️\s*(.+) \(Id:.*/);
                             if (toolMatch) {
                                 content = toolMatch[1].replace("Tool Use: ", "") + (content ? ': ' + content : '');
@@ -127,7 +130,7 @@
                 title = title.replace(/<pre([^>]*)>[\s\r\n]+(.*?)[\s\r\n]+<\/pre>/gs, (m, attrs, content) => `<pre${attrs}>${content}</pre>`)
 
                 // Adjust content display based on message type
-                let displayContent = content || messageTypeGroups[messageType].content;
+                let displayContent = content ?? messageTypeGroups[messageType].content;
 
                 // Check for sidechain context regardless of primary message type
                 if (classList.includes('sidechain')) {
@@ -136,15 +139,15 @@
 
                     // For sidechain messages, prefix with appropriate icon based on original type
                     if (classList.includes('user')) {
-                        displayContent = '📝 ' + (content || 'Sub-assistant prompt');
+                        displayContent = '📝 ' + (content ?? 'Sub-assistant prompt');
                     } else if (classList.includes('assistant')) {
-                        displayContent = '🔗 ' + (content || 'Sub-assistant response');
+                        displayContent = '🔗 ' + (content ?? 'Sub-assistant response');
                     } else if (classList.includes('tool_use')) {
-                        displayContent = '🔗 ' + (content || 'Sub-assistant tool use');
+                        displayContent = '🔗 ' + (content ?? 'Sub-assistant tool use');
                     } else if (classList.includes('tool_result')) {
-                        displayContent = '🔗 ' + (content || 'Sub-assistant tool result');
+                        displayContent = '🔗 ' + (content ?? 'Sub-assistant tool result');
                     } else {
-                        displayContent = '🔗 ' + (content || 'Sub-assistant');
+                        displayContent = '🔗 ' + (content ?? 'Sub-assistant');
                     }
                 }
 

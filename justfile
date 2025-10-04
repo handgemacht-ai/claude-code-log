@@ -364,4 +364,4 @@ clear-cache:
     just cli --clear-cache
     just cli --clear-html
 
-regen-all: backup clear-cache render-test-data style-guide cli copy-example
+regen-all: backup render-test-data style-guide cli copy-example

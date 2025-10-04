@@ -21,7 +21,7 @@
                 {{ session.id[:8] }}
             </div>
             <div class='session-link-meta'>
-                {{ session.timestamp_range }} • {{ session.message_count }} messages
+                <span class="timestamp"{% if session.first_timestamp %} data-timestamp="{{ session.first_timestamp }}"{% endif %}{% if session.last_timestamp and session.last_timestamp != session.first_timestamp %} data-timestamp-end="{{ session.last_timestamp }}"{% endif %}>{{ session.timestamp_range }}</span> • {{ session.message_count }} messages
                 {% if session.token_summary %}
                 <br>{{ session.token_summary }}
                 {% endif %}

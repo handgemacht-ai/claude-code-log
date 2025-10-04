@@ -1012,3 +1012,99 @@ class TestTimelineBrowser:
             assert timeline_count_with_user >= timeline_count, (
                 "Timeline should show same or more items when user filter is enabled"
             )
+
+    @pytest.mark.browser
+    def test_timezone_conversion_functionality(self, page: Page):
+        """Test that timestamps are converted to user's timezone with proper display."""
+        representative_file = Path("test/test_data/representative_messages.jsonl")
+        messages = load_transcript(representative_file)
+        temp_file = self._create_temp_html(messages, "Timezone Conversion Test")
+
+        page.goto(f"file://{temp_file}")
+
+        # Wait for page to load and timestamp conversion to occur
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(500)  # Give time for JavaScript to run
+
+        # Check that timestamp elements have data-timestamp attributes
+        timestamp_elements = page.locator(".timestamp[data-timestamp]")
+        count = timestamp_elements.count()
+        assert count > 0, (
+            "Should have timestamp elements with data-timestamp attributes"
+        )
+
+        # Check the first timestamp element
+        first_timestamp = timestamp_elements.nth(0)
+
+        # Get the data-timestamp attribute (raw ISO timestamp)
+        raw_timestamp = first_timestamp.get_attribute("data-timestamp")
+        assert raw_timestamp is not None, "Should have data-timestamp attribute"
+        assert "T" in raw_timestamp, (
+            "Raw timestamp should be in ISO format with T separator"
+        )
+        assert raw_timestamp.endswith("Z"), "Raw timestamp should end with Z (UTC)"
+
+        # Get the displayed text (converted timestamp)
+        displayed_text = first_timestamp.text_content()
+        assert displayed_text is not None, "Should have displayed timestamp text"
+
+        # The displayed text should be different from the raw timestamp (unless user is in UTC)
+        # and should contain timezone info
+        if not displayed_text.endswith("(UTC)"):
+            # User is not in UTC, so should show timezone abbreviation
+            assert ")" in displayed_text, (
+                "Should show timezone abbreviation in parentheses"
+            )
+
+        # Check tooltip exists with both UTC and local time info
+        title_attr = first_timestamp.get_attribute("title")
+        assert title_attr is not None, "Should have title attribute with time info"
+        assert "UTC:" in title_attr, "Title should contain UTC time information"
+
+        # Verify that timeline still works correctly with raw timestamps
+        timeline_toggle = page.locator("#toggleTimeline")
+        if timeline_toggle.count() > 0:
+            timeline_toggle.click()
+            self._wait_for_timeline_loaded(page)
+
+            # Timeline should still show items correctly
+            timeline_items = page.locator(".vis-item")
+            timeline_count = timeline_items.count()
+            assert timeline_count > 0, (
+                "Timeline should show items after timezone conversion"
+            )
+
+    @pytest.mark.browser
+    def test_timezone_conversion_error_handling(self, page: Page):
+        """Test that timestamp conversion handles errors gracefully."""
+        representative_file = Path("test/test_data/representative_messages.jsonl")
+        messages = load_transcript(representative_file)
+        temp_file = self._create_temp_html(messages, "Timezone Error Handling Test")
+
+        page.goto(f"file://{temp_file}")
+
+        # Wait for page to load
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(500)
+
+        # Check console for any errors related to timestamp conversion
+        console_messages = []
+        page.on("console", lambda msg: console_messages.append(msg))
+
+        # Reload to capture any console messages during conversion
+        page.reload()
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(500)
+
+        # Check for any error messages in console
+        error_messages = [msg for msg in console_messages if msg.type == "error"]
+
+        # We might have warnings about timestamp conversion, but no errors
+        timestamp_errors = [
+            msg for msg in error_messages if "timestamp" in msg.text.lower()
+        ]
+
+        # Should not have critical timestamp conversion errors
+        assert len(timestamp_errors) == 0, (
+            f"Should not have timestamp conversion errors: {timestamp_errors}"
+        )
