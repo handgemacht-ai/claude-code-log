@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 from datetime import datetime
 import html
 import mistune
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .models import (
     AssistantTranscriptEntry,
@@ -505,7 +505,10 @@ def render_message_content(
 def _get_template_environment() -> Environment:
     """Get Jinja2 template environment."""
     templates_dir = Path(__file__).parent / "templates"
-    return Environment(loader=FileSystemLoader(templates_dir))
+    return Environment(
+        loader=FileSystemLoader(templates_dir),
+        autoescape=select_autoescape(["html", "xml"]),
+    )
 
 
 class TemplateMessage:

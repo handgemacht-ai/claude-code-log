@@ -37,7 +37,7 @@
 
         // Process timestamps in batches to keep page responsive
         const batchSize = 25;
-        const scheduleWork = window.requestIdleCallback || function(cb) { setTimeout(cb, 1); };
+        const scheduleWork = window.requestIdleCallback || function(cb) { setTimeout(cb, 16); };
 
         function processBatch(startIndex) {
             const endIndex = Math.min(startIndex + batchSize, timestampElements.length);

@@ -24,6 +24,7 @@ class TestTemplateMessage:
             content_html="<p>Test content</p>",
             formatted_timestamp="2025-06-14 10:00:00",
             css_class="user",
+            raw_timestamp=None,
         )
 
         assert msg.type == "user"
@@ -47,6 +48,7 @@ class TestTemplateMessage:
                 content_html="content",
                 formatted_timestamp="time",
                 css_class="class",
+                raw_timestamp=None,
             )
             assert msg.display_type == expected_display
 

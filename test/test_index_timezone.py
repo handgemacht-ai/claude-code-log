@@ -11,7 +11,7 @@ def test_index_timezone_conversion(page):
     index_path = Path.home() / ".claude" / "projects" / "index.html"
 
     if not index_path.exists():
-        pytest.skip("Index file not found")
+        pytest.skip("Index file not found")  # type: ignore[call-non-callable]
 
     # Load the page
     page.goto(f"file://{index_path}")
@@ -23,7 +23,7 @@ def test_index_timezone_conversion(page):
     timestamp_elements = page.query_selector_all(".timestamp[data-timestamp]")
 
     if len(timestamp_elements) == 0:
-        pytest.skip("No timestamps found in index page")
+        pytest.skip("No timestamps found in index page")  # type: ignore[call-non-callable]
 
     # Get the first timestamp element
     first_timestamp = timestamp_elements[0]
@@ -58,7 +58,7 @@ def test_index_timezone_conversion(page):
 
     print(f"✓ Timestamp conversion working: {timestamp_text}")
     print(f"✓ Title: {title}")
-    print(f"✓ No comma in timestamp format")
+    print("✓ No comma in timestamp format")
 
 
 @pytest.mark.browser
@@ -68,7 +68,7 @@ def test_session_navigation_timezone_conversion(page):
     test_html_path = Path("/tmp/test_output_tz.html")
 
     if not test_html_path.exists():
-        pytest.skip("Test HTML file not found")
+        pytest.skip("Test HTML file not found")  # type: ignore[call-non-callable]
 
     # Load the page
     page.goto(f"file://{test_html_path}")
@@ -82,7 +82,7 @@ def test_session_navigation_timezone_conversion(page):
     )
 
     if len(session_timestamps) == 0:
-        pytest.skip("No session navigation timestamps found")
+        pytest.skip("No session navigation timestamps found")  # type: ignore[call-non-callable]
 
     # Get the first session timestamp
     first_session_ts = session_timestamps[0]

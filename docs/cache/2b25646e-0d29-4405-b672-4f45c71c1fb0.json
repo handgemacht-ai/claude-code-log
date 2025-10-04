@@ -1,0 +1,715 @@
+{
+  "2025-10-04T14:23:04.353Z": [
+    {
+      "parentUuid": null,
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "d123b8c1-1482-4344-b2cf-ccb81334bb68",
+      "timestamp": "2025-10-04T14:23:04.353Z",
+      "isMeta": null,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "citations": null,
+            "text": "<ide_opened_file>The user opened the file /Users/dain/workspace/claude-code-log/justfile in the IDE. This may or may not be related to the current task.</ide_opened_file>",
+            "type": "text"
+          },
+          {
+            "citations": null,
+            "text": "In test/test_template_data.py around lines 22\u201327 and 45\u201350, the TemplateMessage\nconstructors are missing the raw_timestamp argument; update each TemplateMessage\ninstantiation to include raw_timestamp=None (e.g. TemplateMessage(...,\nraw_timestamp=None)) so signatures match the implementation (see\nclaude_code_log/renderer.py line ~1208 where raw_timestamp is expected).",
+            "type": "text"
+          }
+        ]
+      },
+      "toolUseResult": null
+    }
+  ],
+  "2025-10-04T14:23:07.774Z": [
+    {
+      "parentUuid": "d123b8c1-1482-4344-b2cf-ccb81334bb68",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "3a3a08dc-a46a-42d5-b24f-137dad2685f3",
+      "timestamp": "2025-10-04T14:23:07.774Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01Pqn4VrG7izuxuSjE2F5XmM",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "citations": null,
+            "text": "I'll update the `TemplateMessage` instantiations in test/test_template_data.py to include the `raw_timestamp=None` argument.",
+            "type": "text"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 4,
+          "cache_creation_input_tokens": 13417,
+          "cache_read_input_tokens": 5161,
+          "output_tokens": 3,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJsv1Avp8bbQ3MNgwuY"
+    }
+  ],
+  "2025-10-04T14:23:08.080Z": [
+    {
+      "parentUuid": "3a3a08dc-a46a-42d5-b24f-137dad2685f3",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "b2bb955a-64fb-4ac3-899d-35731514cce5",
+      "timestamp": "2025-10-04T14:23:08.080Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01Pqn4VrG7izuxuSjE2F5XmM",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "id": "toolu_018JGZVsumKTM5sLz9hTLT92",
+            "input": {
+              "file_path": "/Users/dain/workspace/claude-code-log/test/test_template_data.py"
+            },
+            "name": "Read",
+            "type": "tool_use"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 4,
+          "cache_creation_input_tokens": 13417,
+          "cache_read_input_tokens": 5161,
+          "output_tokens": 3,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJsv1Avp8bbQ3MNgwuY"
+    }
+  ],
+  "2025-10-04T14:23:08.204Z": [
+    {
+      "parentUuid": "b2bb955a-64fb-4ac3-899d-35731514cce5",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "2fd6bb92-abc8-47f3-9a17-285bf85c016f",
+      "timestamp": "2025-10-04T14:23:08.204Z",
+      "isMeta": null,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_018JGZVsumKTM5sLz9hTLT92",
+            "content": "     1\u2192#!/usr/bin/env python3\n     2\u2192\"\"\"Tests for template data structures and generation using existing test data.\"\"\"\n     3\u2192\n     4\u2192import pytest\n     5\u2192import re\n     6\u2192from pathlib import Path\n     7\u2192from claude_code_log.parser import load_transcript, load_directory_transcripts\n     8\u2192from claude_code_log.renderer import (\n     9\u2192    generate_html,\n    10\u2192    TemplateMessage,\n    11\u2192    TemplateProject,\n    12\u2192    TemplateSummary,\n    13\u2192    generate_projects_index_html,\n    14\u2192)\n    15\u2192\n    16\u2192\n    17\u2192class TestTemplateMessage:\n    18\u2192    \"\"\"Test TemplateMessage data structure.\"\"\"\n    19\u2192\n    20\u2192    def test_template_message_creation(self):\n    21\u2192        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n    22\u2192        msg = TemplateMessage(\n    23\u2192            message_type=\"user\",\n    24\u2192            content_html=\"<p>Test content</p>\",\n    25\u2192            formatted_timestamp=\"2025-06-14 10:00:00\",\n    26\u2192            css_class=\"user\",\n    27\u2192        )\n    28\u2192\n    29\u2192        assert msg.type == \"user\"\n    30\u2192        assert msg.content_html == \"<p>Test content</p>\"\n    31\u2192        assert msg.formatted_timestamp == \"2025-06-14 10:00:00\"\n    32\u2192        assert msg.css_class == \"user\"\n    33\u2192        assert msg.display_type == \"User\"\n    34\u2192\n    35\u2192    def test_template_message_display_type_capitalization(self):\n    36\u2192        \"\"\"Test that display_type properly capitalizes message types.\"\"\"\n    37\u2192        test_cases = [\n    38\u2192            (\"user\", \"User\"),\n    39\u2192            (\"assistant\", \"Assistant\"),\n    40\u2192            (\"system\", \"System\"),\n    41\u2192            (\"summary\", \"Summary\"),\n    42\u2192        ]\n    43\u2192\n    44\u2192        for msg_type, expected_display in test_cases:\n    45\u2192            msg = TemplateMessage(\n    46\u2192                message_type=msg_type,\n    47\u2192                content_html=\"content\",\n    48\u2192                formatted_timestamp=\"time\",\n    49\u2192                css_class=\"class\",\n    50\u2192            )\n    51\u2192            assert msg.display_type == expected_display\n    52\u2192\n    53\u2192\n    54\u2192class TestTemplateProject:\n    55\u2192    \"\"\"Test TemplateProject data structure.\"\"\"\n    56\u2192\n    57\u2192    def test_template_project_basic(self):\n    58\u2192        \"\"\"Test creating a TemplateProject with basic data.\"\"\"\n    59\u2192        project_data = {\n    60\u2192            \"name\": \"test-project\",\n    61\u2192            \"html_file\": \"test-project/combined_transcripts.html\",\n    62\u2192            \"jsonl_count\": 3,\n    63\u2192            \"message_count\": 15,\n    64\u2192            \"last_modified\": 1700000000.0,\n    65\u2192        }\n    66\u2192\n    67\u2192        project = TemplateProject(project_data)\n    68\u2192\n    69\u2192        assert project.name == \"test-project\"\n    70\u2192        assert project.html_file == \"test-project/combined_transcripts.html\"\n    71\u2192        assert project.jsonl_count == 3\n    72\u2192        assert project.message_count == 15\n    73\u2192        assert project.display_name == \"test-project\"\n    74\u2192        # Check date format: \"2023-11-1[45] HH:MM:SS\" where day (14-15) and hour can vary by timezone\n    75\u2192        assert re.match(r\"2023-11-1[45] \\d{2}:\\d{2}:20\", project.formatted_date)\n    76\u2192\n    77\u2192    def test_template_project_dash_formatting(self):\n    78\u2192        \"\"\"Test TemplateProject display name formatting for dashed names.\"\"\"\n    79\u2192        project_data = {\n    80\u2192            \"name\": \"-user-workspace-my-app\",\n    81\u2192            \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n    82\u2192            \"jsonl_count\": 2,\n    83\u2192            \"message_count\": 8,\n    84\u2192            \"last_modified\": 1700000100.0,\n    85\u2192        }\n    86\u2192\n    87\u2192        project = TemplateProject(project_data)\n    88\u2192\n    89\u2192        assert project.name == \"-user-workspace-my-app\"\n    90\u2192        assert project.display_name == \"user/workspace/my/app\"\n    91\u2192        # Check date format: \"2023-11-1[45] HH:15:00\" where day (14-15) and hour can vary by timezone\n    92\u2192        assert re.match(r\"2023-11-1[45] \\d{2}:15:00\", project.formatted_date)\n    93\u2192\n    94\u2192    def test_template_project_no_leading_dash(self):\n    95\u2192        \"\"\"Test TemplateProject display name when no leading dash.\"\"\"\n    96\u2192        project_data = {\n    97\u2192            \"name\": \"simple-project-name\",\n    98\u2192            \"html_file\": \"simple-project-name/combined_transcripts.html\",\n    99\u2192            \"jsonl_count\": 1,\n   100\u2192            \"message_count\": 5,\n   101\u2192            \"last_modified\": 1700000200.0,\n   102\u2192        }\n   103\u2192\n   104\u2192        project = TemplateProject(project_data)\n   105\u2192\n   106\u2192        assert project.display_name == \"simple-project-name\"\n   107\u2192\n   108\u2192    def test_template_project_time_range(self):\n   109\u2192        \"\"\"Test TemplateProject time range formatting.\"\"\"\n   110\u2192        # Test with both earliest and latest timestamps\n   111\u2192        project_data = {\n   112\u2192            \"name\": \"time-range-project\",\n   113\u2192            \"html_file\": \"time-range-project/combined_transcripts.html\",\n   114\u2192            \"jsonl_count\": 1,\n   115\u2192            \"message_count\": 5,\n   116\u2192            \"last_modified\": 1700000000.0,\n   117\u2192            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n   118\u2192            \"latest_timestamp\": \"2025-06-14T10:00:00Z\",\n   119\u2192        }\n   120\u2192\n   121\u2192        project = TemplateProject(project_data)\n   122\u2192        assert (\n   123\u2192            project.formatted_time_range == \"2025-06-14 08:00:00 to 2025-06-14 10:00:00\"\n   124\u2192        )\n   125\u2192\n   126\u2192    def test_template_project_single_timestamp(self):\n   127\u2192        \"\"\"Test TemplateProject with single timestamp (same earliest and latest).\"\"\"\n   128\u2192        project_data = {\n   129\u2192            \"name\": \"single-time-project\",\n   130\u2192            \"html_file\": \"single-time-project/combined_transcripts.html\",\n   131\u2192            \"jsonl_count\": 1,\n   132\u2192            \"message_count\": 1,\n   133\u2192            \"last_modified\": 1700000000.0,\n   134\u2192            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n   135\u2192            \"latest_timestamp\": \"2025-06-14T08:00:00Z\",\n   136\u2192        }\n   137\u2192\n   138\u2192        project = TemplateProject(project_data)\n   139\u2192        assert project.formatted_time_range == \"2025-06-14 08:00:00\"\n   140\u2192\n   141\u2192    def test_template_project_no_timestamps(self):\n   142\u2192        \"\"\"Test TemplateProject with no timestamps.\"\"\"\n   143\u2192        project_data = {\n   144\u2192            \"name\": \"no-time-project\",\n   145\u2192            \"html_file\": \"no-time-project/combined_transcripts.html\",\n   146\u2192            \"jsonl_count\": 1,\n   147\u2192            \"message_count\": 1,\n   148\u2192            \"last_modified\": 1700000000.0,\n   149\u2192        }\n   150\u2192\n   151\u2192        project = TemplateProject(project_data)\n   152\u2192        assert project.formatted_time_range == \"\"\n   153\u2192\n   154\u2192\n   155\u2192class TestTemplateSummary:\n   156\u2192    \"\"\"Test TemplateSummary data structure.\"\"\"\n   157\u2192\n   158\u2192    def test_template_summary_calculation(self):\n   159\u2192        \"\"\"Test TemplateSummary calculations.\"\"\"\n   160\u2192        project_summaries = [\n   161\u2192            {\n   162\u2192                \"name\": \"project1\",\n   163\u2192                \"jsonl_count\": 3,\n   164\u2192                \"message_count\": 15,\n   165\u2192                \"last_modified\": 1700000000.0,\n   166\u2192            },\n   167\u2192            {\n   168\u2192                \"name\": \"project2\",\n   169\u2192                \"jsonl_count\": 2,\n   170\u2192                \"message_count\": 8,\n   171\u2192                \"last_modified\": 1700000100.0,\n   172\u2192            },\n   173\u2192            {\n   174\u2192                \"name\": \"project3\",\n   175\u2192                \"jsonl_count\": 1,\n   176\u2192                \"message_count\": 12,\n   177\u2192                \"last_modified\": 1700000200.0,\n   178\u2192            },\n   179\u2192        ]\n   180\u2192\n   181\u2192        summary = TemplateSummary(project_summaries)\n   182\u2192\n   183\u2192        assert summary.total_projects == 3\n   184\u2192        assert summary.total_jsonl == 6  # 3 + 2 + 1\n   185\u2192        assert summary.total_messages == 35  # 15 + 8 + 12\n   186\u2192\n   187\u2192    def test_template_summary_empty_list(self):\n   188\u2192        \"\"\"Test TemplateSummary with empty project list.\"\"\"\n   189\u2192        summary = TemplateSummary([])\n   190\u2192\n   191\u2192        assert summary.total_projects == 0\n   192\u2192        assert summary.total_jsonl == 0\n   193\u2192        assert summary.total_messages == 0\n   194\u2192\n   195\u2192\n   196\u2192class TestDataWithTestFiles:\n   197\u2192    \"\"\"Test template generation using actual test data files.\"\"\"\n   198\u2192\n   199\u2192    def test_representative_messages_data_structure(self):\n   200\u2192        \"\"\"Test that representative messages generate proper template data.\"\"\"\n   201\u2192        test_data_path = (\n   202\u2192            Path(__file__).parent / \"test_data\" / \"representative_messages.jsonl\"\n   203\u2192        )\n   204\u2192\n   205\u2192        messages = load_transcript(test_data_path)\n   206\u2192        html = generate_html(messages, \"Test Transcript\")\n   207\u2192\n   208\u2192        # Verify the data loaded correctly\n   209\u2192        assert len(messages) > 0\n   210\u2192\n   211\u2192        # Check that different message types are present\n   212\u2192        message_types = {msg.type for msg in messages}\n   213\u2192        assert \"user\" in message_types\n   214\u2192        assert \"assistant\" in message_types\n   215\u2192        assert \"summary\" in message_types\n   216\u2192\n   217\u2192        # Verify HTML structure\n   218\u2192        assert \"<!DOCTYPE html>\" in html\n   219\u2192        assert \"<title>Test Transcript</title>\" in html\n   220\u2192        assert \"message user\" in html\n   221\u2192        assert \"message assistant\" in html\n   222\u2192        # Summary messages are now integrated into session headers\n   223\u2192        assert \"session-summary\" in html or \"Summary:\" in html\n   224\u2192\n   225\u2192    def test_edge_cases_data_structure(self):\n   226\u2192        \"\"\"Test that edge cases data generates proper template data.\"\"\"\n   227\u2192        test_data_path = Path(__file__).parent / \"test_data\" / \"edge_cases.jsonl\"\n   228\u2192\n   229\u2192        messages = load_transcript(test_data_path)\n   230\u2192        html = generate_html(messages, \"Edge Cases\")\n   231\u2192\n   232\u2192        # Verify the data loaded correctly\n   233\u2192        assert len(messages) > 0\n   234\u2192\n   235\u2192        # Check that HTML handles edge cases properly\n   236\u2192        assert \"<!DOCTYPE html>\" in html\n   237\u2192        assert \"<title>Edge Cases</title>\" in html\n   238\u2192\n   239\u2192        # Check that special characters are handled\n   240\u2192        assert \"caf\u00e9\" in html or \"caf&eacute;\" in html\n   241\u2192        assert \"\ud83c\udf89\" in html  # Emoji should be preserved\n   242\u2192\n   243\u2192        # Check that tool content is rendered\n   244\u2192        assert \"tool-use\" in html or \"tool-result\" in html\n   245\u2192\n   246\u2192    def test_multi_session_data_structure(self):\n   247\u2192        \"\"\"Test that multiple sessions generate proper session dividers.\"\"\"\n   248\u2192        test_data_dir = Path(__file__).parent / \"test_data\"\n   249\u2192\n   250\u2192        # Load from directory to get multiple sessions\n   251\u2192        messages = load_directory_transcripts(test_data_dir)\n   252\u2192        html = generate_html(messages, \"Multi Session Test\")\n   253\u2192\n   254\u2192        # Verify session dividers are present\n   255\u2192        session_divider_count = html.count(\"session-divider\")\n   256\u2192        assert session_divider_count > 0, \"Should have at least one session divider\"\n   257\u2192\n   258\u2192        # Check that messages from different files are included\n   259\u2192        assert len(messages) > 0\n   260\u2192\n   261\u2192        # Verify HTML structure for multi-session\n   262\u2192        assert \"<!DOCTYPE html>\" in html\n   263\u2192        assert \"Multi Session Test\" in html\n   264\u2192\n   265\u2192    def test_empty_directory_handling(self):\n   266\u2192        \"\"\"Test handling of directories with no JSONL files.\"\"\"\n   267\u2192        import tempfile\n   268\u2192\n   269\u2192        with tempfile.TemporaryDirectory() as temp_dir:\n   270\u2192            temp_path = Path(temp_dir)\n   271\u2192\n   272\u2192            # Should return empty list for directory with no JSONL files\n   273\u2192            messages = load_directory_transcripts(temp_path)\n   274\u2192            assert messages == []\n   275\u2192\n   276\u2192            # Should generate minimal HTML for empty message list\n   277\u2192            html = generate_html(messages, \"Empty Test\")\n   278\u2192            assert \"<!DOCTYPE html>\" in html\n   279\u2192            assert \"<title>Empty Test</title>\" in html\n   280\u2192\n   281\u2192    def test_projects_index_generation(self):\n   282\u2192        \"\"\"Test generating index HTML with test project data.\"\"\"\n   283\u2192        project_summaries = [\n   284\u2192            {\n   285\u2192                \"name\": \"test-project-1\",\n   286\u2192                \"path\": Path(\"/tmp/project1\"),\n   287\u2192                \"html_file\": \"test-project-1/combined_transcripts.html\",\n   288\u2192                \"jsonl_count\": 3,\n   289\u2192                \"message_count\": 15,\n   290\u2192                \"last_modified\": 1700000000.0,\n   291\u2192            },\n   292\u2192            {\n   293\u2192                \"name\": \"-user-workspace-my-app\",\n   294\u2192                \"path\": Path(\"/tmp/project2\"),\n   295\u2192                \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n   296\u2192                \"jsonl_count\": 2,\n   297\u2192                \"message_count\": 8,\n   298\u2192                \"last_modified\": 1700000100.0,\n   299\u2192            },\n   300\u2192        ]\n   301\u2192\n   302\u2192        index_html = generate_projects_index_html(project_summaries)\n   303\u2192\n   304\u2192        # Check basic structure\n   305\u2192        assert \"<!DOCTYPE html>\" in index_html\n   306\u2192        assert \"<title>Claude Code Projects</title>\" in index_html\n   307\u2192\n   308\u2192        # Check that both projects are listed\n   309\u2192        assert \"test-project-1\" in index_html\n   310\u2192        assert \"user/workspace/my/app\" in index_html  # Formatted name\n   311\u2192\n   312\u2192        # Check summary stats\n   313\u2192        assert \"23\" in index_html  # Total messages (15 + 8)\n   314\u2192        assert \"5\" in index_html  # Total jsonl files (3 + 2)\n   315\u2192        assert \"2\" in index_html  # Total projects\n   316\u2192\n   317\u2192    def test_projects_index_with_date_range(self):\n   318\u2192        \"\"\"Test generating index HTML with date range in title.\"\"\"\n   319\u2192        project_summaries = [\n   320\u2192            {\n   321\u2192                \"name\": \"test-project\",\n   322\u2192                \"path\": Path(\"/tmp/project\"),\n   323\u2192                \"html_file\": \"test-project/combined_transcripts.html\",\n   324\u2192                \"jsonl_count\": 1,\n   325\u2192                \"message_count\": 5,\n   326\u2192                \"last_modified\": 1700000000.0,\n   327\u2192            }\n   328\u2192        ]\n   329\u2192\n   330\u2192        index_html = generate_projects_index_html(\n   331\u2192            project_summaries, from_date=\"yesterday\", to_date=\"today\"\n   332\u2192        )\n   333\u2192\n   334\u2192        # Check that date range appears in title\n   335\u2192        assert \"Claude Code Projects (from yesterday to today)\" in index_html\n   336\u2192\n   337\u2192\n   338\u2192class TestErrorHandling:\n   339\u2192    \"\"\"Test error handling in template generation.\"\"\"\n   340\u2192\n   341\u2192    def test_malformed_message_handling(self):\n   342\u2192        \"\"\"Test that malformed messages are skipped gracefully.\"\"\"\n   343\u2192        import tempfile\n   344\u2192\n   345\u2192        # Create a JSONL file with mix of valid and invalid entries\n   346\u2192        malformed_data = [\n   347\u2192            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:00:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_000\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Valid message\"}]}}',\n   348\u2192            '{\"type\": \"invalid_type\", \"malformed\": true}',  # Invalid type\n   349\u2192            '{\"incomplete\": \"message\"}',  # Missing required fields\n   350\u2192            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:01:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_001\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Another valid message\"}]}}',\n   351\u2192        ]\n   352\u2192\n   353\u2192        with tempfile.NamedTemporaryFile(mode=\"w\", suffix=\".jsonl\", delete=False) as f:\n   354\u2192            for line in malformed_data:\n   355\u2192                f.write(line + \"\\n\")\n   356\u2192            f.flush()\n   357\u2192            test_file_path = Path(f.name)\n   358\u2192\n   359\u2192        try:\n   360\u2192            # Should load only valid messages, skipping malformed ones\n   361\u2192            messages = load_transcript(test_file_path)\n   362\u2192\n   363\u2192            # Should have loaded 2 valid messages, skipped 2 malformed ones\n   364\u2192            assert len(messages) == 2\n   365\u2192\n   366\u2192            # Should generate HTML without errors\n   367\u2192            html = generate_html(messages, \"Malformed Test\")\n   368\u2192            assert \"<!DOCTYPE html>\" in html\n   369\u2192            assert \"Valid message\" in html\n   370\u2192            assert \"Another valid message\" in html\n   371\u2192\n   372\u2192        finally:\n   373\u2192            test_file_path.unlink()\n   374\u2192\n   375\u2192\n   376\u2192if __name__ == \"__main__\":\n   377\u2192    pytest.main([__file__])\n   378\u2192\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+            "is_error": null
+          }
+        ]
+      },
+      "toolUseResult": {
+        "type": "text",
+        "file": {
+          "filePath": "/Users/dain/workspace/claude-code-log/test/test_template_data.py",
+          "content": "#!/usr/bin/env python3\n\"\"\"Tests for template data structures and generation using existing test data.\"\"\"\n\nimport pytest\nimport re\nfrom pathlib import Path\nfrom claude_code_log.parser import load_transcript, load_directory_transcripts\nfrom claude_code_log.renderer import (\n    generate_html,\n    TemplateMessage,\n    TemplateProject,\n    TemplateSummary,\n    generate_projects_index_html,\n)\n\n\nclass TestTemplateMessage:\n    \"\"\"Test TemplateMessage data structure.\"\"\"\n\n    def test_template_message_creation(self):\n        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n        msg = TemplateMessage(\n            message_type=\"user\",\n            content_html=\"<p>Test content</p>\",\n            formatted_timestamp=\"2025-06-14 10:00:00\",\n            css_class=\"user\",\n        )\n\n        assert msg.type == \"user\"\n        assert msg.content_html == \"<p>Test content</p>\"\n        assert msg.formatted_timestamp == \"2025-06-14 10:00:00\"\n        assert msg.css_class == \"user\"\n        assert msg.display_type == \"User\"\n\n    def test_template_message_display_type_capitalization(self):\n        \"\"\"Test that display_type properly capitalizes message types.\"\"\"\n        test_cases = [\n            (\"user\", \"User\"),\n            (\"assistant\", \"Assistant\"),\n            (\"system\", \"System\"),\n            (\"summary\", \"Summary\"),\n        ]\n\n        for msg_type, expected_display in test_cases:\n            msg = TemplateMessage(\n                message_type=msg_type,\n                content_html=\"content\",\n                formatted_timestamp=\"time\",\n                css_class=\"class\",\n            )\n            assert msg.display_type == expected_display\n\n\nclass TestTemplateProject:\n    \"\"\"Test TemplateProject data structure.\"\"\"\n\n    def test_template_project_basic(self):\n        \"\"\"Test creating a TemplateProject with basic data.\"\"\"\n        project_data = {\n            \"name\": \"test-project\",\n            \"html_file\": \"test-project/combined_transcripts.html\",\n            \"jsonl_count\": 3,\n            \"message_count\": 15,\n            \"last_modified\": 1700000000.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.name == \"test-project\"\n        assert project.html_file == \"test-project/combined_transcripts.html\"\n        assert project.jsonl_count == 3\n        assert project.message_count == 15\n        assert project.display_name == \"test-project\"\n        # Check date format: \"2023-11-1[45] HH:MM:SS\" where day (14-15) and hour can vary by timezone\n        assert re.match(r\"2023-11-1[45] \\d{2}:\\d{2}:20\", project.formatted_date)\n\n    def test_template_project_dash_formatting(self):\n        \"\"\"Test TemplateProject display name formatting for dashed names.\"\"\"\n        project_data = {\n            \"name\": \"-user-workspace-my-app\",\n            \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n            \"jsonl_count\": 2,\n            \"message_count\": 8,\n            \"last_modified\": 1700000100.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.name == \"-user-workspace-my-app\"\n        assert project.display_name == \"user/workspace/my/app\"\n        # Check date format: \"2023-11-1[45] HH:15:00\" where day (14-15) and hour can vary by timezone\n        assert re.match(r\"2023-11-1[45] \\d{2}:15:00\", project.formatted_date)\n\n    def test_template_project_no_leading_dash(self):\n        \"\"\"Test TemplateProject display name when no leading dash.\"\"\"\n        project_data = {\n            \"name\": \"simple-project-name\",\n            \"html_file\": \"simple-project-name/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 5,\n            \"last_modified\": 1700000200.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.display_name == \"simple-project-name\"\n\n    def test_template_project_time_range(self):\n        \"\"\"Test TemplateProject time range formatting.\"\"\"\n        # Test with both earliest and latest timestamps\n        project_data = {\n            \"name\": \"time-range-project\",\n            \"html_file\": \"time-range-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 5,\n            \"last_modified\": 1700000000.0,\n            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n            \"latest_timestamp\": \"2025-06-14T10:00:00Z\",\n        }\n\n        project = TemplateProject(project_data)\n        assert (\n            project.formatted_time_range == \"2025-06-14 08:00:00 to 2025-06-14 10:00:00\"\n        )\n\n    def test_template_project_single_timestamp(self):\n        \"\"\"Test TemplateProject with single timestamp (same earliest and latest).\"\"\"\n        project_data = {\n            \"name\": \"single-time-project\",\n            \"html_file\": \"single-time-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 1,\n            \"last_modified\": 1700000000.0,\n            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n            \"latest_timestamp\": \"2025-06-14T08:00:00Z\",\n        }\n\n        project = TemplateProject(project_data)\n        assert project.formatted_time_range == \"2025-06-14 08:00:00\"\n\n    def test_template_project_no_timestamps(self):\n        \"\"\"Test TemplateProject with no timestamps.\"\"\"\n        project_data = {\n            \"name\": \"no-time-project\",\n            \"html_file\": \"no-time-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 1,\n            \"last_modified\": 1700000000.0,\n        }\n\n        project = TemplateProject(project_data)\n        assert project.formatted_time_range == \"\"\n\n\nclass TestTemplateSummary:\n    \"\"\"Test TemplateSummary data structure.\"\"\"\n\n    def test_template_summary_calculation(self):\n        \"\"\"Test TemplateSummary calculations.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"project1\",\n                \"jsonl_count\": 3,\n                \"message_count\": 15,\n                \"last_modified\": 1700000000.0,\n            },\n            {\n                \"name\": \"project2\",\n                \"jsonl_count\": 2,\n                \"message_count\": 8,\n                \"last_modified\": 1700000100.0,\n            },\n            {\n                \"name\": \"project3\",\n                \"jsonl_count\": 1,\n                \"message_count\": 12,\n                \"last_modified\": 1700000200.0,\n            },\n        ]\n\n        summary = TemplateSummary(project_summaries)\n\n        assert summary.total_projects == 3\n        assert summary.total_jsonl == 6  # 3 + 2 + 1\n        assert summary.total_messages == 35  # 15 + 8 + 12\n\n    def test_template_summary_empty_list(self):\n        \"\"\"Test TemplateSummary with empty project list.\"\"\"\n        summary = TemplateSummary([])\n\n        assert summary.total_projects == 0\n        assert summary.total_jsonl == 0\n        assert summary.total_messages == 0\n\n\nclass TestDataWithTestFiles:\n    \"\"\"Test template generation using actual test data files.\"\"\"\n\n    def test_representative_messages_data_structure(self):\n        \"\"\"Test that representative messages generate proper template data.\"\"\"\n        test_data_path = (\n            Path(__file__).parent / \"test_data\" / \"representative_messages.jsonl\"\n        )\n\n        messages = load_transcript(test_data_path)\n        html = generate_html(messages, \"Test Transcript\")\n\n        # Verify the data loaded correctly\n        assert len(messages) > 0\n\n        # Check that different message types are present\n        message_types = {msg.type for msg in messages}\n        assert \"user\" in message_types\n        assert \"assistant\" in message_types\n        assert \"summary\" in message_types\n\n        # Verify HTML structure\n        assert \"<!DOCTYPE html>\" in html\n        assert \"<title>Test Transcript</title>\" in html\n        assert \"message user\" in html\n        assert \"message assistant\" in html\n        # Summary messages are now integrated into session headers\n        assert \"session-summary\" in html or \"Summary:\" in html\n\n    def test_edge_cases_data_structure(self):\n        \"\"\"Test that edge cases data generates proper template data.\"\"\"\n        test_data_path = Path(__file__).parent / \"test_data\" / \"edge_cases.jsonl\"\n\n        messages = load_transcript(test_data_path)\n        html = generate_html(messages, \"Edge Cases\")\n\n        # Verify the data loaded correctly\n        assert len(messages) > 0\n\n        # Check that HTML handles edge cases properly\n        assert \"<!DOCTYPE html>\" in html\n        assert \"<title>Edge Cases</title>\" in html\n\n        # Check that special characters are handled\n        assert \"caf\u00e9\" in html or \"caf&eacute;\" in html\n        assert \"\ud83c\udf89\" in html  # Emoji should be preserved\n\n        # Check that tool content is rendered\n        assert \"tool-use\" in html or \"tool-result\" in html\n\n    def test_multi_session_data_structure(self):\n        \"\"\"Test that multiple sessions generate proper session dividers.\"\"\"\n        test_data_dir = Path(__file__).parent / \"test_data\"\n\n        # Load from directory to get multiple sessions\n        messages = load_directory_transcripts(test_data_dir)\n        html = generate_html(messages, \"Multi Session Test\")\n\n        # Verify session dividers are present\n        session_divider_count = html.count(\"session-divider\")\n        assert session_divider_count > 0, \"Should have at least one session divider\"\n\n        # Check that messages from different files are included\n        assert len(messages) > 0\n\n        # Verify HTML structure for multi-session\n        assert \"<!DOCTYPE html>\" in html\n        assert \"Multi Session Test\" in html\n\n    def test_empty_directory_handling(self):\n        \"\"\"Test handling of directories with no JSONL files.\"\"\"\n        import tempfile\n\n        with tempfile.TemporaryDirectory() as temp_dir:\n            temp_path = Path(temp_dir)\n\n            # Should return empty list for directory with no JSONL files\n            messages = load_directory_transcripts(temp_path)\n            assert messages == []\n\n            # Should generate minimal HTML for empty message list\n            html = generate_html(messages, \"Empty Test\")\n            assert \"<!DOCTYPE html>\" in html\n            assert \"<title>Empty Test</title>\" in html\n\n    def test_projects_index_generation(self):\n        \"\"\"Test generating index HTML with test project data.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"test-project-1\",\n                \"path\": Path(\"/tmp/project1\"),\n                \"html_file\": \"test-project-1/combined_transcripts.html\",\n                \"jsonl_count\": 3,\n                \"message_count\": 15,\n                \"last_modified\": 1700000000.0,\n            },\n            {\n                \"name\": \"-user-workspace-my-app\",\n                \"path\": Path(\"/tmp/project2\"),\n                \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n                \"jsonl_count\": 2,\n                \"message_count\": 8,\n                \"last_modified\": 1700000100.0,\n            },\n        ]\n\n        index_html = generate_projects_index_html(project_summaries)\n\n        # Check basic structure\n        assert \"<!DOCTYPE html>\" in index_html\n        assert \"<title>Claude Code Projects</title>\" in index_html\n\n        # Check that both projects are listed\n        assert \"test-project-1\" in index_html\n        assert \"user/workspace/my/app\" in index_html  # Formatted name\n\n        # Check summary stats\n        assert \"23\" in index_html  # Total messages (15 + 8)\n        assert \"5\" in index_html  # Total jsonl files (3 + 2)\n        assert \"2\" in index_html  # Total projects\n\n    def test_projects_index_with_date_range(self):\n        \"\"\"Test generating index HTML with date range in title.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"test-project\",\n                \"path\": Path(\"/tmp/project\"),\n                \"html_file\": \"test-project/combined_transcripts.html\",\n                \"jsonl_count\": 1,\n                \"message_count\": 5,\n                \"last_modified\": 1700000000.0,\n            }\n        ]\n\n        index_html = generate_projects_index_html(\n            project_summaries, from_date=\"yesterday\", to_date=\"today\"\n        )\n\n        # Check that date range appears in title\n        assert \"Claude Code Projects (from yesterday to today)\" in index_html\n\n\nclass TestErrorHandling:\n    \"\"\"Test error handling in template generation.\"\"\"\n\n    def test_malformed_message_handling(self):\n        \"\"\"Test that malformed messages are skipped gracefully.\"\"\"\n        import tempfile\n\n        # Create a JSONL file with mix of valid and invalid entries\n        malformed_data = [\n            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:00:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_000\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Valid message\"}]}}',\n            '{\"type\": \"invalid_type\", \"malformed\": true}',  # Invalid type\n            '{\"incomplete\": \"message\"}',  # Missing required fields\n            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:01:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_001\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Another valid message\"}]}}',\n        ]\n\n        with tempfile.NamedTemporaryFile(mode=\"w\", suffix=\".jsonl\", delete=False) as f:\n            for line in malformed_data:\n                f.write(line + \"\\n\")\n            f.flush()\n            test_file_path = Path(f.name)\n\n        try:\n            # Should load only valid messages, skipping malformed ones\n            messages = load_transcript(test_file_path)\n\n            # Should have loaded 2 valid messages, skipped 2 malformed ones\n            assert len(messages) == 2\n\n            # Should generate HTML without errors\n            html = generate_html(messages, \"Malformed Test\")\n            assert \"<!DOCTYPE html>\" in html\n            assert \"Valid message\" in html\n            assert \"Another valid message\" in html\n\n        finally:\n            test_file_path.unlink()\n\n\nif __name__ == \"__main__\":\n    pytest.main([__file__])\n",
+          "numLines": 378,
+          "startLine": 1,
+          "totalLines": 378
+        }
+      }
+    }
+  ],
+  "2025-10-04T14:23:11.352Z": [
+    {
+      "parentUuid": "2fd6bb92-abc8-47f3-9a17-285bf85c016f",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "34415a20-e1d8-4092-b795-02f7be6f210b",
+      "timestamp": "2025-10-04T14:23:11.352Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01VEj9hcq8xC78KZ4GgS4WvP",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "citations": null,
+            "text": "Now I'll check the `TemplateMessage` class to see the expected signature:",
+            "type": "text"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 7,
+          "cache_creation_input_tokens": 5308,
+          "cache_read_input_tokens": 18578,
+          "output_tokens": 2,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJtCVrPqti6oEgRcABw"
+    }
+  ],
+  "2025-10-04T14:23:12.786Z": [
+    {
+      "parentUuid": "34415a20-e1d8-4092-b795-02f7be6f210b",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "0bb04f6f-f748-44ae-a708-507287a81d6d",
+      "timestamp": "2025-10-04T14:23:12.786Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01VEj9hcq8xC78KZ4GgS4WvP",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "id": "toolu_01ToVLHpmAcAErveM2oFEkKU",
+            "input": {
+              "file_path": "/Users/dain/workspace/claude-code-log/claude_code_log/renderer.py",
+              "offset": 1200,
+              "limit": 30
+            },
+            "name": "Read",
+            "type": "tool_use"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 7,
+          "cache_creation_input_tokens": 5308,
+          "cache_read_input_tokens": 18578,
+          "output_tokens": 2,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJtCVrPqti6oEgRcABw"
+    }
+  ],
+  "2025-10-04T14:23:12.930Z": [
+    {
+      "parentUuid": "0bb04f6f-f748-44ae-a708-507287a81d6d",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "94dde1a4-0e1f-407a-ac1e-bac39065113e",
+      "timestamp": "2025-10-04T14:23:12.930Z",
+      "isMeta": null,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01ToVLHpmAcAErveM2oFEkKU",
+            "content": "  1200\u2192            escaped_content = escape_html(message.content)\n  1201\u2192            content_html = f\"<strong>{level_icon} System {level.title()}:</strong> {escaped_content}\"\n  1202\u2192\n  1203\u2192            system_template_message = TemplateMessage(\n  1204\u2192                message_type=f\"System {level.title()}\",\n  1205\u2192                content_html=content_html,\n  1206\u2192                formatted_timestamp=formatted_timestamp,\n  1207\u2192                css_class=level_css,\n  1208\u2192                raw_timestamp=timestamp,\n  1209\u2192                session_id=session_id,\n  1210\u2192            )\n  1211\u2192            template_messages.append(system_template_message)\n  1212\u2192            continue\n  1213\u2192\n  1214\u2192        # Extract message content first to check for duplicates\n  1215\u2192        # Must be UserTranscriptEntry or AssistantTranscriptEntry\n  1216\u2192        message_content = message.message.content  # type: ignore\n  1217\u2192        text_content = extract_text_content(message_content)\n  1218\u2192\n  1219\u2192        # Separate tool/thinking/image content from text content\n  1220\u2192        tool_items: List[ContentItem] = []\n  1221\u2192        text_only_content: Union[str, List[ContentItem]] = []\n  1222\u2192\n  1223\u2192        if isinstance(message_content, list):\n  1224\u2192            text_only_items: List[ContentItem] = []\n  1225\u2192            for item in message_content:\n  1226\u2192                # Check for both custom types and Anthropic types\n  1227\u2192                item_type = getattr(item, \"type\", None)\n  1228\u2192                is_tool_item = isinstance(\n  1229\u2192                    item,\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+            "is_error": null
+          }
+        ]
+      },
+      "toolUseResult": {
+        "type": "text",
+        "file": {
+          "filePath": "/Users/dain/workspace/claude-code-log/claude_code_log/renderer.py",
+          "content": "            escaped_content = escape_html(message.content)\n            content_html = f\"<strong>{level_icon} System {level.title()}:</strong> {escaped_content}\"\n\n            system_template_message = TemplateMessage(\n                message_type=f\"System {level.title()}\",\n                content_html=content_html,\n                formatted_timestamp=formatted_timestamp,\n                css_class=level_css,\n                raw_timestamp=timestamp,\n                session_id=session_id,\n            )\n            template_messages.append(system_template_message)\n            continue\n\n        # Extract message content first to check for duplicates\n        # Must be UserTranscriptEntry or AssistantTranscriptEntry\n        message_content = message.message.content  # type: ignore\n        text_content = extract_text_content(message_content)\n\n        # Separate tool/thinking/image content from text content\n        tool_items: List[ContentItem] = []\n        text_only_content: Union[str, List[ContentItem]] = []\n\n        if isinstance(message_content, list):\n            text_only_items: List[ContentItem] = []\n            for item in message_content:\n                # Check for both custom types and Anthropic types\n                item_type = getattr(item, \"type\", None)\n                is_tool_item = isinstance(\n                    item,",
+          "numLines": 30,
+          "startLine": 1200,
+          "totalLines": 1666
+        }
+      }
+    }
+  ],
+  "2025-10-04T14:23:15.822Z": [
+    {
+      "parentUuid": "94dde1a4-0e1f-407a-ac1e-bac39065113e",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "1911cd05-66fc-44d8-8732-e672c5a8bc9e",
+      "timestamp": "2025-10-04T14:23:15.822Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01BPi4YDWKM8rNtYgDTsC9dr",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "citations": null,
+            "text": "Let me find the `TemplateMessage` class definition:",
+            "type": "text"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 7,
+          "cache_creation_input_tokens": 657,
+          "cache_read_input_tokens": 23886,
+          "output_tokens": 1,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJtZ1tdSurTy19mbee1"
+    }
+  ],
+  "2025-10-04T14:23:16.882Z": [
+    {
+      "parentUuid": "1911cd05-66fc-44d8-8732-e672c5a8bc9e",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "137f9f50-8dba-4fe8-bc63-5249cd7c18b5",
+      "timestamp": "2025-10-04T14:23:16.882Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01BPi4YDWKM8rNtYgDTsC9dr",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "id": "toolu_014m2d268BCYLxydRyuAZP4o",
+            "input": {
+              "pattern": "^class TemplateMessage",
+              "path": "/Users/dain/workspace/claude-code-log/claude_code_log/renderer.py",
+              "output_mode": "content",
+              "-n": true
+            },
+            "name": "Grep",
+            "type": "tool_use"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 7,
+          "cache_creation_input_tokens": 657,
+          "cache_read_input_tokens": 23886,
+          "output_tokens": 147,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJtZ1tdSurTy19mbee1"
+    }
+  ],
+  "2025-10-04T14:23:16.985Z": [
+    {
+      "parentUuid": "137f9f50-8dba-4fe8-bc63-5249cd7c18b5",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "4f9543af-e219-47ea-8d49-d35c22f61d78",
+      "timestamp": "2025-10-04T14:23:16.985Z",
+      "isMeta": null,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_014m2d268BCYLxydRyuAZP4o",
+            "content": "511:class TemplateMessage:",
+            "is_error": null
+          }
+        ]
+      },
+      "toolUseResult": {
+        "oldString": null,
+        "newString": null,
+        "replaceAll": null,
+        "originalFile": null,
+        "structuredPatch": null,
+        "userModified": null
+      }
+    }
+  ],
+  "2025-10-04T14:23:19.937Z": [
+    {
+      "parentUuid": "4f9543af-e219-47ea-8d49-d35c22f61d78",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "8a02045c-297f-4c14-bcdc-0c93d418809f",
+      "timestamp": "2025-10-04T14:23:19.937Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01SxoeD9vA1uHtnkfgLA6QaY",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "id": "toolu_01Qgoy3V5PJ77XQesP3vhiHo",
+            "input": {
+              "file_path": "/Users/dain/workspace/claude-code-log/claude_code_log/renderer.py",
+              "offset": 511,
+              "limit": 30
+            },
+            "name": "Read",
+            "type": "tool_use"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 6,
+          "cache_creation_input_tokens": 167,
+          "cache_read_input_tokens": 24543,
+          "output_tokens": 25,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJtrHi76rKEHuDUo4k4"
+    }
+  ],
+  "2025-10-04T14:23:20.041Z": [
+    {
+      "parentUuid": "8a02045c-297f-4c14-bcdc-0c93d418809f",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "7ed87ef7-28d3-410f-a2d7-aed6ce461093",
+      "timestamp": "2025-10-04T14:23:20.041Z",
+      "isMeta": null,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01Qgoy3V5PJ77XQesP3vhiHo",
+            "content": "   511\u2192class TemplateMessage:\n   512\u2192    \"\"\"Structured message data for template rendering.\"\"\"\n   513\u2192\n   514\u2192    def __init__(\n   515\u2192        self,\n   516\u2192        message_type: str,\n   517\u2192        content_html: str,\n   518\u2192        formatted_timestamp: str,\n   519\u2192        css_class: str,\n   520\u2192        raw_timestamp: Optional[str] = None,\n   521\u2192        session_summary: Optional[str] = None,\n   522\u2192        session_id: Optional[str] = None,\n   523\u2192        is_session_header: bool = False,\n   524\u2192        token_usage: Optional[str] = None,\n   525\u2192    ):\n   526\u2192        self.type = message_type\n   527\u2192        self.content_html = content_html\n   528\u2192        self.formatted_timestamp = formatted_timestamp\n   529\u2192        self.css_class = css_class\n   530\u2192        self.raw_timestamp = raw_timestamp\n   531\u2192        self.display_type = message_type.title()\n   532\u2192        self.session_summary = session_summary\n   533\u2192        self.session_id = session_id\n   534\u2192        self.is_session_header = is_session_header\n   535\u2192        self.session_subtitle: Optional[str] = None\n   536\u2192        self.token_usage = token_usage\n   537\u2192\n   538\u2192\n   539\u2192class TemplateProject:\n   540\u2192    \"\"\"Structured project data for template rendering.\"\"\"\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+            "is_error": null
+          }
+        ]
+      },
+      "toolUseResult": {
+        "type": "text",
+        "file": {
+          "filePath": "/Users/dain/workspace/claude-code-log/claude_code_log/renderer.py",
+          "content": "class TemplateMessage:\n    \"\"\"Structured message data for template rendering.\"\"\"\n\n    def __init__(\n        self,\n        message_type: str,\n        content_html: str,\n        formatted_timestamp: str,\n        css_class: str,\n        raw_timestamp: Optional[str] = None,\n        session_summary: Optional[str] = None,\n        session_id: Optional[str] = None,\n        is_session_header: bool = False,\n        token_usage: Optional[str] = None,\n    ):\n        self.type = message_type\n        self.content_html = content_html\n        self.formatted_timestamp = formatted_timestamp\n        self.css_class = css_class\n        self.raw_timestamp = raw_timestamp\n        self.display_type = message_type.title()\n        self.session_summary = session_summary\n        self.session_id = session_id\n        self.is_session_header = is_session_header\n        self.session_subtitle: Optional[str] = None\n        self.token_usage = token_usage\n\n\nclass TemplateProject:\n    \"\"\"Structured project data for template rendering.\"\"\"",
+          "numLines": 30,
+          "startLine": 511,
+          "totalLines": 1666
+        }
+      }
+    }
+  ],
+  "2025-10-04T14:23:25.262Z": [
+    {
+      "parentUuid": "7ed87ef7-28d3-410f-a2d7-aed6ce461093",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "4c02b1e3-aa3f-4ebc-b752-9e8dbfe83a9e",
+      "timestamp": "2025-10-04T14:23:25.262Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01GwNtxzBnqiATvAKeK6Rv6K",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "citations": null,
+            "text": "Now I can see the `TemplateMessage` constructor expects `raw_timestamp` as an optional parameter. I'll update both test instantiations:",
+            "type": "text"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 5,
+          "cache_creation_input_tokens": 644,
+          "cache_read_input_tokens": 24710,
+          "output_tokens": 1,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJu5PkQmhQjDFBhim4o"
+    }
+  ],
+  "2025-10-04T14:23:28.224Z": [
+    {
+      "parentUuid": "4c02b1e3-aa3f-4ebc-b752-9e8dbfe83a9e",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "1d4963f4-7861-4d5f-8e7d-f655476be819",
+      "timestamp": "2025-10-04T14:23:28.224Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01GwNtxzBnqiATvAKeK6Rv6K",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "id": "toolu_01V8AoyBqgk95JG5KtQ8gSqm",
+            "input": {
+              "file_path": "/Users/dain/workspace/claude-code-log/test/test_template_data.py",
+              "old_string": "    def test_template_message_creation(self):\n        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n        msg = TemplateMessage(\n            message_type=\"user\",\n            content_html=\"<p>Test content</p>\",\n            formatted_timestamp=\"2025-06-14 10:00:00\",\n            css_class=\"user\",\n        )",
+              "new_string": "    def test_template_message_creation(self):\n        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n        msg = TemplateMessage(\n            message_type=\"user\",\n            content_html=\"<p>Test content</p>\",\n            formatted_timestamp=\"2025-06-14 10:00:00\",\n            css_class=\"user\",\n            raw_timestamp=None,\n        )"
+            },
+            "name": "Edit",
+            "type": "tool_use"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 5,
+          "cache_creation_input_tokens": 644,
+          "cache_read_input_tokens": 24710,
+          "output_tokens": 1,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJu5PkQmhQjDFBhim4o"
+    }
+  ],
+  "2025-10-04T14:23:36.408Z": [
+    {
+      "parentUuid": "1d4963f4-7861-4d5f-8e7d-f655476be819",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "24d4a8b8-e8ab-448d-90c7-245f58ad52f7",
+      "timestamp": "2025-10-04T14:23:36.408Z",
+      "isMeta": null,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01V8AoyBqgk95JG5KtQ8gSqm",
+            "content": "The file /Users/dain/workspace/claude-code-log/test/test_template_data.py has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n    16\u2192\n    17\u2192class TestTemplateMessage:\n    18\u2192    \"\"\"Test TemplateMessage data structure.\"\"\"\n    19\u2192\n    20\u2192    def test_template_message_creation(self):\n    21\u2192        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n    22\u2192        msg = TemplateMessage(\n    23\u2192            message_type=\"user\",\n    24\u2192            content_html=\"<p>Test content</p>\",\n    25\u2192            formatted_timestamp=\"2025-06-14 10:00:00\",\n    26\u2192            css_class=\"user\",\n    27\u2192            raw_timestamp=None,\n    28\u2192        )\n    29\u2192\n    30\u2192        assert msg.type == \"user\"\n    31\u2192        assert msg.content_html == \"<p>Test content</p>\"\n    32\u2192        assert msg.formatted_timestamp == \"2025-06-14 10:00:00\"",
+            "is_error": null
+          }
+        ]
+      },
+      "toolUseResult": {
+        "oldString": "    def test_template_message_creation(self):\n        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n        msg = TemplateMessage(\n            message_type=\"user\",\n            content_html=\"<p>Test content</p>\",\n            formatted_timestamp=\"2025-06-14 10:00:00\",\n            css_class=\"user\",\n        )",
+        "newString": "    def test_template_message_creation(self):\n        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n        msg = TemplateMessage(\n            message_type=\"user\",\n            content_html=\"<p>Test content</p>\",\n            formatted_timestamp=\"2025-06-14 10:00:00\",\n            css_class=\"user\",\n            raw_timestamp=None,\n        )",
+        "replaceAll": false,
+        "originalFile": "#!/usr/bin/env python3\n\"\"\"Tests for template data structures and generation using existing test data.\"\"\"\n\nimport pytest\nimport re\nfrom pathlib import Path\nfrom claude_code_log.parser import load_transcript, load_directory_transcripts\nfrom claude_code_log.renderer import (\n    generate_html,\n    TemplateMessage,\n    TemplateProject,\n    TemplateSummary,\n    generate_projects_index_html,\n)\n\n\nclass TestTemplateMessage:\n    \"\"\"Test TemplateMessage data structure.\"\"\"\n\n    def test_template_message_creation(self):\n        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n        msg = TemplateMessage(\n            message_type=\"user\",\n            content_html=\"<p>Test content</p>\",\n            formatted_timestamp=\"2025-06-14 10:00:00\",\n            css_class=\"user\",\n        )\n\n        assert msg.type == \"user\"\n        assert msg.content_html == \"<p>Test content</p>\"\n        assert msg.formatted_timestamp == \"2025-06-14 10:00:00\"\n        assert msg.css_class == \"user\"\n        assert msg.display_type == \"User\"\n\n    def test_template_message_display_type_capitalization(self):\n        \"\"\"Test that display_type properly capitalizes message types.\"\"\"\n        test_cases = [\n            (\"user\", \"User\"),\n            (\"assistant\", \"Assistant\"),\n            (\"system\", \"System\"),\n            (\"summary\", \"Summary\"),\n        ]\n\n        for msg_type, expected_display in test_cases:\n            msg = TemplateMessage(\n                message_type=msg_type,\n                content_html=\"content\",\n                formatted_timestamp=\"time\",\n                css_class=\"class\",\n            )\n            assert msg.display_type == expected_display\n\n\nclass TestTemplateProject:\n    \"\"\"Test TemplateProject data structure.\"\"\"\n\n    def test_template_project_basic(self):\n        \"\"\"Test creating a TemplateProject with basic data.\"\"\"\n        project_data = {\n            \"name\": \"test-project\",\n            \"html_file\": \"test-project/combined_transcripts.html\",\n            \"jsonl_count\": 3,\n            \"message_count\": 15,\n            \"last_modified\": 1700000000.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.name == \"test-project\"\n        assert project.html_file == \"test-project/combined_transcripts.html\"\n        assert project.jsonl_count == 3\n        assert project.message_count == 15\n        assert project.display_name == \"test-project\"\n        # Check date format: \"2023-11-1[45] HH:MM:SS\" where day (14-15) and hour can vary by timezone\n        assert re.match(r\"2023-11-1[45] \\d{2}:\\d{2}:20\", project.formatted_date)\n\n    def test_template_project_dash_formatting(self):\n        \"\"\"Test TemplateProject display name formatting for dashed names.\"\"\"\n        project_data = {\n            \"name\": \"-user-workspace-my-app\",\n            \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n            \"jsonl_count\": 2,\n            \"message_count\": 8,\n            \"last_modified\": 1700000100.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.name == \"-user-workspace-my-app\"\n        assert project.display_name == \"user/workspace/my/app\"\n        # Check date format: \"2023-11-1[45] HH:15:00\" where day (14-15) and hour can vary by timezone\n        assert re.match(r\"2023-11-1[45] \\d{2}:15:00\", project.formatted_date)\n\n    def test_template_project_no_leading_dash(self):\n        \"\"\"Test TemplateProject display name when no leading dash.\"\"\"\n        project_data = {\n            \"name\": \"simple-project-name\",\n            \"html_file\": \"simple-project-name/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 5,\n            \"last_modified\": 1700000200.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.display_name == \"simple-project-name\"\n\n    def test_template_project_time_range(self):\n        \"\"\"Test TemplateProject time range formatting.\"\"\"\n        # Test with both earliest and latest timestamps\n        project_data = {\n            \"name\": \"time-range-project\",\n            \"html_file\": \"time-range-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 5,\n            \"last_modified\": 1700000000.0,\n            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n            \"latest_timestamp\": \"2025-06-14T10:00:00Z\",\n        }\n\n        project = TemplateProject(project_data)\n        assert (\n            project.formatted_time_range == \"2025-06-14 08:00:00 to 2025-06-14 10:00:00\"\n        )\n\n    def test_template_project_single_timestamp(self):\n        \"\"\"Test TemplateProject with single timestamp (same earliest and latest).\"\"\"\n        project_data = {\n            \"name\": \"single-time-project\",\n            \"html_file\": \"single-time-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 1,\n            \"last_modified\": 1700000000.0,\n            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n            \"latest_timestamp\": \"2025-06-14T08:00:00Z\",\n        }\n\n        project = TemplateProject(project_data)\n        assert project.formatted_time_range == \"2025-06-14 08:00:00\"\n\n    def test_template_project_no_timestamps(self):\n        \"\"\"Test TemplateProject with no timestamps.\"\"\"\n        project_data = {\n            \"name\": \"no-time-project\",\n            \"html_file\": \"no-time-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 1,\n            \"last_modified\": 1700000000.0,\n        }\n\n        project = TemplateProject(project_data)\n        assert project.formatted_time_range == \"\"\n\n\nclass TestTemplateSummary:\n    \"\"\"Test TemplateSummary data structure.\"\"\"\n\n    def test_template_summary_calculation(self):\n        \"\"\"Test TemplateSummary calculations.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"project1\",\n                \"jsonl_count\": 3,\n                \"message_count\": 15,\n                \"last_modified\": 1700000000.0,\n            },\n            {\n                \"name\": \"project2\",\n                \"jsonl_count\": 2,\n                \"message_count\": 8,\n                \"last_modified\": 1700000100.0,\n            },\n            {\n                \"name\": \"project3\",\n                \"jsonl_count\": 1,\n                \"message_count\": 12,\n                \"last_modified\": 1700000200.0,\n            },\n        ]\n\n        summary = TemplateSummary(project_summaries)\n\n        assert summary.total_projects == 3\n        assert summary.total_jsonl == 6  # 3 + 2 + 1\n        assert summary.total_messages == 35  # 15 + 8 + 12\n\n    def test_template_summary_empty_list(self):\n        \"\"\"Test TemplateSummary with empty project list.\"\"\"\n        summary = TemplateSummary([])\n\n        assert summary.total_projects == 0\n        assert summary.total_jsonl == 0\n        assert summary.total_messages == 0\n\n\nclass TestDataWithTestFiles:\n    \"\"\"Test template generation using actual test data files.\"\"\"\n\n    def test_representative_messages_data_structure(self):\n        \"\"\"Test that representative messages generate proper template data.\"\"\"\n        test_data_path = (\n            Path(__file__).parent / \"test_data\" / \"representative_messages.jsonl\"\n        )\n\n        messages = load_transcript(test_data_path)\n        html = generate_html(messages, \"Test Transcript\")\n\n        # Verify the data loaded correctly\n        assert len(messages) > 0\n\n        # Check that different message types are present\n        message_types = {msg.type for msg in messages}\n        assert \"user\" in message_types\n        assert \"assistant\" in message_types\n        assert \"summary\" in message_types\n\n        # Verify HTML structure\n        assert \"<!DOCTYPE html>\" in html\n        assert \"<title>Test Transcript</title>\" in html\n        assert \"message user\" in html\n        assert \"message assistant\" in html\n        # Summary messages are now integrated into session headers\n        assert \"session-summary\" in html or \"Summary:\" in html\n\n    def test_edge_cases_data_structure(self):\n        \"\"\"Test that edge cases data generates proper template data.\"\"\"\n        test_data_path = Path(__file__).parent / \"test_data\" / \"edge_cases.jsonl\"\n\n        messages = load_transcript(test_data_path)\n        html = generate_html(messages, \"Edge Cases\")\n\n        # Verify the data loaded correctly\n        assert len(messages) > 0\n\n        # Check that HTML handles edge cases properly\n        assert \"<!DOCTYPE html>\" in html\n        assert \"<title>Edge Cases</title>\" in html\n\n        # Check that special characters are handled\n        assert \"caf\u00e9\" in html or \"caf&eacute;\" in html\n        assert \"\ud83c\udf89\" in html  # Emoji should be preserved\n\n        # Check that tool content is rendered\n        assert \"tool-use\" in html or \"tool-result\" in html\n\n    def test_multi_session_data_structure(self):\n        \"\"\"Test that multiple sessions generate proper session dividers.\"\"\"\n        test_data_dir = Path(__file__).parent / \"test_data\"\n\n        # Load from directory to get multiple sessions\n        messages = load_directory_transcripts(test_data_dir)\n        html = generate_html(messages, \"Multi Session Test\")\n\n        # Verify session dividers are present\n        session_divider_count = html.count(\"session-divider\")\n        assert session_divider_count > 0, \"Should have at least one session divider\"\n\n        # Check that messages from different files are included\n        assert len(messages) > 0\n\n        # Verify HTML structure for multi-session\n        assert \"<!DOCTYPE html>\" in html\n        assert \"Multi Session Test\" in html\n\n    def test_empty_directory_handling(self):\n        \"\"\"Test handling of directories with no JSONL files.\"\"\"\n        import tempfile\n\n        with tempfile.TemporaryDirectory() as temp_dir:\n            temp_path = Path(temp_dir)\n\n            # Should return empty list for directory with no JSONL files\n            messages = load_directory_transcripts(temp_path)\n            assert messages == []\n\n            # Should generate minimal HTML for empty message list\n            html = generate_html(messages, \"Empty Test\")\n            assert \"<!DOCTYPE html>\" in html\n            assert \"<title>Empty Test</title>\" in html\n\n    def test_projects_index_generation(self):\n        \"\"\"Test generating index HTML with test project data.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"test-project-1\",\n                \"path\": Path(\"/tmp/project1\"),\n                \"html_file\": \"test-project-1/combined_transcripts.html\",\n                \"jsonl_count\": 3,\n                \"message_count\": 15,\n                \"last_modified\": 1700000000.0,\n            },\n            {\n                \"name\": \"-user-workspace-my-app\",\n                \"path\": Path(\"/tmp/project2\"),\n                \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n                \"jsonl_count\": 2,\n                \"message_count\": 8,\n                \"last_modified\": 1700000100.0,\n            },\n        ]\n\n        index_html = generate_projects_index_html(project_summaries)\n\n        # Check basic structure\n        assert \"<!DOCTYPE html>\" in index_html\n        assert \"<title>Claude Code Projects</title>\" in index_html\n\n        # Check that both projects are listed\n        assert \"test-project-1\" in index_html\n        assert \"user/workspace/my/app\" in index_html  # Formatted name\n\n        # Check summary stats\n        assert \"23\" in index_html  # Total messages (15 + 8)\n        assert \"5\" in index_html  # Total jsonl files (3 + 2)\n        assert \"2\" in index_html  # Total projects\n\n    def test_projects_index_with_date_range(self):\n        \"\"\"Test generating index HTML with date range in title.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"test-project\",\n                \"path\": Path(\"/tmp/project\"),\n                \"html_file\": \"test-project/combined_transcripts.html\",\n                \"jsonl_count\": 1,\n                \"message_count\": 5,\n                \"last_modified\": 1700000000.0,\n            }\n        ]\n\n        index_html = generate_projects_index_html(\n            project_summaries, from_date=\"yesterday\", to_date=\"today\"\n        )\n\n        # Check that date range appears in title\n        assert \"Claude Code Projects (from yesterday to today)\" in index_html\n\n\nclass TestErrorHandling:\n    \"\"\"Test error handling in template generation.\"\"\"\n\n    def test_malformed_message_handling(self):\n        \"\"\"Test that malformed messages are skipped gracefully.\"\"\"\n        import tempfile\n\n        # Create a JSONL file with mix of valid and invalid entries\n        malformed_data = [\n            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:00:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_000\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Valid message\"}]}}',\n            '{\"type\": \"invalid_type\", \"malformed\": true}',  # Invalid type\n            '{\"incomplete\": \"message\"}',  # Missing required fields\n            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:01:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_001\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Another valid message\"}]}}',\n        ]\n\n        with tempfile.NamedTemporaryFile(mode=\"w\", suffix=\".jsonl\", delete=False) as f:\n            for line in malformed_data:\n                f.write(line + \"\\n\")\n            f.flush()\n            test_file_path = Path(f.name)\n\n        try:\n            # Should load only valid messages, skipping malformed ones\n            messages = load_transcript(test_file_path)\n\n            # Should have loaded 2 valid messages, skipped 2 malformed ones\n            assert len(messages) == 2\n\n            # Should generate HTML without errors\n            html = generate_html(messages, \"Malformed Test\")\n            assert \"<!DOCTYPE html>\" in html\n            assert \"Valid message\" in html\n            assert \"Another valid message\" in html\n\n        finally:\n            test_file_path.unlink()\n\n\nif __name__ == \"__main__\":\n    pytest.main([__file__])\n",
+        "structuredPatch": [
+          {
+            "oldStart": 24,
+            "oldLines": 6,
+            "newStart": 24,
+            "newLines": 7,
+            "lines": [
+              "             content_html=\"<p>Test content</p>\",",
+              "             formatted_timestamp=\"2025-06-14 10:00:00\",",
+              "             css_class=\"user\",",
+              "+            raw_timestamp=None,",
+              "         )",
+              " ",
+              "         assert msg.type == \"user\""
+            ]
+          }
+        ],
+        "userModified": false
+      }
+    }
+  ],
+  "2025-10-04T14:23:40.748Z": [
+    {
+      "parentUuid": "24d4a8b8-e8ab-448d-90c7-245f58ad52f7",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "f22406aa-94ec-4711-ac15-b489bf880624",
+      "timestamp": "2025-10-04T14:23:40.748Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01CfaKixXtnVXYN8skDUwJzQ",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "id": "toolu_013WVi2RZYh68sPcFki9VCmF",
+            "input": {
+              "file_path": "/Users/dain/workspace/claude-code-log/test/test_template_data.py",
+              "old_string": "        for msg_type, expected_display in test_cases:\n            msg = TemplateMessage(\n                message_type=msg_type,\n                content_html=\"content\",\n                formatted_timestamp=\"time\",\n                css_class=\"class\",\n            )\n            assert msg.display_type == expected_display",
+              "new_string": "        for msg_type, expected_display in test_cases:\n            msg = TemplateMessage(\n                message_type=msg_type,\n                content_html=\"content\",\n                formatted_timestamp=\"time\",\n                css_class=\"class\",\n                raw_timestamp=None,\n            )\n            assert msg.display_type == expected_display"
+            },
+            "name": "Edit",
+            "type": "tool_use"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 5,
+          "cache_creation_input_tokens": 607,
+          "cache_read_input_tokens": 25354,
+          "output_tokens": 24,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJvHfThnwxvFfTYwTfh"
+    }
+  ],
+  "2025-10-04T14:23:40.861Z": [
+    {
+      "parentUuid": "f22406aa-94ec-4711-ac15-b489bf880624",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "6a178826-e39e-44e7-856e-852a7e06da81",
+      "timestamp": "2025-10-04T14:23:40.861Z",
+      "isMeta": null,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_013WVi2RZYh68sPcFki9VCmF",
+            "content": "The file /Users/dain/workspace/claude-code-log/test/test_template_data.py has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n    41\u2192            (\"system\", \"System\"),\n    42\u2192            (\"summary\", \"Summary\"),\n    43\u2192        ]\n    44\u2192\n    45\u2192        for msg_type, expected_display in test_cases:\n    46\u2192            msg = TemplateMessage(\n    47\u2192                message_type=msg_type,\n    48\u2192                content_html=\"content\",\n    49\u2192                formatted_timestamp=\"time\",\n    50\u2192                css_class=\"class\",\n    51\u2192                raw_timestamp=None,\n    52\u2192            )\n    53\u2192            assert msg.display_type == expected_display\n    54\u2192\n    55\u2192\n    56\u2192class TestTemplateProject:\n    57\u2192    \"\"\"Test TemplateProject data structure.\"\"\"",
+            "is_error": null
+          }
+        ]
+      },
+      "toolUseResult": {
+        "oldString": "        for msg_type, expected_display in test_cases:\n            msg = TemplateMessage(\n                message_type=msg_type,\n                content_html=\"content\",\n                formatted_timestamp=\"time\",\n                css_class=\"class\",\n            )\n            assert msg.display_type == expected_display",
+        "newString": "        for msg_type, expected_display in test_cases:\n            msg = TemplateMessage(\n                message_type=msg_type,\n                content_html=\"content\",\n                formatted_timestamp=\"time\",\n                css_class=\"class\",\n                raw_timestamp=None,\n            )\n            assert msg.display_type == expected_display",
+        "replaceAll": false,
+        "originalFile": "#!/usr/bin/env python3\n\"\"\"Tests for template data structures and generation using existing test data.\"\"\"\n\nimport pytest\nimport re\nfrom pathlib import Path\nfrom claude_code_log.parser import load_transcript, load_directory_transcripts\nfrom claude_code_log.renderer import (\n    generate_html,\n    TemplateMessage,\n    TemplateProject,\n    TemplateSummary,\n    generate_projects_index_html,\n)\n\n\nclass TestTemplateMessage:\n    \"\"\"Test TemplateMessage data structure.\"\"\"\n\n    def test_template_message_creation(self):\n        \"\"\"Test creating a TemplateMessage with all fields.\"\"\"\n        msg = TemplateMessage(\n            message_type=\"user\",\n            content_html=\"<p>Test content</p>\",\n            formatted_timestamp=\"2025-06-14 10:00:00\",\n            css_class=\"user\",\n            raw_timestamp=None,\n        )\n\n        assert msg.type == \"user\"\n        assert msg.content_html == \"<p>Test content</p>\"\n        assert msg.formatted_timestamp == \"2025-06-14 10:00:00\"\n        assert msg.css_class == \"user\"\n        assert msg.display_type == \"User\"\n\n    def test_template_message_display_type_capitalization(self):\n        \"\"\"Test that display_type properly capitalizes message types.\"\"\"\n        test_cases = [\n            (\"user\", \"User\"),\n            (\"assistant\", \"Assistant\"),\n            (\"system\", \"System\"),\n            (\"summary\", \"Summary\"),\n        ]\n\n        for msg_type, expected_display in test_cases:\n            msg = TemplateMessage(\n                message_type=msg_type,\n                content_html=\"content\",\n                formatted_timestamp=\"time\",\n                css_class=\"class\",\n            )\n            assert msg.display_type == expected_display\n\n\nclass TestTemplateProject:\n    \"\"\"Test TemplateProject data structure.\"\"\"\n\n    def test_template_project_basic(self):\n        \"\"\"Test creating a TemplateProject with basic data.\"\"\"\n        project_data = {\n            \"name\": \"test-project\",\n            \"html_file\": \"test-project/combined_transcripts.html\",\n            \"jsonl_count\": 3,\n            \"message_count\": 15,\n            \"last_modified\": 1700000000.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.name == \"test-project\"\n        assert project.html_file == \"test-project/combined_transcripts.html\"\n        assert project.jsonl_count == 3\n        assert project.message_count == 15\n        assert project.display_name == \"test-project\"\n        # Check date format: \"2023-11-1[45] HH:MM:SS\" where day (14-15) and hour can vary by timezone\n        assert re.match(r\"2023-11-1[45] \\d{2}:\\d{2}:20\", project.formatted_date)\n\n    def test_template_project_dash_formatting(self):\n        \"\"\"Test TemplateProject display name formatting for dashed names.\"\"\"\n        project_data = {\n            \"name\": \"-user-workspace-my-app\",\n            \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n            \"jsonl_count\": 2,\n            \"message_count\": 8,\n            \"last_modified\": 1700000100.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.name == \"-user-workspace-my-app\"\n        assert project.display_name == \"user/workspace/my/app\"\n        # Check date format: \"2023-11-1[45] HH:15:00\" where day (14-15) and hour can vary by timezone\n        assert re.match(r\"2023-11-1[45] \\d{2}:15:00\", project.formatted_date)\n\n    def test_template_project_no_leading_dash(self):\n        \"\"\"Test TemplateProject display name when no leading dash.\"\"\"\n        project_data = {\n            \"name\": \"simple-project-name\",\n            \"html_file\": \"simple-project-name/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 5,\n            \"last_modified\": 1700000200.0,\n        }\n\n        project = TemplateProject(project_data)\n\n        assert project.display_name == \"simple-project-name\"\n\n    def test_template_project_time_range(self):\n        \"\"\"Test TemplateProject time range formatting.\"\"\"\n        # Test with both earliest and latest timestamps\n        project_data = {\n            \"name\": \"time-range-project\",\n            \"html_file\": \"time-range-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 5,\n            \"last_modified\": 1700000000.0,\n            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n            \"latest_timestamp\": \"2025-06-14T10:00:00Z\",\n        }\n\n        project = TemplateProject(project_data)\n        assert (\n            project.formatted_time_range == \"2025-06-14 08:00:00 to 2025-06-14 10:00:00\"\n        )\n\n    def test_template_project_single_timestamp(self):\n        \"\"\"Test TemplateProject with single timestamp (same earliest and latest).\"\"\"\n        project_data = {\n            \"name\": \"single-time-project\",\n            \"html_file\": \"single-time-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 1,\n            \"last_modified\": 1700000000.0,\n            \"earliest_timestamp\": \"2025-06-14T08:00:00Z\",\n            \"latest_timestamp\": \"2025-06-14T08:00:00Z\",\n        }\n\n        project = TemplateProject(project_data)\n        assert project.formatted_time_range == \"2025-06-14 08:00:00\"\n\n    def test_template_project_no_timestamps(self):\n        \"\"\"Test TemplateProject with no timestamps.\"\"\"\n        project_data = {\n            \"name\": \"no-time-project\",\n            \"html_file\": \"no-time-project/combined_transcripts.html\",\n            \"jsonl_count\": 1,\n            \"message_count\": 1,\n            \"last_modified\": 1700000000.0,\n        }\n\n        project = TemplateProject(project_data)\n        assert project.formatted_time_range == \"\"\n\n\nclass TestTemplateSummary:\n    \"\"\"Test TemplateSummary data structure.\"\"\"\n\n    def test_template_summary_calculation(self):\n        \"\"\"Test TemplateSummary calculations.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"project1\",\n                \"jsonl_count\": 3,\n                \"message_count\": 15,\n                \"last_modified\": 1700000000.0,\n            },\n            {\n                \"name\": \"project2\",\n                \"jsonl_count\": 2,\n                \"message_count\": 8,\n                \"last_modified\": 1700000100.0,\n            },\n            {\n                \"name\": \"project3\",\n                \"jsonl_count\": 1,\n                \"message_count\": 12,\n                \"last_modified\": 1700000200.0,\n            },\n        ]\n\n        summary = TemplateSummary(project_summaries)\n\n        assert summary.total_projects == 3\n        assert summary.total_jsonl == 6  # 3 + 2 + 1\n        assert summary.total_messages == 35  # 15 + 8 + 12\n\n    def test_template_summary_empty_list(self):\n        \"\"\"Test TemplateSummary with empty project list.\"\"\"\n        summary = TemplateSummary([])\n\n        assert summary.total_projects == 0\n        assert summary.total_jsonl == 0\n        assert summary.total_messages == 0\n\n\nclass TestDataWithTestFiles:\n    \"\"\"Test template generation using actual test data files.\"\"\"\n\n    def test_representative_messages_data_structure(self):\n        \"\"\"Test that representative messages generate proper template data.\"\"\"\n        test_data_path = (\n            Path(__file__).parent / \"test_data\" / \"representative_messages.jsonl\"\n        )\n\n        messages = load_transcript(test_data_path)\n        html = generate_html(messages, \"Test Transcript\")\n\n        # Verify the data loaded correctly\n        assert len(messages) > 0\n\n        # Check that different message types are present\n        message_types = {msg.type for msg in messages}\n        assert \"user\" in message_types\n        assert \"assistant\" in message_types\n        assert \"summary\" in message_types\n\n        # Verify HTML structure\n        assert \"<!DOCTYPE html>\" in html\n        assert \"<title>Test Transcript</title>\" in html\n        assert \"message user\" in html\n        assert \"message assistant\" in html\n        # Summary messages are now integrated into session headers\n        assert \"session-summary\" in html or \"Summary:\" in html\n\n    def test_edge_cases_data_structure(self):\n        \"\"\"Test that edge cases data generates proper template data.\"\"\"\n        test_data_path = Path(__file__).parent / \"test_data\" / \"edge_cases.jsonl\"\n\n        messages = load_transcript(test_data_path)\n        html = generate_html(messages, \"Edge Cases\")\n\n        # Verify the data loaded correctly\n        assert len(messages) > 0\n\n        # Check that HTML handles edge cases properly\n        assert \"<!DOCTYPE html>\" in html\n        assert \"<title>Edge Cases</title>\" in html\n\n        # Check that special characters are handled\n        assert \"caf\u00e9\" in html or \"caf&eacute;\" in html\n        assert \"\ud83c\udf89\" in html  # Emoji should be preserved\n\n        # Check that tool content is rendered\n        assert \"tool-use\" in html or \"tool-result\" in html\n\n    def test_multi_session_data_structure(self):\n        \"\"\"Test that multiple sessions generate proper session dividers.\"\"\"\n        test_data_dir = Path(__file__).parent / \"test_data\"\n\n        # Load from directory to get multiple sessions\n        messages = load_directory_transcripts(test_data_dir)\n        html = generate_html(messages, \"Multi Session Test\")\n\n        # Verify session dividers are present\n        session_divider_count = html.count(\"session-divider\")\n        assert session_divider_count > 0, \"Should have at least one session divider\"\n\n        # Check that messages from different files are included\n        assert len(messages) > 0\n\n        # Verify HTML structure for multi-session\n        assert \"<!DOCTYPE html>\" in html\n        assert \"Multi Session Test\" in html\n\n    def test_empty_directory_handling(self):\n        \"\"\"Test handling of directories with no JSONL files.\"\"\"\n        import tempfile\n\n        with tempfile.TemporaryDirectory() as temp_dir:\n            temp_path = Path(temp_dir)\n\n            # Should return empty list for directory with no JSONL files\n            messages = load_directory_transcripts(temp_path)\n            assert messages == []\n\n            # Should generate minimal HTML for empty message list\n            html = generate_html(messages, \"Empty Test\")\n            assert \"<!DOCTYPE html>\" in html\n            assert \"<title>Empty Test</title>\" in html\n\n    def test_projects_index_generation(self):\n        \"\"\"Test generating index HTML with test project data.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"test-project-1\",\n                \"path\": Path(\"/tmp/project1\"),\n                \"html_file\": \"test-project-1/combined_transcripts.html\",\n                \"jsonl_count\": 3,\n                \"message_count\": 15,\n                \"last_modified\": 1700000000.0,\n            },\n            {\n                \"name\": \"-user-workspace-my-app\",\n                \"path\": Path(\"/tmp/project2\"),\n                \"html_file\": \"-user-workspace-my-app/combined_transcripts.html\",\n                \"jsonl_count\": 2,\n                \"message_count\": 8,\n                \"last_modified\": 1700000100.0,\n            },\n        ]\n\n        index_html = generate_projects_index_html(project_summaries)\n\n        # Check basic structure\n        assert \"<!DOCTYPE html>\" in index_html\n        assert \"<title>Claude Code Projects</title>\" in index_html\n\n        # Check that both projects are listed\n        assert \"test-project-1\" in index_html\n        assert \"user/workspace/my/app\" in index_html  # Formatted name\n\n        # Check summary stats\n        assert \"23\" in index_html  # Total messages (15 + 8)\n        assert \"5\" in index_html  # Total jsonl files (3 + 2)\n        assert \"2\" in index_html  # Total projects\n\n    def test_projects_index_with_date_range(self):\n        \"\"\"Test generating index HTML with date range in title.\"\"\"\n        project_summaries = [\n            {\n                \"name\": \"test-project\",\n                \"path\": Path(\"/tmp/project\"),\n                \"html_file\": \"test-project/combined_transcripts.html\",\n                \"jsonl_count\": 1,\n                \"message_count\": 5,\n                \"last_modified\": 1700000000.0,\n            }\n        ]\n\n        index_html = generate_projects_index_html(\n            project_summaries, from_date=\"yesterday\", to_date=\"today\"\n        )\n\n        # Check that date range appears in title\n        assert \"Claude Code Projects (from yesterday to today)\" in index_html\n\n\nclass TestErrorHandling:\n    \"\"\"Test error handling in template generation.\"\"\"\n\n    def test_malformed_message_handling(self):\n        \"\"\"Test that malformed messages are skipped gracefully.\"\"\"\n        import tempfile\n\n        # Create a JSONL file with mix of valid and invalid entries\n        malformed_data = [\n            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:00:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_000\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Valid message\"}]}}',\n            '{\"type\": \"invalid_type\", \"malformed\": true}',  # Invalid type\n            '{\"incomplete\": \"message\"}',  # Missing required fields\n            '{\"type\": \"user\", \"timestamp\": \"2025-06-14T10:01:00Z\", \"parentUuid\": null, \"isSidechain\": false, \"userType\": \"human\", \"cwd\": \"/tmp\", \"sessionId\": \"test\", \"version\": \"1.0.0\", \"uuid\": \"test_001\", \"message\": {\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"Another valid message\"}]}}',\n        ]\n\n        with tempfile.NamedTemporaryFile(mode=\"w\", suffix=\".jsonl\", delete=False) as f:\n            for line in malformed_data:\n                f.write(line + \"\\n\")\n            f.flush()\n            test_file_path = Path(f.name)\n\n        try:\n            # Should load only valid messages, skipping malformed ones\n            messages = load_transcript(test_file_path)\n\n            # Should have loaded 2 valid messages, skipped 2 malformed ones\n            assert len(messages) == 2\n\n            # Should generate HTML without errors\n            html = generate_html(messages, \"Malformed Test\")\n            assert \"<!DOCTYPE html>\" in html\n            assert \"Valid message\" in html\n            assert \"Another valid message\" in html\n\n        finally:\n            test_file_path.unlink()\n\n\nif __name__ == \"__main__\":\n    pytest.main([__file__])\n",
+        "structuredPatch": [
+          {
+            "oldStart": 48,
+            "oldLines": 6,
+            "newStart": 48,
+            "newLines": 7,
+            "lines": [
+              "                 content_html=\"content\",",
+              "                 formatted_timestamp=\"time\",",
+              "                 css_class=\"class\",",
+              "+                raw_timestamp=None,",
+              "             )",
+              "             assert msg.display_type == expected_display",
+              " "
+            ]
+          }
+        ],
+        "userModified": false
+      }
+    }
+  ],
+  "2025-10-04T14:23:45.444Z": [
+    {
+      "parentUuid": "6a178826-e39e-44e7-856e-852a7e06da81",
+      "isSidechain": false,
+      "userType": "external",
+      "cwd": "/Users/dain/workspace/claude-code-log",
+      "sessionId": "2b25646e-0d29-4405-b672-4f45c71c1fb0",
+      "version": "2.0.5",
+      "uuid": "929b2e02-73f2-4cf8-b7e3-0bb0e2330668",
+      "timestamp": "2025-10-04T14:23:45.444Z",
+      "isMeta": null,
+      "type": "assistant",
+      "message": {
+        "id": "msg_01RFcSkKWKhFHtDZ23JnTzSg",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-5-20250929",
+        "content": [
+          {
+            "citations": null,
+            "text": "Done. I've updated both `TemplateMessage` instantiations in [test/test_template_data.py](test/test_template_data.py) to include the `raw_timestamp=None` parameter:\n\n1. Line 27 in `test_template_message_creation()`\n2. Line 51 in `test_template_message_display_type_capitalization()`\n\nThe signatures now match the implementation in [renderer.py:514-525](claude_code_log/renderer.py#L514-L525).",
+            "type": "text"
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "usage": {
+          "input_tokens": 4,
+          "cache_creation_input_tokens": 587,
+          "cache_read_input_tokens": 25961,
+          "output_tokens": 1,
+          "service_tier": "standard",
+          "server_tool_use": null
+        }
+      },
+      "requestId": "req_011CTnJvcaFtFwPTKcEWwLJw"
+    }
+  ]
+}
