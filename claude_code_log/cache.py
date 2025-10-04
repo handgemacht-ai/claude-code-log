@@ -10,6 +10,11 @@ from packaging import version
 
 from .models import TranscriptEntry
 
+# Import TYPE_CHECKING to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .profiling import CacheProfiler
+
 
 class CachedFileInfo(BaseModel):
     """Information about a cached JSONL file."""
@@ -69,15 +74,17 @@ class ProjectCache(BaseModel):
 class CacheManager:
     """Manages cache operations for a project directory."""
 
-    def __init__(self, project_path: Path, library_version: str):
+    def __init__(self, project_path: Path, library_version: str, profiler: Optional["CacheProfiler"] = None):
         """Initialize cache manager for a project.
 
         Args:
             project_path: Path to the project directory containing JSONL files
             library_version: Current version of the library for cache invalidation
+            profiler: Optional profiler for performance measurement
         """
         self.project_path = project_path
         self.library_version = library_version
+        self.profiler = profiler
         self.cache_dir = project_path / "cache"
         self.index_file = self.cache_dir / "index.json"
 
@@ -134,25 +141,59 @@ class CacheManager:
 
     def is_file_cached(self, jsonl_path: Path) -> bool:
         """Check if a JSONL file has a valid cache entry."""
+        if self.profiler:
+            with self.profiler.measure("is_file_cached"):
+                return self._is_file_cached_impl(jsonl_path)
+        else:
+            return self._is_file_cached_impl(jsonl_path)
+    
+    def _is_file_cached_impl(self, jsonl_path: Path) -> bool:
+        """Implementation of cache checking with profiling support."""
         if self._project_cache is None:
+            if self.profiler:
+                self.profiler.count("cache_misses")
             return False
 
         file_key = jsonl_path.name
         if file_key not in self._project_cache.cached_files:
+            if self.profiler:
+                self.profiler.count("cache_misses")
             return False
 
         # Check if source file exists and modification time matches
         if not jsonl_path.exists():
+            if self.profiler:
+                self.profiler.count("cache_misses")
             return False
 
         cached_info = self._project_cache.cached_files[file_key]
-        source_mtime = jsonl_path.stat().st_mtime
+        
+        if self.profiler:
+            with self.profiler.measure("stat_call"):
+                source_mtime = jsonl_path.stat().st_mtime
+            self.profiler.count("filesystem_calls")
+        else:
+            source_mtime = jsonl_path.stat().st_mtime
 
         # Cache is valid if modification times match and cache file exists
         cache_file = self._get_cache_file_path(jsonl_path)
-        return (
-            abs(source_mtime - cached_info.source_mtime) < 1.0 and cache_file.exists()
-        )
+        
+        if self.profiler:
+            with self.profiler.measure("exists_call"):
+                cache_exists = cache_file.exists()
+            self.profiler.count("filesystem_calls")
+        else:
+            cache_exists = cache_file.exists()
+        
+        is_cached = abs(source_mtime - cached_info.source_mtime) < 1.0 and cache_exists
+        
+        if self.profiler:
+            if is_cached:
+                self.profiler.count("cache_hits")
+            else:
+                self.profiler.count("cache_misses")
+        
+        return is_cached
 
     def load_cached_entries(self, jsonl_path: Path) -> Optional[List[TranscriptEntry]]:
         """Load cached transcript entries for a JSONL file."""
@@ -370,6 +411,15 @@ class CacheManager:
 
     def get_modified_files(self, jsonl_files: List[Path]) -> List[Path]:
         """Get list of JSONL files that need to be reprocessed."""
+        if self.profiler:
+            with self.profiler.measure("get_modified_files"):
+                self.profiler.count("total_files", len(jsonl_files))
+                return self._get_modified_files_impl(jsonl_files)
+        else:
+            return self._get_modified_files_impl(jsonl_files)
+    
+    def _get_modified_files_impl(self, jsonl_files: List[Path]) -> List[Path]:
+        """Implementation of modified files checking."""
         modified_files: List[Path] = []
 
         for jsonl_file in jsonl_files:

@@ -14,24 +14,75 @@ from .converter import convert_jsonl_to_html, process_projects_hierarchy
 from .cache import CacheManager, get_library_version
 
 
-def _launch_tui_with_cache_check(project_path: Path) -> Optional[str]:
+def _launch_tui_with_cache_check(project_path: Path, use_fast_scan: bool = True, profile_cache: bool = False) -> Optional[str]:
     """Launch TUI with proper cache checking and user feedback."""
-    click.echo("Checking cache and loading session data...")
-
-    # Check if we need to rebuild cache
-    cache_manager = CacheManager(project_path, get_library_version())
-    jsonl_files = list(project_path.glob("*.jsonl"))
-    modified_files = cache_manager.get_modified_files(jsonl_files)
-    project_cache = cache_manager.get_cached_project_data()
-
-    if not (project_cache and project_cache.sessions and not modified_files):
-        # Need to rebuild cache
-        if modified_files:
-            click.echo(
-                f"Found {len(modified_files)} modified files, rebuilding cache..."
-            )
+    
+    profiler = None
+    if profile_cache:
+        from .profiling import CacheProfiler
+        profiler = CacheProfiler()
+        profiler.record_metadata("session_name", f"TUI_launch_{project_path.name}")
+        profiler.record_metadata("project_count", 1)
+    
+    if use_fast_scan:
+        # Use fast directory scanning
+        click.echo("Fast cache checking...")
+        
+        from .scanner import DirectoryScanner
+        scanner = DirectoryScanner()
+        
+        if profiler:
+            with profiler.measure("directory_scan"):
+                project_info = scanner.scan_single_project(project_path)
         else:
-            click.echo("Building session cache...")
+            project_info = scanner.scan_single_project(project_path)
+        
+        if not project_info or not project_info.jsonl_files:
+            click.echo("No JSONL files found in project directory")
+            return None
+        
+        # Fast cache validation using pre-scanned info
+        from .parallel_cache import ParallelCacheManager
+        parallel_cache = ParallelCacheManager()
+        
+        if profiler:
+            with profiler.measure("cache_validation"):
+                modified_files = parallel_cache._validate_project_cache(project_info, get_library_version())
+        else:
+            modified_files = parallel_cache._validate_project_cache(project_info, get_library_version())
+        
+        files_need_update = len(modified_files)
+        total_files = len(project_info.jsonl_files)
+        
+        if profiler:
+            profiler.record_metadata("total_files", total_files)
+            profiler.count("files_processed", total_files)
+    else:
+        # Fall back to traditional method
+        click.echo("Checking cache and loading session data...")
+        
+        cache_manager = CacheManager(project_path, get_library_version(), profiler)
+        
+        if profiler:
+            with profiler.measure("directory_scan"):
+                jsonl_files = list(project_path.glob("*.jsonl"))
+        else:
+            jsonl_files = list(project_path.glob("*.jsonl"))
+        
+        if profiler:
+            with profiler.measure("cache_validation"):
+                modified_files = cache_manager.get_modified_files(jsonl_files)
+        else:
+            modified_files = cache_manager.get_modified_files(jsonl_files)
+        
+        files_need_update = len(modified_files)
+        total_files = len(jsonl_files)
+        
+        project_cache = cache_manager.get_cached_project_data()
+
+    if files_need_update > 0:
+        # Need to rebuild cache
+        click.echo(f"Found {files_need_update}/{total_files} files needing update, rebuilding cache...")
 
         # Pre-build the cache before launching TUI
         try:
@@ -39,19 +90,25 @@ def _launch_tui_with_cache_check(project_path: Path) -> Optional[str]:
             click.echo("Cache ready! Launching TUI...")
         except Exception as e:
             click.echo(f"Error building cache: {e}", err=True)
-            return
+            return None
     else:
-        click.echo(
-            f"Cache up to date. Found {len(project_cache.sessions)} sessions. Launching TUI..."
-        )
+        if use_fast_scan:
+            # Need to get session count from cache
+            cache_manager = CacheManager(project_path, get_library_version())
+            project_cache = cache_manager.get_cached_project_data()
+        
+        session_count = len(project_cache.sessions) if project_cache and project_cache.sessions else 0
+        click.echo(f"Cache up to date. Found {session_count} sessions. Launching TUI...")
+
+    # Show profiling results if enabled
+    if profiler:
+        profiler.print_summary()
 
     # Small delay to let user see the message before TUI clears screen
     import time
-
     time.sleep(0.5)
 
     from .tui import run_session_browser
-
     result = run_session_browser(project_path)
     return result
 
@@ -352,6 +409,21 @@ def _clear_html_files(input_path: Path, all_projects: bool) -> None:
     is_flag=True,
     help="Launch interactive TUI for session browsing and management",
 )
+@click.option(
+    "--parallel/--no-parallel",
+    default=True,
+    help="Use parallel processing for faster cache validation and file processing (default: enabled)",
+)
+@click.option(
+    "--workers",
+    type=int,
+    help="Number of parallel workers (default: auto-detect based on system)",
+)
+@click.option(
+    "--profile-cache",
+    is_flag=True,
+    help="Enable cache performance profiling and output timing information",
+)
 def main(
     input_path: Optional[Path],
     output: Optional[Path],
@@ -364,6 +436,9 @@ def main(
     clear_cache: bool,
     clear_html: bool,
     tui: bool,
+    parallel: bool,
+    workers: Optional[int],
+    profile_cache: bool,
 ) -> None:
     """Convert Claude transcript JSONL files to HTML.
 
@@ -405,7 +480,7 @@ def main(
 
                 if len(project_dirs) == 1:
                     # Only one project, open it directly
-                    result = _launch_tui_with_cache_check(project_dirs[0])
+                    result = _launch_tui_with_cache_check(project_dirs[0], parallel, profile_cache)
                     if result == "back_to_projects":
                         # User wants to see project selector even though there's only one project
                         from .tui import run_project_selector
@@ -418,7 +493,7 @@ def main(
                                 # User cancelled
                                 return
 
-                            result = _launch_tui_with_cache_check(selected_project)
+                            result = _launch_tui_with_cache_check(selected_project, parallel, profile_cache)
                             if result != "back_to_projects":
                                 # User quit normally
                                 return
@@ -428,7 +503,7 @@ def main(
                     click.echo(
                         f"Found project matching current directory: {matching_projects[0].name}"
                     )
-                    result = _launch_tui_with_cache_check(matching_projects[0])
+                    result = _launch_tui_with_cache_check(matching_projects[0], parallel, profile_cache)
                     if result == "back_to_projects":
                         # User wants to see project selector
                         from .tui import run_project_selector
@@ -441,7 +516,7 @@ def main(
                                 # User cancelled
                                 return
 
-                            result = _launch_tui_with_cache_check(selected_project)
+                            result = _launch_tui_with_cache_check(selected_project, parallel, profile_cache)
                             if result != "back_to_projects":
                                 # User quit normally
                                 return
@@ -458,13 +533,13 @@ def main(
                             # User cancelled
                             return
 
-                        result = _launch_tui_with_cache_check(selected_project)
+                        result = _launch_tui_with_cache_check(selected_project, parallel, profile_cache)
                         if result != "back_to_projects":
                             # User quit normally
                             return
             else:
                 # Single project directory
-                _launch_tui_with_cache_check(input_path)
+                _launch_tui_with_cache_check(input_path, parallel, profile_cache)
                 return
 
         # Handle default case - process all projects hierarchy if no input path and --all-projects flag
