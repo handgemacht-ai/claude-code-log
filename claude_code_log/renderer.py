@@ -2358,12 +2358,18 @@ def generate_html(
     # Filter out messages from warmup-only sessions
     from .utils import is_warmup_only_session
 
-    # Collect session IDs to filter
-    warmup_session_ids = {
+    # Step 1: Gather unique session IDs
+    unique_session_ids = {
         getattr(msg, "sessionId", "")
         for msg in messages
-        if hasattr(msg, "sessionId")
-        and is_warmup_only_session(messages, getattr(msg, "sessionId", ""))
+        if hasattr(msg, "sessionId") and getattr(msg, "sessionId", "")
+    }
+
+    # Step 2: Check warmup status once per session and build set of warmup-only sessions
+    warmup_session_ids = {
+        session_id
+        for session_id in unique_session_ids
+        if is_warmup_only_session(messages, session_id)
     }
 
     # Process messages into template-friendly format
@@ -2782,11 +2788,11 @@ def generate_html(
             )
             template_messages.append(tool_template_message)
 
-    # Filter out warmup-only sessions from navigation
+    # Filter out warmup-only sessions from navigation (reuse warmup_session_ids)
     filtered_session_order = [
         session_id
         for session_id in session_order
-        if not is_warmup_only_session(messages, session_id)
+        if session_id not in warmup_session_ids
     ]
 
     # Prepare session navigation data

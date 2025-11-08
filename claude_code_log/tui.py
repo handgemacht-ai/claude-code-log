@@ -491,7 +491,12 @@ class SessionBrowser(App[Optional[str]]):
 
     def _update_selected_session_from_cursor(self) -> None:
         """Update the selected session based on the current cursor position."""
-        table = cast(DataTable[str], self.query_one("#sessions-table", DataTable))
+        try:
+            table = cast(DataTable[str], self.query_one("#sessions-table", DataTable))
+        except Exception:
+            # Table not mounted yet, skip update
+            return
+
         try:
             row_data = table.get_row_at(table.cursor_row)
             if row_data:
