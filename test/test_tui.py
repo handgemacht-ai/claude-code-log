@@ -880,11 +880,7 @@ class TestIntegration:
 
                 # Check that stats are updated
                 stats = cast(Label, app.query_one("#stats"))
-                stats_text = (
-                    str(stats.content)
-                    if hasattr(stats.content, "__str__")
-                    else str(stats.content)
-                )
+                stats_text = str(stats.content)
                 assert "Project:" in stats_text
 
     @pytest.mark.asyncio
@@ -909,9 +905,5 @@ class TestIntegration:
 
                 # Stats should show zero sessions
                 stats = cast(Label, app.query_one("#stats"))
-                stats_text = (
-                    str(stats.content)
-                    if hasattr(stats.content, "__str__")
-                    else str(stats.content)
-                )
+                stats_text = str(stats.content)
                 assert "Sessions:[/bold] 0" in stats_text
