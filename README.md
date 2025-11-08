@@ -152,7 +152,7 @@ claude-code-log /path/to/directory --from-date "3 days ago" --to-date "yesterday
 
 The project uses:
 
-- Python 3.12+ with uv package management
+- Python 3.10+ with uv package management
 - Click for CLI interface and argument parsing
 - Pydantic for robust data modeling and validation
 - dateparser for natural language date parsing
@@ -379,7 +379,6 @@ uv run claude-code-log
 - Localised number formatting and timezone adjustment runtime? For this we'd need to make Jinja template variables more granular
 - convert images to WebP as screenshots are often huge PNGs – this might be time consuming to keep redoing (so would also need some caching) and need heavy dependencies with compilation (unless there are fast pure Python conversation libraries? Or WASM?)
 - add special formatting for built-in tools: Bash, Glob, Grep, LS, exit_plan_mode, Read, Edit, MultiEdit, Write, NotebookRead, NotebookEdit, WebFetch, TodoRead, TodoWrite, WebSearch
-  - render Edit / MultiEdit as diff(s)?
 - do we need to handle compacted conversation?
 - Thinking block should have Markdown rendering as sometimes they have formatting
 - system blocks like `init` also don't render perfectly, losing new lines

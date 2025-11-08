@@ -131,7 +131,7 @@ claude-code-log /path/to/directory --from-date "3 days ago" --to-date "yesterday
 
 The project uses:
 
-- Python 3.12+ with uv package management
+- Python 3.10+ with uv package management
 - Click for CLI interface and argument parsing
 - Textual for interactive Terminal User Interface
 - Pydantic for robust data modelling and validation
