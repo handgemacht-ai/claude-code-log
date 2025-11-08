@@ -182,7 +182,7 @@ def is_warmup_only_session(messages: List[TranscriptEntry], session_id: str) -> 
     from .parser import extract_text_content
 
     # Find all user messages for this session
-    user_messages = []
+    user_messages: List[UserTranscriptEntry] = []
     for message in messages:
         if (
             isinstance(message, UserTranscriptEntry)
