@@ -1,6 +1,22 @@
-"""Pytest configuration for timeline browser tests."""
+"""Pytest configuration and shared fixtures."""
+
+from pathlib import Path
 
 import pytest
+
+from test.snapshot_serializers import NormalisedHTMLSerializer
+
+
+@pytest.fixture
+def test_data_dir() -> Path:
+    """Return path to test data directory."""
+    return Path(__file__).parent / "test_data"
+
+
+@pytest.fixture
+def html_snapshot(snapshot):
+    """Snapshot fixture with HTML normalisation for regression testing."""
+    return snapshot.use_extension(NormalisedHTMLSerializer)
 
 
 @pytest.fixture(scope="session")

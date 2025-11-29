@@ -176,16 +176,16 @@ The project uses a categorized test system to avoid async event loop conflicts b
 
 ```bash
 # Run only unit tests (fast, recommended for development)
-uv run pytest -m "not (tui or browser)"
+uv run pytest -n auto -m "not (tui or browser)"
 
 # Run TUI tests (isolated event loop)
-uv run pytest -m tui
+uv run pytest -n auto -m tui
 
 # Run browser tests (requires Chromium)
-uv run pytest -m browser
+uv run pytest -n auto -m browser
 
 # Run all tests in sequence (separated to avoid conflicts)
-uv run pytest -m "not tui and not browser"; uv run pytest -m tui; uv run pytest -m browser
+uv run pytest -n auto -m "not tui and not browser"; uv run pytest -n auto -m tui; uv run pytest -n auto -m browser
 ```
 
 #### Prerequisites
@@ -212,13 +212,13 @@ Generate test coverage reports:
 
 ```bash
 # Run tests with coverage
-uv run pytest --cov=claude_code_log --cov-report=html --cov-report=term
+uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term
 
 # Generate HTML coverage report only
-uv run pytest --cov=claude_code_log --cov-report=html
+uv run pytest -n auto --cov=claude_code_log --cov-report=html
 
 # View coverage in terminal
-uv run pytest --cov=claude_code_log --cov-report=term-missing
+uv run pytest -n auto --cov=claude_code_log --cov-report=term-missing
 ```
 
 HTML coverage reports are generated in `htmlcov/index.html`.
@@ -239,11 +239,11 @@ HTML coverage reports are generated in `htmlcov/index.html`.
 
 ### All Commands
 
-- **Test (Unit only)**: `uv run pytest`
-- **Test (TUI)**: `uv run pytest -m tui`
-- **Test (Browser)**: `uv run pytest -m browser`
-- **Test (All categories)**: `uv run pytest -m "not tui and not browser"; uv run pytest -m tui; uv run pytest -m browser`
-- **Test with Coverage**: `uv run pytest --cov=claude_code_log --cov-report=html --cov-report=term`
+- **Test (Unit only)**: `uv run pytest -n auto`
+- **Test (TUI)**: `uv run pytest -n auto -m tui`
+- **Test (Browser)**: `uv run pytest -n auto -m browser`
+- **Test (All categories)**: `uv run pytest -n auto -m "not tui and not browser"; uv run pytest -n auto -m tui; uv run pytest -n auto -m browser`
+- **Test with Coverage**: `uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term`
 - **Format**: `ruff format`
 - **Lint**: `ruff check --fix`
 - **Type Check**: `uv run pyright` and `uv run ty check`

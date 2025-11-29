@@ -1,0 +1,100 @@
+"""Snapshot tests for HTML output regression detection.
+
+These tests use syrupy to capture and compare HTML output, detecting
+unintended changes to the rendered HTML structure.
+"""
+
+import shutil
+from pathlib import Path
+
+from claude_code_log.converter import (
+    convert_jsonl_to_html,
+    load_transcript,
+    generate_html,
+)
+from claude_code_log.renderer import generate_session_html, generate_projects_index_html
+
+
+class TestTranscriptHTMLSnapshots:
+    """Snapshot tests for transcript HTML output."""
+
+    def test_representative_messages_html(self, html_snapshot, test_data_dir):
+        """Snapshot test for representative messages - core message types."""
+        test_file = test_data_dir / "representative_messages.jsonl"
+        messages = load_transcript(test_file)
+        html = generate_html(messages, "Test Transcript")
+        assert html == html_snapshot
+
+    def test_edge_cases_html(self, html_snapshot, test_data_dir):
+        """Snapshot test for edge cases - errors, special chars, long text."""
+        test_file = test_data_dir / "edge_cases.jsonl"
+        messages = load_transcript(test_file)
+        html = generate_html(messages, "Edge Cases")
+        assert html == html_snapshot
+
+    def test_multi_session_html(self, html_snapshot, test_data_dir, tmp_path):
+        """Snapshot test for multi-session combined output."""
+        shutil.copy(
+            test_data_dir / "representative_messages.jsonl",
+            tmp_path / "session_a.jsonl",
+        )
+        shutil.copy(test_data_dir / "session_b.jsonl", tmp_path / "session_b.jsonl")
+
+        html_file = convert_jsonl_to_html(tmp_path, use_cache=False)
+        html = html_file.read_text(encoding="utf-8")
+        assert html == html_snapshot
+
+
+class TestSessionHTMLSnapshots:
+    """Snapshot tests for individual session HTML output."""
+
+    def test_individual_session_html(self, html_snapshot, test_data_dir):
+        """Snapshot test for individual session file."""
+        test_file = test_data_dir / "representative_messages.jsonl"
+        messages = load_transcript(test_file)
+        html = generate_session_html(messages, "test_session", "Test Session")
+        assert html == html_snapshot
+
+
+class TestIndexHTMLSnapshots:
+    """Snapshot tests for project index HTML output."""
+
+    def test_project_index_html(self, html_snapshot):
+        """Snapshot test for project index template."""
+        project_summaries = [
+            {
+                "name": "-Users-test-project-alpha",
+                "path": Path("/tmp/project-alpha"),
+                "html_file": "-Users-test-project-alpha/combined_transcripts.html",
+                "jsonl_count": 5,
+                "message_count": 42,
+                "last_modified": 1700000000.0,
+                "total_input_tokens": 1000,
+                "total_output_tokens": 2000,
+                "total_cache_creation_tokens": 500,
+                "total_cache_read_tokens": 1500,
+                "latest_timestamp": "2025-01-15T10:00:00Z",
+                "earliest_timestamp": "2025-01-01T09:00:00Z",
+                "working_directories": ["/Users/test/projects/alpha"],
+                "sessions": [
+                    {
+                        "id": "session-abc12345",
+                        "summary": "Test session summary",
+                        "timestamp_range": "2025-01-15 10:00:00",
+                        "message_count": 10,
+                        "first_user_message": "Hello, this is a test",
+                    }
+                ],
+            },
+            {
+                "name": "-Users-test-project-beta",
+                "path": Path("/tmp/project-beta"),
+                "html_file": "-Users-test-project-beta/combined_transcripts.html",
+                "jsonl_count": 3,
+                "message_count": 25,
+                "last_modified": 1700000100.0,
+            },
+        ]
+
+        html = generate_projects_index_html(project_summaries)
+        assert html == html_snapshot

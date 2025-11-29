@@ -54,6 +54,7 @@ Real-world JSONL data from open-source Claude Code projects, used for integratio
 | `-Users-dain-workspace-claude-code-log-sample` | ~9MB | 23 | Curated sample with size variety |
 
 These files test:
+
 - **Multi-project hierarchy processing** with `--projects-dir`
 - **Cache operations** with realistic data volumes
 - **Edge cases**: Empty files, naming ambiguity, path conversion
@@ -139,34 +140,58 @@ The project uses a categorized test system to avoid async event loop conflicts b
 - **TUI Tests** (`@pytest.mark.tui`): Tests for the Textual-based Terminal User Interface
 - **Browser Tests** (`@pytest.mark.browser`): Playwright-based tests that run in real browsers
 - **Integration Tests** (`@pytest.mark.integration`): Tests with realistic JSONL data from `test_data/real_projects/`
+- **Snapshot Tests**: HTML regression tests using syrupy (runs with unit tests)
+
+### Snapshot Testing
+
+Snapshot tests capture the full HTML output and detect unintended regressions. They use [syrupy](https://github.com/syrupy-project/syrupy) with a custom serializer that normalises dynamic content (library version, tmp paths).
+
+```bash
+# Run snapshot tests
+uv run pytest -n auto test/test_snapshot_html.py -v
+
+# Update snapshots after intentional HTML changes
+uv run pytest -n auto test/test_snapshot_html.py --snapshot-update
+
+# Review changes before committing
+git diff test/__snapshots__/
+```
+
+**Snapshot files** are stored in `test/__snapshots__/test_snapshot_html.ambr` and must be committed to version control.
+
+**When to update snapshots**:
+
+1. Run tests - if they fail, review the diff
+2. If changes are intentional, run with `--snapshot-update`
+3. Commit updated snapshots with your code changes
 
 #### Running Tests
 
 ```bash
 # Run only unit tests (fast, recommended for development)
 just test
-# or: uv run pytest -m "not (tui or browser or integration)" -v
+# or: uv run pytest -n auto -m "not (tui or browser or integration)" -v
 
 # Run TUI tests (isolated event loop)
 just test-tui
-# or: uv run pytest -m tui -v
+# or: uv run pytest -n auto -m tui -v
 
 # Run browser tests (requires Chromium)
 just test-browser
-# or: uv run pytest -m browser -v
+# or: uv run pytest -n auto -m browser -v
 
 # Run integration tests with realistic data
 just test-integration
-# or: uv run pytest -m integration -v
+# or: uv run pytest -n auto -m integration -v
 
 # Run all tests in sequence (separated to avoid conflicts)
 just test-all
 
 # Run specific test file
-uv run pytest test/test_template_rendering.py -v
+uv run pytest -n auto test/test_template_rendering.py -v
 
 # Run specific test method
-uv run pytest test/test_template_rendering.py::TestTemplateRendering::test_representative_messages_render -v
+uv run pytest -n auto test/test_template_rendering.py::TestTemplateRendering::test_representative_messages_render -v
 
 # Run tests with coverage
 just test-cov
@@ -189,10 +214,10 @@ Generate detailed coverage reports:
 
 ```bash
 # Run tests with coverage and HTML report
-uv run pytest --cov=claude_code_log --cov-report=html --cov-report=term
+uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term
 
 # View coverage by module
-uv run pytest --cov=claude_code_log --cov-report=term-missing
+uv run pytest -n auto --cov=claude_code_log --cov-report=term-missing
 
 # Open HTML coverage report
 open htmlcov/index.html
@@ -240,6 +265,9 @@ When modifying templates:
 test/
 ├── README.md                     # This file
 ├── conftest.py                   # Pytest configuration and fixtures
+├── snapshot_serializers.py       # Custom syrupy serializer for HTML normalisation
+├── __snapshots__/                # Syrupy snapshot files
+│   └── test_snapshot_html.ambr   # HTML output snapshots
 ├── test_data/                    # Test JSONL samples
 │   ├── representative_messages.jsonl
 │   ├── edge_cases.jsonl
@@ -249,6 +277,7 @@ test/
 │       ├── -Users-dain-workspace-coderabbit-review-helper/
 │       ├── -Users-dain-workspace-danieldemmel-me-next/
 │       └── -Users-dain-workspace-claude-code-log-sample/
+├── test_snapshot_html.py         # HTML output snapshot tests
 ├── test_integration_realistic.py # Integration tests with real data
 ├── test_template_rendering.py    # Template rendering tests
 ├── test_template_data.py         # Template data structure tests
@@ -274,7 +303,7 @@ htmlcov/                          # Coverage reports
 
 This testing infrastructure provides:
 
-- **Regression Prevention**: Catch template breaking changes
+- **Regression Prevention**: Catch template breaking changes with snapshot testing
 - **Coverage Tracking**: 78%+ test coverage with detailed reporting
 - **Module Testing**: Focused tests for parser, renderer, and converter modules
 - **Integration Testing**: Real-world data from open-source projects (~18MB)

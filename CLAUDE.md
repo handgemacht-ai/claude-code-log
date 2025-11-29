@@ -153,21 +153,34 @@ The project uses a categorized test system to avoid async event loop conflicts b
 - **Unit Tests** (no mark): Fast, standalone tests with no external dependencies
 - **TUI Tests** (`@pytest.mark.tui`): Tests for the Textual-based Terminal User Interface
 - **Browser Tests** (`@pytest.mark.browser`): Playwright-based tests that run in real browsers
+- **Snapshot Tests**: HTML regression tests using syrupy (runs with unit tests)
+
+#### Snapshot Testing
+
+Snapshot tests detect unintended HTML output changes using [syrupy](https://github.com/syrupy-project/syrupy):
+
+```bash
+# Run snapshot tests
+uv run pytest -n auto test/test_snapshot_html.py -v
+
+# Update snapshots after intentional HTML changes
+uv run pytest -n auto test/test_snapshot_html.py --snapshot-update
+```
 
 #### Running Tests
 
 ```bash
 # Run only unit tests (fast, recommended for development)
 just test
-# or: uv run pytest -m "not (tui or browser)" -v
+# or: uv run pytest -n auto -m "not (tui or browser)" -v
 
 # Run TUI tests (isolated event loop)
 just test-tui
-# or: uv run pytest -m tui
+# or: uv run pytest -n auto -m tui
 
 # Run browser tests (requires Chromium)
 just test-browser
-# or: uv run pytest -m browser
+# or: uv run pytest -n auto -m browser
 
 # Run all tests in sequence (separated to avoid conflicts)
 just test-all
@@ -203,13 +216,13 @@ Generate test coverage reports:
 just test-cov
 
 # Or run coverage manually
-uv run pytest --cov=claude_code_log --cov-report=html --cov-report=term
+uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term
 
 # Generate HTML coverage report only
-uv run pytest --cov=claude_code_log --cov-report=html
+uv run pytest -n auto --cov=claude_code_log --cov-report=html
 
 # View coverage in terminal
-uv run pytest --cov=claude_code_log --cov-report=term-missing
+uv run pytest -n auto --cov=claude_code_log --cov-report=term-missing
 ```
 
 HTML coverage reports are generated in `htmlcov/index.html`.

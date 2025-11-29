@@ -7,19 +7,19 @@ cli *ARGS:
 
 # Run only unit tests (fast, no external dependencies)
 test:
-    uv run pytest -m "not (tui or browser)" -v
+    uv run pytest -n auto -m "not (tui or browser)" -v
 
 # Run TUI tests (requires isolated event loop)
 test-tui:
-    uv run pytest -m tui -v
+    uv run pytest -n auto -m tui -v
 
 # Run browser tests (requires Chromium)
 test-browser:
-    uv run pytest -m browser -v
+    uv run pytest -n auto -m browser -v
 
 # Run integration tests with realistic JSONL data
 test-integration:
-    uv run pytest -m integration -v
+    uv run pytest -n auto -m integration -v
 
 # Run all tests in sequence (separated to avoid event loop conflicts)
 test-all:
@@ -27,13 +27,13 @@ test-all:
     set -e  # Exit on first failure
     echo "🧪 Running all tests in sequence..."
     echo "📦 Running unit tests..."
-    uv run pytest -m "not (tui or browser or integration)" -v
+    uv run pytest -n auto -m "not (tui or browser or integration)" -v
     echo "🖥️  Running TUI tests..."
-    uv run pytest -m tui -v
+    uv run pytest -n auto -m tui -v
     echo "🌐 Running browser tests..."
-    uv run pytest -m browser -v
+    uv run pytest -n auto -m browser -v
     echo "🔄 Running integration tests..."
-    uv run pytest -m integration -v
+    uv run pytest -n auto -m integration -v
     echo "✅ All tests completed!"
 
 # Run tests with coverage (all categories)
@@ -42,13 +42,13 @@ test-cov:
     set -e  # Exit on first failure
     echo "📊 Running all tests with coverage..."
     echo "📦 Running unit tests with coverage..."
-    uv run pytest -m "not (tui or browser or integration)" --cov=claude_code_log --cov-report=xml --cov-report=html --cov-report=term -v
+    uv run pytest -n auto -m "not (tui or browser or integration)" --cov=claude_code_log --cov-report=xml --cov-report=html --cov-report=term -v
     echo "🖥️  Running TUI tests with coverage append..."
-    uv run pytest -m tui --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
+    uv run pytest -n auto -m tui --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
     echo "🌐 Running browser tests with coverage append..."
-    uv run pytest -m browser --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
+    uv run pytest -n auto -m browser --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
     echo "🔄 Running integration tests with coverage append..."
-    uv run pytest -m integration --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
+    uv run pytest -n auto -m integration --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
     echo "✅ All tests with coverage completed!"
 
 format:
