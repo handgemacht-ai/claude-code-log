@@ -534,6 +534,7 @@ def process_projects_hierarchy(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     use_cache: bool = True,
+    generate_individual_sessions: bool = True,
 ) -> Path:
     """Process the entire ~/.claude/projects/ hierarchy and create linked HTML files."""
     if not projects_path.exists():
@@ -573,9 +574,14 @@ def process_projects_hierarchy(
             if cache_was_updated:
                 any_cache_updated = True
 
-            # Phase 2: Generate HTML for this project (including individual session files)
+            # Phase 2: Generate HTML for this project (optionally individual session files)
             output_path = convert_jsonl_to_html(
-                project_dir, None, from_date, to_date, True, use_cache
+                project_dir,
+                None,
+                from_date,
+                to_date,
+                generate_individual_sessions,
+                use_cache,
             )
 
             # Get project info for index - use cached data if available

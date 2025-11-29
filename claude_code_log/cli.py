@@ -14,6 +14,11 @@ from .converter import convert_jsonl_to_html, process_projects_hierarchy
 from .cache import CacheManager, get_library_version
 
 
+def get_default_projects_dir() -> Path:
+    """Get the default Claude projects directory path."""
+    return Path.home() / ".claude" / "projects"
+
+
 def _launch_tui_with_cache_check(project_path: Path) -> Optional[str]:
     """Launch TUI with proper cache checking and user feedback."""
     click.echo("Checking cache and loading session data...")
@@ -56,8 +61,16 @@ def _launch_tui_with_cache_check(project_path: Path) -> Optional[str]:
     return result
 
 
-def convert_project_path_to_claude_dir(input_path: Path) -> Path:
-    """Convert a project path to the corresponding directory in ~/.claude/projects/."""
+def convert_project_path_to_claude_dir(
+    input_path: Path, base_projects_dir: Optional[Path] = None
+) -> Path:
+    """Convert a project path to the corresponding directory in ~/.claude/projects/.
+
+    Args:
+        input_path: The project path to convert
+        base_projects_dir: Optional base directory for Claude projects.
+                          Defaults to ~/.claude/projects/
+    """
     # Get the real path to resolve any symlinks
     real_path = input_path.resolve()
 
@@ -82,8 +95,9 @@ def convert_project_path_to_claude_dir(input_path: Path) -> Path:
         # Fallback for other cases
         claude_project_name = "-" + "-".join(path_parts)
 
-    # Construct the path in ~/.claude/projects/
-    claude_projects_dir = Path.home() / ".claude" / "projects" / claude_project_name
+    # Construct the path in the projects directory
+    projects_dir = base_projects_dir or get_default_projects_dir()
+    claude_projects_dir = projects_dir / claude_project_name
 
     return claude_projects_dir
 
@@ -114,12 +128,14 @@ def find_projects_by_cwd(
     ]
 
     # Tier 1: Check for exact match to current working directory
-    exact_matches = _find_exact_matches(project_dirs, current_cwd_path)
+    exact_matches = _find_exact_matches(project_dirs, current_cwd_path, projects_dir)
     if exact_matches:
         return exact_matches
 
     # Tier 2: Check if we're inside a git repo and match to repo root
-    git_root_matches = _find_git_root_matches(project_dirs, current_cwd_path)
+    git_root_matches = _find_git_root_matches(
+        project_dirs, current_cwd_path, projects_dir
+    )
     if git_root_matches:
         return git_root_matches
 
@@ -127,9 +143,13 @@ def find_projects_by_cwd(
     return _find_relative_matches(project_dirs, current_cwd_path)
 
 
-def _find_exact_matches(project_dirs: List[Path], current_cwd_path: Path) -> List[Path]:
+def _find_exact_matches(
+    project_dirs: List[Path], current_cwd_path: Path, base_projects_dir: Path
+) -> List[Path]:
     """Find projects with exact working directory matches using path-based matching."""
-    expected_project_dir = convert_project_path_to_claude_dir(current_cwd_path)
+    expected_project_dir = convert_project_path_to_claude_dir(
+        current_cwd_path, base_projects_dir
+    )
 
     for project_dir in project_dirs:
         if project_dir == expected_project_dir:
@@ -139,7 +159,7 @@ def _find_exact_matches(project_dirs: List[Path], current_cwd_path: Path) -> Lis
 
 
 def _find_git_root_matches(
-    project_dirs: List[Path], current_cwd_path: Path
+    project_dirs: List[Path], current_cwd_path: Path, base_projects_dir: Path
 ) -> List[Path]:
     """Find projects that match the git repository root using path-based matching."""
     try:
@@ -148,7 +168,7 @@ def _find_git_root_matches(
         git_root_path = Path(repo.git_dir).parent.resolve()
 
         # Find projects that match the git root
-        return _find_exact_matches(project_dirs, git_root_path)
+        return _find_exact_matches(project_dirs, git_root_path, base_projects_dir)
     except InvalidGitRepositoryError:
         # Not in a git repository
         return []
@@ -385,6 +405,12 @@ def _clear_html_files(input_path: Path, all_projects: bool) -> None:
     is_flag=True,
     help="Launch interactive TUI for session browsing and management",
 )
+@click.option(
+    "--projects-dir",
+    type=click.Path(path_type=Path, exists=False),
+    default=None,
+    help="Custom projects directory (default: ~/.claude/projects/). Useful for testing.",
+)
 def main(
     input_path: Optional[Path],
     output: Optional[Path],
@@ -397,6 +423,7 @@ def main(
     clear_cache: bool,
     clear_html: bool,
     tui: bool,
+    projects_dir: Optional[Path],
 ) -> None:
     """Convert Claude transcript JSONL files to HTML.
 
@@ -408,9 +435,9 @@ def main(
     try:
         # Handle TUI mode
         if tui:
-            # Handle default case for TUI - use ~/.claude/projects if no input path
+            # Handle default case for TUI - use projects_dir or default ~/.claude/projects
             if input_path is None:
-                input_path = Path.home() / ".claude" / "projects"
+                input_path = projects_dir or get_default_projects_dir()
 
             # If targeting all projects, show project selection TUI
             if (
@@ -502,7 +529,7 @@ def main(
 
         # Handle default case - process all projects hierarchy if no input path and --all-projects flag
         if input_path is None:
-            input_path = Path.home() / ".claude" / "projects"
+            input_path = projects_dir or get_default_projects_dir()
             all_projects = True
 
         # Handle cache clearing
@@ -528,7 +555,11 @@ def main(
 
             click.echo(f"Processing all projects in {input_path}...")
             output_path = process_projects_hierarchy(
-                input_path, from_date, to_date, not no_cache
+                input_path,
+                from_date,
+                to_date,
+                not no_cache,
+                not no_individual_sessions,
             )
 
             # Count processed projects
@@ -561,7 +592,7 @@ def main(
                 should_convert = True
 
         if should_convert:
-            claude_path = convert_project_path_to_claude_dir(input_path)
+            claude_path = convert_project_path_to_claude_dir(input_path, projects_dir)
             if claude_path.exists():
                 click.echo(f"Converting project path {input_path} to {claude_path}")
                 input_path = claude_path

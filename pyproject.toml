@@ -50,6 +50,7 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "tui: TUI tests using Textual framework (requires isolated event loop)",
     "browser: Browser integration tests using Playwright (requires Chromium)",
+    "integration: Integration tests with realistic JSONL data",
 ]
 
 [tool.pyright]

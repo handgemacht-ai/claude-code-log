@@ -42,6 +42,23 @@ Additional session for testing multi-session handling:
 - Session divider behavior
 - Cross-session message ordering
 
+### `real_projects/` (Integration Test Data)
+
+Real-world JSONL data from open-source Claude Code projects, used for integration testing:
+
+| Project | Size | Files | Purpose |
+|---------|------|-------|---------|
+| `-Users-dain-workspace-JSSoundRecorder` | ~528KB | 11 | Small project, quick tests |
+| `-Users-dain-workspace-coderabbit-review-helper` | ~6.5MB | 40 | Empty file edge cases (9 empty files) |
+| `-Users-dain-workspace-danieldemmel-me-next` | ~1.7MB | 11 | Multi-cwd sessions, path conversion |
+| `-Users-dain-workspace-claude-code-log-sample` | ~9MB | 23 | Curated sample with size variety |
+
+These files test:
+- **Multi-project hierarchy processing** with `--projects-dir`
+- **Cache operations** with realistic data volumes
+- **Edge cases**: Empty files, naming ambiguity, path conversion
+- **CLI operations** with custom projects directory
+
 ## Template Tests (`test_template_rendering.py`)
 
 Comprehensive unit tests that verify:
@@ -119,15 +136,16 @@ The project uses a categorized test system to avoid async event loop conflicts b
 #### Test Categories
 
 - **Unit Tests** (no mark): Fast, standalone tests with no external dependencies
-- **TUI Tests** (`@pytest.mark.tui`): Tests for the Textual-based Terminal User Interface  
+- **TUI Tests** (`@pytest.mark.tui`): Tests for the Textual-based Terminal User Interface
 - **Browser Tests** (`@pytest.mark.browser`): Playwright-based tests that run in real browsers
+- **Integration Tests** (`@pytest.mark.integration`): Tests with realistic JSONL data from `test_data/real_projects/`
 
 #### Running Tests
 
 ```bash
 # Run only unit tests (fast, recommended for development)
 just test
-# or: uv run pytest -m "not (tui or browser)" -v
+# or: uv run pytest -m "not (tui or browser or integration)" -v
 
 # Run TUI tests (isolated event loop)
 just test-tui
@@ -136,6 +154,10 @@ just test-tui
 # Run browser tests (requires Chromium)
 just test-browser
 # or: uv run pytest -m browser -v
+
+# Run integration tests with realistic data
+just test-integration
+# or: uv run pytest -m integration -v
 
 # Run all tests in sequence (separated to avoid conflicts)
 just test-all
@@ -156,6 +178,7 @@ The test suite is categorized because:
 
 - **TUI tests** use Textual's async event loop (`run_test()`)
 - **Browser tests** use Playwright's internal asyncio
+- **Integration tests** process real-world data (slower, more comprehensive)
 - **pytest-asyncio** manages async test execution
 
 Running all tests together can cause "RuntimeError: This event loop is already running" conflicts. The categorization ensures reliable test execution by isolating different async frameworks.
@@ -216,10 +239,17 @@ When modifying templates:
 ```
 test/
 ├── README.md                     # This file
-├── test_data/                    # Representative JSONL samples
+├── conftest.py                   # Pytest configuration and fixtures
+├── test_data/                    # Test JSONL samples
 │   ├── representative_messages.jsonl
 │   ├── edge_cases.jsonl
-│   └── session_b.jsonl
+│   ├── session_b.jsonl
+│   └── real_projects/            # Realistic multi-project test data (~18MB)
+│       ├── -Users-dain-workspace-JSSoundRecorder/
+│       ├── -Users-dain-workspace-coderabbit-review-helper/
+│       ├── -Users-dain-workspace-danieldemmel-me-next/
+│       └── -Users-dain-workspace-claude-code-log-sample/
+├── test_integration_realistic.py # Integration tests with real data
 ├── test_template_rendering.py    # Template rendering tests
 ├── test_template_data.py         # Template data structure tests
 ├── test_template_utils.py        # Utility function tests
@@ -228,6 +258,7 @@ test/
 └── test_*.py                     # Additional test modules
 
 scripts/
+├── setup_test_data.sh            # Copies test data from ~/.claude/projects/
 ├── generate_style_guide.py       # Visual documentation generator
 └── style_guide_output/           # Generated style guides
     ├── index.html
@@ -246,9 +277,11 @@ This testing infrastructure provides:
 - **Regression Prevention**: Catch template breaking changes
 - **Coverage Tracking**: 78%+ test coverage with detailed reporting
 - **Module Testing**: Focused tests for parser, renderer, and converter modules
+- **Integration Testing**: Real-world data from open-source projects (~18MB)
 - **Visual Documentation**: See how all message types render
 - **Development Reference**: Example data for testing new features
 - **Quality Assurance**: Verify edge cases and error handling
 - **Design Consistency**: Maintain visual standards across updates
+- **CLI Testing**: Full coverage of `--projects-dir` and multi-project operations
 
-The combination of unit tests, coverage tracking, and visual style guides ensures both functional correctness and design quality across the modular codebase.
+The combination of unit tests, integration tests, coverage tracking, and visual style guides ensures both functional correctness and design quality across the modular codebase.
