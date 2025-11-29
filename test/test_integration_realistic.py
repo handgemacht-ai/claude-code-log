@@ -516,8 +516,10 @@ class TestFindProjectsByCwd:
         )
 
         # The project should be found if path conversion works correctly
-        if results:
-            assert any("JSSoundRecorder" in r.name for r in results)
+        assert results, (
+            "Expected find_projects_by_cwd to return at least one matching project"
+        )
+        assert any("JSSoundRecorder" in r.name for r in results)
 
 
 @pytest.mark.integration
