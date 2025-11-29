@@ -12,7 +12,7 @@
 
     <div class='session-nav'>
         {% for session in sessions %}
-        <a href='{{ link_prefix }}{% if mode == "expandable" %}session-{{ session.id }}.html{% else %}#session-{{ session.id }}{% endif %}'
+        <a href='{{ link_prefix }}{% if mode == "expandable" %}session-{{ session.id }}.html{% else %}#msg-session-{{ session.id }}{% endif %}'
             class='session-link'>
             <div class='session-link-title'>
                 {% if session.summary %}

@@ -2089,6 +2089,11 @@
       border-bottom-color: var(--user-color);
   }
   
+  .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+      border-bottom-color: var(--user-dimmed);
+  }
+  
   .fold-bar[data-border-color="assistant"] .fold-bar-section,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section {
       border-bottom-color: var(--assistant-color);
@@ -2297,6 +2302,12 @@
       opacity: 0.7;
   }
   
+  /* Slash command prompts (isMeta=true, LLM-generated content) */
+  .user.slash-command {
+      border-left-color: var(--user-dimmed);
+      opacity: 0.85;
+  }
+  
   .assistant {
       border-left-color: #9c27b0;
   }
@@ -2345,6 +2356,15 @@
       word-wrap: break-word;
       color: #333;
       overflow-x: auto;
+  }
+  
+  .command-output-content td {
+      border-left: 1px dotted #bbb;
+      padding: 0 1em;
+  }
+  .command-output-content th {
+      text-align: left;
+      padding: 0 1em;
   }
   
   /* Bash command styling */
@@ -2722,11 +2742,18 @@
       margin-top: 4px;
   }
   
-  /* Tool result preview content with gradient fade */
+  /* Tool use/result preview content with gradient fade */
+  .tool_use .preview-content,
   .tool_result .preview-content {
       opacity: 0.7;
       mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
       -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  }
+  
+  /* Fix list rendering in preview-content inside summary */
+  /* Mistune wraps list content in <p> tags which causes line breaks */
+  .preview-content li > p:first-child {
+      display: inline;
   }
   
   /* Hide preview content when details/collapsible is open */
@@ -4594,7 +4621,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>I'd be happy to help you understand Python decorators! A decorator is a design pattern that allows you to modify or extend the behavior of functions or classes without permanently modifying their code.</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>I'd be happy to help you understand Python decorators! A decorator is a design pattern that allows you to modify or extend the behavior of functions or classes without permanently modifying their code.</p>
   <p>Here's a simple example:</p>
   <div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">my_decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
       <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">():</span>
@@ -4614,7 +4641,7 @@
   Hello!
   Something after the function
   </code></pre>
-  </div>
+  </div></div>
           
       </div>
       
@@ -4694,7 +4721,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Perfect! I've created an example of a parameterized decorator. Here's how it works:</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Perfect! I've created an example of a parameterized decorator. Here's how it works:</p>
   <ol>
   <li><strong><code>repeat(times)</code></strong> - This is the decorator factory that takes parameters</li>
   <li><strong><code>decorator(func)</code></strong> - This is the actual decorator that gets returned</li>
@@ -4707,7 +4734,7 @@
   <li>The innermost function is the actual wrapper that gets called</li>
   </ul>
   <p>When you run this code, it will print &quot;Hello, Alice!&quot; three times.</p>
-  </div>
+  </div></div>
           
       </div>
       
@@ -4789,7 +4816,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Perfect! As you can see, the <code>@repeat(3)</code> decorator successfully made the <code>greet</code> function execute three times, printing &quot;Hello, Alice!&quot; three times.</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Perfect! As you can see, the <code>@repeat(3)</code> decorator successfully made the <code>greet</code> function execute three times, printing &quot;Hello, Alice!&quot; three times.</p>
   <p>This demonstrates the power of parameterized decorators - you can customize their behavior by passing arguments to the decorator factory. Some common use cases include:</p>
   <ul>
   <li><strong>Timing decorators</strong>: <code>@time_it(units='ms')</code></li>
@@ -4798,7 +4825,7 @@
   <li><strong>Caching decorators</strong>: <code>@cache(ttl=300)</code></li>
   </ul>
   <p>The pattern is always the same: decorator factory → decorator → wrapper function.</p>
-  </div>
+  </div></div>
           
       </div>
       
@@ -6581,6 +6608,11 @@
       border-bottom-color: var(--user-color);
   }
   
+  .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+      border-bottom-color: var(--user-dimmed);
+  }
+  
   .fold-bar[data-border-color="assistant"] .fold-bar-section,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section {
       border-bottom-color: var(--assistant-color);
@@ -6789,6 +6821,12 @@
       opacity: 0.7;
   }
   
+  /* Slash command prompts (isMeta=true, LLM-generated content) */
+  .user.slash-command {
+      border-left-color: var(--user-dimmed);
+      opacity: 0.85;
+  }
+  
   .assistant {
       border-left-color: #9c27b0;
   }
@@ -6837,6 +6875,15 @@
       word-wrap: break-word;
       color: #333;
       overflow-x: auto;
+  }
+  
+  .command-output-content td {
+      border-left: 1px dotted #bbb;
+      padding: 0 1em;
+  }
+  .command-output-content th {
+      text-align: left;
+      padding: 0 1em;
   }
   
   /* Bash command styling */
@@ -7214,11 +7261,18 @@
       margin-top: 4px;
   }
   
-  /* Tool result preview content with gradient fade */
+  /* Tool use/result preview content with gradient fade */
+  .tool_use .preview-content,
   .tool_result .preview-content {
       opacity: 0.7;
       mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
       -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  }
+  
+  /* Fix list rendering in preview-content inside summary */
+  /* Mistune wraps list content in <p> tags which causes line breaks */
+  .preview-content li > p:first-child {
+      display: inline;
   }
   
   /* Hide preview content when details/collapsible is open */
@@ -9030,7 +9084,7 @@
   
       <div class='session-nav'>
           
-          <a href='#session-edge_cases'
+          <a href='#msg-session-edge_cases'
               class='session-link'>
               <div class='session-link-title'>
                   
@@ -9049,7 +9103,7 @@
               
           </a>
           
-          <a href='#session-todowrite_session'
+          <a href='#msg-session-todowrite_session'
               class='session-link'>
               <div class='session-link-title'>
                   
@@ -9137,7 +9191,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Great example! Markdown formatting is indeed supported. Here are some more examples:</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Great example! Markdown formatting is indeed supported. Here are some more examples:</p>
   <h2>Headers work too</h2>
   <h3>Sublevel headers</h3>
   <ul>
@@ -9176,7 +9230,7 @@
   </tbody>
   </table>
   <p>The markdown renderer handles all of this automatically!</p>
-  </div>
+  </div></div>
           
       </div>
       
@@ -9263,16 +9317,9 @@
                   
               </div>
           </div>
-          <div class='content'><strong>Command:</strong> test-command<br><strong>Args:</strong> --verbose --output /tmp/test.log<br>
-          <div class="tool-content">
-              Content
-              <div class="details-content">
-                  This is the actual command content with some JSON structure and escaped characters: &quot;quotes&quot; and 
+          <div class='content'><strong>Command:</strong> test-command<br><strong>Args:</strong> --verbose --output /tmp/test.log<br><strong>Content:</strong><pre>This is the actual command content with some JSON structure and escaped characters: &quot;quotes&quot; and 
   line breaks
-  
-              </div>
-          </div>
-          </div>
+  </pre></div>
           
       </div>
       
@@ -9313,8 +9360,8 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>I see the long Lorem ipsum text wraps nicely! Long text handling is important for readability. The CSS should handle word wrapping automatically.</p>
-  </div>
+          <div class='content markdown'><div class="assistant-text markdown"><p>I see the long Lorem ipsum text wraps nicely! Long text handling is important for readability. The CSS should handle word wrapping automatically.</p>
+  </div></div>
           
           <div class='fold-bar' data-message-id='d-7' data-border-color='assistant'>
               
@@ -11238,6 +11285,11 @@
       border-bottom-color: var(--user-color);
   }
   
+  .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+      border-bottom-color: var(--user-dimmed);
+  }
+  
   .fold-bar[data-border-color="assistant"] .fold-bar-section,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section {
       border-bottom-color: var(--assistant-color);
@@ -11446,6 +11498,12 @@
       opacity: 0.7;
   }
   
+  /* Slash command prompts (isMeta=true, LLM-generated content) */
+  .user.slash-command {
+      border-left-color: var(--user-dimmed);
+      opacity: 0.85;
+  }
+  
   .assistant {
       border-left-color: #9c27b0;
   }
@@ -11494,6 +11552,15 @@
       word-wrap: break-word;
       color: #333;
       overflow-x: auto;
+  }
+  
+  .command-output-content td {
+      border-left: 1px dotted #bbb;
+      padding: 0 1em;
+  }
+  .command-output-content th {
+      text-align: left;
+      padding: 0 1em;
   }
   
   /* Bash command styling */
@@ -11871,11 +11938,18 @@
       margin-top: 4px;
   }
   
-  /* Tool result preview content with gradient fade */
+  /* Tool use/result preview content with gradient fade */
+  .tool_use .preview-content,
   .tool_result .preview-content {
       opacity: 0.7;
       mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
       -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  }
+  
+  /* Fix list rendering in preview-content inside summary */
+  /* Mistune wraps list content in <p> tags which causes line breaks */
+  .preview-content li > p:first-child {
+      display: inline;
   }
   
   /* Hide preview content when details/collapsible is open */
@@ -13687,7 +13761,7 @@
   
       <div class='session-nav'>
           
-          <a href='#session-session_b'
+          <a href='#msg-session-session_b'
               class='session-link'>
               <div class='session-link-title'>
                   
@@ -13704,7 +13778,7 @@
               
           </a>
           
-          <a href='#session-test_session'
+          <a href='#msg-session-test_session'
               class='session-link'>
               <div class='session-link-title'>
                   
@@ -13830,8 +13904,8 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Indeed! This message is from a different JSONL file, which should help test the session divider logic. Only the first session should show a divider.</p>
-  </div>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Indeed! This message is from a different JSONL file, which should help test the session divider logic. Only the first session should show a divider.</p>
+  </div></div>
           
       </div>
       
@@ -13850,7 +13924,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>I'd be happy to help you understand Python decorators! A decorator is a design pattern that allows you to modify or extend the behavior of functions or classes without permanently modifying their code.</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>I'd be happy to help you understand Python decorators! A decorator is a design pattern that allows you to modify or extend the behavior of functions or classes without permanently modifying their code.</p>
   <p>Here's a simple example:</p>
   <div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">my_decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
       <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">():</span>
@@ -13870,7 +13944,7 @@
   Hello!
   Something after the function
   </code></pre>
-  </div>
+  </div></div>
           
       </div>
       
@@ -13967,7 +14041,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Perfect! I've created an example of a parameterized decorator. Here's how it works:</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Perfect! I've created an example of a parameterized decorator. Here's how it works:</p>
   <ol>
   <li><strong><code>repeat(times)</code></strong> - This is the decorator factory that takes parameters</li>
   <li><strong><code>decorator(func)</code></strong> - This is the actual decorator that gets returned</li>
@@ -13980,7 +14054,7 @@
   <li>The innermost function is the actual wrapper that gets called</li>
   </ul>
   <p>When you run this code, it will print &quot;Hello, Alice!&quot; three times.</p>
-  </div>
+  </div></div>
           
       </div>
       
@@ -14062,7 +14136,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Perfect! As you can see, the <code>@repeat(3)</code> decorator successfully made the <code>greet</code> function execute three times, printing &quot;Hello, Alice!&quot; three times.</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Perfect! As you can see, the <code>@repeat(3)</code> decorator successfully made the <code>greet</code> function execute three times, printing &quot;Hello, Alice!&quot; three times.</p>
   <p>This demonstrates the power of parameterized decorators - you can customize their behavior by passing arguments to the decorator factory. Some common use cases include:</p>
   <ul>
   <li><strong>Timing decorators</strong>: <code>@time_it(units='ms')</code></li>
@@ -14071,7 +14145,7 @@
   <li><strong>Caching decorators</strong>: <code>@cache(ttl=300)</code></li>
   </ul>
   <p>The pattern is always the same: decorator factory → decorator → wrapper function.</p>
-  </div>
+  </div></div>
           
       </div>
       
@@ -15854,6 +15928,11 @@
       border-bottom-color: var(--user-color);
   }
   
+  .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+      border-bottom-color: var(--user-dimmed);
+  }
+  
   .fold-bar[data-border-color="assistant"] .fold-bar-section,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section {
       border-bottom-color: var(--assistant-color);
@@ -16062,6 +16141,12 @@
       opacity: 0.7;
   }
   
+  /* Slash command prompts (isMeta=true, LLM-generated content) */
+  .user.slash-command {
+      border-left-color: var(--user-dimmed);
+      opacity: 0.85;
+  }
+  
   .assistant {
       border-left-color: #9c27b0;
   }
@@ -16110,6 +16195,15 @@
       word-wrap: break-word;
       color: #333;
       overflow-x: auto;
+  }
+  
+  .command-output-content td {
+      border-left: 1px dotted #bbb;
+      padding: 0 1em;
+  }
+  .command-output-content th {
+      text-align: left;
+      padding: 0 1em;
   }
   
   /* Bash command styling */
@@ -16487,11 +16581,18 @@
       margin-top: 4px;
   }
   
-  /* Tool result preview content with gradient fade */
+  /* Tool use/result preview content with gradient fade */
+  .tool_use .preview-content,
   .tool_result .preview-content {
       opacity: 0.7;
       mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
       -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  }
+  
+  /* Fix list rendering in preview-content inside summary */
+  /* Mistune wraps list content in <p> tags which causes line breaks */
+  .preview-content li > p:first-child {
+      display: inline;
   }
   
   /* Hide preview content when details/collapsible is open */
@@ -18359,7 +18460,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>I'd be happy to help you understand Python decorators! A decorator is a design pattern that allows you to modify or extend the behavior of functions or classes without permanently modifying their code.</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>I'd be happy to help you understand Python decorators! A decorator is a design pattern that allows you to modify or extend the behavior of functions or classes without permanently modifying their code.</p>
   <p>Here's a simple example:</p>
   <div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">my_decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
       <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">():</span>
@@ -18379,7 +18480,7 @@
   Hello!
   Something after the function
   </code></pre>
-  </div>
+  </div></div>
           
       </div>
       
@@ -18459,7 +18560,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Perfect! I've created an example of a parameterized decorator. Here's how it works:</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Perfect! I've created an example of a parameterized decorator. Here's how it works:</p>
   <ol>
   <li><strong><code>repeat(times)</code></strong> - This is the decorator factory that takes parameters</li>
   <li><strong><code>decorator(func)</code></strong> - This is the actual decorator that gets returned</li>
@@ -18472,7 +18573,7 @@
   <li>The innermost function is the actual wrapper that gets called</li>
   </ul>
   <p>When you run this code, it will print &quot;Hello, Alice!&quot; three times.</p>
-  </div>
+  </div></div>
           
       </div>
       
@@ -18554,7 +18655,7 @@
                   
               </div>
           </div>
-          <div class='content markdown'><p>Perfect! As you can see, the <code>@repeat(3)</code> decorator successfully made the <code>greet</code> function execute three times, printing &quot;Hello, Alice!&quot; three times.</p>
+          <div class='content markdown'><div class="assistant-text markdown"><p>Perfect! As you can see, the <code>@repeat(3)</code> decorator successfully made the <code>greet</code> function execute three times, printing &quot;Hello, Alice!&quot; three times.</p>
   <p>This demonstrates the power of parameterized decorators - you can customize their behavior by passing arguments to the decorator factory. Some common use cases include:</p>
   <ul>
   <li><strong>Timing decorators</strong>: <code>@time_it(units='ms')</code></li>
@@ -18563,7 +18664,7 @@
   <li><strong>Caching decorators</strong>: <code>@cache(ttl=300)</code></li>
   </ul>
   <p>The pattern is always the same: decorator factory → decorator → wrapper function.</p>
-  </div>
+  </div></div>
           
       </div>
       
