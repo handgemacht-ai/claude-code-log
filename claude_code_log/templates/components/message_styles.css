@@ -854,7 +854,7 @@ details summary {
 .uploaded-image {
     max-width: 100%;
     height: auto;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-light);
     border-radius: 4px;
     margin: 10px 0;
 }

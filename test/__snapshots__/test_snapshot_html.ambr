@@ -2936,7 +2936,7 @@
   .uploaded-image {
       max-width: 100%;
       height: auto;
-      border: 1px solid #ddd;
+      border: 1px solid var(--border-light);
       border-radius: 4px;
       margin: 10px 0;
   }
@@ -3450,7 +3450,7 @@
   /* Timeline items styling */
   .vis-item {
       border-radius: 4px !important;
-      border: 1px solid #ddd !important;
+      border: 1px solid var(--border-light) !important;
       font-size: 11px !important;
       /* Stuck item workaround, see: https://github.com/visjs/vis-timeline/issues/494#issuecomment-1638974075 */
       transform: scale(0);
@@ -3513,7 +3513,7 @@
   
   /* Timeline axis styling */
   .vis-time-axis {
-      border-top: 1px solid #ddd !important;
+      border-top: 1px solid var(--border-light) !important;
   }
   
   .vis-time-axis .vis-text {
@@ -7615,7 +7615,7 @@
   .uploaded-image {
       max-width: 100%;
       height: auto;
-      border: 1px solid #ddd;
+      border: 1px solid var(--border-light);
       border-radius: 4px;
       margin: 10px 0;
   }
@@ -8129,7 +8129,7 @@
   /* Timeline items styling */
   .vis-item {
       border-radius: 4px !important;
-      border: 1px solid #ddd !important;
+      border: 1px solid var(--border-light) !important;
       font-size: 11px !important;
       /* Stuck item workaround, see: https://github.com/visjs/vis-timeline/issues/494#issuecomment-1638974075 */
       transform: scale(0);
@@ -8192,7 +8192,7 @@
   
   /* Timeline axis styling */
   .vis-time-axis {
-      border-top: 1px solid #ddd !important;
+      border-top: 1px solid var(--border-light) !important;
   }
   
   .vis-time-axis .vis-text {
@@ -12452,7 +12452,7 @@
   .uploaded-image {
       max-width: 100%;
       height: auto;
-      border: 1px solid #ddd;
+      border: 1px solid var(--border-light);
       border-radius: 4px;
       margin: 10px 0;
   }
@@ -12966,7 +12966,7 @@
   /* Timeline items styling */
   .vis-item {
       border-radius: 4px !important;
-      border: 1px solid #ddd !important;
+      border: 1px solid var(--border-light) !important;
       font-size: 11px !important;
       /* Stuck item workaround, see: https://github.com/visjs/vis-timeline/issues/494#issuecomment-1638974075 */
       transform: scale(0);
@@ -13029,7 +13029,7 @@
   
   /* Timeline axis styling */
   .vis-time-axis {
-      border-top: 1px solid #ddd !important;
+      border-top: 1px solid var(--border-light) !important;
   }
   
   .vis-time-axis .vis-text {
@@ -17255,7 +17255,7 @@
   .uploaded-image {
       max-width: 100%;
       height: auto;
-      border: 1px solid #ddd;
+      border: 1px solid var(--border-light);
       border-radius: 4px;
       margin: 10px 0;
   }
@@ -17769,7 +17769,7 @@
   /* Timeline items styling */
   .vis-item {
       border-radius: 4px !important;
-      border: 1px solid #ddd !important;
+      border: 1px solid var(--border-light) !important;
       font-size: 11px !important;
       /* Stuck item workaround, see: https://github.com/visjs/vis-timeline/issues/494#issuecomment-1638974075 */
       transform: scale(0);
@@ -17832,7 +17832,7 @@
   
   /* Timeline axis styling */
   .vis-time-axis {
-      border-top: 1px solid #ddd !important;
+      border-top: 1px solid var(--border-light) !important;
   }
   
   .vis-time-axis .vis-text {
