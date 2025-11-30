@@ -260,6 +260,19 @@ class TestCLIWithProjectsDir:
         assert result.exit_code == 0
         assert "clear" in result.output.lower()
 
+        # Verify all cache files were actually deleted
+        remaining_cache_files: list[Path] = []
+        for project_dir in temp_projects_copy.iterdir():
+            if not project_dir.is_dir():
+                continue
+            cache_dir = project_dir / "cache"
+            if cache_dir.exists():
+                remaining_cache_files.extend(cache_dir.glob("*.json"))
+
+        assert not remaining_cache_files, (
+            f"Cache files should be deleted but found: {remaining_cache_files}"
+        )
+
     def test_clear_html_with_projects_dir(self, temp_projects_copy: Path) -> None:
         """Test HTML clearing with custom projects directory."""
         runner = CliRunner()
@@ -291,6 +304,21 @@ class TestCLIWithProjectsDir:
 
         assert result.exit_code == 0
         assert "clear" in result.output.lower() or "removed" in result.output.lower()
+
+        # Verify all HTML files were actually deleted
+        remaining_html: list[Path] = []
+        for project_dir in temp_projects_copy.iterdir():
+            if not project_dir.is_dir():
+                continue
+            combined = project_dir / "combined_transcripts.html"
+            if combined.exists():
+                remaining_html.append(combined)
+            # Also check for session HTML files
+            remaining_html.extend(project_dir.glob("session-*.html"))
+
+        assert not remaining_html, (
+            f"HTML files should be deleted but found: {remaining_html}"
+        )
 
 
 @pytest.mark.integration
