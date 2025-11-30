@@ -145,8 +145,8 @@ class ProjectSelector(App[Path]):
 
     def _update_selected_project_from_cursor(self) -> None:
         """Update the selected project based on the current cursor position."""
-        table = cast(DataTable[str], self.query_one("#projects-table", DataTable))
         try:
+            table = cast(DataTable[str], self.query_one("#projects-table", DataTable))
             row_data = table.get_row_at(table.cursor_row)
             if row_data:
                 # Extract project display from the first column
@@ -162,7 +162,7 @@ class ProjectSelector(App[Path]):
                         self.selected_project_path = project_path
                         break
         except Exception:
-            # If we can't get the row data, don't update selection
+            # If widget not mounted yet or we can't get the row data, don't update selection
             pass
 
     def action_select_project(self) -> None:
@@ -491,8 +491,8 @@ class SessionBrowser(App[Optional[str]]):
 
     def _update_selected_session_from_cursor(self) -> None:
         """Update the selected session based on the current cursor position."""
-        table = cast(DataTable[str], self.query_one("#sessions-table", DataTable))
         try:
+            table = cast(DataTable[str], self.query_one("#sessions-table", DataTable))
             row_data = table.get_row_at(table.cursor_row)
             if row_data:
                 # Extract session ID from the first column (now just first 8 chars)
@@ -503,7 +503,7 @@ class SessionBrowser(App[Optional[str]]):
                         self.selected_session_id = full_session_id
                         break
         except Exception:
-            # If we can't get the row data, don't update selection
+            # If widget not mounted yet or we can't get the row data, don't update selection
             pass
 
     def action_export_selected(self) -> None:
