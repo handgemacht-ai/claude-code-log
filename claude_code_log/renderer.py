@@ -2764,6 +2764,51 @@ def _update_hierarchy_stack(
     return (message_id, ancestry, message_id_counter)
 
 
+def _rebuild_message_hierarchy(messages: List[TemplateMessage]) -> None:
+    """Rebuild message_id and ancestry for all messages based on their current order.
+
+    This should be called after all reordering operations (pair reordering, sidechain
+    reordering) to ensure the hierarchy reflects the final display order.
+
+    The hierarchy is determined by message type using _get_message_hierarchy_level(),
+    and a stack-based approach builds proper parent-child relationships.
+
+    Args:
+        messages: List of template messages in their final order (modified in place)
+    """
+    hierarchy_stack: List[tuple[int, str]] = []
+    message_id_counter = 0
+
+    for message in messages:
+        # Session headers are level 0
+        if message.is_session_header:
+            current_level = 0
+        else:
+            # Determine level from css_class
+            is_sidechain = "sidechain" in message.css_class
+            current_level = _get_message_hierarchy_level(
+                message.css_class, is_sidechain
+            )
+
+        # Pop stack until we find the appropriate parent level
+        while hierarchy_stack and hierarchy_stack[-1][0] >= current_level:
+            hierarchy_stack.pop()
+
+        # Build ancestry from remaining stack
+        ancestry = [msg_id for _, msg_id in hierarchy_stack]
+
+        # Generate new message ID
+        message_id = f"d-{message_id_counter}"
+        message_id_counter += 1
+
+        # Push current message onto stack
+        hierarchy_stack.append((current_level, message_id))
+
+        # Update the message
+        message.message_id = message_id
+        message.ancestry = ancestry
+
+
 def _mark_messages_with_children(messages: List[TemplateMessage]) -> None:
     """Mark messages that have children and calculate descendant counts.
 
@@ -3016,6 +3061,11 @@ def generate_html(
     with log_timing("Reorder sidechain messages", t_start):
         template_messages = _reorder_sidechain_template_messages(template_messages)
 
+    # Rebuild hierarchy (message_id and ancestry) based on final order
+    # This must happen AFTER all reordering to get correct parent-child relationships
+    with log_timing("Rebuild message hierarchy", t_start):
+        _rebuild_message_hierarchy(template_messages)
+
     # Mark messages that have children for fold/unfold controls
     with log_timing("Mark messages with children", t_start):
         _mark_messages_with_children(template_messages)
@@ -3091,20 +3141,9 @@ def _reorder_sidechain_template_messages(
         is_sidechain = "sidechain" in message.css_class
 
         if agent_id and not is_sidechain and agent_id in sidechain_map:
-            # This is the Task result - get its message_id for ancestry
-            task_result_id = message.message_id
-
             # Insert the sidechain messages for this agent right after this message
-            # Update each sidechain message's ancestry to include the Task result
-            for sidechain_msg in sidechain_map[agent_id]:
-                # Rebuild ancestry: keep session-level ancestry, add Task result as parent
-                # The Task result's ancestry shows its full path
-                new_ancestry = message.ancestry.copy() if message.ancestry else []
-                if task_result_id and task_result_id not in new_ancestry:
-                    new_ancestry.append(task_result_id)
-                sidechain_msg.ancestry = new_ancestry
-                result.append(sidechain_msg)
-
+            # Note: ancestry will be rebuilt by _rebuild_message_hierarchy() later
+            result.extend(sidechain_map[agent_id])
             used_agents.add(agent_id)
 
     # Append any sidechains that weren't matched (shouldn't happen normally)
