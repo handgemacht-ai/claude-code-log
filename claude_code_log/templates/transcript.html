@@ -76,7 +76,7 @@
         <div class='header'>Session: {{ message.content_html }}</div>
         {% if message.session_subtitle %}
         <div class='session-subtitle'>{{
-            message.session_subtitle }} ({{message.session_subtitle.session_id}})</div>
+            message.session_subtitle }} ({{message.session_id}})</div>
         {% endif %}
         {% if message.has_children %}
         <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='session-header'>
