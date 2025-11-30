@@ -1855,6 +1855,8 @@ class TemplateMessage:
         self.uuid = uuid
         self.parent_uuid = parent_uuid
         self.agent_id = agent_id  # Agent ID for sidechain messages and Task results
+        # Raw text content for deduplication (sidechain assistants vs Task results)
+        self.raw_text_content: Optional[str] = None
         # Fold/unfold counts
         self.immediate_children_count = 0  # Direct children only
         self.total_descendants_count = 0  # All descendants recursively
@@ -2728,44 +2730,8 @@ def _get_message_hierarchy_level(css_class: str, is_sidechain: bool) -> int:
     return 1
 
 
-def _update_hierarchy_stack(
-    hierarchy_stack: List[tuple[int, str]],
-    current_level: int,
-    message_id_counter: int,
-) -> tuple[str, List[str], int]:
-    """Update the hierarchy stack and return message ID and ancestry.
-
-    Args:
-        hierarchy_stack: Current stack of (level, message_id) tuples
-        current_level: Hierarchy level of the current message
-        message_id_counter: Current message ID counter
-
-    Returns:
-        Tuple of (message_id, ancestry, updated_counter)
-        - message_id: Unique ID for this message (e.g., "d-42")
-        - ancestry: List of ancestor message IDs (e.g., ["d-10", "d-23", "d-35"])
-        - updated_counter: Incremented message ID counter
-    """
-    # Pop stack until we find the appropriate parent level
-    # The parent is the last message at a level strictly less than current_level
-    while hierarchy_stack and hierarchy_stack[-1][0] >= current_level:
-        hierarchy_stack.pop()
-
-    # Build ancestry from remaining stack
-    ancestry = [msg_id for _, msg_id in hierarchy_stack]
-
-    # Generate new message ID
-    message_id = f"d-{message_id_counter}"
-    message_id_counter += 1
-
-    # Push current message onto stack (it could be a parent for future messages)
-    hierarchy_stack.append((current_level, message_id))
-
-    return (message_id, ancestry, message_id_counter)
-
-
-def _rebuild_message_hierarchy(messages: List[TemplateMessage]) -> None:
-    """Rebuild message_id and ancestry for all messages based on their current order.
+def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
+    """Build message_id and ancestry for all messages based on their current order.
 
     This should be called after all reordering operations (pair reordering, sidechain
     reordering) to ensure the hierarchy reflects the final display order.
@@ -2773,16 +2739,27 @@ def _rebuild_message_hierarchy(messages: List[TemplateMessage]) -> None:
     The hierarchy is determined by message type using _get_message_hierarchy_level(),
     and a stack-based approach builds proper parent-child relationships.
 
+    For system messages with parent_uuid, the hierarchy level is derived from the
+    parent's level instead of the default, ensuring proper nesting.
+
     Args:
         messages: List of template messages in their final order (modified in place)
     """
     hierarchy_stack: List[tuple[int, str]] = []
     message_id_counter = 0
 
+    # Build UUID -> (message_id, level) mapping for parent_uuid resolution
+    # We do this in a single pass by updating the map as we assign IDs
+    uuid_to_info: Dict[str, tuple[str, int]] = {}
+
     for message in messages:
         # Session headers are level 0
         if message.is_session_header:
             current_level = 0
+        elif message.parent_uuid and message.parent_uuid in uuid_to_info:
+            # System message with known parent - nest under parent
+            _, parent_level = uuid_to_info[message.parent_uuid]
+            current_level = parent_level + 1
         else:
             # Determine level from css_class
             is_sidechain = "sidechain" in message.css_class
@@ -2803,6 +2780,10 @@ def _rebuild_message_hierarchy(messages: List[TemplateMessage]) -> None:
 
         # Push current message onto stack
         hierarchy_stack.append((current_level, message_id))
+
+        # Track UUID -> (message_id, level) for parent_uuid resolution
+        if message.uuid:
+            uuid_to_info[message.uuid] = (message_id, current_level)
 
         # Update the message
         message.message_id = message_id
@@ -3061,10 +3042,10 @@ def generate_html(
     with log_timing("Reorder sidechain messages", t_start):
         template_messages = _reorder_sidechain_template_messages(template_messages)
 
-    # Rebuild hierarchy (message_id and ancestry) based on final order
+    # Build hierarchy (message_id and ancestry) based on final order
     # This must happen AFTER all reordering to get correct parent-child relationships
-    with log_timing("Rebuild message hierarchy", t_start):
-        _rebuild_message_hierarchy(template_messages)
+    with log_timing("Build message hierarchy", t_start):
+        _build_message_hierarchy(template_messages)
 
     # Mark messages that have children for fold/unfold controls
     with log_timing("Mark messages with children", t_start):
@@ -3098,6 +3079,10 @@ def _reorder_sidechain_template_messages(
     order based on when each agent finishes. This function reorders messages so that
     each sidechain's messages appear right after the Task result that references them.
 
+    This function also handles deduplication: the last sidechain assistant message
+    typically contains the same content as the Task result, so we replace it with
+    a forward link to avoid showing the same content twice.
+
     This must be called AFTER _reorder_paired_messages, since that function moves
     tool_results next to their tool_uses, which changes where the agentId-bearing
     messages end up.
@@ -3129,7 +3114,7 @@ def _reorder_sidechain_template_messages(
         return messages
 
     # Second pass: insert sidechains after their Task result messages
-    # A message references a sidechain when it has agent_id and is NOT a sidechain itself
+    # Also perform deduplication of sidechain assistants vs Task results
     result: List[TemplateMessage] = []
     used_agents: set[str] = set()
 
@@ -3141,9 +3126,29 @@ def _reorder_sidechain_template_messages(
         is_sidechain = "sidechain" in message.css_class
 
         if agent_id and not is_sidechain and agent_id in sidechain_map:
+            sidechain_msgs = sidechain_map[agent_id]
+
+            # Deduplicate: find the last sidechain assistant with text content
+            # that matches the Task result content
+            task_result_content = message.raw_text_content
+            if task_result_content and message.type == "tool_result":
+                # Find the last assistant message in this sidechain
+                for sidechain_msg in reversed(sidechain_msgs):
+                    if (
+                        sidechain_msg.type == "assistant"
+                        and sidechain_msg.raw_text_content
+                        and sidechain_msg.raw_text_content == task_result_content
+                    ):
+                        # Replace with note pointing to the Task result
+                        forward_link_html = "<p><em>(Task summary — already displayed in Task tool result above)</em></p>"
+                        sidechain_msg.content_html = forward_link_html
+                        # Mark as deduplicated for potential debugging
+                        sidechain_msg.raw_text_content = None
+                        break
+
             # Insert the sidechain messages for this agent right after this message
-            # Note: ancestry will be rebuilt by _rebuild_message_hierarchy() later
-            result.extend(sidechain_map[agent_id])
+            # Note: ancestry will be rebuilt by _build_message_hierarchy() later
+            result.extend(sidechain_msgs)
             used_agents.add(agent_id)
 
     # Append any sidechains that weren't matched (shouldn't happen normally)
@@ -3197,18 +3202,6 @@ def _process_messages_loop(
 
     # Process messages into template-friendly format
     template_messages: List[TemplateMessage] = []
-
-    # Hierarchy tracking for message folding
-    # Stack of (level, message_id) tuples representing current nesting
-    hierarchy_stack: List[tuple[int, str]] = []
-    message_id_counter = 0
-
-    # UUID to message ID mapping for parent-child relationships
-    uuid_to_msg_id: Dict[str, str] = {}
-
-    # Track Task results and sidechain assistants for deduplication
-    # Maps raw content -> (template_messages index, message_id, type: "task" or "assistant")
-    content_map: Dict[str, tuple[int, str, str]] = {}
 
     # Per-message timing tracking
     message_timings: List[
@@ -3293,41 +3286,8 @@ def _process_messages_loop(
                 html_content = _convert_ansi_to_html(message.content)
                 content_html = f"<strong>{level_icon}</strong> {html_content}"
 
-            # Check if this message has a parent (for pairing system-info messages)
+            # Store parent UUID for hierarchy rebuild (handled by _build_message_hierarchy)
             parent_uuid = getattr(message, "parentUuid", None)
-            is_sidechain = getattr(message, "isSidechain", False)
-
-            # Determine hierarchy: use parentUuid if available, otherwise use stack
-            if parent_uuid and parent_uuid in uuid_to_msg_id:
-                # This is a child message (e.g., command output following command invocation)
-                parent_msg_id = uuid_to_msg_id[parent_uuid]
-                # Find the parent's level in the stack
-                current_level: int
-                for idx, (stack_level, stack_msg_id) in enumerate(hierarchy_stack):
-                    if stack_msg_id == parent_msg_id:
-                        # Child is one level deeper than parent
-                        current_level = stack_level + 1
-                        # Update stack: keep parent, add child
-                        hierarchy_stack = hierarchy_stack[: idx + 1]
-                        break
-                else:
-                    # Parent not found in stack, use default
-                    current_level = _get_message_hierarchy_level(
-                        level_css, is_sidechain
-                    )
-
-                msg_id, ancestry, message_id_counter = _update_hierarchy_stack(
-                    hierarchy_stack, current_level, message_id_counter
-                )
-            else:
-                # No parent, use normal hierarchy determination
-                current_level = _get_message_hierarchy_level(level_css, is_sidechain)
-                msg_id, ancestry, message_id_counter = _update_hierarchy_stack(
-                    hierarchy_stack, current_level, message_id_counter
-                )
-
-            # Track this message's UUID for potential children
-            uuid_to_msg_id[message.uuid] = msg_id
 
             system_template_message = TemplateMessage(
                 message_type="system",
@@ -3337,10 +3297,10 @@ def _process_messages_loop(
                 raw_timestamp=timestamp,
                 session_id=session_id,
                 message_title=f"System {level.title()}",
-                message_id=msg_id,
-                ancestry=ancestry,
-                uuid=message.uuid,  # Store UUID for pairing
-                parent_uuid=parent_uuid,  # Store parent UUID for pairing
+                message_id=None,  # Will be assigned by _build_message_hierarchy
+                ancestry=[],  # Will be assigned by _build_message_hierarchy
+                uuid=message.uuid,
+                parent_uuid=parent_uuid,
             )
             template_messages.append(system_template_message)
             continue
@@ -3466,11 +3426,6 @@ def _process_messages_loop(
                     else session_id[:8]
                 )
 
-                # Reset hierarchy stack for new session
-                hierarchy_stack.clear()
-
-                # Create session header with unique message ID so it can be a fold parent
-                session_message_id = f"session-{session_id}"
                 session_header = TemplateMessage(
                     message_type="session_header",
                     content_html=session_title,
@@ -3480,13 +3435,10 @@ def _process_messages_loop(
                     session_summary=current_session_summary,
                     session_id=session_id,
                     is_session_header=True,
-                    message_id=session_message_id,
+                    message_id=None,  # Will be assigned by _build_message_hierarchy
                     ancestry=[],  # Session headers are top-level
                 )
                 template_messages.append(session_header)
-
-                # Session header becomes the parent for all messages in this session
-                hierarchy_stack.append((0, session_message_id))
 
         # Update first user message if this is a user message and we don't have one yet
         elif message_type == "user" and not sessions[session_id]["first_user_message"]:
@@ -3614,12 +3566,7 @@ def _process_messages_loop(
         # For assistant/thinking with only tools (no text), we don't create a container message
         # The tools will be direct children of the current hierarchy level
         if text_only_content:
-            # Determine hierarchy level and update stack
             is_sidechain = getattr(message, "isSidechain", False)
-            current_level = _get_message_hierarchy_level(css_class, is_sidechain)
-            msg_id, ancestry, message_id_counter = _update_hierarchy_stack(
-                hierarchy_stack, current_level, message_id_counter
-            )
 
             template_message = TemplateMessage(
                 message_type=message_type,
@@ -3631,31 +3578,18 @@ def _process_messages_loop(
                 session_id=session_id,
                 token_usage=token_usage_str,
                 message_title=message_title,
-                message_id=msg_id,
-                ancestry=ancestry,
+                message_id=None,  # Will be assigned by _build_message_hierarchy
+                ancestry=[],  # Will be assigned by _build_message_hierarchy
                 agent_id=getattr(message, "agentId", None),
+                uuid=getattr(message, "uuid", None),
             )
-            template_messages.append(template_message)
 
-            # Track sidechain assistant messages for deduplication
+            # Store raw text for sidechain assistant deduplication
+            # (handled later in _reorder_sidechain_template_messages)
             if message_type == "assistant" and is_sidechain and text_content.strip():
-                template_msg_index = len(template_messages) - 1
-                content_key = text_content.strip()
+                template_message.raw_text_content = text_content.strip()
 
-                # Check if we already have a Task result with this content
-                if content_key in content_map:
-                    existing_index, existing_id, existing_type = content_map[
-                        content_key
-                    ]
-                    if existing_type == "task":
-                        # Found matching Task result - deduplicate this assistant message
-                        forward_link_html = f'<p><em>(Task summary — already displayed in <a href="#msg-{existing_id}-last">Task tool result above</a>)</em></p>'
-                        template_messages[
-                            template_msg_index
-                        ].content_html = forward_link_html
-                else:
-                    # Track this assistant in case we see a matching Task result later
-                    content_map[content_key] = (template_msg_index, msg_id, "assistant")
+            template_messages.append(template_message)
 
         # Create separate messages for each tool/thinking/image item
         for tool_item in tool_items:
@@ -3846,11 +3780,13 @@ def _process_messages_loop(
             if tool_is_sidechain:
                 tool_css_class += " sidechain"
 
-            # Determine hierarchy level and generate unique message ID
-            # Note: Pairing logic is handled later by _identify_message_pairs()
-            tool_level = _get_message_hierarchy_level(tool_css_class, tool_is_sidechain)
-            tool_msg_id, tool_ancestry, message_id_counter = _update_hierarchy_stack(
-                hierarchy_stack, tool_level, message_id_counter
+            # Generate unique UUID for this tool message
+            # Use tool_use_id if available, otherwise fall back to message UUID + index
+            # (tool items always come from messages with UUIDs)
+            tool_uuid = (
+                item_tool_use_id
+                if item_tool_use_id
+                else f"{message.uuid}-tool-{len(template_messages)}"
             )
 
             tool_template_message = TemplateMessage(
@@ -3864,38 +3800,19 @@ def _process_messages_loop(
                 tool_use_id=item_tool_use_id,
                 title_hint=tool_title_hint,
                 message_title=tool_message_title,
-                message_id=tool_msg_id,
-                ancestry=tool_ancestry,
+                message_id=None,  # Will be assigned by _build_message_hierarchy
+                ancestry=[],  # Will be assigned by _build_message_hierarchy
                 agent_id=getattr(message, "agentId", None),
+                uuid=tool_uuid,
             )
-            template_messages.append(tool_template_message)
 
-            # Track Task results and check for matching assistants
+            # Store raw text for Task result deduplication
+            # (handled later in _reorder_sidechain_template_messages)
             if pending_dedup is not None:
-                # pending_dedup contains the task result content
-                task_result_content = pending_dedup
-                template_msg_index = len(template_messages) - 1
+                tool_template_message.raw_text_content = pending_dedup
+                pending_dedup = None
 
-                # Check if we already have a sidechain assistant with this content
-                if task_result_content in content_map:
-                    existing_index, existing_id, existing_type = content_map[
-                        task_result_content
-                    ]
-                    if existing_type == "assistant":
-                        # Found matching assistant - deduplicate it by replacing with forward link
-                        forward_link_html = f'<p><em>(Task summary — already displayed in <a href="#msg-{tool_msg_id}-last">Task tool result below</a>)</em></p>'
-                        template_messages[
-                            existing_index
-                        ].content_html = forward_link_html
-                else:
-                    # Track this Task result in case we see a matching assistant later
-                    content_map[task_result_content] = (
-                        template_msg_index,
-                        tool_msg_id,
-                        "task",
-                    )
-
-                pending_dedup = None  # Reset for next iteration
+            template_messages.append(tool_template_message)
 
         # Track message timing
         if DEBUG_TIMING:
