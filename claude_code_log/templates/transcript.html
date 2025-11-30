@@ -75,7 +75,7 @@
     <div class='message session-header' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>Session: {{ message.content_html }}</div>
         {% if message.session_subtitle %}
-        <div class='session-subtitle' style='font-size: 0.9em; color: #666; margin-top: 4px;'>{{
+        <div class='session-subtitle'>{{
             message.session_subtitle }} ({{message.session_subtitle.session_id}})</div>
         {% endif %}
         {% if message.has_children %}

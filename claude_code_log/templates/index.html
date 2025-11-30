@@ -28,7 +28,7 @@
 
     <div class='summary'>
         <div class='summary-stats'>
-            <div style="display: flex; gap: 3em;">
+            <div class="summary-stats-flex">
                 <div class='summary-stat'>
                     <div class='number'>{{ summary.total_projects }}</div>
                     <div class='label'>Projects</div>
@@ -62,7 +62,7 @@
         <div class='project-card'>
             <div class='project-name'>
                 <a href='{{ project.html_file }}'>{{ project.display_name }}</a>
-                <span style="font-size: 0.6em; color:#666;">(← open combined transcript)</span>
+                <span class="transcript-link-hint">(← open combined transcript)</span>
             </div>
             <div class='project-stats'>
                 <div class='stat'>📁 {{ project.jsonl_count }} transcript files</div>

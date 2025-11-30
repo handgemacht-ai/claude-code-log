@@ -42,9 +42,8 @@ def test_tool_result_with_image():
     assert f"data:image/png;base64,{sample_image_data}" in html
     assert 'alt="Tool result image"' in html
 
-    # Should have proper styling
-    assert "max-width: 100%" in html
-    assert "border: 1px solid #ddd" in html
+    # Should have proper CSS class for styling
+    assert 'class="tool-result-image"' in html
 
 
 def test_tool_result_with_only_image():

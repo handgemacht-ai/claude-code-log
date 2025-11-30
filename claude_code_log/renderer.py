@@ -1290,8 +1290,7 @@ def format_tool_result_content(
                         data_url = f"data:{media_type};base64,{data}"
                         image_html_parts.append(
                             f'<img src="{data_url}" alt="Tool result image" '
-                            f'style="max-width: 100%; height: auto; border: 1px solid #ddd; '
-                            f'border-radius: 4px; margin: 10px 0;" />'
+                            f'class="tool-result-image" />'
                         )
         raw_content = "\n".join(content_parts)
         has_images = len(image_html_parts) > 0
@@ -1469,7 +1468,7 @@ def format_image_content(image: ImageContent) -> str:
     # Create a data URL from the base64 image data
     data_url = f"data:{image.source.media_type};base64,{image.source.data}"
 
-    return f'<img src="{data_url}" alt="Uploaded image" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; margin: 10px 0;" />'
+    return f'<img src="{data_url}" alt="Uploaded image" class="uploaded-image" />'
 
 
 def _is_compacted_session_summary(text: str) -> bool:

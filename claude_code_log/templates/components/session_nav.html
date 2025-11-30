@@ -4,10 +4,10 @@
 <div class='navigation'>
     {% if mode == "toc" %}
     <h2>Sessions</h2>
-    <span style='font-size: 0.75em;'>↓ Click a box below to scroll down to the corresponding session</span>
+    <span class='nav-hint'>↓ Click a box below to scroll down to the corresponding session</span>
     {% elif mode == "expandable" %}
     <h2>Session Navigation</h2>
-    <span style='font-size: 0.75em;'>↓ Click any to open individual session page</span>
+    <span class='nav-hint'>↓ Click any to open individual session page</span>
     {% endif %}
 
     <div class='session-nav'>
@@ -27,7 +27,7 @@
                 {% endif %}
             </div>
             {% if session.first_user_message %}
-            <pre class='session-preview' style='font-size: 0.75em; line-height: 1.3;'>
+            <pre class='session-preview'>
                 {{- session.first_user_message|e -}}
             </pre>
             {% endif %}

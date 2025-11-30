@@ -525,6 +525,12 @@
     font-size: 1.2em;
 }
 
+.session-subtitle {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 4px;
+}
+
 /* IDE notification styling */
 .ide-notification {
     background-color: var(--ide-notification-dimmed);
@@ -842,3 +848,13 @@ details summary {
 .ansi-dim { opacity: 0.7; }
 .ansi-italic { font-style: italic; }
 .ansi-underline { text-decoration: underline; }
+
+/* Image styling */
+.tool-result-image,
+.uploaded-image {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 10px 0;
+}

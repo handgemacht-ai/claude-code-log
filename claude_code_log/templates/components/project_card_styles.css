@@ -37,6 +37,11 @@
     text-decoration: underline;
 }
 
+.transcript-link-hint {
+    font-size: 0.6em;
+    color: #666;
+}
+
 .project-stats {
     color: #666;
     font-size: 0.9em;

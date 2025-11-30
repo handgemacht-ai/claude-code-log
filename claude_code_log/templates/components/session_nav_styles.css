@@ -93,3 +93,14 @@
     background-color: #ffffff99;
     text-decoration: none;
 }
+
+/* Navigation hints */
+.nav-hint {
+    font-size: 0.75em;
+}
+
+/* Session preview styling */
+.session-preview {
+    font-size: 0.75em;
+    line-height: 1.3;
+}
