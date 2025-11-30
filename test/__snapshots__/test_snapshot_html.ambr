@@ -3048,7 +3048,7 @@
   }
   /* Filter toolbar and controls */
   .filter-toolbar {
-      background-color: var(--bg-neutral);
+      background-color: var(--neutral-dimmed);
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 16px;
@@ -7727,7 +7727,7 @@
   }
   /* Filter toolbar and controls */
   .filter-toolbar {
-      background-color: var(--bg-neutral);
+      background-color: var(--neutral-dimmed);
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 16px;
@@ -12564,7 +12564,7 @@
   }
   /* Filter toolbar and controls */
   .filter-toolbar {
-      background-color: var(--bg-neutral);
+      background-color: var(--neutral-dimmed);
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 16px;
@@ -17367,7 +17367,7 @@
   }
   /* Filter toolbar and controls */
   .filter-toolbar {
-      background-color: var(--bg-neutral);
+      background-color: var(--neutral-dimmed);
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 16px;
