@@ -42,7 +42,7 @@
 .vis-labelset .vis-label {
     font-size: 12px !important;
     font-weight: 500 !important;
-    color: #495057 !important;
+    color: var(--text-secondary) !important;
 }
 
 /* Timeline items styling */
@@ -66,7 +66,7 @@
 /* Message type specific styling */
 .vis-item.timeline-item-user {
     background-color: #e3f2fd !important;
-    border-color: #2196f3 !important;
+    border-color: var(--system-warning-color) !important;
 }
 
 .vis-item.timeline-item-assistant {
@@ -116,7 +116,7 @@
 
 .vis-time-axis .vis-text {
     font-size: 11px !important;
-    color: #666 !important;
+    color: var(--text-muted) !important;
 }
 
 /* Timeline navigation controls */

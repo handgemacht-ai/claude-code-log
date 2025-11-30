@@ -1,12 +1,12 @@
 /* Session navigation styles */
 .navigation {
-    background-color: #f8f9fa66;
+    background-color: var(--bg-neutral);
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 24px;
     box-shadow: -7px -7px 10px #eeeeee44, 7px 7px 10px #00000011;
-    border-left: #ffffff66 1px solid;
-    border-top: #ffffff66 1px solid;
+    border-left: var(--white-dimmed) 1px solid;
+    border-top: var(--white-dimmed) 1px solid;
     border-bottom: #00000017 1px solid;
     border-right: #00000017 1px solid;
 }
@@ -14,7 +14,7 @@
 .navigation h2 {
     margin: 0 0 12px 0;
     font-size: 1.2em;
-    color: #495057;
+    color: var(--text-secondary);
 }
 
 .session-nav {
@@ -25,11 +25,11 @@
 
 .session-link {
     padding: 8px 12px;
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
     border: 1px solid #dee2e6;
     border-radius: 4px;
     text-decoration: none;
-    color: #495057;
+    color: var(--text-secondary);
     transition: background-color 0.2s;
 }
 
@@ -58,7 +58,7 @@
 .project-sessions h4 {
     margin: 0 0 10px 0;
     font-size: 0.9em;
-    color: #495057;
+    color: var(--text-secondary);
     font-weight: 600;
 }
 
@@ -80,11 +80,11 @@
 .combined-transcript-link {
     display: inline-block;
     padding: 8px 12px;
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
     border: 1px solid #dee2e6;
     border-radius: 4px;
     text-decoration: none;
-    color: #495057;
+    color: var(--text-secondary);
     font-weight: 500;
     transition: background-color 0.2s;
 }

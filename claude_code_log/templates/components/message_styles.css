@@ -159,7 +159,7 @@
 }
 
 .fold-bar[data-border-color="session-header"] .fold-bar-section {
-    border-bottom-color: #2196f3;
+    border-bottom-color: var(--system-warning-color);
 }
 
 /* Sidechain (sub-assistant) fold-bar styling */
@@ -255,7 +255,7 @@
 
 .pair-duration {
     font-size: 80%;
-    color: #666;
+    color: var(--text-muted);
     font-style: italic;
 }
 
@@ -297,7 +297,7 @@
 
 /* Message type styling */
 .user {
-    border-left-color: #ff9800;
+    border-left-color: var(--user-color);
 }
 
 /* Steering user messages (out-of-band input while agent is working) */
@@ -313,7 +313,7 @@
 }
 
 .assistant {
-    border-left-color: #9c27b0;
+    border-left-color: var(--assistant-color);
 }
 
 /* Dimmed assistant when paired with thinking */
@@ -358,7 +358,7 @@
     line-height: 1.4;
     white-space: pre-wrap;
     word-wrap: break-word;
-    color: #333;
+    color: var(--text-primary);
     overflow-x: auto;
 }
 
@@ -374,11 +374,11 @@
 /* Bash command styling */
 .bash-input {
     background-color: #1e1e1e08;
-    border-left-color: #4caf50;
+    border-left-color: var(--tool-use-color);
 }
 
 .bash-prompt {
-    color: #4caf50;
+    color: var(--tool-use-color);
     font-weight: bold;
     font-size: 1.1em;
     margin-right: 8px;
@@ -388,7 +388,7 @@
     font-family: var(--font-monospace);
     font-size: 0.95em;
     color: #2c3e50;
-    background-color: #f8f9fa;
+    background-color: var(--bg-neutral);
     padding: 2px 6px;
     border-radius: 3px;
 }
@@ -410,7 +410,7 @@
     line-height: 1.4;
     white-space: pre-wrap;
     word-wrap: break-word;
-    color: #333;
+    color: var(--text-primary);
     overflow-x: auto;
 }
 
@@ -430,7 +430,7 @@
 }
 
 .bash-empty {
-    color: #999;
+    color: var(--text-muted);
     font-style: italic;
 }
 
@@ -459,7 +459,7 @@
 }
 
 .tool_use {
-    border-left-color: #4caf50;
+    border-left-color: var(--tool-use-color);
 }
 
 .tool_result {
@@ -499,7 +499,7 @@
 
 /* Full purple when thinking is paired (as pair_first) */
 .thinking.paired-message.pair_first {
-    border-left-color: #9c27b0;
+    border-left-color: var(--assistant-color);
 }
 
 .image {
@@ -527,14 +527,14 @@
 
 .session-subtitle {
     font-size: 0.9em;
-    color: #666;
+    color: var(--text-muted);
     margin-top: 4px;
 }
 
 /* IDE notification styling */
 .ide-notification {
     background-color: var(--ide-notification-dimmed);
-    border-left: #9c27b0 2px solid;
+    border-left: var(--assistant-color) 2px solid;
     padding: 8px 12px;
     margin: 8px 0;
     border-radius: 4px;
@@ -554,13 +554,13 @@
 }
 
 .ide-selection-collapsible summary:hover {
-    color: #333;
+    color: var(--text-primary);
 }
 
 .ide-selection-content {
     margin-top: 8px;
     padding: 8px;
-    background-color: #f8f9fa;
+    background-color: var(--bg-neutral);
     border-radius: 3px;
     border: 1px solid #dee2e6;
     font-family: var(--font-monospace);
@@ -639,7 +639,7 @@ pre > code {
 
 .tool-param-structured {
     margin: 0;
-    background-color: #f8f9fa;
+    background-color: var(--bg-neutral);
     padding: 4px;
     border-radius: 3px;
 }
@@ -654,7 +654,7 @@ pre > code {
 }
 
 .tool-param-collapsible summary:hover {
-    color: #333;
+    color: var(--text-primary);
 }
 
 .tool-param-collapsible[open] > summary {
@@ -667,7 +667,7 @@ pre > code {
 }
 
 .tool-params-empty {
-    color: #999;
+    color: var(--text-muted);
     font-style: italic;
 }
 

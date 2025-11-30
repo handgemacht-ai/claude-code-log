@@ -30,7 +30,7 @@
 
 .project-name a {
     text-decoration: none;
-    color: #2196f3;
+    color: var(--system-warning-color);
 }
 
 .project-name a:hover {
@@ -39,11 +39,11 @@
 
 .transcript-link-hint {
     font-size: 0.6em;
-    color: #666;
+    color: var(--text-muted);
 }
 
 .project-stats {
-    color: #666;
+    color: var(--text-muted);
     font-size: 0.9em;
     display: flex;
     gap: 20px;
@@ -84,11 +84,11 @@
 .summary-stat .number {
     font-size: 1.5em;
     font-weight: 600;
-    color: #2196f3;
+    color: var(--system-warning-color);
 }
 
 .summary-stat .label {
-    color: #666;
+    color: var(--text-muted);
     font-size: 0.9em;
 }
 
@@ -99,14 +99,14 @@
 
 .project-sessions details summary {
     cursor: pointer;
-    color: #666;
+    color: var(--text-muted);
     font-size: 1.1em;
     font-weight: 600;
     padding: 8px 0;
 }
 
 .project-sessions details summary:hover {
-    color: #2196f3;
+    color: var(--system-warning-color);
 }
 
 .project-sessions details[open] summary {

@@ -86,7 +86,7 @@ body {
     margin: 0 auto;
     padding: 10px;
     background: linear-gradient(90deg, #f3d6d2, #f1dcce, #f0e4ca, #eeecc7, #e3ecc3, #d5eac0, #c6e8bd, #b9e6bc, #b6e3c5, #b3e1cf);
-    color: #333;
+    color: var(--text-primary);
 }
 
 h1 {
@@ -172,7 +172,7 @@ pre {
 /* Timestamps */
 .timestamp {
     font-size: 0.85em;
-    color: #666;
+    color: var(--text-muted);
     font-weight: normal;
 }
 
@@ -180,8 +180,8 @@ pre {
 .floating-btn {
     position: fixed;
     right: 20px;
-    background-color: #e8f4fd66;
-    color: #666;
+    background-color: var(--session-bg-dimmed);
+    color: var(--text-muted);
     border: none;
     border-radius: 50%;
     width: 50px;
@@ -204,7 +204,7 @@ pre {
 }
 
 .floating-btn:visited {
-    color: #666;
+    color: var(--text-muted);
 }
 
 /* Floating buttons positioning */

@@ -10,7 +10,7 @@
     right: 45px;
     top: 50%;
     transform: translateY(-50%);
-    color: #999;
+    color: var(--text-muted);
     font-size: 0.75em;
     pointer-events: none;
     transition: opacity 0.2s;
@@ -45,7 +45,7 @@
     background: #ffffff88;
     border: 1px solid #dee2e6;
     border-radius: 20px;
-    color: #495057;
+    color: var(--text-secondary);
     font-size: 0.85em;
     font-family: inherit;
     transition: all 0.2s;
@@ -53,13 +53,13 @@
 
 .search-input:focus {
     outline: none;
-    border-color: #2196f3;
+    border-color: var(--system-warning-color);
     background: #ffffff99;
     box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
 }
 
 .search-input::placeholder {
-    color: #666;
+    color: var(--text-muted);
 }
 
 .search-clear {
@@ -67,7 +67,7 @@
     right: 15px;
     background: none;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 18px;
     padding: 5px;
@@ -77,8 +77,8 @@
 }
 
 .search-clear:hover {
-    color: #333;
-    background: #ffffff66;
+    color: var(--text-primary);
+    background: var(--white-dimmed);
 }
 
 .search-clear.visible {
@@ -89,7 +89,7 @@
 .search-results-info {
     margin-top: 8px;
     font-size: 12px;
-    color: #666;
+    color: var(--text-muted);
     display: none;
 }
 
@@ -117,11 +117,11 @@
     align-items: center;
     gap: 4px;
     cursor: pointer;
-    color: #666;
+    color: var(--text-muted);
 }
 
 .search-option-inline:hover {
-    color: #333;
+    color: var(--text-primary);
 }
 
 .search-option-inline input[type="checkbox"] {
@@ -133,7 +133,7 @@
     background: #ffffff88;
     border: 1px solid #dee2e6;
     border-radius: 4px;
-    color: #333;
+    color: var(--text-primary);
     padding: 4px 8px;
     cursor: pointer;
     font-size: 12px;
@@ -142,7 +142,7 @@
 
 .search-nav-btn:hover:not(:disabled) {
     background: #ffffff99;
-    border-color: #2196f3;
+    border-color: var(--system-warning-color);
     transform: translateY(-1px);
 }
 
@@ -176,7 +176,7 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #666;
+    color: var(--text-muted);
     transition: color 0.2s;
 }
 
@@ -191,18 +191,18 @@
 }
 
 .search-option:hover {
-    color: #333;
+    color: var(--text-primary);
 }
 
 /* Index Page Search Results */
 .search-results-panel {
     margin: 20px 0;
     padding: 20px;
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
     border-radius: 8px;
     box-shadow: -7px -7px 10px #eeeeee44, 7px 7px 10px #00000011;
-    border-left: #ffffff66 1px solid;
-    border-top: #ffffff66 1px solid;
+    border-left: var(--white-dimmed) 1px solid;
+    border-top: var(--white-dimmed) 1px solid;
     border-bottom: #00000017 1px solid;
     border-right: #00000017 1px solid;
     display: none;
@@ -230,7 +230,7 @@
 .search-close-btn {
     background: none;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 20px;
     padding: 5px;
@@ -239,8 +239,8 @@
 }
 
 .search-close-btn:hover {
-    color: #333;
-    background: #ffffff66;
+    color: var(--text-primary);
+    background: var(--white-dimmed);
 }
 
 .search-result-group {
@@ -259,7 +259,7 @@
 
 .search-result-count {
     background: #ffffff88;
-    color: #666;
+    color: var(--text-muted);
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 11px;
@@ -295,14 +295,14 @@
 
 .search-result-session {
     font-size: 12px;
-    color: #666;
+    color: var(--text-muted);
     margin-bottom: 5px;
     font-weight: 500;
 }
 
 .search-result-excerpt {
     font-size: 13px;
-    color: #495057;
+    color: var(--text-secondary);
     line-height: 1.4;
 }
 
@@ -317,7 +317,7 @@
 .search-result-meta {
     margin-top: 8px;
     font-size: 11px;
-    color: #666;
+    color: var(--text-muted);
     display: flex;
     gap: 15px;
     padding-top: 5px;
@@ -330,7 +330,7 @@
 .search-no-results {
     text-align: center;
     padding: 30px;
-    color: #666;
+    color: var(--text-muted);
     font-size: 14px;
     background-color: #ffffff44;
     border-radius: 6px;
@@ -341,7 +341,7 @@
 .search-loading {
     text-align: center;
     padding: 20px;
-    color: #666;
+    color: var(--text-muted);
     background-color: #ffffff44;
     border-radius: 6px;
 }
