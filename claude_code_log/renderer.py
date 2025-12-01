@@ -2775,8 +2775,12 @@ def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
         ancestry = [msg_id for _, msg_id in hierarchy_stack]
 
         # Generate new message ID
-        message_id = f"d-{message_id_counter}"
-        message_id_counter += 1
+        # Session headers use session-{session_id} format for navigation links
+        if message.is_session_header and message.session_id:
+            message_id = f"session-{message.session_id}"
+        else:
+            message_id = f"d-{message_id_counter}"
+            message_id_counter += 1
 
         # Push current message onto stack
         hierarchy_stack.append((current_level, message_id))
