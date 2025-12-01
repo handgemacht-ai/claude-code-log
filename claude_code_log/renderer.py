@@ -3121,11 +3121,12 @@ def _reorder_sidechain_template_messages(
     for message in main_messages:
         result.append(message)
 
-        # Check if this message references a sidechain (via agent_id)
+        # Check if this is a Task tool_result that references a sidechain (via agent_id)
+        # We only insert after tool_result (not tool_use) to avoid duplicates if
+        # tool_use ever gets agent_id in the future
         agent_id = message.agent_id
-        is_sidechain = "sidechain" in message.css_class
 
-        if agent_id and not is_sidechain and agent_id in sidechain_map:
+        if agent_id and message.type == "tool_result" and agent_id in sidechain_map:
             sidechain_msgs = sidechain_map[agent_id]
 
             # Deduplicate: find the last sidechain assistant with text content
@@ -3573,8 +3574,6 @@ def _process_messages_loop(
         # For assistant/thinking with only tools (no text), we don't create a container message
         # The tools will be direct children of the current hierarchy level
         if text_only_content:
-            is_sidechain = getattr(message, "isSidechain", False)
-
             template_message = TemplateMessage(
                 message_type=message_type,
                 content_html=content_html,
