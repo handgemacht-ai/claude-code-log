@@ -3787,11 +3787,10 @@ def _process_messages_loop(
 
             # Generate unique UUID for this tool message
             # Use tool_use_id if available, otherwise fall back to message UUID + index
-            message_uuid = getattr(message, "uuid", None)
             tool_uuid = (
                 item_tool_use_id
                 if item_tool_use_id
-                else f"{message_uuid}-tool-{len(template_messages)}"
+                else f"{msg_uuid}-tool-{len(template_messages)}"
             )
 
             tool_template_message = TemplateMessage(
