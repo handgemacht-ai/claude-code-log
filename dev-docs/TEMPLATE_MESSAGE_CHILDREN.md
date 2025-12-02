@@ -72,24 +72,45 @@ messageEl.querySelector('.children').style.display = '';
 
 ## Exploration Log
 
-### Phase 1: Foundation (TODO)
-- [ ] Add `children` field to TemplateMessage
-- [ ] Keep existing flat-list behavior working
-- [ ] Add `flatten()` method for backward compatibility
+### Phase 1: Foundation ✅ COMPLETE
+- [x] Add `children` field to TemplateMessage (commit `7077f68`)
+- [x] Keep existing flat-list behavior working
+- [x] Add `flatten()` method for backward compatibility (commit `ed4d7b3`)
+  - Instance method `flatten()` returns self + all descendants in depth-first order
+  - Static method `flatten_all()` flattens list of root messages
+  - Unit tests in `test/test_template_data.py::TestTemplateMessageTree`
 
-### Phase 2: Tree Building (TODO)
-- [ ] Create `_build_message_tree()` function
-- [ ] Return root messages instead of flat list
-- [ ] Update child counting to work recursively
+### Phase 2: Tree Building ✅ COMPLETE
+- [x] Create `_build_message_tree()` function (commit `83fcf31`)
+  - Takes flat list with `message_id` and `ancestry` already set
+  - Populates `children` field based on ancestry
+  - Returns list of root messages (those with empty ancestry)
+- [x] Called after `_mark_messages_with_children()` in render pipeline
+- [x] Root messages stored but flat list still passed to template
+- [x] Integration tests verify tree building doesn't break HTML generation
 
-### Phase 3: Template Migration (TODO)
+### Phase 3: Template Migration (TODO - Future Work)
 - [ ] Create recursive render macro
 - [ ] Update DOM structure to use nested `.children` divs
 - [ ] Migrate JavaScript fold/unfold
+- [ ] Pass `root_messages` to template instead of flat list
 
 ### Challenges & Notes
 
-*To be filled as exploration progresses...*
+**Current State (2025-12-02):**
+- Tree is built internally but not yet used for rendering
+- Both data structures exist: flat list (used by template) and tree (populated but unused)
+- This allows incremental migration - template can switch to tree rendering later
+
+**Why Keep Both:**
+1. Backward compatibility with existing template
+2. Can test tree-building logic without breaking rendering
+3. `flatten_all()` provides escape hatch if tree rendering has issues
+
+**Performance Consideration:**
+- Tree building is O(n) where n = number of messages
+- No significant overhead observed in timing logs
+- Most time spent in template rendering, not data structure manipulation
 
 ## Related Work
 
