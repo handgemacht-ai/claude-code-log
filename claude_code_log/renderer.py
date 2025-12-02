@@ -1864,6 +1864,8 @@ class TemplateMessage:
         self.is_paired = False
         self.pair_role: Optional[str] = None  # "pair_first", "pair_last", "pair_middle"
         self.pair_duration: Optional[str] = None  # Duration for pair_last messages
+        # Children for tree-based rendering (future use)
+        self.children: List["TemplateMessage"] = []
 
     def get_immediate_children_label(self) -> str:
         """Generate human-readable label for immediate children."""
@@ -1872,6 +1874,30 @@ class TemplateMessage:
     def get_total_descendants_label(self) -> str:
         """Generate human-readable label for all descendants."""
         return _format_type_counts(self.total_descendants_by_type)
+
+    def flatten(self) -> List["TemplateMessage"]:
+        """Recursively flatten this message and all children into a list.
+
+        Returns a list with this message followed by all descendants in
+        depth-first order. This provides backward compatibility with the
+        flat-list template rendering approach.
+        """
+        result: List["TemplateMessage"] = [self]
+        for child in self.children:
+            result.extend(child.flatten())
+        return result
+
+    @staticmethod
+    def flatten_all(messages: List["TemplateMessage"]) -> List["TemplateMessage"]:
+        """Flatten a list of root messages into a single flat list.
+
+        Useful for converting a tree structure back to a flat list for
+        templates that expect the traditional flat message list.
+        """
+        result: List["TemplateMessage"] = []
+        for message in messages:
+            result.extend(message.flatten())
+        return result
 
 
 class TemplateProject:
