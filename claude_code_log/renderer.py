@@ -2495,22 +2495,30 @@ def _identify_message_pairs(messages: List[TemplateMessage]) -> None:
     Modifies messages in-place by setting is_paired and pair_role fields.
 
     Uses a two-pass algorithm:
-    1. First pass: Build index of tool_use_id -> message index for tool_use and tool_result
+    1. First pass: Build index of (session_id, tool_use_id) -> message index for tool_use
+                   and tool_result. Session ID is included to prevent cross-session pairing
+                   when sessions are resumed (same tool_use_id can appear in multiple sessions).
                    Build index of uuid -> message index for parent-child system messages
     2. Second pass: Sequential scan for adjacent pairs (system+output, bash, thinking+assistant)
                    and match tool_use/tool_result and uuid-based pairs using the index
     """
-    # Pass 1: Build index of tool_use messages and tool_result messages by tool_use_id
-    tool_use_index: Dict[str, int] = {}  # tool_use_id -> message index
-    tool_result_index: Dict[str, int] = {}  # tool_use_id -> message index
+    # Pass 1: Build index of tool_use messages and tool_result messages
+    # Key is (session_id, tool_use_id) to prevent cross-session pairing on resume
+    tool_use_index: Dict[
+        tuple[str, str], int
+    ] = {}  # (session_id, tool_use_id) -> index
+    tool_result_index: Dict[
+        tuple[str, str], int
+    ] = {}  # (session_id, tool_use_id) -> index
     uuid_index: Dict[str, int] = {}  # uuid -> message index for parent-child pairing
 
     for i, msg in enumerate(messages):
-        if msg.tool_use_id:
+        if msg.tool_use_id and msg.session_id:
+            key = (msg.session_id, msg.tool_use_id)
             if "tool_use" in msg.css_class:
-                tool_use_index[msg.tool_use_id] = i
+                tool_use_index[key] = i
             elif "tool_result" in msg.css_class:
-                tool_result_index[msg.tool_use_id] = i
+                tool_result_index[key] = i
         # Build UUID index for system messages (both parent and child)
         if msg.uuid and "system" in msg.css_class:
             uuid_index[msg.uuid] = i
@@ -2537,9 +2545,15 @@ def _identify_message_pairs(messages: List[TemplateMessage]) -> None:
                 continue
 
         # Check for tool_use + tool_result pair using index (no distance limit)
-        if "tool_use" in current.css_class and current.tool_use_id:
-            if current.tool_use_id in tool_result_index:
-                result_idx = tool_result_index[current.tool_use_id]
+        # Key includes session_id to prevent cross-session pairing on resume
+        if (
+            "tool_use" in current.css_class
+            and current.tool_use_id
+            and current.session_id
+        ):
+            key = (current.session_id, current.tool_use_id)
+            if key in tool_result_index:
+                result_idx = tool_result_index[key]
                 result_msg = messages[result_idx]
                 current.is_paired = True
                 current.pair_role = "pair_first"
@@ -2594,12 +2608,21 @@ def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMe
     """
     from datetime import datetime
 
-    # Build index of pair_last messages by tool_use_id
-    pair_last_index: Dict[str, int] = {}  # tool_use_id -> message index
+    # Build index of pair_last messages by (session_id, tool_use_id)
+    # Session ID is included to prevent cross-session pairing when sessions are resumed
+    pair_last_index: Dict[
+        tuple[str, str], int
+    ] = {}  # (session_id, tool_use_id) -> message index
 
     for i, msg in enumerate(messages):
-        if msg.is_paired and msg.pair_role == "pair_last" and msg.tool_use_id:
-            pair_last_index[msg.tool_use_id] = i
+        if (
+            msg.is_paired
+            and msg.pair_role == "pair_last"
+            and msg.tool_use_id
+            and msg.session_id
+        ):
+            key = (msg.session_id, msg.tool_use_id)
+            pair_last_index[key] = i
 
     # Create reordered list
     reordered: List[TemplateMessage] = []
@@ -2612,9 +2635,16 @@ def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMe
         reordered.append(msg)
 
         # If this is the first message in a pair, immediately add its pair_last
-        if msg.is_paired and msg.pair_role == "pair_first" and msg.tool_use_id:
-            if msg.tool_use_id in pair_last_index:
-                last_idx = pair_last_index[msg.tool_use_id]
+        # Key includes session_id to prevent cross-session pairing on resume
+        if (
+            msg.is_paired
+            and msg.pair_role == "pair_first"
+            and msg.tool_use_id
+            and msg.session_id
+        ):
+            key = (msg.session_id, msg.tool_use_id)
+            if key in pair_last_index:
+                last_idx = pair_last_index[key]
                 pair_last = messages[last_idx]
                 reordered.append(pair_last)
                 skip_indices.add(last_idx)
