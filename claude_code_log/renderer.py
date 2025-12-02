@@ -3020,6 +3020,53 @@ def _mark_messages_with_children(messages: List[TemplateMessage]) -> None:
                 )
 
 
+def _build_message_tree(messages: List[TemplateMessage]) -> List[TemplateMessage]:
+    """Build tree structure by populating children fields based on ancestry.
+
+    This function takes a flat list of messages (with message_id and ancestry
+    already set by _build_message_hierarchy) and populates the children field
+    of each message to form an explicit tree structure.
+
+    The tree structure enables:
+    - Recursive template rendering with nested DOM elements
+    - Simpler JavaScript fold/unfold (just hide/show children container)
+    - More natural parent-child traversal
+
+    Args:
+        messages: List of template messages with message_id and ancestry set
+
+    Returns:
+        List of root messages (those with empty ancestry). Each message's
+        children field is populated with its direct children.
+    """
+    # Build index of messages by ID for O(1) lookup
+    message_by_id: dict[str, TemplateMessage] = {}
+    for message in messages:
+        if message.message_id:
+            message_by_id[message.message_id] = message
+
+    # Clear any existing children (in case of re-processing)
+    for message in messages:
+        message.children = []
+
+    # Collect root messages (those with no ancestry)
+    root_messages: List[TemplateMessage] = []
+
+    # Populate children based on ancestry
+    for message in messages:
+        if not message.ancestry:
+            # Root message (level 0, no parent)
+            root_messages.append(message)
+        else:
+            # Has a parent - add to parent's children
+            immediate_parent_id = message.ancestry[-1]
+            if immediate_parent_id in message_by_id:
+                parent = message_by_id[immediate_parent_id]
+                parent.children.append(message)
+
+    return root_messages
+
+
 def deduplicate_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
     """Remove duplicate messages based on (type, timestamp, sessionId, content_key).
 
@@ -3245,6 +3292,15 @@ def generate_html(
     # Mark messages that have children for fold/unfold controls
     with log_timing("Mark messages with children", t_start):
         _mark_messages_with_children(template_messages)
+
+    # Build tree structure by populating children fields
+    # This enables future recursive template rendering while maintaining
+    # backward compatibility with the current flat-list approach
+    with log_timing("Build message tree", t_start):
+        _root_messages = _build_message_tree(template_messages)
+        # Note: root_messages contains just the top-level messages with children populated
+        # For now, we continue using template_messages (flat list) for template rendering
+        # Future: pass root_messages to a recursive template macro
 
     # Render template
     with log_timing("Template environment setup", t_start):
