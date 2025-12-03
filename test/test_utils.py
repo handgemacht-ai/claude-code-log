@@ -507,6 +507,56 @@ class TestCompactIDETagsForPreview:
         assert result == text
         assert "<ide_selection>" in result  # Tag preserved
 
+    def test_compact_bash_input(self):
+        """Test that <bash-input> is replaced with terminal emoji and command."""
+        text = "<bash-input>uv run ty check</bash-input>"
+        result = _compact_ide_tags_for_preview(text)
+
+        assert "💻 uv run ty check" in result
+        assert "<bash-input>" not in result
+
+    def test_compact_bash_input_with_following_text(self):
+        """Test bash-input followed by other text."""
+        text = "<bash-input>git status</bash-input>What does this show?"
+        result = _compact_ide_tags_for_preview(text)
+
+        assert "💻 git status" in result
+        assert "What does this show?" in result
+        assert "<bash-input>" not in result
+
+    def test_compact_bash_input_truncates_long_commands(self):
+        """Test that very long commands are truncated."""
+        long_command = "very-long-command-that-exceeds-fifty-characters-in-total-length"
+        text = f"<bash-input>{long_command}</bash-input>"
+        result = _compact_ide_tags_for_preview(text)
+
+        # Should be truncated to 47 chars + "..."
+        assert "💻 " in result
+        assert len(result.replace("💻 ", "")) <= 50
+        assert result.endswith("...")
+
+    def test_compact_bash_input_with_ide_tags(self):
+        """Test bash-input combined with IDE tags."""
+        text = (
+            "<ide_opened_file>The user opened the file /src/test.py in the IDE.</ide_opened_file>"
+            "<bash-input>pytest test_file.py</bash-input>"
+            "Run this test"
+        )
+        result = _compact_ide_tags_for_preview(text)
+
+        assert "📎 /src/test.py" in result
+        assert "💻 pytest test_file.py" in result
+        assert "Run this test" in result
+
+    def test_embedded_bash_input_not_replaced(self):
+        """Test that bash-input tags embedded in content are NOT replaced."""
+        text = 'Error message: {"content":"<bash-input>embedded</bash-input>"}'
+        result = _compact_ide_tags_for_preview(text)
+
+        # No leading tag, so text should be unchanged
+        assert result == text
+        assert "<bash-input>embedded</bash-input>" in result
+
 
 class TestCreateSessionPreview:
     """Test session preview creation with IDE tags and truncation."""

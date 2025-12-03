@@ -2997,6 +2997,10 @@ def generate_html(
         for session_id in session_order:
             session_info = sessions[session_id]
 
+            # Skip empty sessions (agent-only, no user messages)
+            if not session_info["first_user_message"]:
+                continue
+
             # Format timestamp range
             first_ts = session_info["first_timestamp"]
             last_ts = session_info["last_timestamp"]

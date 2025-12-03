@@ -175,21 +175,22 @@ IDE_DIAGNOSTICS_PATTERN = re.compile(
 
 
 def _compact_ide_tags_for_preview(text_content: str) -> str:
-    """Replace verbose IDE tags with compact emoji indicators for previews.
+    """Replace verbose IDE/system tags with compact emoji indicators for previews.
 
-    Only processes IDE tags at the START of the content (where VS Code places them).
+    Only processes tags at the START of the content (where VS Code places them).
     Tags appearing later in the text (e.g., inside quoted JSONL) are left unchanged.
 
     Transforms:
     - <ide_opened_file>...path/to/file...</ide_opened_file> -> 📎 /path/to/file
     - <ide_selection>...path/to/file...</ide_selection> -> ✂️ /path/to/file
     - <ide_diagnostics>...</ide_diagnostics> -> 🩺 diagnostics
+    - <bash-input>command</bash-input> -> 💻 command
 
     Args:
-        text_content: Raw text content that may contain IDE tags
+        text_content: Raw text content that may contain IDE/system tags
 
     Returns:
-        Text with leading IDE tags replaced by compact indicators
+        Text with leading tags replaced by compact indicators
     """
 
     def _extract_file_path(content: str) -> str | None:
@@ -249,7 +250,22 @@ def _compact_ide_tags_for_preview(text_content: str) -> str:
             remaining = remaining[match.end() :]
             continue
 
-        # No more IDE tags at start - stop processing
+        # Check for <bash-input>command</bash-input> at start
+        match = re.match(
+            r"^\s*<bash-input>(.*?)</bash-input>",
+            remaining,
+            re.DOTALL,
+        )
+        if match:
+            command = match.group(1).strip()
+            # Truncate very long commands
+            if len(command) > 50:
+                command = command[:47] + "..."
+            compact_parts.append(f"💻 {command}")
+            remaining = remaining[match.end() :]
+            continue
+
+        # No more tags at start - stop processing
         break
 
     # Combine compact indicators with remaining content

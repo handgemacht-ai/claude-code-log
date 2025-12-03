@@ -9441,57 +9441,6 @@
   
   
       
-      
-  
-  <div class='navigation'>
-      
-      <h2>Sessions</h2>
-      <span class='nav-hint'>↓ Click a box below to scroll down to the corresponding session</span>
-      
-  
-      <div class='session-nav'>
-          
-          <a href='#msg-session-edge_cases'
-              class='session-link'>
-              <div class='session-link-title'>
-                  
-                  Tested various edge cases including markdown formatting, long text, tool errors, system messages, command outputs, special characters and emojis. All message types render correctly in the transcript viewer. •
-                  
-                  edge_cas
-              </div>
-              <div class='session-link-meta'>
-                  <span class="timestamp" data-timestamp="2025-06-14T11:00:00Z" data-timestamp-end="2025-06-14T11:03:01Z">2025-06-14 11:00:00 - 2025-06-14 11:03:01</span> • 10 messages
-                  
-                  <br>Token usage – Input: 320 | Output: 350
-                  
-              </div>
-              
-              <pre class='session-preview'>Here&#39;s a message with some **markdown** formatting, `inline code`, and even a [link](https://example.com). Let&#39;s see how it renders!</pre>
-              
-          </a>
-          
-          <a href='#msg-session-todowrite_session'
-              class='session-link'>
-              <div class='session-link-title'>
-                  
-                  todowrit
-              </div>
-              <div class='session-link-meta'>
-                  <span class="timestamp" data-timestamp="2025-06-14T10:02:00Z">2025-06-14 10:02:00</span> • 1 messages
-                  
-                  <br>Token usage – Input: 168 | Output: 85
-                  
-              </div>
-              
-              <pre class='session-preview'>[No user message found in session.]</pre>
-              
-          </a>
-          
-      </div>
-  </div>
-  
-  
-      
   
       
       
