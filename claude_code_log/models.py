@@ -221,11 +221,17 @@ class SummaryTranscriptEntry(BaseModel):
 
 
 class SystemTranscriptEntry(BaseTranscriptEntry):
-    """System messages like warnings, notifications, etc."""
+    """System messages like warnings, notifications, hook summaries, etc."""
 
     type: Literal["system"]
-    content: str
+    content: Optional[str] = None
+    subtype: Optional[str] = None  # e.g., "stop_hook_summary"
     level: Optional[str] = None  # e.g., "warning", "info", "error"
+    # Hook summary fields (for subtype="stop_hook_summary")
+    hasOutput: Optional[bool] = None
+    hookErrors: Optional[List[str]] = None
+    hookInfos: Optional[List[Dict[str, Any]]] = None
+    preventedContinuation: Optional[bool] = None
 
 
 class QueueOperationTranscriptEntry(BaseModel):

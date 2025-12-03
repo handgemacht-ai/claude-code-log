@@ -2423,6 +2423,59 @@
       font-size: 80%;
   }
   
+  /* Hook summary styling */
+  .system-hook {
+      border-left-color: var(--warning-dimmed);
+      background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  .hook-summary {
+      cursor: pointer;
+  }
+  
+  .hook-summary summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+  }
+  
+  .hook-details {
+      margin-top: 0.5em;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+  }
+  
+  .hook-commands {
+      margin-bottom: 0.5em;
+  }
+  
+  .hook-commands code {
+      display: block;
+      padding: 0.25em 0.5em;
+      font-size: 0.85em;
+      word-break: break-all;
+      white-space: pre-wrap;
+  }
+  
+  .hook-errors {
+      margin-top: 0.5em;
+  }
+  
+  .hook-error {
+      margin: 0.25em 0;
+      padding: 0.5em;
+      background-color: var(--error-semi);
+      border-left: 3px solid var(--system-error-color);
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
   /* Command output styling */
   .command-output {
       background-color: #1e1e1e11;
@@ -7100,6 +7153,59 @@
       border-left-color: var(--info-dimmed);
       background-color: var(--highlight-dimmed);
       font-size: 80%;
+  }
+  
+  /* Hook summary styling */
+  .system-hook {
+      border-left-color: var(--warning-dimmed);
+      background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  .hook-summary {
+      cursor: pointer;
+  }
+  
+  .hook-summary summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+  }
+  
+  .hook-details {
+      margin-top: 0.5em;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+  }
+  
+  .hook-commands {
+      margin-bottom: 0.5em;
+  }
+  
+  .hook-commands code {
+      display: block;
+      padding: 0.25em 0.5em;
+      font-size: 0.85em;
+      word-break: break-all;
+      white-space: pre-wrap;
+  }
+  
+  .hook-errors {
+      margin-top: 0.5em;
+  }
+  
+  .hook-error {
+      margin: 0.25em 0;
+      padding: 0.5em;
+      background-color: var(--error-semi);
+      border-left: 3px solid var(--system-error-color);
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
   }
   
   /* Command output styling */
@@ -11886,6 +11992,59 @@
       border-left-color: var(--info-dimmed);
       background-color: var(--highlight-dimmed);
       font-size: 80%;
+  }
+  
+  /* Hook summary styling */
+  .system-hook {
+      border-left-color: var(--warning-dimmed);
+      background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  .hook-summary {
+      cursor: pointer;
+  }
+  
+  .hook-summary summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+  }
+  
+  .hook-details {
+      margin-top: 0.5em;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+  }
+  
+  .hook-commands {
+      margin-bottom: 0.5em;
+  }
+  
+  .hook-commands code {
+      display: block;
+      padding: 0.25em 0.5em;
+      font-size: 0.85em;
+      word-break: break-all;
+      white-space: pre-wrap;
+  }
+  
+  .hook-errors {
+      margin-top: 0.5em;
+  }
+  
+  .hook-error {
+      margin: 0.25em 0;
+      padding: 0.5em;
+      background-color: var(--error-semi);
+      border-left: 3px solid var(--system-error-color);
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
   }
   
   /* Command output styling */
@@ -16703,6 +16862,59 @@
       border-left-color: var(--info-dimmed);
       background-color: var(--highlight-dimmed);
       font-size: 80%;
+  }
+  
+  /* Hook summary styling */
+  .system-hook {
+      border-left-color: var(--warning-dimmed);
+      background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  .hook-summary {
+      cursor: pointer;
+  }
+  
+  .hook-summary summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+  }
+  
+  .hook-details {
+      margin-top: 0.5em;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+  }
+  
+  .hook-commands {
+      margin-bottom: 0.5em;
+  }
+  
+  .hook-commands code {
+      display: block;
+      padding: 0.25em 0.5em;
+      font-size: 0.85em;
+      word-break: break-all;
+      white-space: pre-wrap;
+  }
+  
+  .hook-errors {
+      margin-top: 0.5em;
+  }
+  
+  .hook-error {
+      margin: 0.25em 0;
+      padding: 0.5em;
+      background-color: var(--error-semi);
+      border-left: 3px solid var(--system-error-color);
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
   }
   
   /* Command output styling */

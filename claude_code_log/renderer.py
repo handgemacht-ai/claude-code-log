@@ -2030,6 +2030,48 @@ class TemplateSummary:
             self.token_summary = " | ".join(token_parts)
 
 
+def _render_hook_summary(message: "SystemTranscriptEntry") -> str:
+    """Render a hook summary as collapsible details.
+
+    Shows a compact summary with expandable hook commands and error output.
+    """
+    # Extract command names from hookInfos
+    commands = [info.get("command", "unknown") for info in (message.hookInfos or [])]
+
+    # Determine if this is a failure or just output
+    has_errors = bool(message.hookErrors)
+    summary_icon = "🪝"
+    summary_text = "Hook failed" if has_errors else "Hook output"
+
+    # Build the command section
+    command_html = ""
+    if commands:
+        command_html = '<div class="hook-commands">'
+        for cmd in commands:
+            # Truncate very long commands
+            display_cmd = cmd if len(cmd) <= 100 else cmd[:97] + "..."
+            command_html += f"<code>{html.escape(display_cmd)}</code>"
+        command_html += "</div>"
+
+    # Build the error output section
+    error_html = ""
+    if message.hookErrors:
+        error_html = '<div class="hook-errors">'
+        for err in message.hookErrors:
+            # Convert ANSI codes in error output
+            formatted_err = _convert_ansi_to_html(err)
+            error_html += f'<pre class="hook-error">{formatted_err}</pre>'
+        error_html += "</div>"
+
+    return f"""<details class="hook-summary">
+<summary><strong>{summary_icon}</strong> {summary_text}</summary>
+<div class="hook-details">
+{command_html}
+{error_html}
+</div>
+</details>"""
+
+
 def _convert_ansi_to_html(text: str) -> str:
     """Convert ANSI escape codes to HTML spans with CSS classes.
 
@@ -3339,47 +3381,62 @@ def _process_messages_loop(
             timestamp = getattr(message, "timestamp", "")
             formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
 
-            # Extract command name if present
-            command_name_match = re.search(
-                r"<command-name>(.*?)</command-name>", message.content, re.DOTALL
-            )
-            # Also check for command output (child of user command)
-            command_output_match = re.search(
-                r"<local-command-stdout>(.*?)</local-command-stdout>",
-                message.content,
-                re.DOTALL,
-            )
-
-            # Create level-specific styling and icons
-            level = getattr(message, "level", "info")
-            level_icon = {"warning": "⚠️", "error": "❌", "info": "ℹ️"}.get(level, "ℹ️")
-
-            # Determine CSS class:
-            # - Command name (user-initiated): "system" only
-            # - Command output (assistant response): "system system-{level}"
-            # - Other system messages: "system system-{level}"
-            if command_name_match:
-                # User-initiated command
-                level_css = "system"
+            # Handle hook summaries (subtype="stop_hook_summary")
+            if message.subtype == "stop_hook_summary":
+                # Skip silent hook successes (no output, no errors)
+                if not message.hasOutput and not message.hookErrors:
+                    continue
+                # Render hook summary with collapsible details
+                content_html = _render_hook_summary(message)
+                level_css = "system system-hook"
+                level = "hook"
+            elif not message.content:
+                # Skip system messages without content (shouldn't happen normally)
+                continue
             else:
-                # Command output or other system message
-                level_css = f"system system-{level}"
+                # Extract command name if present
+                command_name_match = re.search(
+                    r"<command-name>(.*?)</command-name>", message.content, re.DOTALL
+                )
+                # Also check for command output (child of user command)
+                command_output_match = re.search(
+                    r"<local-command-stdout>(.*?)</local-command-stdout>",
+                    message.content,
+                    re.DOTALL,
+                )
 
-            # Process content: extract command name or command output, or use full content
-            if command_name_match:
-                # Show just the command name
-                command_name = command_name_match.group(1).strip()
-                html_content = f"<code>{html.escape(command_name)}</code>"
-                content_html = f"<strong>{level_icon}</strong> {html_content}"
-            elif command_output_match:
-                # Extract and process command output
-                output = command_output_match.group(1).strip()
-                html_content = _convert_ansi_to_html(output)
-                content_html = f"<strong>{level_icon}</strong> {html_content}"
-            else:
-                # Process ANSI codes in system messages (they may contain command output)
-                html_content = _convert_ansi_to_html(message.content)
-                content_html = f"<strong>{level_icon}</strong> {html_content}"
+                # Create level-specific styling and icons
+                level = getattr(message, "level", "info")
+                level_icon = {"warning": "⚠️", "error": "❌", "info": "ℹ️"}.get(
+                    level, "ℹ️"
+                )
+
+                # Determine CSS class:
+                # - Command name (user-initiated): "system" only
+                # - Command output (assistant response): "system system-{level}"
+                # - Other system messages: "system system-{level}"
+                if command_name_match:
+                    # User-initiated command
+                    level_css = "system"
+                else:
+                    # Command output or other system message
+                    level_css = f"system system-{level}"
+
+                # Process content: extract command name or command output, or use full content
+                if command_name_match:
+                    # Show just the command name
+                    command_name = command_name_match.group(1).strip()
+                    html_content = f"<code>{html.escape(command_name)}</code>"
+                    content_html = f"<strong>{level_icon}</strong> {html_content}"
+                elif command_output_match:
+                    # Extract and process command output
+                    output = command_output_match.group(1).strip()
+                    html_content = _convert_ansi_to_html(output)
+                    content_html = f"<strong>{level_icon}</strong> {html_content}"
+                else:
+                    # Process ANSI codes in system messages (they may contain command output)
+                    html_content = _convert_ansi_to_html(message.content)
+                    content_html = f"<strong>{level_icon}</strong> {html_content}"
 
             # Store parent UUID for hierarchy rebuild (handled by _build_message_hierarchy)
             parent_uuid = getattr(message, "parentUuid", None)
