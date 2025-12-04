@@ -5370,8 +5370,8 @@
                       }
                   });
   
-                  // Handle combined "tool" filter (tool_use + tool_result)
-                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter (tool_use + tool_result + bash messages)
+                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const toolCount = toolMessages.length;
                   const toolToggle = document.querySelector(`[data-type="tool"]`);
                   const toolCountSpan = toolToggle ? toolToggle.querySelector('.count') : null;
@@ -5392,11 +5392,11 @@
                       .filter(toggle => toggle.classList.contains('active'))
                       .map(toggle => toggle.dataset.type);
   
-                  // Expand "tool" to include both tool_use and tool_result
+                  // Expand "tool" to include tool_use, tool_result, and bash messages
                   const expandedTypes = [];
                   activeTypes.forEach(type => {
                       if (type === 'tool') {
-                          expandedTypes.push('tool_use', 'tool_result');
+                          expandedTypes.push('tool_use', 'tool_result', 'bash-input', 'bash-output');
                       } else {
                           expandedTypes.push(type);
                       }
@@ -5467,9 +5467,9 @@
                       }
                   });
   
-                  // Handle combined "tool" filter separately
-                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden)`);
-                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter separately (includes bash messages)
+                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden), .message.bash-input:not(.session-header):not(.filtered-hidden), .message.bash-output:not(.session-header):not(.filtered-hidden)`);
+                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const visibleToolCount = visibleToolMessages.length;
                   const totalToolCount = totalToolMessages.length;
   
@@ -10209,8 +10209,8 @@
                       }
                   });
   
-                  // Handle combined "tool" filter (tool_use + tool_result)
-                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter (tool_use + tool_result + bash messages)
+                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const toolCount = toolMessages.length;
                   const toolToggle = document.querySelector(`[data-type="tool"]`);
                   const toolCountSpan = toolToggle ? toolToggle.querySelector('.count') : null;
@@ -10231,11 +10231,11 @@
                       .filter(toggle => toggle.classList.contains('active'))
                       .map(toggle => toggle.dataset.type);
   
-                  // Expand "tool" to include both tool_use and tool_result
+                  // Expand "tool" to include tool_use, tool_result, and bash messages
                   const expandedTypes = [];
                   activeTypes.forEach(type => {
                       if (type === 'tool') {
-                          expandedTypes.push('tool_use', 'tool_result');
+                          expandedTypes.push('tool_use', 'tool_result', 'bash-input', 'bash-output');
                       } else {
                           expandedTypes.push(type);
                       }
@@ -10306,9 +10306,9 @@
                       }
                   });
   
-                  // Handle combined "tool" filter separately
-                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden)`);
-                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter separately (includes bash messages)
+                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden), .message.bash-input:not(.session-header):not(.filtered-hidden), .message.bash-output:not(.session-header):not(.filtered-hidden)`);
+                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const visibleToolCount = visibleToolMessages.length;
                   const totalToolCount = totalToolMessages.length;
   
@@ -15079,8 +15079,8 @@
                       }
                   });
   
-                  // Handle combined "tool" filter (tool_use + tool_result)
-                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter (tool_use + tool_result + bash messages)
+                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const toolCount = toolMessages.length;
                   const toolToggle = document.querySelector(`[data-type="tool"]`);
                   const toolCountSpan = toolToggle ? toolToggle.querySelector('.count') : null;
@@ -15101,11 +15101,11 @@
                       .filter(toggle => toggle.classList.contains('active'))
                       .map(toggle => toggle.dataset.type);
   
-                  // Expand "tool" to include both tool_use and tool_result
+                  // Expand "tool" to include tool_use, tool_result, and bash messages
                   const expandedTypes = [];
                   activeTypes.forEach(type => {
                       if (type === 'tool') {
-                          expandedTypes.push('tool_use', 'tool_result');
+                          expandedTypes.push('tool_use', 'tool_result', 'bash-input', 'bash-output');
                       } else {
                           expandedTypes.push(type);
                       }
@@ -15176,9 +15176,9 @@
                       }
                   });
   
-                  // Handle combined "tool" filter separately
-                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden)`);
-                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter separately (includes bash messages)
+                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden), .message.bash-input:not(.session-header):not(.filtered-hidden), .message.bash-output:not(.session-header):not(.filtered-hidden)`);
+                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const visibleToolCount = visibleToolMessages.length;
                   const totalToolCount = totalToolMessages.length;
   
@@ -19811,8 +19811,8 @@
                       }
                   });
   
-                  // Handle combined "tool" filter (tool_use + tool_result)
-                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter (tool_use + tool_result + bash messages)
+                  const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const toolCount = toolMessages.length;
                   const toolToggle = document.querySelector(`[data-type="tool"]`);
                   const toolCountSpan = toolToggle ? toolToggle.querySelector('.count') : null;
@@ -19833,11 +19833,11 @@
                       .filter(toggle => toggle.classList.contains('active'))
                       .map(toggle => toggle.dataset.type);
   
-                  // Expand "tool" to include both tool_use and tool_result
+                  // Expand "tool" to include tool_use, tool_result, and bash messages
                   const expandedTypes = [];
                   activeTypes.forEach(type => {
                       if (type === 'tool') {
-                          expandedTypes.push('tool_use', 'tool_result');
+                          expandedTypes.push('tool_use', 'tool_result', 'bash-input', 'bash-output');
                       } else {
                           expandedTypes.push(type);
                       }
@@ -19908,9 +19908,9 @@
                       }
                   });
   
-                  // Handle combined "tool" filter separately
-                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden)`);
-                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                  // Handle combined "tool" filter separately (includes bash messages)
+                  const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden), .message.bash-input:not(.session-header):not(.filtered-hidden), .message.bash-output:not(.session-header):not(.filtered-hidden)`);
+                  const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                   const visibleToolCount = visibleToolMessages.length;
                   const totalToolCount = totalToolMessages.length;
   
