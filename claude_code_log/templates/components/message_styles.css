@@ -454,36 +454,32 @@
     border-left-color: var(--user-dimmed);
 }
 
-.bash-stdout {
-    background-color: #1e1e1e05;
+.bash-stdout,
+.bash-stderr {
     padding: 8px;
     border-radius: 4px;
-    border: 1px solid #00000011;
     margin: 4px 0;
     font-family: var(--font-monospace);
     font-size: 80%;
     line-height: 1.3;
     white-space: pre;
-    color: var(--text-primary);
     overflow-x: auto;
-    max-height: 300px;
     overflow-y: auto;
+    max-height: 300px;
+    max-width: 100%;
+    display: block;
+}
+
+.bash-stdout {
+    background-color: #1e1e1e05;
+    border: 1px solid #00000011;
+    color: var(--text-primary);
 }
 
 .bash-stderr {
     background-color: #ffebee;
-    padding: 8px;
-    border-radius: 4px;
     border: 1px solid #ffcdd2;
-    margin: 4px 0;
-    font-family: var(--font-monospace);
-    font-size: 80%;
-    line-height: 1.3;
-    white-space: pre;
     color: #c62828;
-    overflow-x: auto;
-    max-height: 300px;
-    overflow-y: auto;
 }
 
 .bash-empty {
@@ -813,9 +809,10 @@ details summary {
     margin-top: 4px;
 }
 
-/* Tool use/result preview content with gradient fade */
+/* Tool use/result/bash-output preview content with gradient fade */
 .tool_use .preview-content,
-.tool_result .preview-content {
+.tool_result .preview-content,
+.bash-output .preview-content {
     opacity: 0.7;
     mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
     -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
