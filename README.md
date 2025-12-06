@@ -102,7 +102,7 @@ claude-code-log --all-projects
 # Process all projects and open in browser
 claude-code-log --open-browser
 
-# Process all projects with date filtering  
+# Process all projects with date filtering
 claude-code-log --from-date "yesterday" --to-date "today"
 claude-code-log --from-date "last week"
 
@@ -154,6 +154,7 @@ The project uses:
 
 - Python 3.10+ with uv package management
 - Click for CLI interface and argument parsing
+- Textual for interactive Terminal User Interface
 - Pydantic for robust data modeling and validation
 - dateparser for natural language date parsing
 - Standard library for JSON/HTML processing
@@ -377,17 +378,13 @@ uv run claude-code-log
 - tutorial overlay
 - integrate `claude-trace` request logs if present?
 - convert images to WebP as screenshots are often huge PNGs – this might be time consuming to keep redoing (so would also need some caching) and need heavy dependencies with compilation (unless there are fast pure Python conversation libraries? Or WASM?)
-- add special formatting for built-in tools: Bash, Glob, Grep, LS, exit_plan_mode, Read, Edit, MultiEdit, Write, NotebookRead, NotebookEdit, WebFetch, TodoRead, TodoWrite, WebSearch
-- do we need to handle compacted conversation?
-- Thinking block should have Markdown rendering as sometimes they have formatting
-- system blocks like `init` also don't render perfectly, losing new lines
+- add special formatting for built-in tools: Glob, Grep, LS, MultiEdit, NotebookRead, NotebookEdit, WebFetch, TodoRead, WebSearch
 - add `ccusage` like daily summary and maybe some textual summary too based on Claude generate session summaries?
 – import logs from @claude Github Actions
 - stream logs from @claude Github Actions, see [octotail](https://github.com/getbettr/octotail)
 - wrap up CLI as Github Action to run after Cladue Github Action and process [output](https://github.com/anthropics/claude-code-base-action?tab=readme-ov-file#outputs)
 - feed the filtered user messages to headless claude CLI to distill the user intent from the session
 - filter message type on Python (CLI) side too, not just UI
-- Markdown renderer
 - add minimalist theme and make it light + dark; animate gradient background in fancy theme
 - do we need special handling for hooks?
 - make processing parallel, currently we only use 1 CPU (core) and it's slow
