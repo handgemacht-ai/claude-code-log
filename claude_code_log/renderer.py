@@ -2897,34 +2897,16 @@ def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
     The hierarchy is determined by message type using _get_message_hierarchy_level(),
     and a stack-based approach builds proper parent-child relationships.
 
-    For system messages with parent_uuid, the hierarchy level is derived from the
-    parent's level instead of the default, ensuring proper nesting.
-
     Args:
         messages: List of template messages in their final order (modified in place)
     """
     hierarchy_stack: List[tuple[int, str]] = []
     message_id_counter = 0
 
-    # Build UUID -> (message_id, level) mapping for parent_uuid resolution
-    # We do this in a single pass by updating the map as we assign IDs
-    uuid_to_info: Dict[str, tuple[str, int]] = {}
-
     for message in messages:
         # Session headers are level 0
         if message.is_session_header:
             current_level = 0
-        elif (
-            message.parent_uuid
-            and message.parent_uuid in uuid_to_info
-            and "system"
-            in message.css_class  # Only system messages nest via parent_uuid
-            and "command-output"
-            not in message.css_class  # But NOT command output - it's a sibling
-        ):
-            # System message with known parent - nest under parent
-            _, parent_level = uuid_to_info[message.parent_uuid]
-            current_level = parent_level + 1
         else:
             # Determine level from css_class
             is_sidechain = "sidechain" in message.css_class
@@ -2949,10 +2931,6 @@ def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
 
         # Push current message onto stack
         hierarchy_stack.append((current_level, message_id))
-
-        # Track UUID -> (message_id, level) for parent_uuid resolution
-        if message.uuid:
-            uuid_to_info[message.uuid] = (message_id, current_level)
 
         # Update the message
         message.message_id = message_id
