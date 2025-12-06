@@ -214,12 +214,6 @@
     margin-right: 10em;
 }
 
-/* Exception: paired system-info messages align right (like user commands) */
-.system.system-info.paired-message {
-    margin-left: 33%;
-    margin-right: 0;
-}
-
 /* Sidechain messages (sub-assistant hierarchy) */
 /* Note: .sidechain.user (Sub-assistant prompt) is no longer produced
    since it duplicates the Task tool input prompt */
