@@ -2919,6 +2919,8 @@ def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
             and message.parent_uuid in uuid_to_info
             and "system"
             in message.css_class  # Only system messages nest via parent_uuid
+            and "command-output"
+            not in message.css_class  # But NOT command output - it's a sibling
         ):
             # System message with known parent - nest under parent
             _, parent_level = uuid_to_info[message.parent_uuid]
