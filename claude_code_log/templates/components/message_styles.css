@@ -454,8 +454,8 @@
     border-left-color: var(--user-dimmed);
 }
 
-.bash-stdout,
-.bash-stderr {
+.bash-output pre.bash-stdout,
+.bash-output pre.bash-stderr {
     padding: 8px;
     border-radius: 4px;
     margin: 4px 0;
@@ -466,17 +466,15 @@
     overflow-x: auto;
     overflow-y: auto;
     max-height: 300px;
-    max-width: 100%;
-    display: block;
 }
 
-.bash-stdout {
+.bash-output pre.bash-stdout {
     background-color: #1e1e1e05;
     border: 1px solid #00000011;
     color: var(--text-primary);
 }
 
-.bash-stderr {
+.bash-output pre.bash-stderr {
     background-color: #ffebee;
     border: 1px solid #ffcdd2;
     color: #c62828;
