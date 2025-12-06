@@ -2449,7 +2449,7 @@ def _process_bash_output(text_content: str) -> tuple[str, str, str, str]:
         re.DOTALL,
     )
 
-    output_parts: List[str] = []
+    output_parts: List[tuple[str, str, int, str]] = []
     total_lines = 0
 
     if stdout_match:
@@ -2475,7 +2475,7 @@ def _process_bash_output(text_content: str) -> tuple[str, str, str, str]:
     if output_parts:
         # Build the HTML parts
         html_parts: List[str] = []
-        for output_type, escaped_content, line_count, raw_content in output_parts:
+        for output_type, escaped_content, _, _ in output_parts:
             css_name = f"bash-{output_type}"
             html_parts.append(f"<pre class='{css_name}'>{escaped_content}</pre>")
 
