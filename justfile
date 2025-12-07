@@ -10,8 +10,9 @@ test:
     uv run pytest -n auto -m "not (tui or browser or benchmark)" -v
 
 # Run benchmark tests (outputs to GITHUB_STEP_SUMMARY in CI)
+# DEBUG_TIMING enables coverage of renderer_timings.py
 test-benchmark:
-    uv run pytest -m benchmark -v
+    CLAUDE_CODE_LOG_DEBUG_TIMING=1 uv run pytest -m benchmark -v
 
 # Update snapshot tests
 update-snapshot:
@@ -43,7 +44,7 @@ test-all:
     echo "🔄 Running integration tests..."
     uv run pytest -n auto -m integration -v
     echo "📊 Running benchmark tests..."
-    uv run pytest -m benchmark -v
+    CLAUDE_CODE_LOG_DEBUG_TIMING=1 uv run pytest -m benchmark -v
     echo "✅ All tests completed!"
 
 # Run tests with coverage (all categories)
@@ -60,7 +61,7 @@ test-cov:
     echo "🔄 Running integration tests with coverage append..."
     uv run pytest -n auto -m integration --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
     echo "📊 Running benchmark tests with coverage append..."
-    uv run pytest -m benchmark --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
+    CLAUDE_CODE_LOG_DEBUG_TIMING=1 uv run pytest -m benchmark --cov=claude_code_log --cov-append --cov-report=xml --cov-report=html --cov-report=term -v
     echo "✅ All tests with coverage completed!"
 
 format:
