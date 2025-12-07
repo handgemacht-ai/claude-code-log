@@ -203,25 +203,34 @@ Adds text/markdown/chat output formats via new `content_extractor.py` module.
   - Full tool table (16 tools with model info)
   - Cross-references to css-classes.md
 
-### Phase 8: Testing Infrastructure
+### Phase 8: Testing Infrastructure ✅ COMPLETE
 
 **Goal**: Improve test coverage for refactored modules
 
-**Current Coverage**: ~78%
+**Completed Work**:
+- ✅ Created `test/test_phase8_message_variants.py` with tests for:
+  - Slash command rendering (`isMeta=True` flag)
+  - Queue operations skip behavior (enqueue/dequeue not rendered)
+  - CSS class modifiers composition (`error`, `sidechain`, combinations)
+  - Deduplication with modifiers
+- ✅ Created `test/test_renderer.py` with edge case tests for:
+  - System message handling
+  - Write and Edit tool rendering
+- ✅ Created `test/test_renderer_code.py` with tests for:
+  - Pygments highlighting (pattern matching, unknown extensions, ClassNotFound)
+  - Truncated highlighted preview
+  - Diff rendering edge cases (consecutive removals, hint line skipping)
+- ✅ Simplified CSS by removing redundant `paired-message` class
+- ✅ Updated snapshot tests and documentation
 
-**Priority Tests**:
-1. Unit tests for extracted ANSI module
-2. Unit tests for tool formatters with edge cases
-3. Integration tests for message pairing
-4. Property-based tests for hierarchy calculation
-5. Snapshot tests for new message types
-6. Tests for `is_meta` flag (slash command rendering) - currently no coverage
-7. Tests for queue operations skip behavior
-8. Edge case tests for css_class composition (multiple modifiers)
+**Test Files Added**:
+- [test/test_phase8_message_variants.py](../test/test_phase8_message_variants.py) - Message type variants
+- [test/test_renderer.py](../test/test_renderer.py) - Renderer edge cases
+- [test/test_renderer_code.py](../test/test_renderer_code.py) - Code highlighting/diff tests
 
-**Test Data**:
-- Add more representative JSONL samples to `test/test_data/`
-- Create fixtures for common message patterns
+**Coverage Notes**:
+- Some lines in `renderer_code.py` (116-118, 319) are unreachable due to algorithm behavior
+- Pygments `ClassNotFound` exception path covered via mock testing
 
 ### Phase 9: Type Safety Improvements
 
@@ -402,9 +411,9 @@ For maximum impact with minimum risk:
 3. ✅ **Phase 5 (Processing)** - High impact, main loop 33% smaller
 4. ✅ **Phase 6 (Pairing)** - Pairing function 69% smaller, clear helpers
 5. ✅ **Phase 7 (Documentation)** - Complete CSS/message docs
+6. ✅ **Phase 8 (Testing)** - Coverage gap tests, message variant tests, CSS simplification
 
 ### Next Steps
-6. **Phase 8 (Testing)** - Ongoing, add tests as modules are extracted
 7. **Phase 9 (Type Safety)** - Incremental, can start with MessageType enum
 8. **Phase 10 (Parser)** - Low risk, tested simplification
 9. **Phase 11 (Tool Models)** - Lower priority, current approach works
@@ -470,6 +479,9 @@ Before merging any phase:
 - [test/test_preview_truncation.py](../test/test_preview_truncation.py) - Code preview tests
 - [test/test_sidechain_agents.py](../test/test_sidechain_agents.py) - Integration tests
 - [test/test_template_data.py](../test/test_template_data.py) - Tree building tests (TestTemplateMessageTree)
+- [test/test_phase8_message_variants.py](../test/test_phase8_message_variants.py) - Phase 8: Message variants
+- [test/test_renderer.py](../test/test_renderer.py) - Phase 8: Renderer edge cases
+- [test/test_renderer_code.py](../test/test_renderer_code.py) - Phase 8: Code highlighting/diff tests
 
 ### External
 - golergka's branch: `remotes/golergka/feat/text-output-format` (commit ada7ef5)
