@@ -8,6 +8,9 @@ from typing import Any, List, Optional, Union, TYPE_CHECKING
 from datetime import datetime
 import dateparser
 
+from anthropic.types.text_block import TextBlock
+from anthropic.types.thinking_block import ThinkingBlock
+
 from .models import (
     TranscriptEntry,
     UserTranscriptEntry,
@@ -23,27 +26,21 @@ if TYPE_CHECKING:
 
 
 def extract_text_content(content: Union[str, List[ContentItem], None]) -> str:
-    """Extract text content from Claude message content structure (supports both custom and Anthropic types)."""
+    """Extract text content from Claude message content structure.
+
+    Supports both custom models (TextContent, ThinkingContent) and official
+    Anthropic SDK types (TextBlock, ThinkingBlock).
+    """
     if content is None:
         return ""
     if isinstance(content, list):
         text_parts: List[str] = []
         for item in content:
-            # Handle both custom TextContent and official Anthropic TextBlock
-            if isinstance(item, TextContent):
+            # Handle text content (custom TextContent or Anthropic TextBlock)
+            if isinstance(item, (TextContent, TextBlock)):
                 text_parts.append(item.text)
-            elif (
-                hasattr(item, "type")
-                and hasattr(item, "text")
-                and getattr(item, "type") == "text"
-            ):
-                # Official Anthropic TextBlock
-                text_parts.append(getattr(item, "text"))
-            elif isinstance(item, ThinkingContent):
-                # Skip thinking content in main text extraction
-                continue
-            elif hasattr(item, "type") and getattr(item, "type") == "thinking":
-                # Skip official Anthropic thinking content too
+            # Skip thinking content (custom ThinkingContent or Anthropic ThinkingBlock)
+            elif isinstance(item, (ThinkingContent, ThinkingBlock)):
                 continue
         return "\n".join(text_parts)
     else:

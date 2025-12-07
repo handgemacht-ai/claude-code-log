@@ -253,27 +253,34 @@ Adds text/markdown/chat output formats via new `content_extractor.py` module.
 
 **Note**: MessageModifiers dataclass deferred - existing boolean flags work well for now
 
-### Phase 10: Parser Simplification
+### Phase 10: Parser Simplification ✅ COMPLETE
 
 **Goal**: Simplify `extract_text_content()` using isinstance checks
 
-**Analysis** (from /tmp/parser_analysis.md):
-- Current code uses defensive `getattr`/`hasattr` for SDK interop
-- All tests pass with simplified isinstance-based approach
-- 23% code reduction possible (17 lines → 13 lines)
+**Completed Work**:
+- ✅ Added imports for Anthropic SDK types: `TextBlock`, `ThinkingBlock`
+- ✅ Simplified `extract_text_content()` with clean isinstance checks
+- ✅ Removed defensive `hasattr`/`getattr` patterns
+- ✅ 23% code reduction (17 lines → 13 lines)
 
-**Proposed Change**:
+**Before** (defensive pattern):
 ```python
-# Import official Anthropic types
-from anthropic.types.text_block import TextBlock
-from anthropic.types.thinking_block import ThinkingBlock
-
-def extract_text_content(content: Union[str, List[ContentItem], None]) -> str:
-    # ... simplified with isinstance(item, (TextContent, TextBlock))
+if hasattr(item, "type") and getattr(item, "type") == "text":
+    text = getattr(item, "text", "")
+    if text:
+        text_parts.append(text)
 ```
 
-**Testing Evidence**: All 6 extract_text_content tests pass with simplified version
-**Risk**: Low - maintains same behavior, tested
+**After** (clean isinstance):
+```python
+if isinstance(item, (TextContent, TextBlock)):
+    text_parts.append(item.text)
+elif isinstance(item, (ThinkingContent, ThinkingBlock)):
+    continue
+```
+
+**Testing Evidence**: All 431 tests pass with simplified version
+**Risk**: Low - maintains same behavior, fully tested
 
 ### Phase 11: Tool Model Enhancement
 
@@ -369,7 +376,7 @@ For maximum impact with minimum risk:
 7. ✅ **Phase 9 (Type Safety)** - MessageType enum and type guards added
 
 ### Next Steps
-8. **Phase 10 (Parser)** - Low risk, tested simplification
+8. ✅ **Phase 10 (Parser)** - Simplified extract_text_content() with isinstance checks
 9. **Phase 11 (Tool Models)** - Lower priority, current approach works
 10. **Phase 12 (Format Neutral)** - Long-term goal, enables multi-format output
 
@@ -385,15 +392,16 @@ For maximum impact with minimum risk:
 
 ## Metrics to Track
 
-| Metric | Baseline (v0.9) | Current (Phase 9 done) | Target |
-|--------|-----------------|------------------------|--------|
+| Metric | Baseline (v0.9) | Current (Phase 10 done) | Target |
+|--------|-----------------|-------------------------|--------|
 | renderer.py lines | 4246 | 3853 | <3000 |
 | Largest function | ~687 lines | ~460 lines | <100 lines |
 | `_identify_message_pairs()` | ~120 lines | ~37 lines | - |
+| `extract_text_content()` | ~17 lines | ~13 lines | - |
 | Module count | 3 (renderer, timings, models) | 5 (+ansi_colors, +renderer_code) | 6-7 |
 | Test coverage | ~78% | ~78% | >85% |
 
-**Progress**: Main loop reduced by 33% (687 → 460 lines). Pairing function reduced by 69% (120 → 37 lines). MessageType enum and type guards added for improved type safety.
+**Progress**: Main loop reduced by 33% (687 → 460 lines). Pairing function reduced by 69% (120 → 37 lines). MessageType enum and type guards added. Parser simplified with isinstance checks (Phase 10).
 
 ## Quality Gates
 
