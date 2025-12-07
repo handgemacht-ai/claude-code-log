@@ -39,14 +39,14 @@
     font-weight: 500;
     padding: 0.4em;
     transition: all 0.2s ease;
-    border-bottom: 2px solid;
+    border-bottom: 2px solid transparent;
     background: linear-gradient(to bottom, #f8f8f844, #f0f0f0);
 }
 
-/* Double-line effect when folded */
+/* Show border only when folded (content is hidden) */
 .fold-bar-section.folded {
-    border-bottom-style: double;
-    border-bottom-width: 4px;
+    border-bottom-style: solid;
+    border-bottom-width: 2px;
 }
 
 .fold-bar-section:hover {
@@ -85,92 +85,86 @@
     font-size: 0.9em;
 }
 
-/* Border colors matching message types */
-.fold-bar[data-border-color="user"] .fold-bar-section,
-.fold-bar[data-border-color="user compacted"] .fold-bar-section,
-.fold-bar[data-border-color="user sidechain"] .fold-bar-section,
-.fold-bar[data-border-color="user compacted sidechain"] .fold-bar-section {
+/* Border colors matching message types - only shown when folded */
+.fold-bar[data-border-color="user"] .fold-bar-section.folded,
+.fold-bar[data-border-color="user compacted"] .fold-bar-section.folded,
+.fold-bar[data-border-color="user sidechain"] .fold-bar-section.folded,
+.fold-bar[data-border-color="user compacted sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--user-color);
 }
 
-.fold-bar[data-border-color="user slash-command"] .fold-bar-section,
-.fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section,
-.fold-bar[data-border-color="user command-output"] .fold-bar-section {
+.fold-bar[data-border-color="user slash-command"] .fold-bar-section.folded,
+.fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section.folded,
+.fold-bar[data-border-color="user command-output"] .fold-bar-section.folded {
     border-bottom-color: var(--user-dimmed);
 }
 
-.fold-bar[data-border-color="assistant"] .fold-bar-section,
-.fold-bar[data-border-color="assistant sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="assistant"] .fold-bar-section.folded,
+.fold-bar[data-border-color="assistant sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--assistant-color);
 }
 
-.fold-bar[data-border-color="system"] .fold-bar-section {
+.fold-bar[data-border-color="system"] .fold-bar-section.folded {
     border-bottom-color: var(--system-color);
 }
 
-.fold-bar[data-border-color="system-warning"] .fold-bar-section {
+.fold-bar[data-border-color="system-warning"] .fold-bar-section.folded {
     border-bottom-color: var(--system-warning-color);
 }
 
-.fold-bar[data-border-color="system-error"] .fold-bar-section {
+.fold-bar[data-border-color="system-error"] .fold-bar-section.folded {
     border-bottom-color: var(--system-error-color);
 }
 
-.fold-bar[data-border-color="system-info"] .fold-bar-section {
+.fold-bar[data-border-color="system-info"] .fold-bar-section.folded {
     border-bottom-color: var(--info-dimmed);
 }
 
-.fold-bar[data-border-color="tool_use"] .fold-bar-section,
-.fold-bar[data-border-color="tool_use sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="tool_use"] .fold-bar-section.folded,
+.fold-bar[data-border-color="tool_use sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--tool-use-color);
 }
 
-.fold-bar[data-border-color="tool_result"] .fold-bar-section,
-.fold-bar[data-border-color="tool_result sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="tool_result"] .fold-bar-section.folded,
+.fold-bar[data-border-color="tool_result sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--success-dimmed);
 }
 
-.fold-bar[data-border-color="tool_result error"] .fold-bar-section,
-.fold-bar[data-border-color="tool_result error sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="tool_result error"] .fold-bar-section.folded,
+.fold-bar[data-border-color="tool_result error sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--error-dimmed);
 }
 
-.fold-bar[data-border-color="thinking"] .fold-bar-section,
-.fold-bar[data-border-color="thinking sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="thinking"] .fold-bar-section.folded,
+.fold-bar[data-border-color="thinking sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--assistant-dimmed);
 }
 
-.fold-bar[data-border-color="image"] .fold-bar-section,
-.fold-bar[data-border-color="image sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="image"] .fold-bar-section.folded,
+.fold-bar[data-border-color="image sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--info-dimmed);
 }
 
-.fold-bar[data-border-color="unknown"] .fold-bar-section,
-.fold-bar[data-border-color="unknown sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="unknown"] .fold-bar-section.folded,
+.fold-bar[data-border-color="unknown sidechain"] .fold-bar-section.folded {
     border-bottom-color: var(--neutral-dimmed);
 }
 
-.fold-bar[data-border-color="bash-input"] .fold-bar-section {
+.fold-bar[data-border-color="bash-input"] .fold-bar-section.folded {
     border-bottom-color: var(--user-color);
 }
 
-.fold-bar[data-border-color="bash-output"] .fold-bar-section {
+.fold-bar[data-border-color="bash-output"] .fold-bar-section.folded {
     border-bottom-color: var(--user-dimmed);
 }
 
-.fold-bar[data-border-color="session-header"] .fold-bar-section {
+.fold-bar[data-border-color="session-header"] .fold-bar-section.folded {
     border-bottom-color: var(--system-warning-color);
 }
 
-/* Sidechain (sub-assistant) fold-bar styling */
-.sidechain .fold-bar-section {
-    border-bottom-style: dashed;
-    border-bottom-width: 2px;
-}
-
+/* Sidechain (sub-assistant) fold-bar styling - dashed border when folded */
 .sidechain .fold-bar-section.folded {
     border-bottom-style: dashed;
-    border-bottom-width: 4px;
 }
 
 /* ========================================
