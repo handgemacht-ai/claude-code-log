@@ -114,12 +114,18 @@ The `css_class` field encodes the base type plus modifier traits:
 | `"user compacted"` | user | compacted conversation |
 | `"user slash-command"` | user | isMeta=true |
 | `"user sidechain"` | user | isSidechain=true |
+| `"user steering"` | user | queue-operation remove |
 | `"assistant sidechain"` | assistant | isSidechain=true |
 | `"tool_result error"` | tool_result | is_error=true |
+| `"tool_result sidechain"` | tool_result | isSidechain=true |
+| `"tool_use sidechain"` | tool_use | isSidechain=true |
 | `"system system-info"` | system | level=info |
 | `"system system-warning"` | system | level=warning |
+| `"system system-error"` | system | level=error |
+| `"system command-output"` | system | command output |
+| `"system system-hook"` | system | hook summary |
 
-**Note**: Some CSS class combinations (marked in [css-classes.md](css-classes.md)) lack CSS rules and may not render correctly.
+**Note**: See [css-classes.md](css-classes.md) for complete CSS support status. Some combinations (7 partial, 1 none) inherit styling from parent selectors.
 
 ---
 
@@ -446,16 +452,38 @@ The `ancestry` field contains parent message IDs for hierarchy tracking.
 
 ## Message Pairing
 
-Related messages are paired together:
+Related messages are paired together for visual grouping. Pairing uses CSS classes `pair_first`, `pair_last`, and `paired-message` to control styling.
 
-- **System command + Command output**: Paired as expandable unit
-- **Tool use + Tool result**: Paired by `tool_use_id`
-- **User slash command + Expansion**: Paired by `parentUuid`
+### Pairing Patterns
 
-Pairing metadata:
+| First Message | Last Message | Linked By |
+|---------------|--------------|-----------|
+| `tool_use` | `tool_result` | `tool_use_id` field |
+| `bash-input` | `bash-output` | Sequential (from Bash tool) |
+| `thinking` | `assistant` | Sequential (same response) |
+| `system` (command) | `system` (command-output) | Sequential |
+| `system` (system-info) | `system` (system-info) | Paired info |
+
+### Pairing Rules by Type
+
+| Base Type | Can Be `pair_first` | Can Be `pair_last` |
+|-----------|---------------------|-------------------|
+| `assistant` | No | Yes |
+| `bash-input` | Yes | No |
+| `bash-output` | No | Yes |
+| `system` | Yes | Yes |
+| `thinking` | Yes | No |
+| `tool_result` | No | Yes |
+| `tool_use` | Yes | No |
+| `user` | No | Yes |
+
+### Pairing Metadata
+
 - `is_paired`: True if part of a pair
-- `pair_role`: "pair_first", "pair_last", or "pair_middle"
-- `pair_duration`: Elapsed time for the second message
+- `pair_role`: `"pair_first"`, `"pair_last"`, or `"pair_middle"`
+- `pair_duration`: Elapsed time displayed on `pair_last` messages
+
+**Note**: See [css-classes.md](css-classes.md) for complete pairing behavior analysis and CSS support.
 
 ---
 
@@ -499,21 +527,28 @@ Tools are invoked via `tool_use` content items in assistant messages, with resul
 - `ToolName-tool_use.json` / `.jsonl` - Tool invocation (assistant message)
 - `ToolName-tool_result.json` / `.jsonl` - Tool result (user message)
 
-Available tool samples:
+### Available Tool Samples
 
-| Tool | Use | Result |
-|------|-----|--------|
-| Bash | [Bash-tool_use](messages/tools/Bash-tool_use.json) | [Bash-tool_result](messages/tools/Bash-tool_result.json) |
-| Read | [Read-tool_use](messages/tools/Read-tool_use.json) | [Read-tool_result](messages/tools/Read-tool_result.json) |
-| Edit | [Edit-tool_use](messages/tools/Edit-tool_use.json) | [Edit-tool_result](messages/tools/Edit-tool_result.json) |
-| Write | [Write-tool_use](messages/tools/Write-tool_use.json) | [Write-tool_result](messages/tools/Write-tool_result.json) |
-| Glob | [Glob-tool_use](messages/tools/Glob-tool_use.json) | [Glob-tool_result](messages/tools/Glob-tool_result.json) |
-| Grep | [Grep-tool_use](messages/tools/Grep-tool_use.json) | [Grep-tool_result](messages/tools/Grep-tool_result.json) |
-| Task | [Task-tool_use](messages/tools/Task-tool_use.json) | [Task-tool_result](messages/tools/Task-tool_result.json) |
-| TodoWrite | [TodoWrite-tool_use](messages/tools/TodoWrite-tool_use.json) | [TodoWrite-tool_result](messages/tools/TodoWrite-tool_result.json) |
-| MultiEdit | [MultiEdit-tool_use](messages/tools/MultiEdit-tool_use.json) | [MultiEdit-tool_result](messages/tools/MultiEdit-tool_result.json) |
-| WebFetch | [WebFetch-tool_use](messages/tools/WebFetch-tool_use.json) | [WebFetch-tool_result](messages/tools/WebFetch-tool_result.json) |
-| WebSearch | [WebSearch-tool_use](messages/tools/WebSearch-tool_use.json) | [WebSearch-tool_result](messages/tools/WebSearch-tool_result.json) |
+| Tool | Category | Use | Result | Input Model | Result Model |
+|------|----------|-----|--------|-------------|--------------|
+| AskUserQuestion | Agent | [tool_use](messages/tools/AskUserQuestion-tool_use.json) | [tool_result](messages/tools/AskUserQuestion-tool_result.json) | Generic | `str` |
+| Bash | Shell | [tool_use](messages/tools/Bash-tool_use.json) | [tool_result](messages/tools/Bash-tool_result.json) | Generic | `CommandResult` |
+| BashOutput | Shell | [tool_use](messages/tools/BashOutput-tool_use.json) | [tool_result](messages/tools/BashOutput-tool_result.json) | Generic | `str` |
+| Edit | File | [tool_use](messages/tools/Edit-tool_use.json) | [tool_result](messages/tools/Edit-tool_result.json) | Generic | `EditResult` |
+| ExitPlanMode | Agent | [tool_use](messages/tools/ExitPlanMode-tool_use.json) | [tool_result](messages/tools/ExitPlanMode-tool_result.json) | Generic | `str` |
+| Glob | File | [tool_use](messages/tools/Glob-tool_use.json) | [tool_result](messages/tools/Glob-tool_result.json) | Generic | `str` |
+| Grep | File | [tool_use](messages/tools/Grep-tool_use.json) | [tool_result](messages/tools/Grep-tool_result.json) | Generic | `str` |
+| KillShell | Shell | [tool_use](messages/tools/KillShell-tool_use.json) | [tool_result](messages/tools/KillShell-tool_result.json) | Generic | `str` |
+| LS | File | [tool_use](messages/tools/LS-tool_use.json) | [tool_result](messages/tools/LS-tool_result.json) | Generic | `str` |
+| MultiEdit | File | [tool_use](messages/tools/MultiEdit-tool_use.json) | [tool_result](messages/tools/MultiEdit-tool_result.json) | Generic | `str` |
+| Read | File | [tool_use](messages/tools/Read-tool_use.json) | [tool_result](messages/tools/Read-tool_result.json) | Generic | `FileReadResult` |
+| Task | Agent | [tool_use](messages/tools/Task-tool_use.json) | [tool_result](messages/tools/Task-tool_result.json) | Generic | `str` |
+| TodoWrite | Agent | [tool_use](messages/tools/TodoWrite-tool_use.json) | [tool_result](messages/tools/TodoWrite-tool_result.json) | Generic | `TodoResult` |
+| WebFetch | Web | [tool_use](messages/tools/WebFetch-tool_use.json) | [tool_result](messages/tools/WebFetch-tool_result.json) | Generic | `str` |
+| WebSearch | Web | [tool_use](messages/tools/WebSearch-tool_use.json) | [tool_result](messages/tools/WebSearch-tool_result.json) | Generic | `str` |
+| Write | File | [tool_use](messages/tools/Write-tool_use.json) | [tool_result](messages/tools/Write-tool_result.json) | Generic | `str` |
+
+**Note**: All tools use generic `ToolUseContent` with `Dict[str, Any]` for input. Only 4 tools have specialized result models in `models.py`: `FileReadResult` (Read), `CommandResult` (Bash), `EditResult` (Edit), `TodoResult` (TodoWrite). See [models.py](../claude_code_log/models.py) for model definitions.
 
 ---
 
@@ -551,8 +586,10 @@ This aligns with golergka's `content_extractor.py` approach which extracts typed
 
 ## References
 
-- [renderer.py](../claude_code_log/renderer.py) - Main rendering module
+- [css-classes.md](css-classes.md) - Complete CSS class reference with support status
 - [models.py](../claude_code_log/models.py) - Pydantic models for transcript data
+- [renderer.py](../claude_code_log/renderer.py) - Main rendering module
+- [parser.py](../claude_code_log/parser.py) - JSONL parsing module
 - [extract_message_samples.py](../scripts/extract_message_samples.py) - Sample extraction script
 - [TEMPLATE_MESSAGE_CHILDREN.md](TEMPLATE_MESSAGE_CHILDREN.md) - Tree architecture exploration
 - [MESSAGE_REFACTORING.md](MESSAGE_REFACTORING.md) - Refactoring plan

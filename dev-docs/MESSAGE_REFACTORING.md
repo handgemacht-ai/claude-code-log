@@ -187,22 +187,21 @@ Adds text/markdown/chat output formats via new `content_extractor.py` module.
 
 ## Planned Future Phases
 
-### Phase 7: Hierarchy System Documentation
+### Phase 7: Message Type Documentation ✅ COMPLETE
 
-**Goal**: Document the hierarchy/fold system architecture
+**Goal**: Document message types and CSS classes comprehensively
 
-**Current Functions**:
-- `_get_message_hierarchy_level()` - Level from CSS class (simplified in v0.9)
-- `_build_message_hierarchy()` - Ancestry building
-- `_mark_messages_with_children()` - Descendant counting
-
-**Document**:
-- Level definitions (0=session, 1=user, 2=assistant/system, 3=tools)
-- Ancestry calculation for fold/unfold
-- Interaction with JavaScript fold controls
-- Edge cases (sidechain, paired messages)
-
-**Location**: `dev-docs/FOLD_STATE_DIAGRAM.md` (update existing)
+**Completed Work**:
+- ✅ Created comprehensive [css-classes.md](css-classes.md) with:
+  - Complete CSS class combinations (19 semantic patterns)
+  - CSS rule support status (24 full, 7 partial, 1 none)
+  - Pairing behavior documentation (pair_first/pair_last rules)
+  - Fold-bar support analysis
+- ✅ Updated [messages.md](messages.md) with:
+  - Complete css_class trait mapping table
+  - Pairing patterns and rules by type
+  - Full tool table (16 tools with model info)
+  - Cross-references to css-classes.md
 
 ### Phase 8: Testing Infrastructure
 
@@ -216,31 +215,210 @@ Adds text/markdown/chat output formats via new `content_extractor.py` module.
 3. Integration tests for message pairing
 4. Property-based tests for hierarchy calculation
 5. Snapshot tests for new message types
+6. Tests for `is_meta` flag (slash command rendering) - currently no coverage
+7. Tests for queue operations skip behavior
+8. Edge case tests for css_class composition (multiple modifiers)
 
 **Test Data**:
 - Add more representative JSONL samples to `test/test_data/`
 - Create fixtures for common message patterns
 
+### Phase 9: Type Safety Improvements
+
+**Goal**: Replace string-based type checking with enums and typed structures
+
+**Analysis Summary** (from /tmp/renderer_analysis.md and /tmp/test_patterns_analysis.md):
+- **22 NECESSARY** getattr/hasattr patterns - handle SDK interop correctly
+- **36 DEFENSIVE** patterns - could use isinstance or direct access
+- **3 LEGACY** patterns - redundant after type discrimination
+
+**9.1 MessageType Enum**
+
+```python
+from enum import Enum
+
+class MessageType(str, Enum):
+    """Primary message classification (str for backward compatibility)."""
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    SUMMARY = "summary"
+    QUEUE_OPERATION = "queue-operation"
+    SESSION_HEADER = "session-header"
+    TOOL_USE = "tool_use"
+    TOOL_RESULT = "tool_result"
+    THINKING = "thinking"
+    IMAGE = "image"
+    BASH_INPUT = "bash-input"
+    BASH_OUTPUT = "bash-output"
+    UNKNOWN = "unknown"
+```
+
+**Impact**: 100+ string comparisons across tests/renderer
+**Risk**: Low - `str` enum maintains backward compatibility
+
+**9.2 MessageModifiers Dataclass**
+
+```python
+@dataclass
+class MessageModifiers:
+    """Boolean flags that modify message behavior/rendering."""
+    is_sidechain: bool = False   # 60+ test references
+    is_error: bool = False        # 7+ test references
+    is_meta: bool = False         # Slash command prompts
+    is_compacted: bool = False    # Compacted conversation
+```
+
+**Impact**: Consolidates scattered boolean flags
+**Risk**: Low - additive change
+
+**9.3 Type Guards for Union Narrowing**
+
+```python
+from typing import TypeGuard
+
+def is_assistant_entry(entry: TranscriptEntry) -> TypeGuard[AssistantTranscriptEntry]:
+    return entry.type == "assistant"
+
+# Usage - replaces LEGACY patterns
+if is_assistant_entry(message):
+    assistant_message = message.message  # Type-safe access
+```
+
+**Changes Required**:
+- Add type guards for discriminated union narrowing
+- Replace `hasattr(message, "message")` after type checks (3 locations)
+- Replace `getattr(message, "field")` with direct `message.field` after narrowing
+
+### Phase 10: Parser Simplification
+
+**Goal**: Simplify `extract_text_content()` using isinstance checks
+
+**Analysis** (from /tmp/parser_analysis.md):
+- Current code uses defensive `getattr`/`hasattr` for SDK interop
+- All tests pass with simplified isinstance-based approach
+- 23% code reduction possible (17 lines → 13 lines)
+
+**Proposed Change**:
+```python
+# Import official Anthropic types
+from anthropic.types.text_block import TextBlock
+from anthropic.types.thinking_block import ThinkingBlock
+
+def extract_text_content(content: Union[str, List[ContentItem], None]) -> str:
+    # ... simplified with isinstance(item, (TextContent, TextBlock))
+```
+
+**Testing Evidence**: All 6 extract_text_content tests pass with simplified version
+**Risk**: Low - maintains same behavior, tested
+
+### Phase 11: Tool Model Enhancement
+
+**Goal**: Add typed models for tool inputs (currently all generic `Dict[str, Any]`)
+
+**Current State** (from /tmp/models_analysis.md):
+- **16 tools** with samples in dev-docs/messages/tools/
+- **ALL tools** use generic `ToolUseContent.input: Dict[str, Any]`
+- Only **4 tools** have specialized result models:
+  - Read → `FileReadResult`
+  - Bash → `CommandResult`
+  - Edit → `EditResult`
+  - TodoWrite → `TodoResult`
+
+**Proposed Typed Input Models**:
+```python
+class ReadInput(BaseModel):
+    file_path: str
+    limit: Optional[int] = None
+    offset: Optional[int] = None
+
+class BashInput(BaseModel):
+    command: str
+    description: Optional[str] = None
+    timeout: Optional[int] = None
+
+class EditInput(BaseModel):
+    file_path: str
+    old_string: str
+    new_string: str
+    replace_all: bool = False
+```
+
+**Risk**: Medium - requires careful migration
+**Priority**: Low - current generic approach works
+
+### Phase 12: Renderer Decomposition - Format Neutral
+
+**Goal**: Separate format-neutral logic from HTML-specific generation
+
+**Current Architecture**:
+```
+renderer.py (3853 lines)
+├── Message processing (format-neutral)
+│   ├── _process_messages_loop() - 460 lines
+│   ├── Pairing logic
+│   ├── Hierarchy building
+│   └── Token usage extraction
+├── HTML generation (format-specific)
+│   ├── Template rendering
+│   ├── CSS class computation
+│   └── Content HTML formatting
+└── Tool formatters (mixed)
+```
+
+**Target Architecture**:
+```
+message_processor.py (format-neutral)
+├── MessageProcessor class
+├── Pairing logic
+├── Hierarchy building
+└── Token aggregation
+
+html_renderer.py (HTML-specific)
+├── CSS class computation
+├── Template rendering
+└── Tool HTML formatters
+
+text_renderer.py (future - golergka's work)
+├── Text/markdown output
+└── Chat format
+```
+
+**Dependencies**:
+- Requires Phase 9 (type safety) for clean interfaces
+- Benefits from Phase 10 (parser simplification)
+- Enables golergka's multi-format integration
+
+**Risk**: High - requires careful refactoring
+**Priority**: Medium-term goal
+
 ## Recommended Execution Order
 
 For maximum impact with minimum risk:
 
+### Completed
 1. ✅ **Phase 3 (ANSI)** - Low risk, self-contained, immediate ~250 line reduction
 2. ✅ **Phase 4 (Code rendering)** - Medium risk, ~274 line reduction, clear boundaries
 3. ✅ **Phase 5 (Processing)** - High impact, main loop 33% smaller
 4. ✅ **Phase 6 (Pairing)** - Pairing function 69% smaller, clear helpers
-5. **Phase 7 (Docs)** - No code changes, improves understanding
+5. ✅ **Phase 7 (Documentation)** - Complete CSS/message docs
+
+### Next Steps
 6. **Phase 8 (Testing)** - Ongoing, add tests as modules are extracted
+7. **Phase 9 (Type Safety)** - Incremental, can start with MessageType enum
+8. **Phase 10 (Parser)** - Low risk, tested simplification
+9. **Phase 11 (Tool Models)** - Lower priority, current approach works
+10. **Phase 12 (Format Neutral)** - Long-term goal, enables multi-format output
 
 **Tree Refactoring Integration:**
 - Tree building (TEMPLATE_MESSAGE_CHILDREN.md Phase 1-2) is complete and non-blocking
-- Template migration (Phase 3) should wait until after Phase 4 (Tools) here
-- golergka's text formats can be integrated after Phase 4, leveraging both extraction layers
+- Template migration (Phase 3) should wait until after Phase 9 (Type Safety)
+- golergka's text formats can be integrated after Phase 9, leveraging type guards
 
 **golergka Integration Timing:**
-- Wait until Phase 3-4 complete to minimize merge conflicts
+- Phase 9 type guards will improve interface clarity
 - When integrating, resolve `render_message_content()` conflicts carefully
-- Consider whether tree structure benefits text renderer
+- Tree structure and MessageType enum benefit text renderer
 
 ## Metrics to Track
 
@@ -273,14 +451,25 @@ Before merging any phase:
 
 ## References
 
+### Code Modules
 - [renderer.py](../claude_code_log/renderer.py) - Main rendering module (3853 lines)
 - [ansi_colors.py](../claude_code_log/ansi_colors.py) - ANSI color conversion (261 lines) - Phase 3
 - [renderer_code.py](../claude_code_log/renderer_code.py) - Code highlighting & diffs (330 lines) - Phase 4
 - [renderer_timings.py](../claude_code_log/renderer_timings.py) - Timing utilities
+- [models.py](../claude_code_log/models.py) - Pydantic models (22 models, 3 unions)
+- [parser.py](../claude_code_log/parser.py) - JSONL parsing
+
+### Documentation
+- [css-classes.md](css-classes.md) - Complete CSS class reference with support status - Phase 7
+- [messages.md](messages.md) - Message types and tool documentation - Phase 7
+- [FOLD_STATE_DIAGRAM.md](FOLD_STATE_DIAGRAM.md) - Fold system documentation
+- [TEMPLATE_MESSAGE_CHILDREN.md](TEMPLATE_MESSAGE_CHILDREN.md) - Tree architecture exploration
+
+### Tests
 - [test/test_ansi_colors.py](../test/test_ansi_colors.py) - ANSI tests
 - [test/test_preview_truncation.py](../test/test_preview_truncation.py) - Code preview tests
 - [test/test_sidechain_agents.py](../test/test_sidechain_agents.py) - Integration tests
-- [dev-docs/FOLD_STATE_DIAGRAM.md](FOLD_STATE_DIAGRAM.md) - Fold system documentation
-- [dev-docs/TEMPLATE_MESSAGE_CHILDREN.md](TEMPLATE_MESSAGE_CHILDREN.md) - Tree architecture exploration
 - [test/test_template_data.py](../test/test_template_data.py) - Tree building tests (TestTemplateMessageTree)
+
+### External
 - golergka's branch: `remotes/golergka/feat/text-output-format` (commit ada7ef5)
