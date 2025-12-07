@@ -60,9 +60,7 @@ def test_slash_command_handling():
         else:
             # For short content, should have pre tag with the escaped content
             assert "<pre>" in html, "Should contain pre tag for short content"
-        assert "<strong>Command:</strong> init" in html, (
-            "Should show command name in summary"
-        )
+        assert "<code>init</code>" in html, "Should show command name"
         # Check for user slash-command CSS class (not "system")
         # These are user messages with command tags, not system messages
         assert "class='message user slash-command" in html, (

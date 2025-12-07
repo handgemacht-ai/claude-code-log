@@ -9732,7 +9732,7 @@
                   
               </div>
           </div>
-          <div class='content'><strong>Command:</strong> test-command<br><strong>Args:</strong> --verbose --output /tmp/test.log<br><strong>Content:</strong><pre>This is the actual command content with some JSON structure and escaped characters: &quot;quotes&quot; and 
+          <div class='content'><code>test-command</code><br><strong>Args:</strong> --verbose --output /tmp/test.log<br><strong>Content:</strong><pre>This is the actual command content with some JSON structure and escaped characters: &quot;quotes&quot; and 
   line breaks
   </pre></div>
           
@@ -9751,7 +9751,7 @@
                   
               </div>
           </div>
-          <div class='content'><strong>Command Output:</strong><br><pre class='command-output-content'>Command output here:
+          <div class='content'><pre class='command-output-content'>Command output here:
   Line 1 of output
   Line 2 of output
   Some data: 12345

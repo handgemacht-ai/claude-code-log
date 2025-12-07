@@ -1844,8 +1844,8 @@ def _process_command_message(text_content: str) -> tuple[str, str, str, str]:
     formatted_contents = command_contents.replace("\\n", "\n")
     escaped_command_contents = escape_html(formatted_contents)
 
-    # Build the content HTML
-    content_parts: List[str] = [f"<strong>Command:</strong> {escaped_command_name}"]
+    # Build the content HTML - command name is the primary content
+    content_parts: List[str] = [f"<code>{escaped_command_name}</code>"]
     if command_args:
         content_parts.append(f"<strong>Args:</strong> {escaped_command_args}")
     if command_contents:
@@ -1899,18 +1899,12 @@ def _process_local_command_output(text_content: str) -> tuple[str, str, str, str
             import mistune
 
             markdown_html = mistune.html(stdout_content)
-            content_html = (
-                f"<strong>Command Output:</strong><br>"
-                f"<div class='command-output-content'>{markdown_html}</div>"
-            )
+            content_html = f"<div class='command-output-content'>{markdown_html}</div>"
         else:
             # Convert ANSI codes to HTML for colored display
             html_content = convert_ansi_to_html(stdout_content)
             # Use <pre> to preserve formatting and line breaks
-            content_html = (
-                f"<strong>Command Output:</strong><br>"
-                f"<pre class='command-output-content'>{html_content}</pre>"
-            )
+            content_html = f"<pre class='command-output-content'>{html_content}</pre>"
     else:
         content_html = escape_html(text_content)
 
