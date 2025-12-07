@@ -27,8 +27,8 @@ This document maps input types to their intermediate and output representations.
 | `assistant` + text (sidechain) | `assistant` | `assistant sidechain` | Sub-agent response |
 | `assistant` + thinking | `thinking` | `thinking` | Extended thinking content |
 | `assistant` + tool_use | `tool_use` | `tool_use` | Tool invocation |
-| `system` (command-name) | `system` | `system` | User-initiated command |
-| `system` (command-output) | `system` | `system command-output` | Command output |
+| `user` (command-name) | `user` | `user slash-command` | User-initiated slash command |
+| `user` (command-output) | `user` | `user command-output` | Slash command output |
 | `system` (level=info) | `system` | `system system-info` | Info message |
 | `system` (level=warning) | `system` | `system system-warning` | Warning message |
 | `system` (level=error) | `system` | `system system-error` | Error message |
@@ -217,6 +217,44 @@ The `isMeta` field indicates this is an LLM-generated prompt from a slash comman
 
 **Note**: These are typically **skipped** during rendering because they duplicate the Task tool input prompt.
 
+### User Command (Slash Command)
+
+- **Input**: `user` with `<command-name>` tag in content
+- **Intermediate**: `message_type: "user"`, `css_class: "user slash-command"`
+- **Files**: [user_command.json](messages/user/user_command.json) | [user_command.jsonl](messages/user/user_command.jsonl)
+
+```json
+{
+  "type": "user",
+  "message": {
+    "role": "user",
+    "content": "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>"
+  },
+  "isSidechain": false
+}
+```
+
+Shows the slash command name (e.g., `/context`, `/model`) that the user executed.
+
+### Command Output (Slash Command Result)
+
+- **Input**: `user` with `<local-command-stdout>` tag in content
+- **Intermediate**: `message_type: "user"`, `css_class: "user command-output"`
+- **Files**: [command_output.json](messages/user/command_output.json) | [command_output.jsonl](messages/user/command_output.jsonl)
+
+```json
+{
+  "type": "user",
+  "message": {
+    "role": "user",
+    "content": "<local-command-stdout>Set model to opus (claude-opus-4-5-20251101)</local-command-stdout>"
+  },
+  "isSidechain": false
+}
+```
+
+Shows the output from the slash command with ANSI color support.
+
 ---
 
 ## Tool Results
@@ -347,23 +385,7 @@ See [messages/tools/](messages/tools/) for samples of each tool type.
 
 ## System Messages
 
-System messages (`type: "system"`) convey commands and notifications.
-
-### User Command
-
-- **Input**: `system` with `<command-name>` tag in content
-- **Intermediate**: `message_type: "system"`, `css_class: "system"`
-- **Files**: *(No sample in real_projects)*
-
-Shows the command name (e.g., `/context`, `/init`) in a styled block.
-
-### Command Output
-
-- **Input**: `system` with `<local-command-stdout>` tag in content
-- **Intermediate**: `message_type: "system"`, `css_class: "system command-output"`
-- **Files**: *(No sample in real_projects)*
-
-Shows the command output with ANSI color support.
+System messages (`type: "system"`) convey notifications and hook summaries.
 
 ### System Info
 

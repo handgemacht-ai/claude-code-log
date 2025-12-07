@@ -94,7 +94,8 @@
 }
 
 .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
-.fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+.fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section,
+.fold-bar[data-border-color="user command-output"] .fold-bar-section {
     border-bottom-color: var(--user-dimmed);
 }
 
@@ -103,8 +104,7 @@
     border-bottom-color: var(--assistant-color);
 }
 
-.fold-bar[data-border-color="system"] .fold-bar-section,
-.fold-bar[data-border-color="system command-output"] .fold-bar-section {
+.fold-bar[data-border-color="system"] .fold-bar-section {
     border-bottom-color: var(--system-color);
 }
 

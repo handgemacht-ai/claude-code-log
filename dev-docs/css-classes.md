@@ -45,7 +45,7 @@ This document provides a comprehensive reference for CSS class combinations used
 | Modifier | Applied To | Description |
 |----------|------------|-------------|
 | `compacted` | `user` | Compacted conversation summary |
-| `command-output` | `system` | Command output content |
+| `command-output` | `user` | Slash command output content |
 | `error` | `tool_result` | Tool execution error |
 | `pair_first` | Various | First message in a pair |
 | `pair_last` | Various | Last message in a pair |
@@ -82,14 +82,14 @@ Message pairing creates visual groupings for related messages. The `pair_first` 
 | `tool_use` | `tool_result` | `tool_use_id` |
 | `bash-input` | `bash-output` | Sequential |
 | `thinking` | `assistant` | Sequential |
-| `system` (command) | `system` (command-output) | Sequential |
+| `user` (slash-command) | `user` (command-output) | Sequential |
 | `system` (system-info) | `system` (system-info) | Paired info |
 
 ---
 
 ## All Class Combinations by Support Level
 
-### ✅ Full Support (24 combinations)
+### ✅ Full Support (25 combinations)
 
 These combinations have dedicated CSS selectors:
 
@@ -103,7 +103,6 @@ These combinations have dedicated CSS selectors:
 | `image` | Image content | (rare) |
 | `session-header` | Session header divider | 29 |
 | `system` | System message (user-initiated) | 20 |
-| `system command-output` | Command output (assistant) | 19 |
 | `system system-hook` | Hook summary message | (rare) |
 | `system-error` | System error (assistant-generated) | (rare) |
 | `system-info` | System info message | 118 |
@@ -117,8 +116,9 @@ These combinations have dedicated CSS selectors:
 | `tool_use` | Tool use message | 946 |
 | `tool_use sidechain` | Sub-assistant tool use | 84 |
 | `user` | Basic user message | 88 |
+| `user command-output` | Slash command output | 19 |
 | `user compacted` | Compacted user conversation | (rare) |
-| `user slash-command` | Slash command expanded prompt | 1 |
+| `user slash-command` | Slash command invocation | 20 |
 | `user steering` | Out-of-band steering input | (rare) |
 
 ### ⚠️ Partial Support (7 combinations)
@@ -133,7 +133,7 @@ These combinations inherit from parent selectors but have no dedicated rules:
 | `user compacted sidechain` | Compacted sidechain user | `.user`, `.compacted`, `.sidechain` |
 | `user sidechain` | Sub-assistant user prompt (deprecated) | `.user`, `.sidechain` |
 | `user slash-command sidechain` | Sidechain slash command | `.user`, `.slash-command`, `.sidechain` |
-| `system command-output  pair_last` | Command output in pair | `.system`, `.command-output` |
+| `user command-output pair_last` | Command output in pair | `.user`, `.command-output` |
 
 ### ❌ No Support (1 combination)
 
@@ -157,7 +157,6 @@ The fold-bar component uses `data-border-color` attribute to style borders based
 - `image sidechain`
 - `session-header`
 - `system`
-- `system command-output`
 - `system-error`
 - `system-info`
 - `system-warning`
@@ -172,6 +171,7 @@ The fold-bar component uses `data-border-color` attribute to style borders based
 - `unknown`
 - `unknown sidechain`
 - `user`
+- `user command-output`
 - `user compacted`
 - `user compacted sidechain`
 - `user sidechain`
@@ -203,11 +203,10 @@ These combinations appear in HTML but lack dedicated fold-bar border colors:
 ### `bash-output` (5 occurrences, 1 variation)
 - 5× `bash-output pair_last `
 
-### `system` (157 occurrences, 4 variations)
+### `system` (138 occurrences, 3 variations)
 - 59× `system pair_first  system-info`
 - 59× `system pair_last  system-info`
 - 20× `system pair_first `
-- 19× `system command-output pair_last `
 
 ### `thinking` (303 occurrences, 2 variations)
 - 199× `thinking` (standalone)
@@ -223,9 +222,11 @@ These combinations appear in HTML but lack dedicated fold-bar border colors:
 - 946× `tool_use pair_first `
 - 84× `tool_use pair_first  sidechain`
 
-### `user` (89 occurrences, 2 variations)
+### `user` (128 occurrences, 4 variations)
 - 88× `user` (standalone)
-- 1× `user pair_last  slash-command`
+- 20× `user pair_first  slash-command`
+- 19× `user command-output pair_last `
+- 1× `user pair_last  slash-command` (unpaired)
 
 ---
 
@@ -241,13 +242,15 @@ These combinations appear in HTML but lack dedicated fold-bar border colors:
 
 4. **Error Handling**: The `error` modifier only appears on `tool_result` messages (84 total error results).
 
-5. **System Messages**: Have the most variations (4), including:
+5. **System Messages**: Have 3 variations:
    - System info pairs (118 total, always paired)
-   - Command output (19, always `pair_last`)
    - Generic system pairs (20, `pair_first`)
 
-6. **Rare Cases**:
-   - `user` messages with `slash-command` (1 occurrence)
+6. **Slash Commands**: User messages with `slash-command` and `command-output` pair together:
+   - `user slash-command` (20 occurrences, `pair_first`)
+   - `user command-output` (19 occurrences, `pair_last`)
+
+7. **Rare Cases**:
    - `tool_result` with both `error` and `sidechain` (1 occurrence)
    - `bash-input`/`bash-output` pairs (5 pairs total)
 
@@ -269,7 +272,7 @@ These are excluded from semantic analysis but appear in all HTML output.
 - **Total CSS selectors in templates**: 495
 - **Message-related selectors**: 78
 - **Fold-bar combinations**: 28
-- **Full support combinations**: 24
+- **Full support combinations**: 25
 - **Partial support combinations**: 7
 - **No support combinations**: 1
 

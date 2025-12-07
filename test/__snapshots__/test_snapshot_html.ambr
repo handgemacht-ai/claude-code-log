@@ -2186,7 +2186,8 @@
   }
   
   .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
-  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section,
+  .fold-bar[data-border-color="user command-output"] .fold-bar-section {
       border-bottom-color: var(--user-dimmed);
   }
   
@@ -2195,8 +2196,7 @@
       border-bottom-color: var(--assistant-color);
   }
   
-  .fold-bar[data-border-color="system"] .fold-bar-section,
-  .fold-bar[data-border-color="system command-output"] .fold-bar-section {
+  .fold-bar[data-border-color="system"] .fold-bar-section {
       border-bottom-color: var(--system-color);
   }
   
@@ -6914,7 +6914,8 @@
   }
   
   .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
-  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section,
+  .fold-bar[data-border-color="user command-output"] .fold-bar-section {
       border-bottom-color: var(--user-dimmed);
   }
   
@@ -6923,8 +6924,7 @@
       border-bottom-color: var(--assistant-color);
   }
   
-  .fold-bar[data-border-color="system"] .fold-bar-section,
-  .fold-bar[data-border-color="system command-output"] .fold-bar-section {
+  .fold-bar[data-border-color="system"] .fold-bar-section {
       border-bottom-color: var(--system-color);
   }
   
@@ -9555,11 +9555,11 @@
           <div class='fold-bar' data-message-id='session-edge_cases' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-edge_cases' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-edge_cases' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users, 1 user slash-command' title='Fold (all levels) all 9 descendants'>
                   <span class='fold-icon'>▼</span>
-                  <span class='fold-label'>4 users</span>
+                  <span class='fold-label'>4 users, 1 user slash-command</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-edge_cases' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-edge_cases' data-title-unfolded='Fold (to 1st level) 4 users, 1 user slash-command' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users, 1 user slash-command'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>4 users, 2 assistants, 3 more total</span>
               </div>
@@ -9671,13 +9671,9 @@
           <div class='fold-bar' data-message-id='d-2' data-border-color='user'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-2' data-title-unfolded='Fold (all levels) all 4 descendants' data-title-folded='Unfold (1st level) 1 tool, 1 system, 1 more' title='Fold (all levels) all 4 descendants'>
+              <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-2' data-title-unfolded='Fold 1 tool' data-title-folded='Unfold (1st level) 1 tool' title='Fold 1 tool'>
                   <span class='fold-icon'>▼</span>
-                  <span class='fold-label'>1 tool, 1 system, 1 more</span>
-              </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-2' data-title-unfolded='Fold (to 1st level) 1 tool, 1 system, 1 more' data-title-folded='Unfold (all levels) all 4 descendants' title='Fold (to 1st level) 1 tool, 1 system, 1 more'>
-                  <span class='fold-icon'>▼▼</span>
-                  <span class='fold-label'>2 tools, 1 system, 1 more total</span>
+                  <span class='fold-label'>1 tool</span>
               </div>
               
           </div>
@@ -9726,9 +9722,9 @@
       
       
       
-      <div class='message system pair_first session-edge_cases d-2' data-message-id='d-5' id='msg-d-5-first'>
+      <div class='message user slash-command pair_first session-edge_cases' data-message-id='d-5' id='msg-d-5-first'>
           <div class='header'>
-              <span>⚙️ System</span>
+              <span>🤷 Slash Command</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-06-14T11:02:10Z'>2025-06-14 11:02:10</span>
@@ -9745,9 +9741,9 @@
       
       
       
-      <div class='message system command-output pair_last session-edge_cases d-2' data-message-id='d-6' id='msg-d-6-last'>
+      <div class='message user command-output pair_last session-edge_cases' data-message-id='d-6' id='msg-d-6-last'>
           <div class='header'>
-              <span>System</span>
+              <span>🤷 Command Output</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-06-14T11:02:20Z'>2025-06-14 11:02:20</span>
@@ -9762,12 +9758,26 @@
   Status: SUCCESS
   Timestamp: 2025-06-14T11:02:20Z</pre></div>
           
+          <div class='fold-bar' data-message-id='d-6' data-border-color='user command-output'>
+              
+              
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-6' data-title-unfolded='Fold (all levels) all 2 descendants' data-title-folded='Unfold (1st level) 1 assistant' title='Fold (all levels) all 2 descendants'>
+                  <span class='fold-icon'>▼</span>
+                  <span class='fold-label'>1 assistant</span>
+              </div>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-6' data-title-unfolded='Fold (to 1st level) 1 assistant' data-title-folded='Unfold (all levels) all 2 descendants' title='Fold (to 1st level) 1 assistant'>
+                  <span class='fold-icon'>▼▼</span>
+                  <span class='fold-label'>1 assistant, 1 tool total</span>
+              </div>
+              
+          </div>
+          
       </div>
       
       
       
       
-      <div class='message assistant session-edge_cases d-2' data-message-id='d-7' id='msg-d-7'>
+      <div class='message assistant session-edge_cases d-6' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -9797,7 +9807,7 @@
       
       
       
-      <div class='message tool_use session-edge_cases d-2 d-7' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use session-edge_cases d-6 d-7' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_edge_002">🛠️ MultiEdit</span>
               <div class='header-info'>
@@ -11744,7 +11754,8 @@
   }
   
   .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
-  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section,
+  .fold-bar[data-border-color="user command-output"] .fold-bar-section {
       border-bottom-color: var(--user-dimmed);
   }
   
@@ -11753,8 +11764,7 @@
       border-bottom-color: var(--assistant-color);
   }
   
-  .fold-bar[data-border-color="system"] .fold-bar-section,
-  .fold-bar[data-border-color="system command-output"] .fold-bar-section {
+  .fold-bar[data-border-color="system"] .fold-bar-section {
       border-bottom-color: var(--system-color);
   }
   
@@ -16610,7 +16620,8 @@
   }
   
   .fold-bar[data-border-color="user slash-command"] .fold-bar-section,
-  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+  .fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section,
+  .fold-bar[data-border-color="user command-output"] .fold-bar-section {
       border-bottom-color: var(--user-dimmed);
   }
   
@@ -16619,8 +16630,7 @@
       border-bottom-color: var(--assistant-color);
   }
   
-  .fold-bar[data-border-color="system"] .fold-bar-section,
-  .fold-bar[data-border-color="system command-output"] .fold-bar-section {
+  .fold-bar[data-border-color="system"] .fold-bar-section {
       border-bottom-color: var(--system-color);
   }
   

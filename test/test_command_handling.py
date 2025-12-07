@@ -10,8 +10,12 @@ from claude_code_log.converter import (
 )
 
 
-def test_system_message_command_handling():
-    """Test that system messages with command names are shown in expandable details."""
+def test_slash_command_handling():
+    """Test that user messages with slash commands are rendered with correct CSS class.
+
+    Slash command messages (containing <command-name> tags) are user messages,
+    not system messages. They should render with "user slash-command" CSS class.
+    """
     command_message = {
         "type": "user",
         "timestamp": "2025-06-11T22:44:17.436Z",
@@ -59,16 +63,16 @@ def test_system_message_command_handling():
         assert "<strong>Command:</strong> init" in html, (
             "Should show command name in summary"
         )
-        # Check for system CSS class (may have ancestor IDs appended)
-        assert "class='message system" in html, "Should have system CSS class"
-
-        # Test passed successfully
-        pass
+        # Check for user slash-command CSS class (not "system")
+        # These are user messages with command tags, not system messages
+        assert "class='message user slash-command" in html, (
+            "Should have 'user slash-command' CSS class"
+        )
 
     finally:
         test_file_path.unlink()
 
 
 if __name__ == "__main__":
-    test_system_message_command_handling()
+    test_slash_command_handling()
     print("\n✅ All command handling tests passed!")

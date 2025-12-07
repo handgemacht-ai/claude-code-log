@@ -1830,8 +1830,12 @@ def _render_hook_summary(message: "SystemTranscriptEntry") -> str:
 
 
 def _process_command_message(text_content: str) -> tuple[str, str, str, str]:
-    """Process a command message and return (css_class, content_html, message_type, message_title)."""
-    css_class = "system"
+    """Process a slash command message and return (css_class, content_html, message_type, message_title).
+
+    These are user messages containing slash command invocations (e.g., /context, /model).
+    The JSONL type is "user", not "system".
+    """
+    css_class = "user slash-command"
     command_name, command_args, command_contents = extract_command_info(text_content)
     escaped_command_name = escape_html(command_name)
     escaped_command_args = escape_html(command_args)
@@ -1864,16 +1868,20 @@ def _process_command_message(text_content: str) -> tuple[str, str, str, str]:
         content_parts.append(details_html)
 
     content_html = "<br>".join(content_parts)
-    message_type = "system"
-    message_title = "System"
+    message_type = "user"
+    message_title = "Slash Command"
     return css_class, content_html, message_type, message_title
 
 
 def _process_local_command_output(text_content: str) -> tuple[str, str, str, str]:
-    """Process local command output and return (css_class, content_html, message_type, message_title)."""
+    """Process slash command output and return (css_class, content_html, message_type, message_title).
+
+    These are user messages containing the output from slash commands (e.g., /context, /model).
+    The JSONL type is "user", not "system".
+    """
     import re
 
-    css_class = "system command-output"
+    css_class = "user command-output"
 
     stdout_match = re.search(
         r"<local-command-stdout>(.*?)</local-command-stdout>",
@@ -1906,8 +1914,8 @@ def _process_local_command_output(text_content: str) -> tuple[str, str, str, str
     else:
         content_html = escape_html(text_content)
 
-    message_type = "system"
-    message_title = "System"
+    message_type = "user"
+    message_title = "Command Output"
     return css_class, content_html, message_type, message_title
 
 
@@ -2084,9 +2092,11 @@ def _process_system_message(
 
     Handles:
     - Hook summaries (subtype="stop_hook_summary")
-    - Command name messages
-    - Command output messages
-    - Other system messages with level-specific styling
+    - Other system messages with level-specific styling (info, warning, error)
+
+    Note: Slash command messages (<command-name>, <local-command-stdout>) are user messages,
+    not system messages. They are handled by _process_command_message and
+    _process_local_command_output in the main processing loop.
     """
     session_id = getattr(message, "sessionId", "unknown")
     timestamp = getattr(message, "timestamp", "")
@@ -2105,47 +2115,14 @@ def _process_system_message(
         # Skip system messages without content (shouldn't happen normally)
         return None
     else:
-        # Extract command name if present
-        command_name_match = re.search(
-            r"<command-name>(.*?)</command-name>", message.content, re.DOTALL
-        )
-        # Also check for command output (child of user command)
-        command_output_match = re.search(
-            r"<local-command-stdout>(.*?)</local-command-stdout>",
-            message.content,
-            re.DOTALL,
-        )
-
         # Create level-specific styling and icons
         level = getattr(message, "level", "info")
         level_icon = {"warning": "⚠️", "error": "❌", "info": "ℹ️"}.get(level, "ℹ️")
+        level_css = f"system system-{level}"
 
-        # Determine CSS class:
-        # - Command name (user-initiated): "system" only
-        # - Command output (assistant response): "system system-{level}"
-        # - Other system messages: "system system-{level}"
-        if command_name_match:
-            # User-initiated command
-            level_css = "system"
-        else:
-            # Command output or other system message
-            level_css = f"system system-{level}"
-
-        # Process content: extract command name or command output, or use full content
-        if command_name_match:
-            # Show just the command name
-            command_name = command_name_match.group(1).strip()
-            html_content = f"<code>{html.escape(command_name)}</code>"
-            content_html = f"<strong>{level_icon}</strong> {html_content}"
-        elif command_output_match:
-            # Extract and process command output
-            output = command_output_match.group(1).strip()
-            html_content = convert_ansi_to_html(output)
-            content_html = f"<strong>{level_icon}</strong> {html_content}"
-        else:
-            # Process ANSI codes in system messages (they may contain command output)
-            html_content = convert_ansi_to_html(message.content)
-            content_html = f"<strong>{level_icon}</strong> {html_content}"
+        # Process ANSI codes in system messages (they may contain colored output)
+        html_content = convert_ansi_to_html(message.content)
+        content_html = f"<strong>{level_icon}</strong> {html_content}"
 
     # Store parent UUID for hierarchy rebuild (handled by _build_message_hierarchy)
     parent_uuid = getattr(message, "parentUuid", None)
@@ -2467,12 +2444,12 @@ def _try_pair_adjacent(
     Returns True if messages were paired, False otherwise.
 
     Adjacent pairing rules:
-    - system + command-output
+    - user slash-command + user command-output
     - bash-input + bash-output
     - thinking + assistant
     """
-    # System command + command output
-    if current.css_class == "system" and "command-output" in next_msg.css_class:
+    # Slash command + command output (both are user messages)
+    if "slash-command" in current.css_class and "command-output" in next_msg.css_class:
         _mark_pair(current, next_msg)
         return True
 
