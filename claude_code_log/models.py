@@ -3,13 +3,52 @@
 Enhanced to leverage official Anthropic types where beneficial.
 """
 
-from typing import Any, List, Union, Optional, Dict, Literal, cast
-from pydantic import BaseModel
+from enum import Enum
+from typing import Any, List, Union, Optional, Dict, Literal, cast, TypeGuard
 
 from anthropic.types import Message as AnthropicMessage
 from anthropic.types import StopReason
 from anthropic.types import Usage as AnthropicUsage
 from anthropic.types.content_block import ContentBlock
+from pydantic import BaseModel
+
+
+class MessageType(str, Enum):
+    """Primary message type classification.
+
+    This enum covers both JSONL entry types and rendering types.
+    Using str as base class maintains backward compatibility with string comparisons.
+
+    JSONL Entry Types (from transcript files):
+    - USER, ASSISTANT, SYSTEM, SUMMARY, QUEUE_OPERATION
+
+    Rendering Types (derived during processing):
+    - TOOL_USE, TOOL_RESULT, THINKING, IMAGE
+    - BASH_INPUT, BASH_OUTPUT
+    - SESSION_HEADER, UNKNOWN
+    """
+
+    # JSONL entry types
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    SUMMARY = "summary"
+    QUEUE_OPERATION = "queue-operation"
+
+    # Rendering/display types (derived from content)
+    TOOL_USE = "tool_use"
+    TOOL_RESULT = "tool_result"
+    THINKING = "thinking"
+    IMAGE = "image"
+    BASH_INPUT = "bash-input"
+    BASH_OUTPUT = "bash-output"
+    SESSION_HEADER = "session-header"
+    UNKNOWN = "unknown"
+
+    # System subtypes (for css_class)
+    SYSTEM_INFO = "system-info"
+    SYSTEM_WARNING = "system-warning"
+    SYSTEM_ERROR = "system-error"
 
 
 class TodoItem(BaseModel):
@@ -437,3 +476,62 @@ def parse_transcript_entry(data: Dict[str, Any]) -> TranscriptEntry:
 
     else:
         raise ValueError(f"Unknown transcript entry type: {entry_type}")
+
+
+# Type guards for TranscriptEntry union narrowing
+# These enable type-safe access to entry-specific fields after type checking
+
+
+def is_user_entry(entry: TranscriptEntry) -> TypeGuard[UserTranscriptEntry]:
+    """Check if entry is a user transcript entry."""
+    return entry.type == MessageType.USER
+
+
+def is_assistant_entry(entry: TranscriptEntry) -> TypeGuard[AssistantTranscriptEntry]:
+    """Check if entry is an assistant transcript entry."""
+    return entry.type == MessageType.ASSISTANT
+
+
+def is_system_entry(entry: TranscriptEntry) -> TypeGuard[SystemTranscriptEntry]:
+    """Check if entry is a system transcript entry."""
+    return entry.type == MessageType.SYSTEM
+
+
+def is_summary_entry(entry: TranscriptEntry) -> TypeGuard[SummaryTranscriptEntry]:
+    """Check if entry is a summary transcript entry."""
+    return entry.type == MessageType.SUMMARY
+
+
+def is_queue_operation_entry(
+    entry: TranscriptEntry,
+) -> TypeGuard[QueueOperationTranscriptEntry]:
+    """Check if entry is a queue operation transcript entry."""
+    return entry.type == MessageType.QUEUE_OPERATION
+
+
+# Content item type guards
+
+
+def is_tool_use_content(item: ContentItem) -> TypeGuard[ToolUseContent]:
+    """Check if content item is a tool use."""
+    return getattr(item, "type", None) == "tool_use"
+
+
+def is_tool_result_content(item: ContentItem) -> TypeGuard[ToolResultContent]:
+    """Check if content item is a tool result."""
+    return getattr(item, "type", None) == "tool_result"
+
+
+def is_thinking_content(item: ContentItem) -> TypeGuard[ThinkingContent]:
+    """Check if content item is thinking content."""
+    return getattr(item, "type", None) == "thinking"
+
+
+def is_image_content(item: ContentItem) -> TypeGuard[ImageContent]:
+    """Check if content item is an image."""
+    return getattr(item, "type", None) == "image"
+
+
+def is_text_content(item: ContentItem) -> TypeGuard[TextContent]:
+    """Check if content item is text content."""
+    return getattr(item, "type", None) == "text"

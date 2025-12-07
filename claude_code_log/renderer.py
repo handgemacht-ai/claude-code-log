@@ -16,6 +16,7 @@ import mistune
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .models import (
+    MessageType,
     TranscriptEntry,
     AssistantTranscriptEntry,
     UserTranscriptEntry,
@@ -1372,7 +1373,7 @@ def render_message_content(content: List[ContentItem], message_type: str) -> str
     compacted session summaries. Those should be handled by render_user_message_content.
     """
     if len(content) == 1 and isinstance(content[0], TextContent):
-        if message_type == "user":
+        if message_type == MessageType.USER:
             # User messages are shown as-is in preformatted blocks
             escaped_text = escape_html(content[0].text)
             return "<pre>" + escaped_text + "</pre>"
@@ -1397,7 +1398,7 @@ def render_message_content(content: List[ContentItem], message_type: str) -> str
         ):
             # Handle both TextContent and Anthropic TextBlock
             text_value = getattr(item, "text", str(item))
-            if message_type == "user":
+            if message_type == MessageType.USER:
                 # User messages are shown as-is in preformatted blocks
                 escaped_text = escape_html(text_value)
                 rendered_parts.append("<pre>" + escaped_text + "</pre>")
@@ -2035,7 +2036,7 @@ def _process_regular_message(
     is_compacted = False
 
     # Handle user-specific preprocessing
-    if message_type == "user":
+    if message_type == MessageType.USER:
         # Note: sidechain user messages are skipped before reaching this function
         if is_meta:
             # Slash command expanded prompts - render as collapsible markdown
@@ -3272,7 +3273,11 @@ def _reorder_sidechain_template_messages(
         # tool_use ever gets agent_id in the future
         agent_id = message.agent_id
 
-        if agent_id and message.type == "tool_result" and agent_id in sidechain_map:
+        if (
+            agent_id
+            and message.type == MessageType.TOOL_RESULT
+            and agent_id in sidechain_map
+        ):
             sidechain_msgs = sidechain_map[agent_id]
 
             # Deduplicate: find the last sidechain assistant with text content
@@ -3280,7 +3285,7 @@ def _reorder_sidechain_template_messages(
             task_result_content = (
                 message.raw_text_content.strip() if message.raw_text_content else None
             )
-            if task_result_content and message.type == "tool_result":
+            if task_result_content and message.type == MessageType.TOOL_RESULT:
                 # Find the last assistant message in this sidechain
                 for sidechain_msg in reversed(sidechain_msgs):
                     sidechain_text = (
@@ -3289,7 +3294,7 @@ def _reorder_sidechain_template_messages(
                         else None
                     )
                     if (
-                        sidechain_msg.type == "assistant"
+                        sidechain_msg.type == MessageType.ASSISTANT
                         and sidechain_text
                         and sidechain_text == task_result_content
                     ):
@@ -3404,7 +3409,7 @@ def _process_messages_loop(
             # Queue operations have content directly, not in message.message
             message_content = message.content if message.content else []
             # Treat as user message type
-            message_type = "queue-operation"
+            message_type = MessageType.QUEUE_OPERATION
         else:
             # Extract message content first to check for duplicates
             # Must be UserTranscriptEntry or AssistantTranscriptEntry
@@ -3431,7 +3436,7 @@ def _process_messages_loop(
                 # Keep images inline for user messages and queue operations (steering),
                 # extract for assistant messages
                 if is_image and (
-                    message_type == "user"
+                    message_type == MessageType.USER
                     or isinstance(message, QueueOperationTranscriptEntry)
                 ):
                     text_only_items.append(item)
@@ -3457,7 +3462,7 @@ def _process_messages_loop(
         # Skip sidechain user messages that are just prompts (no tool results)
         # Sidechain prompts duplicate the Task tool input and are redundant,
         # but tool results from sidechain agents should be rendered
-        if message_type == "user" and getattr(message, "isSidechain", False):
+        if message_type == MessageType.USER and getattr(message, "isSidechain", False):
             has_tool_results = any(
                 getattr(item, "type", None) == "tool_result"
                 or isinstance(item, ToolResultContent)
@@ -3488,7 +3493,7 @@ def _process_messages_loop(
             # Get first user message content for preview
             first_user_message = ""
             if (
-                message_type == "user"
+                message_type == MessageType.USER
                 and not isinstance(message, QueueOperationTranscriptEntry)
                 and hasattr(message, "message")
                 and should_use_as_session_starter(text_content)
@@ -3535,7 +3540,10 @@ def _process_messages_loop(
                 template_messages.append(session_header)
 
         # Update first user message if this is a user message and we don't have one yet
-        elif message_type == "user" and not sessions[session_id]["first_user_message"]:
+        elif (
+            message_type == MessageType.USER
+            and not sessions[session_id]["first_user_message"]
+        ):
             if not isinstance(message, QueueOperationTranscriptEntry) and hasattr(
                 message, "message"
             ):
@@ -3554,7 +3562,7 @@ def _process_messages_loop(
 
         # Extract and accumulate token usage for assistant messages
         # Only count tokens for the first message with each requestId to avoid duplicates
-        if message_type == "assistant" and hasattr(message, "message"):
+        if message_type == MessageType.ASSISTANT and hasattr(message, "message"):
             assistant_message = getattr(message, "message")
             request_id = getattr(message, "requestId", None)
             message_uuid = getattr(message, "uuid", "")
@@ -3591,7 +3599,7 @@ def _process_messages_loop(
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
         token_usage_str: Optional[str] = None
-        if message_type == "assistant" and hasattr(message, "message"):
+        if message_type == MessageType.ASSISTANT and hasattr(message, "message"):
             assistant_message = getattr(message, "message")
             message_uuid = getattr(message, "uuid", "")
 
