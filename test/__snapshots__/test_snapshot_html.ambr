@@ -2271,7 +2271,6 @@
   
   /* Right-aligned messages (user-initiated, right margin 0, left margin 33%) */
   .user:not(.compacted),
-  .system,
   .bash-input,
   .bash-output,
   .system:not(.system-info):not(.system-warning):not(.system-error) {
@@ -7002,7 +7001,6 @@
   
   /* Right-aligned messages (user-initiated, right margin 0, left margin 33%) */
   .user:not(.compacted),
-  .system,
   .bash-input,
   .bash-output,
   .system:not(.system-info):not(.system-warning):not(.system-error) {
@@ -11835,7 +11833,6 @@
   
   /* Right-aligned messages (user-initiated, right margin 0, left margin 33%) */
   .user:not(.compacted),
-  .system,
   .bash-input,
   .bash-output,
   .system:not(.system-info):not(.system-warning):not(.system-error) {
@@ -16704,7 +16701,6 @@
   
   /* Right-aligned messages (user-initiated, right margin 0, left margin 33%) */
   .user:not(.compacted),
-  .system,
   .bash-input,
   .bash-output,
   .system:not(.system-info):not(.system-warning):not(.system-error) {
