@@ -285,13 +285,17 @@ Tool results are contained within `user` messages as `tool_result` content items
 
 - **Input**: `user` with `tool_result` content, `is_error: true`
 - **Intermediate**: `message_type: "tool_result"`, `is_error: true`, `css_class: "tool_result error"`
-- **Files**: [Bash-tool_result_error.json](messages/tools/Bash-tool_result_error.json) | [Bash-tool_result_error.jsonl](messages/tools/Bash-tool_result_error.jsonl)
+- **Files**:
+  - Bash error: [Bash-tool_result_error.json](messages/tools/Bash-tool_result_error.json) | [Bash-tool_result_error.jsonl](messages/tools/Bash-tool_result_error.jsonl)
+  - Read error: [Read-tool_result_error.json](messages/tools/Read-tool_result_error.json) | [Read-tool_result_error.jsonl](messages/tools/Read-tool_result_error.jsonl)
 
+Error results can occur with any tool. The `is_error: true` flag triggers the `tool_result error` CSS class regardless of which tool failed.
+
+**Bash error example** (command not found):
 ```json
 {
   "type": "user",
   "message": {
-    "role": "user",
     "content": [{
       "type": "tool_result",
       "content": "Exit code 127\n/bin/bash: line 1: pytest: command not found",
@@ -299,7 +303,23 @@ Tool results are contained within `user` messages as `tool_result` content items
       "tool_use_id": "toolu_xxx"
     }]
   },
-  "toolUseResult": "Error: Exit code 127\n/bin/bash: line 1: pytest: command not found"
+  "toolUseResult": "Error: Exit code 127..."
+}
+```
+
+**Read error example** (directory instead of file):
+```json
+{
+  "type": "user",
+  "message": {
+    "content": [{
+      "type": "tool_result",
+      "content": "EISDIR: illegal operation on a directory, read",
+      "is_error": true,
+      "tool_use_id": "toolu_xxx"
+    }]
+  },
+  "toolUseResult": "Error: EISDIR: illegal operation on a directory, read"
 }
 ```
 
