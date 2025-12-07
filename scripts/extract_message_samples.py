@@ -36,7 +36,18 @@ file-history-snapshot      -> (not rendered as message)
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypedDict
+
+
+class CategoryDef(TypedDict):
+    """Type definition for OUTPUT_CATEGORIES entries."""
+
+    css_class: str | None
+    description: str
+    input_type: str
+    subdir: str
+    filter: Callable[[dict[str, Any]], bool]
+
 
 # Add project root to path to import from claude_code_log
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -175,7 +186,7 @@ def abbreviate_content_item(item: dict[str, Any]) -> dict[str, Any]:
 
 # Output message categories - maps to CSS classes
 # Each category specifies the subdirectory where samples are written
-OUTPUT_CATEGORIES = {
+OUTPUT_CATEGORIES: dict[str, CategoryDef] = {
     # User message variants -> user/
     "user": {
         "css_class": "user",
