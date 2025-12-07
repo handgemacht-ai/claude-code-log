@@ -122,7 +122,7 @@ The `css_class` field encodes the base type plus modifier traits:
 | `"system system-info"` | system | level=info |
 | `"system system-warning"` | system | level=warning |
 | `"system system-error"` | system | level=error |
-| `"system command-output"` | system | command output |
+| `"user command-output"` | user | command output |
 | `"system system-hook"` | system | hook summary |
 
 **Note**: See [css-classes.md](css-classes.md) for complete CSS support status. Some combinations (7 partial, 1 none) inherit styling from parent selectors.
@@ -519,7 +519,7 @@ Related messages are paired together for visual grouping. Pairing uses CSS class
 | `tool_use` | `tool_result` | `tool_use_id` field |
 | `bash-input` | `bash-output` | Sequential (from Bash tool) |
 | `thinking` | `assistant` | Sequential (same response) |
-| `system` (command) | `system` (command-output) | Sequential |
+| `user` (slash-command) | `user` (command-output) | Sequential |
 | `system` (system-info) | `system` (system-info) | Paired info |
 
 ### Pairing Rules by Type
@@ -533,7 +533,7 @@ Related messages are paired together for visual grouping. Pairing uses CSS class
 | `thinking` | Yes | No |
 | `tool_result` | No | Yes |
 | `tool_use` | Yes | No |
-| `user` | No | Yes |
+| `user` | Yes (slash-command) | Yes (command-output) |
 
 ### Pairing Metadata
 
