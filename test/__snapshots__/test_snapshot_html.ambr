@@ -2353,17 +2353,14 @@
   }
   
   /* Paired message styling */
-  .message.paired-message {
+  .message.pair_first {
       margin-bottom: 0;
-  }
-  
-  .message.paired-message.pair_first {
       border-bottom-left-radius: 0;
       border-bottom-right-radius: 0;
       border-bottom: none;
   }
   
-  .message.paired-message.pair_last {
+  .message.pair_last {
       margin-top: 0;
       margin-bottom: 1em;
       border-top-left-radius: 0;
@@ -2371,8 +2368,9 @@
       border-top: 1px solid #00000011;
   }
   
-  .message.paired-message.pair_middle {
+  .message.pair_middle {
       margin-top: 0;
+      margin-bottom: 0;
       border-radius: 0;
       border-top: 1px solid #00000011;
       border-bottom: none;
@@ -2405,7 +2403,7 @@
   }
   
   /* Dimmed assistant when paired with thinking */
-  .assistant.paired-message {
+  .assistant.pair_last {
       border-left-color: var(--assistant-dimmed);
   }
   
@@ -2639,7 +2637,7 @@
   }
   
   /* Full purple when thinking is paired (as pair_first) */
-  .thinking.paired-message.pair_first {
+  .thinking.pair_first {
       border-left-color: var(--assistant-color);
   }
   
@@ -4938,7 +4936,7 @@
       
       
       
-      <div class='message tool_use paired-message pair_first session-test_session d-2' data-message-id='d-3' id='msg-d-3-first'>
+      <div class='message tool_use pair_first session-test_session d-2' data-message-id='d-3' id='msg-d-3-first'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -4955,7 +4953,7 @@
       
       
       
-      <div class='message tool_result paired-message pair_last session-test_session d-2' data-message-id='d-4' id='msg-d-4-last'>
+      <div class='message tool_result pair_last session-test_session d-2' data-message-id='d-4' id='msg-d-4-last'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -5031,7 +5029,7 @@
       
       
       
-      <div class='message tool_use paired-message pair_first session-test_session d-6' data-message-id='d-7' id='msg-d-7-first'>
+      <div class='message tool_use pair_first session-test_session d-6' data-message-id='d-7' id='msg-d-7-first'>
           <div class='header'>
               <span title="ID: tool_002">🛠️ Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -5048,7 +5046,7 @@
       
       
       
-      <div class='message tool_result paired-message pair_last session-test_session d-6' data-message-id='d-8' id='msg-d-8-last'>
+      <div class='message tool_result pair_last session-test_session d-6' data-message-id='d-8' id='msg-d-8-last'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -7083,17 +7081,14 @@
   }
   
   /* Paired message styling */
-  .message.paired-message {
+  .message.pair_first {
       margin-bottom: 0;
-  }
-  
-  .message.paired-message.pair_first {
       border-bottom-left-radius: 0;
       border-bottom-right-radius: 0;
       border-bottom: none;
   }
   
-  .message.paired-message.pair_last {
+  .message.pair_last {
       margin-top: 0;
       margin-bottom: 1em;
       border-top-left-radius: 0;
@@ -7101,8 +7096,9 @@
       border-top: 1px solid #00000011;
   }
   
-  .message.paired-message.pair_middle {
+  .message.pair_middle {
       margin-top: 0;
+      margin-bottom: 0;
       border-radius: 0;
       border-top: 1px solid #00000011;
       border-bottom: none;
@@ -7135,7 +7131,7 @@
   }
   
   /* Dimmed assistant when paired with thinking */
-  .assistant.paired-message {
+  .assistant.pair_last {
       border-left-color: var(--assistant-dimmed);
   }
   
@@ -7369,7 +7365,7 @@
   }
   
   /* Full purple when thinking is paired (as pair_first) */
-  .thinking.paired-message.pair_first {
+  .thinking.pair_first {
       border-left-color: var(--assistant-color);
   }
   
@@ -9691,7 +9687,7 @@
       
       
       
-      <div class='message tool_use paired-message pair_first session-edge_cases d-2' data-message-id='d-3' id='msg-d-3-first'>
+      <div class='message tool_use pair_first session-edge_cases d-2' data-message-id='d-3' id='msg-d-3-first'>
           <div class='header'>
               <span title="ID: tool_edge_001">🛠️ FailingTool</span>
               <div class='header-info'>
@@ -9713,7 +9709,7 @@
       
       
       
-      <div class='message tool_result error paired-message pair_last session-edge_cases d-2' data-message-id='d-4' id='msg-d-4-last'>
+      <div class='message tool_result error pair_last session-edge_cases d-2' data-message-id='d-4' id='msg-d-4-last'>
           <div class='header'>
               <span title="ID: tool_edge_001">🚨 Error</span>
               <div class='header-info'>
@@ -9730,7 +9726,7 @@
       
       
       
-      <div class='message system paired-message pair_first session-edge_cases d-2' data-message-id='d-5' id='msg-d-5-first'>
+      <div class='message system pair_first session-edge_cases d-2' data-message-id='d-5' id='msg-d-5-first'>
           <div class='header'>
               <span>⚙️ System</span>
               <div class='header-info'>
@@ -9749,7 +9745,7 @@
       
       
       
-      <div class='message system command-output paired-message pair_last session-edge_cases d-2' data-message-id='d-6' id='msg-d-6-last'>
+      <div class='message system command-output pair_last session-edge_cases d-2' data-message-id='d-6' id='msg-d-6-last'>
           <div class='header'>
               <span>System</span>
               <div class='header-info'>
@@ -11915,17 +11911,14 @@
   }
   
   /* Paired message styling */
-  .message.paired-message {
+  .message.pair_first {
       margin-bottom: 0;
-  }
-  
-  .message.paired-message.pair_first {
       border-bottom-left-radius: 0;
       border-bottom-right-radius: 0;
       border-bottom: none;
   }
   
-  .message.paired-message.pair_last {
+  .message.pair_last {
       margin-top: 0;
       margin-bottom: 1em;
       border-top-left-radius: 0;
@@ -11933,8 +11926,9 @@
       border-top: 1px solid #00000011;
   }
   
-  .message.paired-message.pair_middle {
+  .message.pair_middle {
       margin-top: 0;
+      margin-bottom: 0;
       border-radius: 0;
       border-top: 1px solid #00000011;
       border-bottom: none;
@@ -11967,7 +11961,7 @@
   }
   
   /* Dimmed assistant when paired with thinking */
-  .assistant.paired-message {
+  .assistant.pair_last {
       border-left-color: var(--assistant-dimmed);
   }
   
@@ -12201,7 +12195,7 @@
   }
   
   /* Full purple when thinking is paired (as pair_first) */
-  .thinking.paired-message.pair_first {
+  .thinking.pair_first {
       border-left-color: var(--assistant-color);
   }
   
@@ -14638,7 +14632,7 @@
       
       
       
-      <div class='message tool_use paired-message pair_first session-test_session d-5' data-message-id='d-6' id='msg-d-6-first'>
+      <div class='message tool_use pair_first session-test_session d-5' data-message-id='d-6' id='msg-d-6-first'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -14655,7 +14649,7 @@
       
       
       
-      <div class='message tool_result paired-message pair_last session-test_session d-5' data-message-id='d-7' id='msg-d-7-last'>
+      <div class='message tool_result pair_last session-test_session d-5' data-message-id='d-7' id='msg-d-7-last'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -14731,7 +14725,7 @@
       
       
       
-      <div class='message tool_use paired-message pair_first session-test_session d-9' data-message-id='d-10' id='msg-d-10-first'>
+      <div class='message tool_use pair_first session-test_session d-9' data-message-id='d-10' id='msg-d-10-first'>
           <div class='header'>
               <span title="ID: tool_002">🛠️ Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -14748,7 +14742,7 @@
       
       
       
-      <div class='message tool_result paired-message pair_last session-test_session d-9' data-message-id='d-11' id='msg-d-11-last'>
+      <div class='message tool_result pair_last session-test_session d-9' data-message-id='d-11' id='msg-d-11-last'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -16783,17 +16777,14 @@
   }
   
   /* Paired message styling */
-  .message.paired-message {
+  .message.pair_first {
       margin-bottom: 0;
-  }
-  
-  .message.paired-message.pair_first {
       border-bottom-left-radius: 0;
       border-bottom-right-radius: 0;
       border-bottom: none;
   }
   
-  .message.paired-message.pair_last {
+  .message.pair_last {
       margin-top: 0;
       margin-bottom: 1em;
       border-top-left-radius: 0;
@@ -16801,8 +16792,9 @@
       border-top: 1px solid #00000011;
   }
   
-  .message.paired-message.pair_middle {
+  .message.pair_middle {
       margin-top: 0;
+      margin-bottom: 0;
       border-radius: 0;
       border-top: 1px solid #00000011;
       border-bottom: none;
@@ -16835,7 +16827,7 @@
   }
   
   /* Dimmed assistant when paired with thinking */
-  .assistant.paired-message {
+  .assistant.pair_last {
       border-left-color: var(--assistant-dimmed);
   }
   
@@ -17069,7 +17061,7 @@
   }
   
   /* Full purple when thinking is paired (as pair_first) */
-  .thinking.paired-message.pair_first {
+  .thinking.pair_first {
       border-left-color: var(--assistant-color);
   }
   
@@ -19368,7 +19360,7 @@
       
       
       
-      <div class='message tool_use paired-message pair_first session-test_session d-2' data-message-id='d-3' id='msg-d-3-first'>
+      <div class='message tool_use pair_first session-test_session d-2' data-message-id='d-3' id='msg-d-3-first'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -19385,7 +19377,7 @@
       
       
       
-      <div class='message tool_result paired-message pair_last session-test_session d-2' data-message-id='d-4' id='msg-d-4-last'>
+      <div class='message tool_result pair_last session-test_session d-2' data-message-id='d-4' id='msg-d-4-last'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -19461,7 +19453,7 @@
       
       
       
-      <div class='message tool_use paired-message pair_first session-test_session d-6' data-message-id='d-7' id='msg-d-7-first'>
+      <div class='message tool_use pair_first session-test_session d-6' data-message-id='d-7' id='msg-d-7-first'>
           <div class='header'>
               <span title="ID: tool_002">🛠️ Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -19478,7 +19470,7 @@
       
       
       
-      <div class='message tool_result paired-message pair_last session-test_session d-6' data-message-id='d-8' id='msg-d-8-last'>
+      <div class='message tool_result pair_last session-test_session d-6' data-message-id='d-8' id='msg-d-8-last'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>

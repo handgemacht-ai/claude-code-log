@@ -102,7 +102,7 @@
     </div>
     {% else %}
     {% set markdown = message.css_class in ['assistant', 'thinking', 'sidechain'] or (message.css_class and 'compacted' in message.css_class) %}
-    <div class='message {{ message.css_class }}{% if message.is_paired %} paired-message {{ message.pair_role }}{% endif %}{% for ancestor_id in message.ancestry %} {{ ancestor_id }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}{% if message.is_paired and message.pair_role %}-{{ message.pair_role.replace("pair_", "") }}{% endif %}'>
+    <div class='message {{ message.css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}{% for ancestor_id in message.ancestry %} {{ ancestor_id }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}{% if message.is_paired and message.pair_role %}-{{ message.pair_role.replace("pair_", "") }}{% endif %}'>
         <div class='header'>
             <span{% if message.title_hint %} title="{{ message.title_hint }}"{% endif %}>{% if message.message_title %}{%
                 if message.message_title == 'Memory' %}💭 {%

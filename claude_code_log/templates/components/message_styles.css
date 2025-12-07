@@ -261,17 +261,14 @@
 }
 
 /* Paired message styling */
-.message.paired-message {
+.message.pair_first {
     margin-bottom: 0;
-}
-
-.message.paired-message.pair_first {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
     border-bottom: none;
 }
 
-.message.paired-message.pair_last {
+.message.pair_last {
     margin-top: 0;
     margin-bottom: 1em;
     border-top-left-radius: 0;
@@ -279,8 +276,9 @@
     border-top: 1px solid #00000011;
 }
 
-.message.paired-message.pair_middle {
+.message.pair_middle {
     margin-top: 0;
+    margin-bottom: 0;
     border-radius: 0;
     border-top: 1px solid #00000011;
     border-bottom: none;
@@ -313,7 +311,7 @@
 }
 
 /* Dimmed assistant when paired with thinking */
-.assistant.paired-message {
+.assistant.pair_last {
     border-left-color: var(--assistant-dimmed);
 }
 
@@ -547,7 +545,7 @@
 }
 
 /* Full purple when thinking is paired (as pair_first) */
-.thinking.paired-message.pair_first {
+.thinking.pair_first {
     border-left-color: var(--assistant-color);
 }
 

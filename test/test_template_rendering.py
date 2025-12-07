@@ -254,7 +254,7 @@ class TestTemplateRendering:
         # Summary messages are now integrated into session headers
         assert "session-summary" in html_content or "Summary:" in html_content
 
-        # Check tool message classes (tools are now top-level messages, may include paired-message class)
+        # Check tool message classes (tools are now top-level messages, may include pair_first/pair_last classes)
         assert "tool_use" in html_content and "class='message" in html_content
         assert "tool_result" in html_content and "class='message" in html_content
 

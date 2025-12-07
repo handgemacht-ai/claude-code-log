@@ -49,8 +49,7 @@ This document provides a comprehensive reference for CSS class combinations used
 | `error` | `tool_result` | Tool execution error |
 | `pair_first` | Various | First message in a pair |
 | `pair_last` | Various | Last message in a pair |
-| `pair_middle` | Various | Middle message (rarely used) |
-| `paired-message` | Various | Member of a message pair |
+| `pair_middle` | Various | Middle message (never used so far) |
 | `sidechain` | Various | Sub-agent (Task) message |
 | `slash-command` | `user` | Expanded slash command prompt |
 | `steering` | `user` | User steering via queue operation |
@@ -97,7 +96,7 @@ These combinations have dedicated CSS selectors:
 | Combination | Description | Occurrences |
 |-------------|-------------|-------------|
 | `assistant` | Assistant response | 419 |
-| `assistant paired-message` | Assistant (paired with thinking) | 104 |
+| `assistant ` | Assistant (paired with thinking) | 104 |
 | `assistant sidechain` | Sub-assistant response | 73 |
 | `bash-input` | Bash command input | 5 |
 | `bash-output` | Bash command output | 5 |
@@ -110,7 +109,7 @@ These combinations have dedicated CSS selectors:
 | `system-info` | System info message | 118 |
 | `system-warning` | System warning (assistant-generated) | (rare) |
 | `thinking` | Thinking content | 199 |
-| `thinking paired-message pair_first` | Thinking (first in pair) | 104 |
+| `thinking  pair_first` | Thinking (first in pair) | 104 |
 | `thinking sidechain` | Sub-assistant thinking | (rare) |
 | `tool_result` | Tool result (success) | 863 |
 | `tool_result error` | Tool result (error) | 83 |
@@ -128,13 +127,13 @@ These combinations inherit from parent selectors but have no dedicated rules:
 
 | Combination | Description | Inherits From |
 |-------------|-------------|---------------|
-| `assistant paired-message pair_last` | Assistant (last in pair) | `.assistant`, `.paired-message` |
+| `assistant  pair_last` | Assistant (last in pair) | `.assistant`, `.` |
 | `tool_result error sidechain` | Sub-assistant tool error | `.tool_result`, `.error`, `.sidechain` |
 | `unknown sidechain` | Unknown sidechain type | `.sidechain` |
 | `user compacted sidechain` | Compacted sidechain user | `.user`, `.compacted`, `.sidechain` |
 | `user sidechain` | Sub-assistant user prompt (deprecated) | `.user`, `.sidechain` |
 | `user slash-command sidechain` | Sidechain slash command | `.user`, `.slash-command`, `.sidechain` |
-| `system command-output paired-message pair_last` | Command output in pair | `.system`, `.command-output` |
+| `system command-output  pair_last` | Command output in pair | `.system`, `.command-output` |
 
 ### ❌ No Support (1 combination)
 
@@ -183,10 +182,10 @@ The fold-bar component uses `data-border-color` attribute to style borders based
 
 These combinations appear in HTML but lack dedicated fold-bar border colors:
 
-- `assistant paired-message` (uses base `assistant` color)
-- `assistant paired-message pair_last` (uses base `assistant` color)
+- `assistant ` (uses base `assistant` color)
+- `assistant  pair_last` (uses base `assistant` color)
 - `system system-hook` (uses base `system` color)
-- `thinking paired-message pair_first` (uses base `thinking` color)
+- `thinking  pair_first` (uses base `thinking` color)
 - `user steering` (uses base `user` color)
 
 ---
@@ -195,38 +194,38 @@ These combinations appear in HTML but lack dedicated fold-bar border colors:
 
 ### `assistant` (596 occurrences, 3 variations)
 - 419× `assistant` (standalone)
-- 104× `assistant pair_last paired-message`
+- 104× `assistant pair_last `
 - 73× `assistant sidechain`
 
 ### `bash-input` (5 occurrences, 1 variation)
-- 5× `bash-input pair_first paired-message`
+- 5× `bash-input pair_first `
 
 ### `bash-output` (5 occurrences, 1 variation)
-- 5× `bash-output pair_last paired-message`
+- 5× `bash-output pair_last `
 
 ### `system` (157 occurrences, 4 variations)
-- 59× `system pair_first paired-message system-info`
-- 59× `system pair_last paired-message system-info`
-- 20× `system pair_first paired-message`
-- 19× `system command-output pair_last paired-message`
+- 59× `system pair_first  system-info`
+- 59× `system pair_last  system-info`
+- 20× `system pair_first `
+- 19× `system command-output pair_last `
 
 ### `thinking` (303 occurrences, 2 variations)
 - 199× `thinking` (standalone)
-- 104× `thinking pair_first paired-message`
+- 104× `thinking pair_first `
 
 ### `tool_result` (1,030 occurrences, 4 variations)
-- 863× `tool_result pair_last paired-message`
-- 83× `tool_result error pair_last paired-message`
-- 83× `tool_result pair_last paired-message sidechain`
-- 1× `tool_result error pair_last paired-message sidechain`
+- 863× `tool_result pair_last `
+- 83× `tool_result error pair_last `
+- 83× `tool_result pair_last  sidechain`
+- 1× `tool_result error pair_last  sidechain`
 
 ### `tool_use` (1,030 occurrences, 2 variations)
-- 946× `tool_use pair_first paired-message`
-- 84× `tool_use pair_first paired-message sidechain`
+- 946× `tool_use pair_first `
+- 84× `tool_use pair_first  sidechain`
 
 ### `user` (89 occurrences, 2 variations)
 - 88× `user` (standalone)
-- 1× `user pair_last paired-message slash-command`
+- 1× `user pair_last  slash-command`
 
 ---
 

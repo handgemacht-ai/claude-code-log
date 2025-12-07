@@ -452,7 +452,7 @@ The `ancestry` field contains parent message IDs for hierarchy tracking.
 
 ## Message Pairing
 
-Related messages are paired together for visual grouping. Pairing uses CSS classes `pair_first`, `pair_last`, and `paired-message` to control styling.
+Related messages are paired together for visual grouping. Pairing uses CSS classes `pair_first` and `pair_last` to control styling.
 
 ### Pairing Patterns
 

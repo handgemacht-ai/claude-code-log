@@ -39,9 +39,55 @@
     /* Slightly transparent variants (55 = ~33% opacity) */
     --highlight-light: #e3f2fd55;
 
+    /* Solid colors for message types */
+    --user-color: #ff9800;
+    --user-dimmed: #ff980066;
+    --assistant-color: #9c27b0;
+    --system-color: #d98100;
+    --system-warning-color: #2196f3;
+    --system-error-color: #f44336;
+    --tool-use-color: #4caf50;
+
+    /* Question/answer tool colors */
+    --question-accent: #f5a623;
+    --question-bg: #fffbf0;
+    --answer-accent: #4caf50;
+    --answer-bg: #f0fff4;
+
+    /* Priority palette (purple intensity - darker = more urgent) */
+    --priority-600: #7c3aed;
+    --priority-400: #a78bfa;
+    --priority-300: #c4b5fd;
+
+    /* Priority colors for todos */
+    --priority-high: var(--priority-600);
+    --priority-medium: var(--priority-400);
+    --priority-low: var(--priority-300);
+
+    /* Status colors */
+    --status-in-progress: #fff3cd;
+    --status-completed: #d4edda;
+
+    /* Plan/todo accent color */
+    --plan-accent: #6c63ff;
+    --todo-accent: #4169e1;
+
     /* Solid colors for text and accents */
+    --text-primary: #333;
     --text-muted: #666;
     --text-secondary: #495057;
+
+    /* Border colors */
+    --border-light: #e0e0e0;
+    --border-separator: #f0f3f6;
+
+    /* Background colors */
+    --bg-card: #ffffff66;
+    --bg-hover: #f8f9fa;
+    --bg-neutral: #f8f9fa;
+
+    /* Layout spacing */
+    --message-padding: 1em;
 
     /* Font families */
     --font-monospace: 'Fira Code', 'Monaco', 'Consolas', 'SF Mono', 'Inconsolata', 'Droid Sans Mono', 'Source Code Pro', 'Ubuntu Mono', 'Cascadia Code', 'Menlo', monospace;
@@ -49,13 +95,13 @@
 }
 
 body {
-    font-family: var(--font-monospace);
+    font-family: var(--font-ui);
     line-height: 1.5;
     max-width: 1200px;
     margin: 0 auto;
     padding: 10px;
     background: linear-gradient(90deg, #f3d6d2, #f1dcce, #f0e4ca, #eeecc7, #e3ecc3, #d5eac0, #c6e8bd, #b9e6bc, #b6e3c5, #b3e1cf);
-    color: #333;
+    color: var(--text-primary);
 }
 
 h1 {
@@ -85,6 +131,12 @@ pre {
     word-break: break-word;
     font-family: var(--font-monospace);
     line-height: 1.5;
+}
+
+/* Summary stats layout (used in index.html) */
+.summary-stats-flex {
+    display: flex;
+    gap: 3em;
 }
 
 /* Common card styling */
@@ -135,7 +187,7 @@ pre {
 /* Timestamps */
 .timestamp {
     font-size: 0.85em;
-    color: #666;
+    color: var(--text-muted);
     font-weight: normal;
 }
 
@@ -143,8 +195,8 @@ pre {
 .floating-btn {
     position: fixed;
     right: 20px;
-    background-color: #e8f4fd66;
-    color: #666;
+    background-color: var(--session-bg-dimmed);
+    color: var(--text-muted);
     border: none;
     border-radius: 50%;
     width: 50px;
@@ -167,7 +219,7 @@ pre {
 }
 
 .floating-btn:visited {
-    color: #666;
+    color: var(--text-muted);
 }
 
 /* Floating buttons positioning */
@@ -189,8 +241,7 @@ pre {
 /* Message and content styles */
 .message {
     margin-bottom: 1em;
-    margin-left: 1em;
-    padding: 1em;
+    padding: var(--message-padding);
     border-radius: 8px;
     border-left: var(--white-dimmed) 2px solid;
     background-color: var(--highlight-light);
@@ -198,7 +249,230 @@ pre {
     border-top: var(--white-dimmed) 1px solid;
     border-bottom: #00000017 1px solid;
     border-right: #00000017 1px solid;
+    position: relative;
 }
+
+/* Message with fold bar: remove bottom padding */
+.message:has(.fold-bar) {
+    padding-bottom: 0;
+}
+
+/* Horizontal Fold Bar - integrated into message box */
+.fold-bar {
+    display: flex;
+    margin: 1em calc(-1 * var(--message-padding)) 0;
+    height: 28px;
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.fold-bar-section {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.9em;
+    font-weight: 500;
+    padding: 0.4em;
+    transition: all 0.2s ease;
+    border-bottom: 2px solid;
+    background: linear-gradient(to bottom, #f8f8f844, #f0f0f0);
+}
+
+/* Double-line effect when folded */
+.fold-bar-section.folded {
+    border-bottom-style: double;
+    border-bottom-width: 4px;
+}
+
+.fold-bar-section:hover {
+    background: linear-gradient(to bottom, #fff, #f5f5f5);
+    transform: translateY(1px);
+}
+
+.fold-bar-section:active {
+    transform: translateY(0);
+}
+
+/* Left section: fold one level */
+.fold-one-level {
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Full-width single button when counts are equal */
+.fold-bar-section.full-width {
+    border-right: none;
+}
+
+/* Icon styling */
+.fold-icon {
+    font-size: 1.1em;
+    line-height: 1;
+}
+
+.fold-count {
+    font-weight: 600;
+    min-width: 1.5em;
+    text-align: center;
+}
+
+.fold-label {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+/* Border colors matching message types */
+.fold-bar[data-border-color="user"] .fold-bar-section,
+.fold-bar[data-border-color="user compacted"] .fold-bar-section,
+.fold-bar[data-border-color="user sidechain"] .fold-bar-section,
+.fold-bar[data-border-color="user compacted sidechain"] .fold-bar-section {
+    border-bottom-color: var(--user-color);
+}
+
+.fold-bar[data-border-color="user slash-command"] .fold-bar-section,
+.fold-bar[data-border-color="user slash-command sidechain"] .fold-bar-section {
+    border-bottom-color: var(--user-dimmed);
+}
+
+.fold-bar[data-border-color="assistant"] .fold-bar-section,
+.fold-bar[data-border-color="assistant sidechain"] .fold-bar-section {
+    border-bottom-color: var(--assistant-color);
+}
+
+.fold-bar[data-border-color="system"] .fold-bar-section,
+.fold-bar[data-border-color="system command-output"] .fold-bar-section {
+    border-bottom-color: var(--system-color);
+}
+
+.fold-bar[data-border-color="system-warning"] .fold-bar-section {
+    border-bottom-color: var(--system-warning-color);
+}
+
+.fold-bar[data-border-color="system-error"] .fold-bar-section {
+    border-bottom-color: var(--system-error-color);
+}
+
+.fold-bar[data-border-color="system-info"] .fold-bar-section {
+    border-bottom-color: var(--info-dimmed);
+}
+
+.fold-bar[data-border-color="tool_use"] .fold-bar-section,
+.fold-bar[data-border-color="tool_use sidechain"] .fold-bar-section {
+    border-bottom-color: var(--tool-use-color);
+}
+
+.fold-bar[data-border-color="tool_result"] .fold-bar-section,
+.fold-bar[data-border-color="tool_result sidechain"] .fold-bar-section {
+    border-bottom-color: var(--success-dimmed);
+}
+
+.fold-bar[data-border-color="tool_result error"] .fold-bar-section,
+.fold-bar[data-border-color="tool_result error sidechain"] .fold-bar-section {
+    border-bottom-color: var(--error-dimmed);
+}
+
+.fold-bar[data-border-color="thinking"] .fold-bar-section,
+.fold-bar[data-border-color="thinking sidechain"] .fold-bar-section {
+    border-bottom-color: var(--assistant-dimmed);
+}
+
+.fold-bar[data-border-color="image"] .fold-bar-section,
+.fold-bar[data-border-color="image sidechain"] .fold-bar-section {
+    border-bottom-color: var(--info-dimmed);
+}
+
+.fold-bar[data-border-color="unknown"] .fold-bar-section,
+.fold-bar[data-border-color="unknown sidechain"] .fold-bar-section {
+    border-bottom-color: var(--neutral-dimmed);
+}
+
+.fold-bar[data-border-color="bash-input"] .fold-bar-section {
+    border-bottom-color: var(--user-color);
+}
+
+.fold-bar[data-border-color="bash-output"] .fold-bar-section {
+    border-bottom-color: var(--user-dimmed);
+}
+
+.fold-bar[data-border-color="session-header"] .fold-bar-section {
+    border-bottom-color: var(--system-warning-color);
+}
+
+/* Sidechain (sub-assistant) fold-bar styling */
+.sidechain .fold-bar-section {
+    border-bottom-style: dashed;
+    border-bottom-width: 2px;
+}
+
+.sidechain .fold-bar-section.folded {
+    border-bottom-style: dashed;
+    border-bottom-width: 4px;
+}
+
+/* ========================================
+   CONVERSATION STRUCTURE - Margin Hierarchy
+   ======================================== */
+
+/* Right-aligned messages (user-initiated, right margin 0, left margin 33%) */
+.user:not(.compacted),
+.system:not(.system-info):not(.system-warning):not(.system-error),
+.bash-input,
+.bash-output {
+    margin-left: 33%;
+    margin-right: 0;
+}
+
+/* System error messages (assistant-generated) */
+.system-error {
+    margin-left: 0;
+    margin-right: 8em;
+}
+
+/* Left-aligned messages (assistant-generated) with progressive indentation */
+/* Base assistant messages */
+.assistant,
+.thinking {
+    margin-left: 0;
+    margin-right: 8em;
+}
+
+/* Tool messages (nested under assistant) */
+.tool_use,
+.tool_result {
+    margin-left: 2em;
+    margin-right: 6em;
+}
+
+/* System warnings/info at tool level (e.g., hook notifications) */
+.system-warning,
+.system-info {
+    margin-left: 2em;
+    margin-right: 6em;
+}
+
+/* Sidechain messages (sub-assistant hierarchy) */
+/* Note: .sidechain.user (Sub-assistant prompt) is no longer produced
+   since it duplicates the Task tool input prompt */
+
+/* Sub-assistant response and thinking (nested under Task tool result) */
+.sidechain.assistant,
+.sidechain.thinking {
+    margin-left: 4em;
+    margin-right: 4em;
+}
+
+/* Sub-assistant tools (nested below sub-assistant) */
+.sidechain.tool_use,
+.sidechain.tool_result {
+    margin-left: 6em;
+    margin-right: 2em;
+}
+
+/* ======================================== */
 
 /* Message header info styling */
 .header-info {
@@ -217,7 +491,7 @@ pre {
 
 .pair-duration {
     font-size: 80%;
-    color: #666;
+    color: var(--text-muted);
     font-style: italic;
 }
 
@@ -227,17 +501,14 @@ pre {
 }
 
 /* Paired message styling */
-.message.paired-message {
+.message.pair_first {
     margin-bottom: 0;
-}
-
-.message.paired-message.pair_first {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
     border-bottom: none;
 }
 
-.message.paired-message.pair_last {
+.message.pair_last {
     margin-top: 0;
     margin-bottom: 1em;
     border-top-left-radius: 0;
@@ -245,8 +516,9 @@ pre {
     border-top: 1px solid #00000011;
 }
 
-.message.paired-message.pair_middle {
+.message.pair_middle {
     margin-top: 0;
+    margin-bottom: 0;
     border-radius: 0;
     border-top: 1px solid #00000011;
     border-bottom: none;
@@ -259,41 +531,105 @@ pre {
 
 /* Message type styling */
 .user {
-    border-left-color: #ff9800;
-    margin-left: 0;
+    border-left-color: var(--user-color);
+}
+
+/* Steering user messages (out-of-band input while agent is working) */
+.user.steering {
+    border-left-color: var(--user-dimmed);
+    opacity: 0.7;
+}
+
+/* Slash command prompts (isMeta=true, LLM-generated content) */
+.user.slash-command {
+    border-left-color: var(--user-dimmed);
+    opacity: 0.85;
 }
 
 .assistant {
-    border-left-color: #9c27b0;
+    border-left-color: var(--assistant-color);
 }
 
 /* Dimmed assistant when paired with thinking */
-.assistant.paired-message {
+.assistant.pair_last {
     border-left-color: var(--assistant-dimmed);
 }
 
 .system {
-    border-left-color: #d98100;
-    margin-left: 0;
+    border-left-color: var(--system-color);
 }
 
 .system-warning {
-    border-left-color: #2196f3;
+    border-left-color: var(--system-warning-color);
     background-color: var(--highlight-semi);
-    margin-left: 2em; /* Extra indent - assistant-initiated */
 }
 
 .system-error {
-    border-left-color: #f44336;
+    border-left-color: var(--system-error-color);
     background-color: var(--error-semi);
-    margin-left: 0;
 }
 
 .system-info {
     border-left-color: var(--info-dimmed);
     background-color: var(--highlight-dimmed);
-    margin-left: 2em; /* Extra indent - assistant-initiated */
+}
+
+.system-info .header,
+.system-info .content {
     font-size: 80%;
+}
+
+/* Hook summary styling */
+.system-hook {
+    border-left-color: var(--warning-dimmed);
+    background-color: var(--highlight-dimmed);
+    font-size: 90%;
+}
+
+.hook-summary {
+    cursor: pointer;
+}
+
+.hook-summary summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+}
+
+.hook-details {
+    margin-top: 0.5em;
+    padding: 0.5em;
+    background-color: var(--code-bg);
+    border-radius: 4px;
+}
+
+.hook-commands {
+    margin-bottom: 0.5em;
+}
+
+.hook-commands code {
+    display: block;
+    padding: 0.25em 0.5em;
+    font-size: 0.85em;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.hook-errors {
+    margin-top: 0.5em;
+}
+
+.hook-error {
+    margin: 0.25em 0;
+    padding: 0.5em;
+    background-color: var(--error-semi);
+    border-left: 3px solid var(--system-error-color);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 /* Command output styling */
@@ -313,18 +649,27 @@ pre {
     line-height: 1.4;
     white-space: pre-wrap;
     word-wrap: break-word;
-    color: #333;
+    color: var(--text-primary);
     overflow-x: auto;
 }
 
-/* Bash command styling */
+.command-output-content td {
+    border-left: 1px dotted #bbb;
+    padding: 0 1em;
+}
+.command-output-content th {
+    text-align: left;
+    padding: 0 1em;
+}
+
+/* Bash command styling (user-initiated, right-aligned) */
 .bash-input {
-    background-color: #1e1e1e08;
-    border-left-color: #4caf50;
+    background-color: var(--highlight-light);
+    border-left-color: var(--user-color);
 }
 
 .bash-prompt {
-    color: #4caf50;
+    color: var(--user-color);
     font-weight: bold;
     font-size: 1.1em;
     margin-right: 8px;
@@ -334,49 +679,45 @@ pre {
     font-family: var(--font-monospace);
     font-size: 0.95em;
     color: #2c3e50;
-    background-color: #f8f9fa;
+    background-color: var(--bg-neutral);
     padding: 2px 6px;
     border-radius: 3px;
 }
 
-/* Bash output styling */
+/* Bash output styling (user-initiated, right-aligned) */
 .bash-output {
-    background-color: var(--neutral-dimmed);
-    border-left-color: #607d8b;
+    background-color: var(--highlight-light);
+    border-left-color: var(--user-dimmed);
 }
 
-.bash-stdout {
+.bash-output pre.bash-stdout,
+.bash-output pre.bash-stderr {
+    padding: 8px;
+    border-radius: 4px;
+    margin: 4px 0;
+    font-family: var(--font-monospace);
+    font-size: 80%;
+    line-height: 1.3;
+    white-space: pre;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 300px;
+}
+
+.bash-output pre.bash-stdout {
     background-color: #1e1e1e05;
-    padding: 12px;
-    border-radius: 4px;
     border: 1px solid #00000011;
-    margin: 8px 0;
-    font-family: var(--font-monospace);
-    font-size: 0.9em;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    color: #333;
-    overflow-x: auto;
+    color: var(--text-primary);
 }
 
-.bash-stderr {
+.bash-output pre.bash-stderr {
     background-color: #ffebee;
-    padding: 12px;
-    border-radius: 4px;
     border: 1px solid #ffcdd2;
-    margin: 8px 0;
-    font-family: var(--font-monospace);
-    font-size: 0.9em;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
     color: #c62828;
-    overflow-x: auto;
 }
 
 .bash-empty {
-    color: #999;
+    color: var(--text-muted);
     font-style: italic;
 }
 
@@ -405,13 +746,11 @@ pre {
 }
 
 .tool_use {
-    border-left-color: #4caf50;
-    margin-left: 2em; /* Extra indent - assistant-initiated */
+    border-left-color: var(--tool-use-color);
 }
 
 .tool_result {
     border-left-color: var(--success-dimmed);
-    margin-left: 2em; /* Extra indent - assistant-initiated */
 }
 
 .tool_result.error {
@@ -431,20 +770,6 @@ pre {
     border-left-style: dashed;
 }
 
-/* Sidechain indentation hierarchy */
-.sidechain.user {
-    margin-left: 3em; /* Sub-assistant Prompt - nested below Task tool use (2em) */
-}
-
-.sidechain.assistant {
-    margin-left: 4em; /* Sub-assistant - nested below prompt (3em) */
-}
-
-.sidechain.tool_use,
-.sidechain.tool_result {
-    margin-left: 5em; /* Sub-assistant tools - nested below assistant (4em) */
-}
-
 .sidechain .sidechain-indicator {
     color: var(--text-muted);
     font-size: 0.9em;
@@ -460,8 +785,8 @@ pre {
 }
 
 /* Full purple when thinking is paired (as pair_first) */
-.thinking.paired-message.pair_first {
-    border-left-color: #9c27b0;
+.thinking.pair_first {
+    border-left-color: var(--assistant-color);
 }
 
 .image {
@@ -487,10 +812,16 @@ pre {
     font-size: 1.2em;
 }
 
+.session-subtitle {
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
 /* IDE notification styling */
 .ide-notification {
     background-color: var(--ide-notification-dimmed);
-    border-left: #9c27b0 2px solid;
+    border-left: var(--assistant-color) 2px solid;
     padding: 8px 12px;
     margin: 8px 0;
     border-radius: 4px;
@@ -510,13 +841,13 @@ pre {
 }
 
 .ide-selection-collapsible summary:hover {
-    color: #333;
+    color: var(--text-primary);
 }
 
 .ide-selection-content {
     margin-top: 8px;
     padding: 8px;
-    background-color: #f8f9fa;
+    background-color: var(--bg-neutral);
     border-radius: 3px;
     border: 1px solid #dee2e6;
     font-family: var(--font-monospace);
@@ -544,7 +875,8 @@ pre {
 /* Assistant and Thinking content styling */
 .assistant .content,
 .thinking-text,
-.user.compacted .content {
+.user.compacted .content,
+.markdown {
     font-family: var(--font-ui);
 }
 
@@ -594,7 +926,7 @@ pre > code {
 
 .tool-param-structured {
     margin: 0;
-    background-color: #f8f9fa;
+    background-color: var(--bg-neutral);
     padding: 4px;
     border-radius: 3px;
 }
@@ -609,7 +941,11 @@ pre > code {
 }
 
 .tool-param-collapsible summary:hover {
-    color: #333;
+    color: var(--text-primary);
+}
+
+.tool-param-collapsible[open] > summary {
+    display: none;
 }
 
 .tool-param-full {
@@ -618,7 +954,7 @@ pre > code {
 }
 
 .tool-params-empty {
-    color: #999;
+    color: var(--text-muted);
     font-style: italic;
 }
 
@@ -707,11 +1043,19 @@ details summary {
     margin-top: 4px;
 }
 
-/* Tool result preview content with gradient fade */
-.tool_result .preview-content {
+/* Tool use/result/bash-output preview content with gradient fade */
+.tool_use .preview-content,
+.tool_result .preview-content,
+.bash-output .preview-content {
     opacity: 0.7;
     mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
     -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+}
+
+/* Fix list rendering in preview-content inside summary */
+/* Mistune wraps list content in <p> tags which causes line breaks */
+.preview-content li > p:first-child {
+    display: inline;
 }
 
 /* Hide preview content when details/collapsible is open */
@@ -792,15 +1136,25 @@ details summary {
 .ansi-dim { opacity: 0.7; }
 .ansi-italic { font-style: italic; }
 .ansi-underline { text-decoration: underline; }
+
+/* Image styling */
+.tool-result-image,
+.uploaded-image {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    margin: 10px 0;
+}
 /* Session navigation styles */
 .navigation {
-    background-color: #f8f9fa66;
+    background-color: var(--bg-neutral);
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 24px;
     box-shadow: -7px -7px 10px #eeeeee44, 7px 7px 10px #00000011;
-    border-left: #ffffff66 1px solid;
-    border-top: #ffffff66 1px solid;
+    border-left: var(--white-dimmed) 1px solid;
+    border-top: var(--white-dimmed) 1px solid;
     border-bottom: #00000017 1px solid;
     border-right: #00000017 1px solid;
 }
@@ -808,7 +1162,7 @@ details summary {
 .navigation h2 {
     margin: 0 0 12px 0;
     font-size: 1.2em;
-    color: #495057;
+    color: var(--text-secondary);
 }
 
 .session-nav {
@@ -819,11 +1173,11 @@ details summary {
 
 .session-link {
     padding: 8px 12px;
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
     border: 1px solid #dee2e6;
     border-radius: 4px;
     text-decoration: none;
-    color: #495057;
+    color: var(--text-secondary);
     transition: background-color 0.2s;
 }
 
@@ -852,7 +1206,7 @@ details summary {
 .project-sessions h4 {
     margin: 0 0 10px 0;
     font-size: 0.9em;
-    color: #495057;
+    color: var(--text-secondary);
     font-weight: 600;
 }
 
@@ -874,11 +1228,11 @@ details summary {
 .combined-transcript-link {
     display: inline-block;
     padding: 8px 12px;
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
     border: 1px solid #dee2e6;
     border-radius: 4px;
     text-decoration: none;
-    color: #495057;
+    color: var(--text-secondary);
     font-weight: 500;
     transition: background-color 0.2s;
 }
@@ -887,15 +1241,26 @@ details summary {
     background-color: #ffffff99;
     text-decoration: none;
 }
+
+/* Navigation hints */
+.nav-hint {
+    font-size: 0.75em;
+}
+
+/* Session preview styling */
+.session-preview {
+    font-size: 0.75em;
+    line-height: 1.3;
+}
 /* Filter toolbar and controls */
 .filter-toolbar {
-    background-color: #f8f9fa66;
+    background-color: var(--neutral-dimmed);
     border-radius: 8px;
     padding: 12px 16px;
     margin-bottom: 16px;
     box-shadow: -7px -7px 10px #eeeeee44, 7px 7px 10px #00000011;
-    border-left: #ffffff66 1px solid;
-    border-top: #ffffff66 1px solid;
+    border-left: var(--white-dimmed) 1px solid;
+    border-top: var(--white-dimmed) 1px solid;
     border-bottom: #00000017 1px solid;
     border-right: #00000017 1px solid;
     display: none;
@@ -924,14 +1289,14 @@ details summary {
 .toolbar-header h3 {
     margin: 0;
     font-size: 1em;
-    color: #495057;
+    color: var(--text-secondary);
     font-weight: 600;
 }
 
 .close-toolbar-btn {
     background: none;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 20px;
     padding: 5px;
@@ -947,8 +1312,8 @@ details summary {
 }
 
 .close-toolbar-btn:hover {
-    background-color: #ffffff66;
-    color: #333;
+    background-color: var(--white-dimmed);
+    color: var(--text-primary);
 }
 
 .filter-section {
@@ -972,7 +1337,7 @@ details summary {
     border: 1px solid #dee2e6;
     border-radius: 20px;
     background-color: transparent;
-    color: #495057;
+    color: var(--text-secondary);
     font-size: 0.85em;
     font-weight: 500;
     cursor: pointer;
@@ -993,32 +1358,32 @@ details summary {
 }
 
 .filter-toggle.active:hover {
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
 }
 
 /* Color-coded filter buttons */
 .filter-toggle[data-type="user"] {
-    border-color: #ff9800;
+    border-color: var(--user-color);
     border-width: 2px;
 }
 
 .filter-toggle[data-type="system"] {
-    border-color: #d98100;
+    border-color: var(--system-color);
     border-width: 2px;
 }
 
 .filter-toggle[data-type="tool"] {
-    border-color: #4caf50;
+    border-color: var(--tool-use-color);
     border-width: 2px;
 }
 
 .filter-toggle[data-type="assistant"] {
-    border-color: #9c27b0;
+    border-color: var(--assistant-color);
     border-width: 2px;
 }
 
 .filter-toggle[data-type="thinking"] {
-    border-color: #9c27b066;
+    border-color: var(--assistant-dimmed);
     border-width: 2px;
 }
 
@@ -1031,7 +1396,7 @@ details summary {
     padding: 4px 8px;
     border: 1px solid #dee2e6;
     border-radius: 4px;
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
     color: #6c757d;
     font-size: 0.75em;
     cursor: pointer;
@@ -1057,25 +1422,25 @@ details summary {
 }
 /* TodoWrite tool styling */
 .todo-write {
-    background-color: #f0f8ff66;
-    border-left: #4169e188 3px solid;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--highlight-dimmed);
+    border-left: var(--todo-accent) 3px solid;
+    font-family: var(--font-ui);
 }
 
 .tool-header {
     font-weight: 600;
     margin-bottom: 12px;
-    color: #2c3e50;
+    color: var(--text-secondary);
     font-size: 1.1em;
 }
 
 .todo-list {
-    background-color: #ffffff66;
+    background-color: var(--bg-card);
     border-radius: 6px;
     padding: 8px;
     box-shadow: -7px -7px 10px #eeeeee44, 7px 7px 10px #00000011;
-    border-left: #ffffff66 1px solid;
-    border-top: #ffffff66 1px solid;
+    border-left: var(--bg-card) 1px solid;
+    border-top: var(--bg-card) 1px solid;
     border-bottom: #00000017 1px solid;
     border-right: #00000017 1px solid;
 }
@@ -1085,7 +1450,7 @@ details summary {
     align-items: center;
     gap: 8px;
     padding: 8px 4px;
-    border-bottom: 1px solid #f0f3f6;
+    border-bottom: 1px solid var(--border-separator);
     transition: background-color 0.2s ease;
 }
 
@@ -1094,21 +1459,17 @@ details summary {
 }
 
 .todo-item:hover {
-    background-color: #f8f9fa;
-}
-
-.todo-item.completed {
-    opacity: 0.7;
+    background-color: var(--bg-hover);
 }
 
 .todo-item.completed .todo-content {
     text-decoration: line-through;
-    color: #6c757d;
+    color: var(--text-muted);
+    opacity: 0.7;
 }
 
-.todo-item input[type="checkbox"] {
-    margin: 0;
-    cursor: default;
+.todo-item.pending .todo-content {
+    font-weight: normal;
 }
 
 .todo-status {
@@ -1118,7 +1479,7 @@ details summary {
 
 .todo-content {
     flex: 1;
-    color: #333;
+    color: var(--text-primary);
     font-weight: 500;
     font-size: 90%;
     font-family: var(--font-ui);
@@ -1126,30 +1487,120 @@ details summary {
 
 .todo-id {
     font-size: 0.8em;
-    color: #6c757d;
+    color: var(--text-muted);
     font-weight: normal;
 }
 
 /* Priority-based left border colors */
 .todo-item.high {
-    border-left: 3px solid #dc3545;
+    border-left: 3px solid var(--priority-high);
 }
 
 .todo-item.medium {
-    border-left: 3px solid #ffc107;
+    border-left: 3px solid var(--priority-medium);
 }
 
 .todo-item.low {
-    border-left: 3px solid #28a745;
+    border-left: 3px solid var(--priority-low);
 }
 
 /* Status-based background tints */
 .todo-item.in_progress {
-    background-color: #fff3cd;
+    background-color: var(--status-in-progress);
 }
 
 .todo-item.completed {
-    background-color: #d4edda;
+    background-color: var(--status-completed);
+}
+
+/* AskUserQuestion tool styling */
+.askuserquestion-content {
+    font-family: var(--font-ui);
+    padding: 8px 0;
+}
+
+.question-block {
+    margin-bottom: 16px;
+    padding: 12px;
+    background-color: var(--question-bg);
+    border-radius: 6px;
+    border-left: 3px solid var(--question-accent);
+}
+
+.question-block:last-child {
+    margin-bottom: 0;
+}
+
+/* Answered questions in result (lighter, success-tinted) */
+.question-block.answered {
+    background-color: var(--answer-bg);
+    border-left-color: var(--answer-accent);
+}
+
+.question-header {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.question-text {
+    font-size: 1.1em;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+.answer-text {
+    font-size: 1.05em;
+    font-weight: 600;
+    color: var(--answer-accent);
+    line-height: 1.4;
+    padding-left: 4px;
+}
+
+.question-options-hint {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 6px;
+}
+
+.question-options {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.question-option {
+    padding: 8px 12px;
+    margin: 4px 0;
+    background-color: #fff;
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+}
+
+.question-option strong {
+    color: var(--text-primary);
+}
+
+.question-option .option-desc {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+/* ExitPlanMode tool styling */
+.plan-content {
+    font-family: var(--font-ui);
+}
+
+.plan-content.markdown {
+    background-color: var(--bg-neutral);
+    border-radius: 6px;
+    padding: 12px;
 }
 /* Timeline-specific styles for vis-timeline */
 
@@ -1195,13 +1646,13 @@ details summary {
 .vis-labelset .vis-label {
     font-size: 12px !important;
     font-weight: 500 !important;
-    color: #495057 !important;
+    color: var(--text-secondary) !important;
 }
 
 /* Timeline items styling */
 .vis-item {
     border-radius: 4px !important;
-    border: 1px solid #ddd !important;
+    border: 1px solid var(--border-light) !important;
     font-size: 11px !important;
     /* Stuck item workaround, see: https://github.com/visjs/vis-timeline/issues/494#issuecomment-1638974075 */
     transform: scale(0);
@@ -1219,7 +1670,7 @@ details summary {
 /* Message type specific styling */
 .vis-item.timeline-item-user {
     background-color: #e3f2fd !important;
-    border-color: #2196f3 !important;
+    border-color: var(--system-warning-color) !important;
 }
 
 .vis-item.timeline-item-assistant {
@@ -1264,12 +1715,12 @@ details summary {
 
 /* Timeline axis styling */
 .vis-time-axis {
-    border-top: 1px solid #ddd !important;
+    border-top: 1px solid var(--border-light) !important;
 }
 
 .vis-time-axis .vis-text {
     font-size: 11px !important;
-    color: #666 !important;
+    color: var(--text-muted) !important;
 }
 
 /* Timeline navigation controls */
@@ -1314,7 +1765,7 @@ details summary {
     right: 45px;
     top: 50%;
     transform: translateY(-50%);
-    color: #999;
+    color: var(--text-muted);
     font-size: 0.75em;
     pointer-events: none;
     transition: opacity 0.2s;
@@ -1349,7 +1800,7 @@ details summary {
     background: #ffffff88;
     border: 1px solid #dee2e6;
     border-radius: 20px;
-    color: #495057;
+    color: var(--text-secondary);
     font-size: 0.85em;
     font-family: inherit;
     transition: all 0.2s;
@@ -1357,13 +1808,13 @@ details summary {
 
 .search-input:focus {
     outline: none;
-    border-color: #2196f3;
+    border-color: var(--system-warning-color);
     background: #ffffff99;
     box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
 }
 
 .search-input::placeholder {
-    color: #666;
+    color: var(--text-muted);
 }
 
 .search-clear {
@@ -1371,7 +1822,7 @@ details summary {
     right: 15px;
     background: none;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 18px;
     padding: 5px;
@@ -1381,8 +1832,8 @@ details summary {
 }
 
 .search-clear:hover {
-    color: #333;
-    background: #ffffff66;
+    color: var(--text-primary);
+    background: var(--white-dimmed);
 }
 
 .search-clear.visible {
@@ -1393,7 +1844,7 @@ details summary {
 .search-results-info {
     margin-top: 8px;
     font-size: 12px;
-    color: #666;
+    color: var(--text-muted);
     display: none;
 }
 
@@ -1421,11 +1872,11 @@ details summary {
     align-items: center;
     gap: 4px;
     cursor: pointer;
-    color: #666;
+    color: var(--text-muted);
 }
 
 .search-option-inline:hover {
-    color: #333;
+    color: var(--text-primary);
 }
 
 .search-option-inline input[type="checkbox"] {
@@ -1437,7 +1888,7 @@ details summary {
     background: #ffffff88;
     border: 1px solid #dee2e6;
     border-radius: 4px;
-    color: #333;
+    color: var(--text-primary);
     padding: 4px 8px;
     cursor: pointer;
     font-size: 12px;
@@ -1446,7 +1897,7 @@ details summary {
 
 .search-nav-btn:hover:not(:disabled) {
     background: #ffffff99;
-    border-color: #2196f3;
+    border-color: var(--system-warning-color);
     transform: translateY(-1px);
 }
 
@@ -1480,7 +1931,7 @@ details summary {
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #666;
+    color: var(--text-muted);
     transition: color 0.2s;
 }
 
@@ -1495,18 +1946,18 @@ details summary {
 }
 
 .search-option:hover {
-    color: #333;
+    color: var(--text-primary);
 }
 
 /* Index Page Search Results */
 .search-results-panel {
     margin: 20px 0;
     padding: 20px;
-    background-color: #ffffff66;
+    background-color: var(--white-dimmed);
     border-radius: 8px;
     box-shadow: -7px -7px 10px #eeeeee44, 7px 7px 10px #00000011;
-    border-left: #ffffff66 1px solid;
-    border-top: #ffffff66 1px solid;
+    border-left: var(--white-dimmed) 1px solid;
+    border-top: var(--white-dimmed) 1px solid;
     border-bottom: #00000017 1px solid;
     border-right: #00000017 1px solid;
     display: none;
@@ -1534,7 +1985,7 @@ details summary {
 .search-close-btn {
     background: none;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     font-size: 20px;
     padding: 5px;
@@ -1543,8 +1994,8 @@ details summary {
 }
 
 .search-close-btn:hover {
-    color: #333;
-    background: #ffffff66;
+    color: var(--text-primary);
+    background: var(--white-dimmed);
 }
 
 .search-result-group {
@@ -1563,7 +2014,7 @@ details summary {
 
 .search-result-count {
     background: #ffffff88;
-    color: #666;
+    color: var(--text-muted);
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 11px;
@@ -1599,14 +2050,14 @@ details summary {
 
 .search-result-session {
     font-size: 12px;
-    color: #666;
+    color: var(--text-muted);
     margin-bottom: 5px;
     font-weight: 500;
 }
 
 .search-result-excerpt {
     font-size: 13px;
-    color: #495057;
+    color: var(--text-secondary);
     line-height: 1.4;
 }
 
@@ -1621,7 +2072,7 @@ details summary {
 .search-result-meta {
     margin-top: 8px;
     font-size: 11px;
-    color: #666;
+    color: var(--text-muted);
     display: flex;
     gap: 15px;
     padding-top: 5px;
@@ -1634,7 +2085,7 @@ details summary {
 .search-no-results {
     text-align: center;
     padding: 30px;
-    color: #666;
+    color: var(--text-muted);
     font-size: 14px;
     background-color: #ffffff44;
     border-radius: 6px;
@@ -1645,7 +2096,7 @@ details summary {
 .search-loading {
     text-align: center;
     padding: 20px;
-    color: #666;
+    color: var(--text-muted);
     background-color: #ffffff44;
     border-radius: 6px;
 }
@@ -2109,14 +2560,14 @@ mark.diff-char-added {
                 let displayContent = content ?? messageTypeGroups[messageType].content;
 
                 // Check for sidechain context regardless of primary message type
+                // Note: Sidechain user messages (Sub-assistant prompts) are now skipped
+                // since they duplicate the Task tool input prompt
                 if (classList.includes('sidechain')) {
                     // Override group for sidechain messages, but preserve the content
                     messageType = 'sidechain';
 
                     // For sidechain messages, prefix with appropriate icon based on original type
-                    if (classList.includes('user')) {
-                        displayContent = '📝 ' + (content ?? 'Sub-assistant prompt');
-                    } else if (classList.includes('assistant')) {
+                    if (classList.includes('assistant')) {
                         displayContent = '🔗 ' + (content ?? 'Sub-assistant response');
                     } else if (classList.includes('tool_use')) {
                         displayContent = '🔗 ' + (content ?? 'Sub-assistant tool use');
@@ -2517,16 +2968,30 @@ mark.diff-char-added {
     
     
     <div class="session-divider"></div>
-    <div id='session-style_guide' class='message session-header'>
+    <div class='message session-header' data-message-id='session-style_guide' id='msg-session-style_guide'>
         <div class='header'>Session: 📋 **Summary Example** - This style guide demonstrated all major message types: user messages, assistant responses, tool usage (both successful and error cases), system commands, command outputs, long text handling, special character support, and this summary. The transcript viewer properly renders markdown, handles tool interactions, manages text wrapping, and supports full Unicode character sets. All visual elements maintain consistent styling and readability. • style_gu</div>
         
-
+        
+        <div class='fold-bar' data-message-id='session-style_guide' data-border-color='session-header'>
+            
+            
+            <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-style_guide' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 2 users' title='Fold (all levels) all 9 descendants'>
+                <span class='fold-icon'>▼</span>
+                <span class='fold-label'>2 users</span>
+            </div>
+            <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-style_guide' data-title-unfolded='Fold (to 1st level) 2 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 2 users'>
+                <span class='fold-icon'>▼▼</span>
+                <span class='fold-label'>4 assistants, 2 users, 3 more total</span>
+            </div>
+            
+        </div>
+        
     </div>
     
     
     
     
-    <div class='message user'>
+    <div class='message user session-style_guide' data-message-id='d-0' id='msg-d-0'>
         <div class='header'>
             <span>🤷 User</span>
             <div class='header-info'>
@@ -2550,12 +3015,27 @@ def hello_world():
     print(&quot;Hello, world!&quot;)
     return 42
 ```</pre></div>
+        
+        <div class='fold-bar' data-message-id='d-0' data-border-color='user'>
+            
+            
+            <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-0' data-title-unfolded='Fold (all levels) all 6 descendants' data-title-folded='Unfold (1st level) 3 assistants, 1 system' title='Fold (all levels) all 6 descendants'>
+                <span class='fold-icon'>▼</span>
+                <span class='fold-label'>3 assistants, 1 system</span>
+            </div>
+            <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-0' data-title-unfolded='Fold (to 1st level) 3 assistants, 1 system' data-title-folded='Unfold (all levels) all 6 descendants' title='Fold (to 1st level) 3 assistants, 1 system'>
+                <span class='fold-icon'>▼▼</span>
+                <span class='fold-label'>3 assistants, 2 tools, 1 more total</span>
+            </div>
+            
+        </div>
+        
     </div>
     
     
     
     
-    <div class='message assistant'>
+    <div class='message assistant session-style_guide d-0' data-message-id='d-1' id='msg-d-1'>
         <div class='header'>
             <span>🤖 Assistant</span>
             <div class='header-info'>
@@ -2565,7 +3045,7 @@ def hello_world():
                 
             </div>
         </div>
-        <div class='content markdown'><p>🤖 <strong>Assistant Message Example</strong></p>
+        <div class='content markdown'><div class="assistant-text markdown"><p>🤖 <strong>Assistant Message Example</strong></p>
 <p>This is a basic assistant response. It supports the same markdown formatting:</p>
 <h2>Headers work too</h2>
 <h3>Subheaders</h3>
@@ -2609,13 +3089,14 @@ def hello_world():
 <li>Responsive design</li>
 <li>Clean typography</li>
 </ul>
-</div>
+</div></div>
+        
     </div>
     
     
     
     
-    <div class='message assistant'>
+    <div class='message assistant session-style_guide d-0' data-message-id='d-2' id='msg-d-2'>
         <div class='header'>
             <span>🤖 Assistant</span>
             <div class='header-info'>
@@ -2627,15 +3108,26 @@ def hello_world():
                 
             </div>
         </div>
-        <div class='content markdown'><p>🛠️ <strong>Tool Use Example</strong></p>
+        <div class='content markdown'><div class="assistant-text markdown"><p>🛠️ <strong>Tool Use Example</strong></p>
 <p>Let me create a file to demonstrate tool usage:</p>
-</div>
+</div></div>
+        
+        <div class='fold-bar' data-message-id='d-2' data-border-color='assistant'>
+            
+            
+            <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-2' data-title-unfolded='Fold 1 tool' data-title-folded='Unfold (1st level) 1 tool' title='Fold 1 tool'>
+                <span class='fold-icon'>▼</span>
+                <span class='fold-label'>1 tool</span>
+            </div>
+            
+        </div>
+        
     </div>
     
     
     
     
-    <div class='message tool_use paired-message pair_first'>
+    <div class='message tool_use pair_first session-style_guide d-0 d-2' data-message-id='d-3' id='msg-d-3-first'>
         <div class='header'>
             <span title="ID: tool_style_001">📝 Edit <span class='tool-summary'>/tmp/style_guide_example.py</span></span>
             <div class='header-info'>
@@ -2646,12 +3138,13 @@ def hello_world():
             </div>
         </div>
         <div class='content'><div class='edit-tool-content'><div class='edit-diff'><div class='diff-line diff-added'><span class='diff-marker'>+</span>#!/usr/bin/env python3</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>&quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>Style Guide Example File</div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span>This file demonstrates how tool usage appears in transcripts.</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>&quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span>import os</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>import sys</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>from typing import List, Dict, Any</div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span>class StyleGuideExample:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    &quot;&quot;&quot;Example class for the style guide.&quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    </div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    def __init__(self, name: str):</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        self.name = name</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        self.items: List[Dict[str, Any]] = []</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    </div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    def add_item(self, item: Dict[str, Any]) -&gt; None:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        &quot;&quot;&quot;Add an item to the collection.&quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        self.items.append(item)</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        print(f&quot;Added item: {item.get(&#x27;name&#x27;, &#x27;Unknown&#x27;)}&quot;)</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    </div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    def process_all(self) -&gt; None:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        &quot;&quot;&quot;Process all items in the collection.&quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        for i, item in enumerate(self.items):</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>            print(f&quot;Processing item {i+1}: {item}&quot;)</div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span>if __name__ == &quot;__main__&quot;:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    example = StyleGuideExample(&quot;Demo&quot;)</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    example.add_item({&quot;name&quot;: &quot;Sample&quot;, &quot;value&quot;: 42})</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    example.add_item({&quot;name&quot;: &quot;Test&quot;, &quot;value&quot;: 100})</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    example.process_all()</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    print(&quot;Style guide example completed!&quot;)</div></div></div></div>
+        
     </div>
     
     
     
     
-    <div class='message tool_result paired-message pair_last'>
+    <div class='message tool_result pair_last session-style_guide d-0 d-2' data-message-id='d-4' id='msg-d-4-last'>
         <div class='header'>
             <span title="ID: tool_style_001"></span>
             <div class='header-info'>
@@ -2662,12 +3155,13 @@ def hello_world():
             </div>
         </div>
         <div class='content'><pre>File created successfully at: /tmp/style_guide_example.py</pre></div>
+        
     </div>
     
     
     
     
-    <div class='message assistant'>
+    <div class='message assistant session-style_guide d-0' data-message-id='d-5' id='msg-d-5'>
         <div class='header'>
             <span>🤖 Assistant</span>
             <div class='header-info'>
@@ -2679,15 +3173,26 @@ def hello_world():
                 
             </div>
         </div>
-        <div class='content markdown'><p>⚠️ <strong>Tool Error Example</strong></p>
+        <div class='content markdown'><div class="assistant-text markdown"><p>⚠️ <strong>Tool Error Example</strong></p>
 <p>Let me demonstrate what happens when a tool encounters an error:</p>
-</div>
+</div></div>
+        
+        <div class='fold-bar' data-message-id='d-5' data-border-color='assistant'>
+            
+            
+            <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-5' data-title-unfolded='Fold 1 tool' data-title-folded='Unfold (1st level) 1 tool' title='Fold 1 tool'>
+                <span class='fold-icon'>▼</span>
+                <span class='fold-label'>1 tool</span>
+            </div>
+            
+        </div>
+        
     </div>
     
     
     
     
-    <div class='message tool_use paired-message pair_first'>
+    <div class='message tool_use pair_first session-style_guide d-0 d-5' data-message-id='d-6' id='msg-d-6-first'>
         <div class='header'>
             <span title="ID: tool_style_002">🛠️ Bash <span class='tool-summary'>This command will fail to demonstrate error handling</span></span>
             <div class='header-info'>
@@ -2698,12 +3203,13 @@ def hello_world():
             </div>
         </div>
         <div class='content'><div class='bash-tool-content'><pre class='bash-tool-command'>nonexistent_command --invalid-flag</pre></div></div>
+        
     </div>
     
     
     
     
-    <div class='message tool_result error paired-message pair_last'>
+    <div class='message tool_result error pair_last session-style_guide d-0 d-5' data-message-id='d-7' id='msg-d-7-last'>
         <div class='header'>
             <span title="ID: tool_style_002">🚨 Error</span>
             <div class='header-info'>
@@ -2716,12 +3222,13 @@ def hello_world():
         <div class='content'><pre>bash: line 1: nonexistent_command: command not found
 Error: Command &#x27;nonexistent_command&#x27; not found in PATH
 Exit code: 127</pre></div>
+        
     </div>
     
     
     
     
-    <div class='message system paired-message pair_first'>
+    <div class='message system pair_first session-style_guide d-0' data-message-id='d-8' id='msg-d-8-first'>
         <div class='header'>
             <span>⚙️ System</span>
             <div class='header-info'>
@@ -2731,34 +3238,19 @@ Exit code: 127</pre></div>
                 
             </div>
         </div>
-        <div class='content'><strong>Command:</strong> style-guide-test<br><strong>Args:</strong> --format json --output /tmp/test.json<br>
-    <div class="tool-content">
-        <details class="collapsible-details">
-            <summary>
-                Content
-                <div class="preview-content">This is the command content with JSON data:
-{
-  &quot;name&quot;: &quot;Style Guide Test&quot;,
-  &quot;version&quot;: &quot;1.0.0&quot;,
-  &quot;description&quot;: &quot;Demonstrates command content ...</div>
-            </summary>
-            <div class="details-content">
-                This is the command content with JSON data:
+        <div class='content'><strong>Command:</strong> style-guide-test<br><strong>Args:</strong> --format json --output /tmp/test.json<br><strong>Content:</strong><pre>This is the command content with JSON data:
 {
   &quot;name&quot;: &quot;Style Guide Test&quot;,
   &quot;version&quot;: &quot;1.0.0&quot;,
   &quot;description&quot;: &quot;Demonstrates command content formatting&quot;
-}
-            </div>
-        </details>
-    </div>
-    </div>
+}</pre></div>
+        
     </div>
     
     
     
     
-    <div class='message system command-output paired-message pair_last'>
+    <div class='message system command-output pair_last session-style_guide d-0' data-message-id='d-9' id='msg-d-9-last'>
         <div class='header'>
             <span>System</span>
             <div class='header-info'>
@@ -2784,12 +3276,13 @@ Timestamp: 2025-06-14T10:02:10Z
 Status: ALL_TESTS_PASSED
 
 Style guide generation completed successfully! 🎉</pre></div>
+        
     </div>
     
     
     
     
-    <div class='message user'>
+    <div class='message user session-style_guide' data-message-id='d-10' id='msg-d-10'>
         <div class='header'>
             <span>🤷 User</span>
             <div class='header-info'>
@@ -2808,12 +3301,23 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor i
 Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.
 
 The layout should remain clean and readable even with this amount of text content. Line breaks and paragraph spacing should be preserved appropriately.</pre></div>
+        
+        <div class='fold-bar' data-message-id='d-10' data-border-color='user'>
+            
+            
+            <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-10' data-title-unfolded='Fold 1 assistant' data-title-folded='Unfold (1st level) 1 assistant' title='Fold 1 assistant'>
+                <span class='fold-icon'>▼</span>
+                <span class='fold-label'>1 assistant</span>
+            </div>
+            
+        </div>
+        
     </div>
     
     
     
     
-    <div class='message assistant'>
+    <div class='message assistant session-style_guide d-10' data-message-id='d-11' id='msg-d-11'>
         <div class='header'>
             <span>🤖 Assistant</span>
             <div class='header-info'>
@@ -2823,7 +3327,7 @@ The layout should remain clean and readable even with this amount of text conten
                 
             </div>
         </div>
-        <div class='content markdown'><p>🌍 <strong>Special Characters &amp; Unicode Example</strong></p>
+        <div class='content markdown'><div class="assistant-text markdown"><p>🌍 <strong>Special Characters &amp; Unicode Example</strong></p>
 <p>The transcript viewer supports full Unicode:</p>
 <p><strong>Accented characters:</strong> café, naïve, résumé, piñata<br />
 <strong>Non-Latin scripts:</strong> 中文, العربية, русский, ελληνικά, हिन्दी<br />
@@ -2841,7 +3345,8 @@ The layout should remain clean and readable even with this amount of text conten
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Mathematical: √16 = </span><span class="si">{</span><span class="mi">16</span><span class="o">**</span><span class="mf">0.5</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>All characters should render correctly without breaking the layout!</p>
-</div>
+</div></div>
+        
     </div>
     
     
@@ -3024,9 +3529,13 @@ The layout should remain clean and readable even with this amount of text conten
             }
 
             // Toggle details functionality
+            // Selector for all collapsible details elements (multiple classes)
+            const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible';
+            const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible';
+
             function updateToggleButton() {
-                const allDetails = document.querySelectorAll('details.collapsible-details');
-                const openCount = document.querySelectorAll('details[open].collapsible-details').length;
+                const allDetails = document.querySelectorAll(collapsibleSelector);
+                const openCount = document.querySelectorAll(collapsibleOpenSelector).length;
                 const totalCount = allDetails.length;
 
                 if (totalCount === 0) {
@@ -3041,8 +3550,8 @@ The layout should remain clean and readable even with this amount of text conten
             }
 
             function toggleAllDetails() {
-                const allDetails = document.querySelectorAll('details.collapsible-details');
-                const openCount = document.querySelectorAll('details[open].collapsible-details').length;
+                const allDetails = document.querySelectorAll(collapsibleSelector);
+                const openCount = document.querySelectorAll(collapsibleOpenSelector).length;
                 const shouldOpen = openCount <= allDetails.length / 2;
 
                 allDetails.forEach(details => {
@@ -3104,8 +3613,8 @@ The layout should remain clean and readable even with this amount of text conten
                     }
                 });
 
-                // Handle combined "tool" filter (tool_use + tool_result)
-                const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                // Handle combined "tool" filter (tool_use + tool_result + bash messages)
+                const toolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                 const toolCount = toolMessages.length;
                 const toolToggle = document.querySelector(`[data-type="tool"]`);
                 const toolCountSpan = toolToggle ? toolToggle.querySelector('.count') : null;
@@ -3126,11 +3635,11 @@ The layout should remain clean and readable even with this amount of text conten
                     .filter(toggle => toggle.classList.contains('active'))
                     .map(toggle => toggle.dataset.type);
 
-                // Expand "tool" to include both tool_use and tool_result
+                // Expand "tool" to include tool_use, tool_result, and bash messages
                 const expandedTypes = [];
                 activeTypes.forEach(type => {
                     if (type === 'tool') {
-                        expandedTypes.push('tool_use', 'tool_result');
+                        expandedTypes.push('tool_use', 'tool_result', 'bash-input', 'bash-output');
                     } else {
                         expandedTypes.push(type);
                     }
@@ -3201,9 +3710,9 @@ The layout should remain clean and readable even with this amount of text conten
                     }
                 });
 
-                // Handle combined "tool" filter separately
-                const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden)`);
-                const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header)`);
+                // Handle combined "tool" filter separately (includes bash messages)
+                const visibleToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header):not(.filtered-hidden), .message.tool_result:not(.session-header):not(.filtered-hidden), .message.bash-input:not(.session-header):not(.filtered-hidden), .message.bash-output:not(.session-header):not(.filtered-hidden)`);
+                const totalToolMessages = document.querySelectorAll(`.message.tool_use:not(.session-header), .message.tool_result:not(.session-header), .message.bash-input:not(.session-header), .message.bash-output:not(.session-header)`);
                 const visibleToolCount = visibleToolMessages.length;
                 const totalToolCount = totalToolMessages.length;
 
@@ -3261,6 +3770,316 @@ The layout should remain clean and readable even with this amount of text conten
 
             // Apply all filters on page load
             applyFilter();
+
+            // Fold/unfold functionality with horizontal fold bars
+            const foldBarSections = document.querySelectorAll('.fold-bar-section');
+
+            foldBarSections.forEach(section => {
+                section.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const action = this.getAttribute('data-action');
+                    const targetId = this.getAttribute('data-target');
+                    const isFolded = this.classList.contains('folded');
+
+                    if (action === 'fold-one') {
+                        // Fold/unfold immediate children only
+                        handleFoldOne(targetId, isFolded, this);
+                    } else if (action === 'fold-all') {
+                        // Fold/unfold all descendants recursively
+                        handleFoldAll(targetId, isFolded, this);
+                    }
+                });
+            });
+
+            // Update tooltip based on fold state
+            function updateTooltip(section) {
+                const isFolded = section.classList.contains('folded');
+                const tooltip = isFolded
+                    ? section.getAttribute('data-title-folded')
+                    : section.getAttribute('data-title-unfolded');
+                section.setAttribute('title', tooltip);
+            }
+
+            function handleFoldOne(targetId, isFolded, sectionElement) {
+                // Find all messages in the document
+                const allMessages = document.querySelectorAll('.message');
+
+                // Find immediate children: messages that have targetId as their LAST ancestor
+                const immediateChildren = Array.from(allMessages).filter(msg => {
+                    const classList = Array.from(msg.classList);
+                    // Check if targetId is in the class list (ancestor)
+                    if (!classList.includes(targetId)) return false;
+
+                    // Check if it's an immediate child by finding all ancestor IDs
+                    // Ancestor IDs can be either d-XXX (regular messages) or session-XXX (sessions)
+                    const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                    const lastAncestor = ancestorIds[ancestorIds.length - 1];
+                    return lastAncestor === targetId;
+                });
+
+                if (isFolded) {
+                    // Unfold: show immediate children
+                    immediateChildren.forEach(msg => {
+                        msg.style.display = '';
+
+                        // Set newly revealed children to folded state
+                        const foldBar = msg.querySelector('.fold-bar');
+                        if (foldBar) {
+                            const foldOneBtn = foldBar.querySelector('.fold-one-level');
+                            const foldAllBtn = foldBar.querySelector('.fold-all-levels');
+
+                            if (foldOneBtn) {
+                                foldOneBtn.classList.add('folded');
+                                foldOneBtn.querySelector('.fold-icon').textContent = '▶';
+                                updateTooltip(foldOneBtn);
+                            }
+                            if (foldAllBtn) {
+                                foldAllBtn.classList.add('folded');
+                                foldAllBtn.querySelector('.fold-icon').textContent = '▶▶';
+                                updateTooltip(foldAllBtn);
+                            }
+                        }
+                    });
+                    sectionElement.classList.remove('folded');
+                    sectionElement.querySelector('.fold-icon').textContent = '▼';
+                    updateTooltip(sectionElement);
+                    // Note: Second button stays ▶▶ (we haven't unfolded everything)
+                } else {
+                    // Fold: hide ALL descendants (same approach as handleFoldAll for O(n) performance)
+                    const allDescendants = document.querySelectorAll(`.message.${targetId}`);
+                    allDescendants.forEach(msg => {
+                        msg.style.display = 'none';
+                    });
+                    sectionElement.classList.add('folded');
+                    sectionElement.querySelector('.fold-icon').textContent = '▶';
+                    updateTooltip(sectionElement);
+
+                    // Coordinate: If we folded immediate children, all descendants are hidden
+                    // So update the "fold all" button to ▶▶ state
+                    const foldBar = sectionElement.parentElement;
+                    const foldAllSection = foldBar.querySelector('.fold-all-levels');
+                    if (foldAllSection) {
+                        foldAllSection.classList.add('folded');
+                        foldAllSection.querySelector('.fold-icon').textContent = '▶▶';
+                        updateTooltip(foldAllSection);
+                    }
+                }
+            }
+
+            function handleFoldAll(targetId, isFolded, sectionElement) {
+                // Find all descendants (messages with targetId in their class list)
+                const descendants = document.querySelectorAll(`.message.${targetId}`);
+
+                if (isFolded) {
+                    // Unfold: show all descendants (State A/B → State C)
+                    descendants.forEach(msg => {
+                        msg.style.display = '';
+
+                        // Also update fold bars of all descendants to unfolded state
+                        const foldBar = msg.querySelector('.fold-bar');
+                        if (foldBar) {
+                            const foldOneBtn = foldBar.querySelector('.fold-one-level');
+                            const foldAllBtn = foldBar.querySelector('.fold-all-levels');
+
+                            if (foldOneBtn) {
+                                foldOneBtn.classList.remove('folded');
+                                foldOneBtn.querySelector('.fold-icon').textContent = '▼';
+                                updateTooltip(foldOneBtn);
+                            }
+                            if (foldAllBtn) {
+                                foldAllBtn.classList.remove('folded');
+                                foldAllBtn.querySelector('.fold-icon').textContent = '▼▼';
+                                updateTooltip(foldAllBtn);
+                            }
+                        }
+                    });
+                    sectionElement.classList.remove('folded');
+                    sectionElement.querySelector('.fold-icon').textContent = '▼▼';
+                    updateTooltip(sectionElement);
+
+                    // Coordinate: If we unfolded all levels, immediate children are now visible
+                    // So update the "fold one" button to ▼ state
+                    const foldBar = sectionElement.parentElement;
+                    const foldOneSection = foldBar.querySelector('.fold-one-level');
+                    if (foldOneSection) {
+                        foldOneSection.classList.remove('folded');
+                        foldOneSection.querySelector('.fold-icon').textContent = '▼';
+                        updateTooltip(foldOneSection);
+                    }
+                } else {
+                    // Fold: show first level only, hide deeper descendants (State C → State B)
+                    descendants.forEach(msg => {
+                        const classList = Array.from(msg.classList);
+                        const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                        const lastAncestor = ancestorIds[ancestorIds.length - 1];
+
+                        // Show immediate children, hide non-immediate children
+                        if (lastAncestor === targetId) {
+                            msg.style.display = '';  // Show immediate child
+
+                            // Set immediate children to folded state
+                            const foldBar = msg.querySelector('.fold-bar');
+                            if (foldBar) {
+                                const foldOneBtn = foldBar.querySelector('.fold-one-level');
+                                const foldAllBtn = foldBar.querySelector('.fold-all-levels');
+
+                                if (foldOneBtn) {
+                                    foldOneBtn.classList.add('folded');
+                                    foldOneBtn.querySelector('.fold-icon').textContent = '▶';
+                                    updateTooltip(foldOneBtn);
+                                }
+                                if (foldAllBtn) {
+                                    foldAllBtn.classList.add('folded');
+                                    foldAllBtn.querySelector('.fold-icon').textContent = '▶▶';
+                                    updateTooltip(foldAllBtn);
+                                }
+                            }
+                        } else {
+                            msg.style.display = 'none';  // Hide deeper descendants
+                        }
+                    });
+                    sectionElement.classList.add('folded');
+                    sectionElement.querySelector('.fold-icon').textContent = '▶▶';
+                    updateTooltip(sectionElement);
+
+                    // Coordinate: First level is now visible, so update "fold one" button to ▼ state
+                    const foldBar = sectionElement.parentElement;
+                    const foldOneSection = foldBar.querySelector('.fold-one-level');
+                    if (foldOneSection) {
+                        foldOneSection.classList.remove('folded');
+                        foldOneSection.querySelector('.fold-icon').textContent = '▼';
+                        updateTooltip(foldOneSection);
+                    }
+                }
+            }
+
+            // Set initial fold state on page load
+            function setInitialFoldState() {
+                // Get all messages once
+                const allMessages = document.querySelectorAll('.message');
+
+                // Build hierarchy lookup structure in a single pass - O(n)
+                const messagesByParentId = {};  // Maps parent ID -> immediate children elements
+                const allDescendantsByParentId = {};  // Maps parent ID -> all descendant elements
+
+                allMessages.forEach(msg => {
+                    const classList = Array.from(msg.classList);
+                    const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+
+                    if (ancestorIds.length > 0) {
+                        const lastAncestor = ancestorIds[ancestorIds.length - 1];
+
+                        // Track immediate children
+                        if (!messagesByParentId[lastAncestor]) {
+                            messagesByParentId[lastAncestor] = [];
+                        }
+                        messagesByParentId[lastAncestor].push(msg);
+
+                        // Track all descendants
+                        ancestorIds.forEach(ancestorId => {
+                            if (!allDescendantsByParentId[ancestorId]) {
+                                allDescendantsByParentId[ancestorId] = [];
+                            }
+                            allDescendantsByParentId[ancestorId].push(msg);
+                        });
+                    }
+                });
+
+                // Now process each message using cached hierarchy - O(n)
+                allMessages.forEach(msg => {
+                    const messageId = msg.getAttribute('data-message-id');
+                    if (!messageId) return;
+
+                    const isSession = msg.classList.contains('session-header');
+                    const isUser = msg.classList.contains('user');
+                    const foldBar = msg.querySelector('.fold-bar');
+
+                    if (!foldBar) return;
+
+                    const foldOneSection = foldBar.querySelector('.fold-one-level');
+                    const foldAllSection = foldBar.querySelector('.fold-all-levels');
+
+                    // Check if user message has only tools (no assistant/system/thinking children)
+                    let hasOnlyTools = false;
+                    if (isUser) {
+                        const immediateChildren = messagesByParentId[messageId] || [];
+
+                        const hasNonToolChildren = immediateChildren.some(child =>
+                            child.classList.contains('assistant') ||
+                            child.classList.contains('system') ||
+                            child.classList.contains('thinking')
+                        );
+                        hasOnlyTools = immediateChildren.length > 0 && !hasNonToolChildren;
+                    }
+
+                    // Sessions and user messages (unless they have only tools): unfolded at first level
+                    if ((isSession || isUser) && !hasOnlyTools) {
+                        // First level is visible (▼), all levels are not (▶▶)
+                        if (foldOneSection) {
+                            foldOneSection.classList.remove('folded');
+                            foldOneSection.querySelector('.fold-icon').textContent = '▼';
+                            updateTooltip(foldOneSection);
+                        }
+                        if (foldAllSection) {
+                            foldAllSection.classList.add('folded');
+                            foldAllSection.querySelector('.fold-icon').textContent = '▶▶';
+                            updateTooltip(foldAllSection);
+                        }
+
+                        // Show immediate children, hide deeper descendants
+                        const allDescendants = allDescendantsByParentId[messageId] || [];
+                        const immediateChildren = messagesByParentId[messageId] || [];
+
+                        allDescendants.forEach(descendant => {
+                            // Show immediate children, hide non-immediate children
+                            if (immediateChildren.includes(descendant)) {
+                                descendant.style.display = '';  // Show immediate child
+
+                                // Set immediate children to folded state (▶/▶▶)
+                                const childFoldBar = descendant.querySelector('.fold-bar');
+                                if (childFoldBar) {
+                                    const childFoldOne = childFoldBar.querySelector('.fold-one-level');
+                                    const childFoldAll = childFoldBar.querySelector('.fold-all-levels');
+
+                                    if (childFoldOne) {
+                                        childFoldOne.classList.add('folded');
+                                        childFoldOne.querySelector('.fold-icon').textContent = '▶';
+                                        updateTooltip(childFoldOne);
+                                    }
+                                    if (childFoldAll) {
+                                        childFoldAll.classList.add('folded');
+                                        childFoldAll.querySelector('.fold-icon').textContent = '▶▶';
+                                        updateTooltip(childFoldAll);
+                                    }
+                                }
+                            } else {
+                                descendant.style.display = 'none';  // Hide deeper descendants
+                            }
+                        });
+                    } else {
+                        // Assistant, system, thinking, tools, sidechains, OR user messages with only tools: fully folded
+                        if (foldOneSection) {
+                            foldOneSection.classList.add('folded');
+                            foldOneSection.querySelector('.fold-icon').textContent = '▶';
+                            updateTooltip(foldOneSection);
+                        }
+                        if (foldAllSection) {
+                            foldAllSection.classList.add('folded');
+                            foldAllSection.querySelector('.fold-icon').textContent = '▶▶';
+                            updateTooltip(foldAllSection);
+                        }
+
+                        // Hide all descendants
+                        const allDescendants = allDescendantsByParentId[messageId] || [];
+                        allDescendants.forEach(descendant => {
+                            descendant.style.display = 'none';
+                        });
+                    }
+                });
+            }
+
+            // Apply initial fold state
+            setInitialFoldState();
         });
     </script>
     <!-- Search functionality script -->
