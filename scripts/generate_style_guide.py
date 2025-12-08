@@ -5,11 +5,17 @@ Generate a visual style guide showing all message types and rendering styles.
 This script creates a comprehensive HTML file that demonstrates how different
 types of Claude transcript messages are rendered, serving both as a test
 and as documentation for the visual design.
+
+Session 1: Hand-crafted examples showing various formatting scenarios
+Session 2: Auto-generated from dev-docs/messages samples showing all message types
 """
 
+import copy
 import json
 import sys
 import tempfile
+import uuid as uuid_module
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from claude_code_log.converter import convert_jsonl_to_html
@@ -353,6 +359,290 @@ def create_index_style_guide_data():
     ]
 
 
+def load_jsonl_sample(file_path: Path) -> dict | None:
+    """Load a single message from a JSONL file."""
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            line = f.readline().strip()
+            if line:
+                return json.loads(line)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"    ⚠️  Warning: Could not load {file_path}: {e}")
+    return None
+
+
+def create_sample_messages_session() -> list[dict]:
+    """Create a session from all message samples in dev-docs/messages.
+
+    This function:
+    1. Loads all .jsonl samples from dev-docs/messages/
+    2. Transforms them in-memory with consistent sessionId, uuid, parentUuid
+    3. Orders them logically (user→assistant→tools, sidechain under Task)
+    4. Duplicates tools with isSidechain=True (except Task itself)
+
+    Returns:
+        List of transformed message dictionaries for a single session
+    """
+    script_dir = Path(__file__).parent
+    samples_dir = script_dir.parent / "dev-docs" / "messages"
+
+    session_id = "sample_messages_session"
+    base_time = datetime(2025, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
+    time_counter = [0]  # Use list for mutable closure
+
+    def new_uuid() -> str:
+        return str(uuid_module.uuid4())
+
+    def new_timestamp() -> str:
+        time_counter[0] += 1
+        dt = base_time + timedelta(seconds=time_counter[0] * 10)
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    def transform_message(
+        msg: dict,
+        *,
+        uuid: str,
+        parent_uuid: str | None,
+        is_sidechain: bool = False,
+        tool_id_map: dict[str, str] | None = None,
+    ) -> dict:
+        """Transform a message with new identifiers."""
+        result = copy.deepcopy(msg)
+        result["sessionId"] = session_id
+        result["uuid"] = uuid
+        result["parentUuid"] = parent_uuid
+        result["timestamp"] = new_timestamp()
+        result["isSidechain"] = is_sidechain
+
+        # Update tool_use ids
+        if tool_id_map is not None:
+            content = result.get("message", {}).get("content", [])
+            if isinstance(content, list):
+                for item in content:
+                    if item.get("type") == "tool_use" and "id" in item:
+                        old_id = item["id"]
+                        new_id = f"toolu_{new_uuid()[:24]}"
+                        item["id"] = new_id
+                        tool_id_map[old_id] = new_id
+                    elif item.get("type") == "tool_result" and "tool_use_id" in item:
+                        old_id = item["tool_use_id"]
+                        if old_id in tool_id_map:
+                            item["tool_use_id"] = tool_id_map[old_id]
+
+        return result
+
+    # Collect samples by category
+    user_samples: dict[str, dict] = {}
+    assistant_samples: dict[str, dict] = {}
+    system_samples: dict[str, dict] = {}
+    tool_samples: dict[str, dict] = {}  # key: "ToolName-tool_use" etc.
+
+    # Expected sample names for validation
+    expected_user = {
+        "user",
+        "user_slash_command",
+        "user_command",
+        "command_output",
+        "image",
+    }
+    expected_assistant = {"assistant", "thinking"}
+    expected_system = {"system_info", "summary"}
+    # Tools are discovered dynamically
+
+    # Load user samples
+    user_dir = samples_dir / "user"
+    if user_dir.exists():
+        for jsonl_file in user_dir.glob("*.jsonl"):
+            name = jsonl_file.stem
+            msg = load_jsonl_sample(jsonl_file)
+            if msg:
+                user_samples[name] = msg
+            if name not in expected_user and name not in {"user_sidechain"}:
+                print(f"    ⚠️  Warning: Unknown user sample type: {name}")
+
+    # Load assistant samples
+    assistant_dir = samples_dir / "assistant"
+    if assistant_dir.exists():
+        for jsonl_file in assistant_dir.glob("*.jsonl"):
+            name = jsonl_file.stem
+            msg = load_jsonl_sample(jsonl_file)
+            if msg:
+                assistant_samples[name] = msg
+            if name not in expected_assistant and name not in {"assistant_sidechain"}:
+                print(f"    ⚠️  Warning: Unknown assistant sample type: {name}")
+
+    # Load system samples
+    system_dir = samples_dir / "system"
+    if system_dir.exists():
+        for jsonl_file in system_dir.glob("*.jsonl"):
+            name = jsonl_file.stem
+            msg = load_jsonl_sample(jsonl_file)
+            if msg:
+                system_samples[name] = msg
+            if name not in expected_system and name not in {
+                "queue_operation",
+                "file_history_snapshot",
+            }:
+                print(f"    ⚠️  Warning: Unknown system sample type: {name}")
+
+    # Load tool samples
+    tools_dir = samples_dir / "tools"
+    if tools_dir.exists():
+        for jsonl_file in tools_dir.glob("*.jsonl"):
+            name = jsonl_file.stem
+            msg = load_jsonl_sample(jsonl_file)
+            if msg:
+                tool_samples[name] = msg
+
+    # Build the message list
+    messages: list[dict] = []
+    last_uuid: str | None = None
+    tool_id_map: dict[str, str] = {}
+
+    # Helper to add a message
+    def add_message(
+        msg: dict, *, is_sidechain: bool = False, update_last: bool = True
+    ) -> str:
+        nonlocal last_uuid
+        uuid = new_uuid()
+        transformed = transform_message(
+            msg,
+            uuid=uuid,
+            parent_uuid=last_uuid,
+            is_sidechain=is_sidechain,
+            tool_id_map=tool_id_map,
+        )
+        messages.append(transformed)
+        if update_last:
+            last_uuid = uuid
+        return uuid
+
+    # === MAIN CHAIN MESSAGES ===
+
+    # 1. User messages
+    print("    Loading user samples...")
+    if "user" in user_samples:
+        add_message(user_samples["user"])
+    if "user_slash_command" in user_samples:
+        add_message(user_samples["user_slash_command"])
+    if "user_command" in user_samples:
+        add_message(user_samples["user_command"])
+    if "command_output" in user_samples:
+        add_message(user_samples["command_output"])
+
+    # 2. Assistant message
+    print("    Loading assistant samples...")
+    if "assistant" in assistant_samples:
+        add_message(assistant_samples["assistant"])
+
+    # 3. System info
+    print("    Loading system samples...")
+    if "system_info" in system_samples:
+        add_message(system_samples["system_info"])
+
+    # 4. Image message (user)
+    if "image" in user_samples:
+        add_message(user_samples["image"])
+
+    # 5. Main chain tools (except Task which comes later)
+    print("    Loading tool samples...")
+
+    # Get unique tool names (excluding Task, exit_plan_mode variants, and error results)
+    tool_names = set()
+    for name in tool_samples:
+        if name.endswith("-tool_use"):
+            tool_name = name[:-9]  # Remove "-tool_use"
+            # Skip Task (handled separately) and exit_plan_mode (duplicate of ExitPlanMode)
+            if tool_name not in {"Task", "exit_plan_mode"}:
+                tool_names.add(tool_name)
+
+    # Sort tools alphabetically
+    sorted_tools = sorted(tool_names)
+
+    # Add each tool (use + result pair)
+    for tool_name in sorted_tools:
+        use_key = f"{tool_name}-tool_use"
+        result_key = f"{tool_name}-tool_result"
+        error_key = f"{tool_name}-tool_result_error"
+
+        if use_key in tool_samples:
+            # Add tool_use
+            add_message(tool_samples[use_key])
+
+            # Add tool_result (prefer success, fallback to error)
+            if result_key in tool_samples:
+                add_message(tool_samples[result_key])
+            elif error_key in tool_samples:
+                add_message(tool_samples[error_key])
+
+    # === TASK TOOL WITH SIDECHAIN ===
+    print("    Loading Task tool with sidechain...")
+
+    task_use_key = "Task-tool_use"
+    task_result_key = "Task-tool_result"
+
+    if task_use_key in tool_samples:
+        # Add Task tool_use
+        task_uuid = add_message(tool_samples[task_use_key])
+
+        # === SIDECHAIN MESSAGES (appear under Task) ===
+
+        # Save main chain position
+        main_chain_last_uuid = last_uuid
+
+        # Start sidechain from the Task message
+        last_uuid = task_uuid
+
+        # Add sidechain user
+        if "user_sidechain" in user_samples:
+            add_message(user_samples["user_sidechain"], is_sidechain=True)
+        elif "user" in user_samples:
+            # Duplicate regular user as sidechain
+            add_message(user_samples["user"], is_sidechain=True)
+
+        # Add sidechain assistant
+        if "assistant_sidechain" in assistant_samples:
+            add_message(assistant_samples["assistant_sidechain"], is_sidechain=True)
+        elif "assistant" in assistant_samples:
+            add_message(assistant_samples["assistant"], is_sidechain=True)
+
+        # Add thinking (always sidechain in practice)
+        if "thinking" in assistant_samples:
+            add_message(assistant_samples["thinking"], is_sidechain=True)
+
+        # Add sidechain tools (all except Task - no nested Tasks)
+        for tool_name in sorted_tools:
+            use_key = f"{tool_name}-tool_use"
+            result_key = f"{tool_name}-tool_result"
+            error_key = f"{tool_name}-tool_result_error"
+
+            if use_key in tool_samples:
+                # Add tool_use as sidechain
+                add_message(tool_samples[use_key], is_sidechain=True)
+
+                # Add tool_result as sidechain
+                if result_key in tool_samples:
+                    add_message(tool_samples[result_key], is_sidechain=True)
+                elif error_key in tool_samples:
+                    add_message(tool_samples[error_key], is_sidechain=True)
+
+        # Restore main chain position
+        last_uuid = main_chain_last_uuid
+
+        # Add Task tool_result (back on main chain)
+        if task_result_key in tool_samples:
+            add_message(tool_samples[task_result_key])
+
+    # === SUMMARY (at the end) ===
+    if "summary" in system_samples:
+        summary = copy.deepcopy(system_samples["summary"])
+        summary["leafUuid"] = last_uuid
+        messages.append(summary)
+
+    print(f"    ✓ Loaded {len(messages)} messages from samples")
+    return messages
+
+
 def generate_style_guide():
     """Generate the complete style guide HTML files."""
     script_dir = Path(__file__).parent
@@ -361,17 +651,27 @@ def generate_style_guide():
 
     print("🎨 Generating Claude Code Log Style Guide...")
 
-    # Generate transcript style guide
+    # Generate transcript style guide with two sessions:
+    # Session 1: Hand-crafted examples
+    # Session 2: Auto-generated from dev-docs/messages samples
     print("  📝 Creating transcript style guide...")
+
+    print("    Session 1: Hand-crafted examples...")
     style_guide_data = create_style_guide_data()
+
+    print("    Session 2: Message samples from dev-docs/messages...")
+    sample_messages_data = create_sample_messages_session()
+
+    # Combine both sessions
+    all_data = style_guide_data + sample_messages_data
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         jsonl_file = temp_path / "style_guide.jsonl"
 
-        # Write style guide data
+        # Write combined style guide data
         with open(jsonl_file, "w", encoding="utf-8") as f:
-            for entry in style_guide_data:
+            for entry in all_data:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
         # Convert to HTML
