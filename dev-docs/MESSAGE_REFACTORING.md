@@ -375,17 +375,24 @@ text_renderer.py (future - golergka's work)
 | 3 | Move collapsible rendering functions | ✅ Complete |
 | 4 | Move template environment (get_template_environment, starts_with_emoji) | ✅ Complete |
 | 5 | Create html_tool_renderers.py with tool formatters | ✅ Complete |
-| 6 | Split tool formatters (two-stage: parse + render) | Pending |
-| 7 | Split message content renderers | Pending |
-| 8 | Split _process_* message functions | Pending |
-| 9 | Move generate_projects_index_html | Pending |
-| 10 | Reorganize renderer.py with thematic sections | Pending |
-| 11 | Finalize html_renderer.py structure | Pending |
+| 6 | Split tool formatters (two-stage: parse + render) | ⏸️ Deferred |
+| 7 | Split message content renderers | ⏸️ Deferred |
+| 8 | Split _process_* message functions | ⏸️ Deferred |
+| 9 | Move generate_projects_index_html | ⏸️ Deferred |
+| 10 | Reorganize renderer.py with thematic sections | ✅ Complete |
+| 11 | Finalize html_renderer.py structure and update docs | ✅ Complete |
+
+**Deferred Steps (6-9) Rationale**:
+- **Steps 6-8 (Two-stage splits)**: Typed input models already exist in `models.py` (BashInput, EditInput, etc.) via `parse_tool_input()`. The two-stage split would add complexity without clear benefit since there's no immediate need for alternative renderers (text/markdown). Current formatters are well-organized in `html_tool_renderers.py`.
+- **Step 9 (generate_projects_index_html)**: Function depends on TemplateProject/TemplateSummary classes and utility functions in renderer.py. Moving would create circular dependencies or require significant restructuring. Not pure HTML generation - mixes data preparation with rendering.
 
 **Completed Changes**:
-- `html_renderer.py`: CSS class computation, markdown rendering, collapsible content, template env
-- `html_tool_renderers.py`: 13 tool formatters moved from renderer.py (~420 lines)
-- `renderer.py`: Reduced from 3853 to ~3400 lines, imports from new modules
+- `html_renderer.py` (352 lines): CSS class computation, markdown rendering, collapsible content, template env
+- `html_tool_renderers.py` (506 lines): 13 tool formatters moved from renderer.py
+- `renderer.py` (3219 lines): Reduced from 3853 lines, organized with 9 thematic section headers:
+  - Utility Functions, Tool Summary and Result Parsing, Content Formatters
+  - Template Classes, Message Processing Functions, Message Pairing and Hierarchy
+  - Deduplication, High-Level HTML Generation, Project Index Generation
 
 **Dependencies**:
 - Requires Phase 9 (type safety) for clean interfaces ✅
@@ -393,7 +400,7 @@ text_renderer.py (future - golergka's work)
 - Enables golergka's multi-format integration
 
 **Risk**: High - requires careful refactoring
-**Priority**: In progress
+**Status**: ✅ COMPLETE (Steps 1-5, 10-11 done; Steps 6-9 deferred)
 
 ## Recommended Execution Order
 
@@ -411,7 +418,7 @@ For maximum impact with minimum risk:
 ### Next Steps
 8. ✅ **Phase 10 (Parser)** - Simplified extract_text_content() with isinstance checks
 9. ✅ **Phase 11 (Tool Models)** - Added typed input models for 9 common tools
-10. 🔄 **Phase 12 (Format Neutral)** - In progress (Steps 1-5 complete, 6-11 pending)
+10. ✅ **Phase 12 (Format Neutral)** - Complete (Steps 1-5, 10-11 done; Steps 6-9 deferred)
 
 **Tree Refactoring Integration:**
 - Tree building (TEMPLATE_MESSAGE_CHILDREN.md Phase 1-2) is complete and non-blocking
@@ -425,17 +432,17 @@ For maximum impact with minimum risk:
 
 ## Metrics to Track
 
-| Metric | Baseline (v0.9) | Current (Phase 11 done) | Target |
+| Metric | Baseline (v0.9) | Current (Phase 12 done) | Target |
 |--------|-----------------|-------------------------|--------|
-| renderer.py lines | 4246 | 3853 | <3000 |
+| renderer.py lines | 4246 | 3219 | <3000 |
 | Largest function | ~687 lines | ~460 lines | <100 lines |
 | `_identify_message_pairs()` | ~120 lines | ~37 lines | - |
 | `extract_text_content()` | ~17 lines | ~13 lines | - |
 | Typed tool input models | 0 | 9 | - |
-| Module count | 3 (renderer, timings, models) | 5 (+ansi_colors, +renderer_code) | 6-7 |
+| Module count | 3 (renderer, timings, models) | 7 (+ansi_colors, +renderer_code, +html_renderer, +html_tool_renderers) | 6-7 |
 | Test coverage | ~78% | ~78% | >85% |
 
-**Progress**: Main loop reduced by 33% (687 → 460 lines). Pairing function reduced by 69% (120 → 37 lines). MessageType enum and type guards added. Parser simplified with isinstance checks (Phase 10). 9 typed tool input models added (Phase 11).
+**Progress**: Main loop reduced by 33% (687 → 460 lines). Pairing function reduced by 69% (120 → 37 lines). MessageType enum and type guards added. Parser simplified with isinstance checks (Phase 10). 9 typed tool input models added (Phase 11). Phase 12 complete: renderer.py reduced by 634 lines (3853 → 3219), HTML utilities and tool formatters extracted to html_renderer.py (352 lines) and html_tool_renderers.py (506 lines).
 
 ## Quality Gates
 
@@ -457,7 +464,9 @@ Before merging any phase:
 ## References
 
 ### Code Modules
-- [renderer.py](../claude_code_log/renderer.py) - Main rendering module (3853 lines)
+- [renderer.py](../claude_code_log/renderer.py) - Main rendering module (3219 lines)
+- [html_renderer.py](../claude_code_log/html_renderer.py) - HTML utilities, CSS, markdown, collapsibles (352 lines) - Phase 12
+- [html_tool_renderers.py](../claude_code_log/html_tool_renderers.py) - Tool HTML formatters (506 lines) - Phase 12
 - [ansi_colors.py](../claude_code_log/ansi_colors.py) - ANSI color conversion (261 lines) - Phase 3
 - [renderer_code.py](../claude_code_log/renderer_code.py) - Code highlighting & diffs (330 lines) - Phase 4
 - [renderer_timings.py](../claude_code_log/renderer_timings.py) - Timing utilities

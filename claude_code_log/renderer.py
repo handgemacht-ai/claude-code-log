@@ -64,6 +64,9 @@ from .html_tool_renderers import (
 )
 
 
+# -- Utility Functions --------------------------------------------------------
+
+
 def get_project_display_name(
     project_dir_name: str, working_directories: Optional[List[str]] = None
 ) -> str:
@@ -197,8 +200,8 @@ def extract_command_info(text_content: str) -> tuple[str, str, str]:
     return command_name, command_args, command_contents
 
 
-# NOTE: Tool formatters have been moved to html_tool_renderers.py
-# Imports added at the top of the file.
+# -- Tool Summary and Result Parsing ------------------------------------------
+# NOTE: Tool content formatters have been moved to html_tool_renderers.py
 
 
 def get_tool_summary(tool_use: ToolUseContent) -> Optional[str]:
@@ -538,6 +541,9 @@ def _looks_like_bash_output(content: str) -> bool:
         return True
 
     return False
+
+
+# -- Content Formatters -------------------------------------------------------
 
 
 def format_thinking_content(thinking: ThinkingContent) -> str:
@@ -882,6 +888,9 @@ def _format_type_counts(type_counts: dict[str, int]) -> str:
         return f"{parts[0]}, {parts[1]}, {remaining} more"
 
 
+# -- Template Classes ---------------------------------------------------------
+
+
 class TemplateMessage:
     """Structured message data for template rendering."""
 
@@ -1129,6 +1138,9 @@ class TemplateSummary:
             if self.total_cache_read_tokens > 0:
                 token_parts.append(f"Cache Read: {self.total_cache_read_tokens}")
             self.token_summary = " | ".join(token_parts)
+
+
+# -- Message Processing Functions ---------------------------------------------
 
 
 def _render_hook_summary(message: "SystemTranscriptEntry") -> str:
@@ -1724,6 +1736,9 @@ def _get_combined_transcript_link(cache_manager: "CacheManager") -> Optional[str
         return None
 
 
+# -- Message Pairing and Hierarchy --------------------------------------------
+
+
 @dataclass
 class PairingIndices:
     """Indices for efficient message pairing lookups.
@@ -2230,6 +2245,9 @@ def _build_message_tree(messages: List[TemplateMessage]) -> List[TemplateMessage
     return root_messages
 
 
+# -- Deduplication ------------------------------------------------------------
+
+
 def deduplicate_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
     """Remove duplicate messages based on (type, timestamp, sessionId, content_key).
 
@@ -2299,6 +2317,9 @@ def deduplicate_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntr
             deduplicated.append(message)
 
     return deduplicated
+
+
+# -- High-Level HTML Generation -----------------------------------------------
 
 
 def generate_html(
@@ -3112,6 +3133,9 @@ def _process_messages_loop(
         sessions,
         session_order,
     )
+
+
+# -- Project Index Generation -------------------------------------------------
 
 
 def generate_projects_index_html(
