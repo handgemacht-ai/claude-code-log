@@ -191,6 +191,46 @@ class TodoWriteInput(BaseModel):
     todos: List[TodoWriteItem]
 
 
+class AskUserQuestionOption(BaseModel):
+    """Option for an AskUserQuestion question.
+
+    All fields have defaults for lenient parsing.
+    """
+
+    label: str = ""
+    description: Optional[str] = None
+
+
+class AskUserQuestionItem(BaseModel):
+    """Single question in AskUserQuestion input.
+
+    All fields have defaults for lenient parsing.
+    """
+
+    question: str = ""
+    header: Optional[str] = None
+    options: List[AskUserQuestionOption] = []
+    multiSelect: bool = False
+
+
+class AskUserQuestionInput(BaseModel):
+    """Input parameters for the AskUserQuestion tool.
+
+    Supports both modern format (questions list) and legacy format (single question).
+    """
+
+    questions: List[AskUserQuestionItem] = []
+    question: Optional[str] = None  # Legacy single question format
+
+
+class ExitPlanModeInput(BaseModel):
+    """Input parameters for the ExitPlanMode tool."""
+
+    plan: str = ""
+    launchSwarm: Optional[bool] = None
+    teammateCount: Optional[int] = None
+
+
 # Union of all typed tool inputs
 ToolInput = Union[
     BashInput,
@@ -202,6 +242,8 @@ ToolInput = Union[
     GrepInput,
     TaskInput,
     TodoWriteInput,
+    AskUserQuestionInput,
+    ExitPlanModeInput,
     Dict[str, Any],  # Fallback for unknown tools
 ]
 
@@ -216,6 +258,9 @@ TOOL_INPUT_MODELS: Dict[str, type[BaseModel]] = {
     "Grep": GrepInput,
     "Task": TaskInput,
     "TodoWrite": TodoWriteInput,
+    "AskUserQuestion": AskUserQuestionInput,
+    "ask_user_question": AskUserQuestionInput,  # Legacy tool name
+    "ExitPlanMode": ExitPlanModeInput,
 }
 
 
@@ -292,6 +337,59 @@ def _parse_task_lenient(data: Dict[str, Any]) -> TaskInput:
     )
 
 
+def _parse_read_lenient(data: Dict[str, Any]) -> ReadInput:
+    """Parse Read input leniently."""
+    return ReadInput(
+        file_path=data.get("file_path", ""),
+        offset=data.get("offset"),
+        limit=data.get("limit"),
+    )
+
+
+def _parse_askuserquestion_lenient(data: Dict[str, Any]) -> AskUserQuestionInput:
+    """Parse AskUserQuestion input leniently, handling malformed data."""
+    questions_raw = data.get("questions", [])
+    valid_questions: List[AskUserQuestionItem] = []
+    for q in questions_raw:
+        if isinstance(q, dict):
+            q_dict = cast(Dict[str, Any], q)
+            try:
+                # Parse options leniently
+                options_raw = q_dict.get("options", [])
+                valid_options: List[AskUserQuestionOption] = []
+                for opt in options_raw:
+                    if isinstance(opt, dict):
+                        try:
+                            valid_options.append(
+                                AskUserQuestionOption.model_validate(opt)
+                            )
+                        except Exception:
+                            pass
+                valid_questions.append(
+                    AskUserQuestionItem(
+                        question=str(q_dict.get("question", "")),
+                        header=q_dict.get("header"),
+                        options=valid_options,
+                        multiSelect=bool(q_dict.get("multiSelect", False)),
+                    )
+                )
+            except Exception:
+                pass
+    return AskUserQuestionInput(
+        questions=valid_questions,
+        question=data.get("question"),
+    )
+
+
+def _parse_exitplanmode_lenient(data: Dict[str, Any]) -> ExitPlanModeInput:
+    """Parse ExitPlanMode input leniently."""
+    return ExitPlanModeInput(
+        plan=data.get("plan", ""),
+        launchSwarm=data.get("launchSwarm"),
+        teammateCount=data.get("teammateCount"),
+    )
+
+
 # Mapping of tool names to their lenient parsers
 TOOL_LENIENT_PARSERS: Dict[str, Any] = {
     "Bash": _parse_bash_lenient,
@@ -300,6 +398,10 @@ TOOL_LENIENT_PARSERS: Dict[str, Any] = {
     "MultiEdit": _parse_multiedit_lenient,
     "Task": _parse_task_lenient,
     "TodoWrite": _parse_todowrite_lenient,
+    "Read": _parse_read_lenient,
+    "AskUserQuestion": _parse_askuserquestion_lenient,
+    "ask_user_question": _parse_askuserquestion_lenient,  # Legacy tool name
+    "ExitPlanMode": _parse_exitplanmode_lenient,
 }
 
 

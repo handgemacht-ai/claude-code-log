@@ -5,7 +5,7 @@ from claude_code_log.html_tool_renderers import (
     format_exitplanmode_content,
     format_exitplanmode_result,
 )
-from claude_code_log.models import ToolUseContent
+from claude_code_log.models import ExitPlanModeInput
 
 
 class TestExitPlanModeRendering:
@@ -13,16 +13,11 @@ class TestExitPlanModeRendering:
 
     def test_format_exitplanmode_with_plan(self):
         """Test ExitPlanMode tool use rendering with plan content."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01test123",
-            name="ExitPlanMode",
-            input={
-                "plan": "# My Plan\n\n## Overview\n\nThis is the plan.\n\n## Steps\n\n1. First step\n2. Second step"
-            },
+        exit_input = ExitPlanModeInput(
+            plan="# My Plan\n\n## Overview\n\nThis is the plan.\n\n## Steps\n\n1. First step\n2. Second step"
         )
 
-        html = format_exitplanmode_content(tool_use)
+        html = format_exitplanmode_content(exit_input)
 
         # Should render as markdown in a plan-content div
         assert 'class="plan-content' in html
@@ -36,32 +31,23 @@ class TestExitPlanModeRendering:
         long_plan = "# Long Plan\n\n" + "\n".join(
             [f"- Step {i}: Do something" for i in range(30)]
         )
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01testlong",
-            name="ExitPlanMode",
-            input={"plan": long_plan},
-        )
+        exit_input = ExitPlanModeInput(plan=long_plan)
 
-        html = format_exitplanmode_content(tool_use)
+        html = format_exitplanmode_content(exit_input)
 
         # Should be collapsible due to length
         assert "collapsible" in html.lower() or "details" in html.lower()
         assert "plan-content" in html
 
     def test_format_exitplanmode_empty_plan(self):
-        """Test ExitPlanMode with empty plan falls back to params table."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01testempty",
-            name="ExitPlanMode",
-            input={},
-        )
+        """Test ExitPlanMode with empty plan shows 'No plan' message."""
+        exit_input = ExitPlanModeInput()  # Empty plan
 
-        html = format_exitplanmode_content(tool_use)
+        html = format_exitplanmode_content(exit_input)
 
-        # Should fall back to params table (empty)
-        assert "plan-content" not in html
+        # Should show 'No plan' message
+        assert "plan-content" in html
+        assert "No plan" in html
 
     def test_format_exitplanmode_result_approved(self):
         """Test ExitPlanMode result truncates approved plan echo."""

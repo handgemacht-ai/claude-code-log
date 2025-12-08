@@ -5,7 +5,11 @@ from claude_code_log.html_tool_renderers import (
     format_askuserquestion_content,
     format_askuserquestion_result,
 )
-from claude_code_log.models import ToolUseContent
+from claude_code_log.models import (
+    AskUserQuestionInput,
+    AskUserQuestionItem,
+    AskUserQuestionOption,
+)
 
 
 class TestAskUserQuestionRendering:
@@ -13,44 +17,42 @@ class TestAskUserQuestionRendering:
 
     def test_format_askuserquestion_multiple_questions(self):
         """Test AskUserQuestion formatting with multiple questions."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01test123",
-            name="AskUserQuestion",
-            input={
-                "questions": [
-                    {
-                        "question": "Should tar archives be processed recursively?",
-                        "header": "Filesystem tar",
-                        "options": [
-                            {
-                                "label": "Yes, both filesystem and embedded",
-                                "description": "Treat .tar/.tar.gz like .zip",
-                            },
-                            {
-                                "label": "Only embedded tar archives",
-                                "description": "Only process tar archives inside ZIP files",
-                            },
-                        ],
-                        "multiSelect": False,
-                    },
-                    {
-                        "question": "Which tar formats should be supported?",
-                        "header": "Tar formats",
-                        "options": [
-                            {
-                                "label": ".tar and .tar.gz only",
-                                "description": "Most common",
-                            },
-                            {"label": "Also .tgz", "description": "Include .tgz alias"},
-                        ],
-                        "multiSelect": False,
-                    },
-                ]
-            },
+        ask_input = AskUserQuestionInput(
+            questions=[
+                AskUserQuestionItem(
+                    question="Should tar archives be processed recursively?",
+                    header="Filesystem tar",
+                    options=[
+                        AskUserQuestionOption(
+                            label="Yes, both filesystem and embedded",
+                            description="Treat .tar/.tar.gz like .zip",
+                        ),
+                        AskUserQuestionOption(
+                            label="Only embedded tar archives",
+                            description="Only process tar archives inside ZIP files",
+                        ),
+                    ],
+                    multiSelect=False,
+                ),
+                AskUserQuestionItem(
+                    question="Which tar formats should be supported?",
+                    header="Tar formats",
+                    options=[
+                        AskUserQuestionOption(
+                            label=".tar and .tar.gz only",
+                            description="Most common",
+                        ),
+                        AskUserQuestionOption(
+                            label="Also .tgz",
+                            description="Include .tgz alias",
+                        ),
+                    ],
+                    multiSelect=False,
+                ),
+            ]
         )
 
-        html = format_askuserquestion_content(tool_use)
+        html = format_askuserquestion_content(ask_input)
 
         # Check overall structure
         assert 'class="askuserquestion-content"' in html
@@ -81,27 +83,28 @@ class TestAskUserQuestionRendering:
 
     def test_format_askuserquestion_single_question(self):
         """Test AskUserQuestion formatting with a single question."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01test456",
-            name="AskUserQuestion",
-            input={
-                "questions": [
-                    {
-                        "question": "How should errors be reported?",
-                        "header": "Error format",
-                        "options": [
-                            {"label": "Option A", "description": "Comment line"},
-                            {"label": "Option B", "description": "Marker entry"},
-                            {"label": "Option C", "description": "Extra field"},
-                        ],
-                        "multiSelect": False,
-                    }
-                ]
-            },
+        ask_input = AskUserQuestionInput(
+            questions=[
+                AskUserQuestionItem(
+                    question="How should errors be reported?",
+                    header="Error format",
+                    options=[
+                        AskUserQuestionOption(
+                            label="Option A", description="Comment line"
+                        ),
+                        AskUserQuestionOption(
+                            label="Option B", description="Marker entry"
+                        ),
+                        AskUserQuestionOption(
+                            label="Option C", description="Extra field"
+                        ),
+                    ],
+                    multiSelect=False,
+                )
+            ]
         )
 
-        html = format_askuserquestion_content(tool_use)
+        html = format_askuserquestion_content(ask_input)
 
         # Check structure
         assert 'class="askuserquestion-content"' in html
@@ -115,26 +118,21 @@ class TestAskUserQuestionRendering:
 
     def test_format_askuserquestion_multiselect(self):
         """Test AskUserQuestion formatting with multiSelect enabled."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01test789",
-            name="AskUserQuestion",
-            input={
-                "questions": [
-                    {
-                        "question": "Which features should be enabled?",
-                        "options": [
-                            {"label": "Feature A"},
-                            {"label": "Feature B"},
-                            {"label": "Feature C"},
-                        ],
-                        "multiSelect": True,
-                    }
-                ]
-            },
+        ask_input = AskUserQuestionInput(
+            questions=[
+                AskUserQuestionItem(
+                    question="Which features should be enabled?",
+                    options=[
+                        AskUserQuestionOption(label="Feature A"),
+                        AskUserQuestionOption(label="Feature B"),
+                        AskUserQuestionOption(label="Feature C"),
+                    ],
+                    multiSelect=True,
+                )
+            ]
         )
 
-        html = format_askuserquestion_content(tool_use)
+        html = format_askuserquestion_content(ask_input)
 
         # Check multi-select hint
         assert "(select multiple)" in html
@@ -144,14 +142,9 @@ class TestAskUserQuestionRendering:
 
     def test_format_askuserquestion_legacy_single_question(self):
         """Test backwards compatibility with single 'question' key format."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01testlegacy",
-            name="AskUserQuestion",
-            input={"question": "What is your preference?"},
-        )
+        ask_input = AskUserQuestionInput(question="What is your preference?")
 
-        html = format_askuserquestion_content(tool_use)
+        html = format_askuserquestion_content(ask_input)
 
         # Should still render the question
         assert 'class="askuserquestion-content"' in html
@@ -160,21 +153,16 @@ class TestAskUserQuestionRendering:
 
     def test_format_askuserquestion_no_options(self):
         """Test AskUserQuestion formatting without options."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01testnoopts",
-            name="AskUserQuestion",
-            input={
-                "questions": [
-                    {
-                        "question": "Please describe the issue in detail.",
-                        "header": "Issue",
-                    }
-                ]
-            },
+        ask_input = AskUserQuestionInput(
+            questions=[
+                AskUserQuestionItem(
+                    question="Please describe the issue in detail.",
+                    header="Issue",
+                )
+            ]
         )
 
-        html = format_askuserquestion_content(tool_use)
+        html = format_askuserquestion_content(ask_input)
 
         # Should render without options list
         assert "Please describe the issue in detail." in html
@@ -184,40 +172,32 @@ class TestAskUserQuestionRendering:
         assert "(select" not in html
 
     def test_format_askuserquestion_empty_input(self):
-        """Test AskUserQuestion with empty questions falls back to params table."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01testempty",
-            name="AskUserQuestion",
-            input={"other_field": "value"},
-        )
+        """Test AskUserQuestion with empty questions returns 'No question' message."""
+        ask_input = AskUserQuestionInput()  # Empty questions list
 
-        html = format_askuserquestion_content(tool_use)
+        html = format_askuserquestion_content(ask_input)
 
-        # Should fall back to params table rendering
-        assert "askuserquestion-content" not in html
-        assert "other_field" in html
+        # Should show 'No question' message
+        assert "askuserquestion-content" in html
+        assert "No question" in html
 
     def test_format_askuserquestion_escapes_html(self):
         """Test that HTML special characters are escaped."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01testesc",
-            name="AskUserQuestion",
-            input={
-                "questions": [
-                    {
-                        "question": "Use <script> tag or &amp; symbol?",
-                        "header": "HTML <test>",
-                        "options": [
-                            {"label": "<option>", "description": "Test & verify"}
-                        ],
-                    }
-                ]
-            },
+        ask_input = AskUserQuestionInput(
+            questions=[
+                AskUserQuestionItem(
+                    question="Use <script> tag or &amp; symbol?",
+                    header="HTML <test>",
+                    options=[
+                        AskUserQuestionOption(
+                            label="<option>", description="Test & verify"
+                        )
+                    ],
+                )
+            ]
         )
 
-        html = format_askuserquestion_content(tool_use)
+        html = format_askuserquestion_content(ask_input)
 
         # HTML entities should be escaped
         assert "&lt;script&gt;" in html

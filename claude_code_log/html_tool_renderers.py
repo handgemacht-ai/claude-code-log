@@ -24,8 +24,11 @@ from .html_renderer import (
     render_markdown_collapsible,
 )
 from .models import (
+    AskUserQuestionInput,
+    AskUserQuestionItem,
     BashInput,
     EditInput,
+    ExitPlanModeInput,
     MultiEditInput,
     ReadInput,
     TaskInput,
@@ -39,71 +42,62 @@ from .renderer_code import render_single_diff
 # -- AskUserQuestion Tool -----------------------------------------------------
 
 
-def format_askuserquestion_content(tool_use: ToolUseContent) -> str:
+def _render_question_item(q: AskUserQuestionItem) -> str:
+    """Render a single question item to HTML."""
+    html_parts: List[str] = ['<div class="question-block">']
+
+    # Header (if present)
+    if q.header:
+        escaped_header = escape_html(q.header)
+        html_parts.append(f'<div class="question-header">{escaped_header}</div>')
+
+    # Question text with icon
+    question_text = escape_html(q.question)
+    html_parts.append(f'<div class="question-text">❓ {question_text}</div>')
+
+    # Options (if present)
+    if q.options:
+        select_hint = "(select multiple)" if q.multiSelect else "(select one)"
+        html_parts.append(f'<div class="question-options-hint">{select_hint}</div>')
+        html_parts.append('<ul class="question-options">')
+        for opt in q.options:
+            label = escape_html(opt.label)
+            if opt.description:
+                desc_html = f'<span class="option-desc"> — {escape_html(opt.description)}</span>'
+            else:
+                desc_html = ""
+            html_parts.append(
+                f'<li class="question-option"><strong>{label}</strong>{desc_html}</li>'
+            )
+        html_parts.append("</ul>")
+
+    html_parts.append("</div>")  # Close question-block
+    return "".join(html_parts)
+
+
+def format_askuserquestion_content(ask_input: AskUserQuestionInput) -> str:
     """Format AskUserQuestion tool use content with prominent question display.
+
+    Args:
+        ask_input: Typed AskUserQuestionInput with questions list and/or single question.
 
     Handles multiple questions in a single tool use, each with optional header,
     options (with label and description), and multiSelect flag.
     """
-    questions_data = tool_use.input.get("questions", [])
-    # Also handle single question format for backwards compatibility
-    if not questions_data:
-        single_question = tool_use.input.get("question", "")
-        if single_question:
-            questions_data = [{"question": single_question}]
+    # Build list of questions from both formats
+    questions: List[AskUserQuestionItem] = list(ask_input.questions)
 
-    if not questions_data:
-        return render_params_table(tool_use.input)
+    # Handle single question format (legacy)
+    if not questions and ask_input.question:
+        questions.append(AskUserQuestionItem(question=ask_input.question))
+
+    if not questions:
+        return '<div class="askuserquestion-content"><em>No question</em></div>'
 
     # Build HTML for all questions
     html_parts: List[str] = ['<div class="askuserquestion-content">']
-
-    for q_data in questions_data:
-        try:
-            question_text = escape_html(str(q_data.get("question", "")))
-            header = q_data.get("header", "")
-            options = q_data.get("options", [])
-            multi_select = q_data.get("multiSelect", False)
-
-            # Question container
-            html_parts.append('<div class="question-block">')
-
-            # Header (if present)
-            if header:
-                escaped_header = escape_html(str(header))
-                html_parts.append(
-                    f'<div class="question-header">{escaped_header}</div>'
-                )
-
-            # Question text with icon
-            html_parts.append(f'<div class="question-text">❓ {question_text}</div>')
-
-            # Options (if present)
-            if options:
-                select_hint = "(select multiple)" if multi_select else "(select one)"
-                html_parts.append(
-                    f'<div class="question-options-hint">{select_hint}</div>'
-                )
-                html_parts.append('<ul class="question-options">')
-                for opt in options:
-                    label = escape_html(str(opt.get("label", "")))
-                    desc = opt.get("description", "")
-                    if desc:
-                        desc_html = f'<span class="option-desc"> — {escape_html(str(desc))}</span>'
-                    else:
-                        desc_html = ""
-                    html_parts.append(
-                        f'<li class="question-option"><strong>{label}</strong>{desc_html}</li>'
-                    )
-                html_parts.append("</ul>")
-
-            html_parts.append("</div>")  # Close question-block
-        except (AttributeError, TypeError):
-            # Fallback for unexpected format
-            html_parts.append(
-                f'<div class="question-text">❓ {escape_html(str(q_data))}</div>'
-            )
-
+    for q in questions:
+        html_parts.append(_render_question_item(q))
     html_parts.append("</div>")  # Close askuserquestion-content
     return "".join(html_parts)
 
@@ -161,18 +155,18 @@ def format_askuserquestion_result(content: str) -> str:
 # -- ExitPlanMode Tool --------------------------------------------------------
 
 
-def format_exitplanmode_content(tool_use: ToolUseContent) -> str:
+def format_exitplanmode_content(exit_input: ExitPlanModeInput) -> str:
     """Format ExitPlanMode tool use content with collapsible plan markdown.
+
+    Args:
+        exit_input: Typed ExitPlanModeInput with plan content.
 
     Renders the plan markdown in a collapsible section, similar to Task tool results.
     """
-    plan = tool_use.input.get("plan", "")
+    if not exit_input.plan:
+        return '<div class="plan-content"><em>No plan</em></div>'
 
-    if not plan:
-        # No plan, show parameters table as fallback
-        return render_params_table(tool_use.input)
-
-    return render_markdown_collapsible(plan, "plan-content")
+    return render_markdown_collapsible(exit_input.plan, "plan-content")
 
 
 def format_exitplanmode_result(content: str) -> str:
@@ -251,8 +245,11 @@ def format_todowrite_content(todo_input: TodoWriteInput) -> str:
 # -- File Tools (Read/Write) --------------------------------------------------
 
 
-def format_read_tool_content(tool_use: ToolUseContent) -> str:  # noqa: ARG001
+def format_read_tool_content(read_input: ReadInput) -> str:  # noqa: ARG001
     """Format Read tool use content showing file path.
+
+    Args:
+        read_input: Typed ReadInput with file_path, offset, and limit.
 
     Note: File path is now shown in the header, so we skip content here.
     """
@@ -541,15 +538,14 @@ def format_tool_use_content(tool_use: ToolUseContent) -> str:
     if isinstance(parsed, TaskInput):
         return format_task_tool_content(parsed)
 
-    # Tools that still accept ToolUseContent directly (no typed model yet)
-    if tool_use.name == "Read":
-        return format_read_tool_content(tool_use)
+    if isinstance(parsed, ReadInput):
+        return format_read_tool_content(parsed)
 
-    if tool_use.name == "AskUserQuestion":
-        return format_askuserquestion_content(tool_use)
+    if isinstance(parsed, AskUserQuestionInput):
+        return format_askuserquestion_content(parsed)
 
-    if tool_use.name == "ExitPlanMode":
-        return format_exitplanmode_content(tool_use)
+    if isinstance(parsed, ExitPlanModeInput):
+        return format_exitplanmode_content(parsed)
 
     # Default: render as key/value table using shared renderer
     return render_params_table(tool_use.input)
