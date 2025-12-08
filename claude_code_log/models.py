@@ -387,23 +387,9 @@ class ToolUseContent(BaseModel):
         Result is cached for subsequent accesses.
         """
         if self._parsed_input is None:
-            model_class = TOOL_INPUT_MODELS.get(self.name)
-            if model_class is not None:
-                try:
-                    object.__setattr__(
-                        self, "_parsed_input", model_class.model_validate(self.input)
-                    )
-                except Exception:
-                    # Try lenient parsing if available
-                    lenient_parser = TOOL_LENIENT_PARSERS.get(self.name)
-                    if lenient_parser is not None:
-                        object.__setattr__(
-                            self, "_parsed_input", lenient_parser(self.input)
-                        )
-                    else:
-                        object.__setattr__(self, "_parsed_input", self.input)
-            else:
-                object.__setattr__(self, "_parsed_input", self.input)
+            object.__setattr__(
+                self, "_parsed_input", parse_tool_input(self.name, self.input)
+            )
         return self._parsed_input  # type: ignore[return-value]
 
 
