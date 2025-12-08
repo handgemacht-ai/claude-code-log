@@ -117,18 +117,24 @@ def abbreviate_message(msg: dict[str, Any]) -> dict[str, Any]:
     # Abbreviate tool use result
     if "toolUseResult" in msg:
         tur = msg["toolUseResult"]
-        result["toolUseResult"] = {}
-        if "type" in tur:
-            result["toolUseResult"]["type"] = tur["type"]
-        if "stdout" in tur:
-            result["toolUseResult"]["stdout"] = truncate_text(tur["stdout"])
-        if "stderr" in tur:
-            result["toolUseResult"]["stderr"] = truncate_text(tur["stderr"])
-        if "file" in tur:
-            result["toolUseResult"]["file"] = {
-                "filePath": tur["file"].get("filePath", ""),
-                "content": truncate_text(tur["file"].get("content", "")),
-            }
+        # toolUseResult can be a string (for errors) or a dict
+        if isinstance(tur, str):
+            result["toolUseResult"] = truncate_text(tur)
+        elif isinstance(tur, dict):
+            result["toolUseResult"] = {}
+            if "type" in tur:
+                result["toolUseResult"]["type"] = tur["type"]
+            if "stdout" in tur:
+                result["toolUseResult"]["stdout"] = truncate_text(tur["stdout"])
+            if "stderr" in tur:
+                result["toolUseResult"]["stderr"] = truncate_text(tur["stderr"])
+            if "file" in tur:
+                result["toolUseResult"]["file"] = {
+                    "filePath": tur["file"].get("filePath", ""),
+                    "content": truncate_text(tur["file"].get("content", "")),
+                }
+        else:
+            result["toolUseResult"] = tur
 
     # Abbreviate summary
     if "summary" in msg:
@@ -482,22 +488,72 @@ def find_samples(data_dirs: list[Path]) -> dict[str, list[dict]]:
     return samples
 
 
-def find_tool_samples(
-    data_dirs: list[Path],
-) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
-    """Find sample messages for each tool type.
+def find_tool_result_by_id(
+    data_dirs: list[Path], tool_use_id: str, session_id: str | None = None
+) -> dict | None:
+    """Find a tool_result message by its tool_use_id.
+
+    Args:
+        data_dirs: List of directories to search
+        tool_use_id: The tool_use_id to search for
+        session_id: If provided, only search in files matching this session
 
     Returns:
-        Tuple of (tool_use_samples, tool_result_samples)
+        The tool_result message if found, None otherwise
+    """
+    for data_dir in data_dirs:
+        for jsonl_file in data_dir.rglob("*.jsonl"):
+            # Skip agent files if we have a session_id (they're sub-agents)
+            if session_id and jsonl_file.stem.startswith("agent-"):
+                continue
+            try:
+                with open(jsonl_file) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            msg = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+                        # Filter by session if provided
+                        if session_id and msg.get("sessionId") != session_id:
+                            continue
+
+                        # Check for tool_result with matching tool_use_id
+                        if msg.get("type") == "user":
+                            content = msg.get("message", {}).get("content", [])
+                            if isinstance(content, list):
+                                for item in content:
+                                    if (
+                                        item.get("type") == "tool_result"
+                                        and item.get("tool_use_id") == tool_use_id
+                                    ):
+                                        return msg
+            except Exception:
+                pass
+    return None
+
+
+def find_tool_samples(
+    data_dirs: list[Path],
+) -> tuple[dict[str, list[dict]], dict[str, list[dict]], dict[str, list[dict]]]:
+    """Find sample messages for each tool type, including paired results.
+
+    Returns:
+        Tuple of (tool_use_samples, tool_result_samples, tool_result_error_samples)
         - tool_use_samples: assistant messages with tool_use content
-        - tool_result_samples: user messages with tool_result content
+        - tool_result_samples: user messages with tool_result content (paired with tool_use)
+        - tool_result_error_samples: user messages with tool_result is_error=True
     """
     tool_use_samples: dict[str, list[dict]] = {}
-    tool_result_samples: dict[str, list[dict]] = {}
+    tool_result_error_samples: dict[str, list[dict]] = {}
 
-    # Track tool_use_id -> tool_name mapping
-    tool_id_to_name: dict[str, str] = {}
+    # Track tool_use info for later pairing: tool_use_id -> (tool_name, session_id)
+    tool_use_info: dict[str, tuple[str, str]] = {}
 
+    # First pass: collect all tool_use samples and error results
     for data_dir in data_dirs:
         for jsonl_file in data_dir.rglob("*.jsonl"):
             try:
@@ -519,33 +575,80 @@ def find_tool_samples(
                                     if item.get("type") == "tool_use":
                                         tool_name = item.get("name", "")
                                         tool_id = item.get("id", "")
-                                        if tool_name:
-                                            tool_id_to_name[tool_id] = tool_name
+                                        session_id = msg.get("sessionId", "")
+                                        if tool_name and tool_id:
+                                            tool_use_info[tool_id] = (
+                                                tool_name,
+                                                session_id,
+                                            )
                                             if tool_name not in tool_use_samples:
                                                 tool_use_samples[tool_name] = []
                                             if len(tool_use_samples[tool_name]) < 1:
                                                 tool_use_samples[tool_name].append(msg)
 
-                        # Collect tool_result samples from user messages
+                        # Collect error tool_results separately
                         if msg.get("type") == "user":
                             content = msg.get("message", {}).get("content", [])
                             if isinstance(content, list):
                                 for item in content:
                                     if item.get("type") == "tool_result":
                                         tool_id = item.get("tool_use_id", "")
-                                        tool_name = tool_id_to_name.get(tool_id, "")
-                                        if tool_name:
-                                            if tool_name not in tool_result_samples:
-                                                tool_result_samples[tool_name] = []
-                                            if len(tool_result_samples[tool_name]) < 1:
-                                                tool_result_samples[tool_name].append(
-                                                    msg
+                                        is_error = item.get("is_error", False)
+
+                                        # Get tool_name from our mapping
+                                        info = tool_use_info.get(tool_id)
+                                        if info:
+                                            tool_name = info[0]
+                                        else:
+                                            # Try to infer from existing samples
+                                            tool_name = ""
+
+                                        if tool_name and is_error:
+                                            if (
+                                                tool_name
+                                                not in tool_result_error_samples
+                                            ):
+                                                tool_result_error_samples[
+                                                    tool_name
+                                                ] = []
+                                            if (
+                                                len(
+                                                    tool_result_error_samples[tool_name]
                                                 )
+                                                < 1
+                                            ):
+                                                tool_result_error_samples[
+                                                    tool_name
+                                                ].append(msg)
 
             except Exception as e:
                 print(f"Error processing {jsonl_file}: {e}")
 
-    return tool_use_samples, tool_result_samples
+    # Second pass: find paired tool_results for each tool_use sample
+    tool_result_samples: dict[str, list[dict]] = {}
+    for tool_name, samples in tool_use_samples.items():
+        for sample in samples:
+            content = sample.get("message", {}).get("content", [])
+            if isinstance(content, list):
+                for item in content:
+                    if item.get("type") == "tool_use" and item.get("name") == tool_name:
+                        tool_use_id = item.get("id", "")
+                        session_id = sample.get("sessionId", "")
+
+                        # Search for the paired tool_result
+                        paired_result = find_tool_result_by_id(
+                            data_dirs, tool_use_id, session_id
+                        )
+                        if paired_result:
+                            if tool_name not in tool_result_samples:
+                                tool_result_samples[tool_name] = []
+                            if len(tool_result_samples[tool_name]) < 1:
+                                tool_result_samples[tool_name].append(paired_result)
+                            break
+                if tool_name in tool_result_samples:
+                    break
+
+    return tool_use_samples, tool_result_samples, tool_result_error_samples
 
 
 def write_sample(output_dir: Path, name: str, msg: dict) -> None:
@@ -574,7 +677,9 @@ def main():
 
     print("Finding samples from real_projects...")
     samples = find_samples(data_dirs)
-    tool_use_samples, tool_result_samples = find_tool_samples(data_dirs)
+    tool_use_samples, tool_result_samples, tool_result_error_samples = (
+        find_tool_samples(data_dirs)
+    )
 
     # Write samples for each category to appropriate subdirectory
     for cat_name, messages in samples.items():
@@ -598,11 +703,35 @@ def main():
         print(f"  tools/{tool_name}-tool_use: wrote .json, .jsonl")
 
     # Write tool_result samples (user messages) -> tools/ToolName-tool_result
+    # These are now properly paired with the tool_use samples
     for tool_name, messages in sorted(tool_result_samples.items()):
         if not messages:
             continue
         write_sample(tools_dir, f"{tool_name}-tool_result", messages[0])
-        print(f"  tools/{tool_name}-tool_result: wrote .json, .jsonl")
+        # Verify pairing by checking tool_use_id
+        tool_use_id = None
+        for item in (
+            tool_use_samples.get(tool_name, [{}])[0]
+            .get("message", {})
+            .get("content", [])
+        ):
+            if item.get("type") == "tool_use" and item.get("name") == tool_name:
+                tool_use_id = item.get("id")
+                break
+        result_tool_use_id = None
+        for item in messages[0].get("message", {}).get("content", []):
+            if item.get("type") == "tool_result":
+                result_tool_use_id = item.get("tool_use_id")
+                break
+        paired = "✓ paired" if tool_use_id == result_tool_use_id else "✗ not paired"
+        print(f"  tools/{tool_name}-tool_result: wrote .json, .jsonl ({paired})")
+
+    # Write tool_result_error samples -> tools/ToolName-tool_result_error
+    for tool_name, messages in sorted(tool_result_error_samples.items()):
+        if not messages:
+            continue
+        write_sample(tools_dir, f"{tool_name}-tool_result_error", messages[0])
+        print(f"  tools/{tool_name}-tool_result_error: wrote .json, .jsonl")
 
     print(f"\nWrote samples to {output_dir}")
 
