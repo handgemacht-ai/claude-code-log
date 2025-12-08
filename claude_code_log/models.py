@@ -534,6 +534,7 @@ ContentItem = Union[
 class UserMessage(BaseModel):
     role: Literal["user"]
     content: Union[str, List[ContentItem]]
+    usage: Optional["UsageInfo"] = None  # For type compatibility with AssistantMessage
 
 
 class AssistantMessage(BaseModel):
