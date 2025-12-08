@@ -645,6 +645,7 @@ class SummaryTranscriptEntry(BaseModel):
     summary: str
     leafUuid: str
     cwd: Optional[str] = None
+    sessionId: None = None  # Summaries don't have a sessionId
 
 
 class SystemTranscriptEntry(BaseTranscriptEntry):

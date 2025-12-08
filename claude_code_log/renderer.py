@@ -1648,17 +1648,6 @@ def _process_image_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
     )
 
 
-def _get_combined_transcript_link(cache_manager: "CacheManager") -> Optional[str]:
-    """Get link to combined transcript if available."""
-    try:
-        project_cache = cache_manager.get_cached_project_data()
-        if project_cache and project_cache.sessions:
-            return "combined_transcripts.html"
-        return None
-    except Exception:
-        return None
-
-
 # -- Message Pairing and Hierarchy --------------------------------------------
 
 
@@ -1934,26 +1923,19 @@ def generate_session_html(
     cache_manager: Optional["CacheManager"] = None,
 ) -> str:
     """Generate HTML for a single session using Jinja2 templates."""
-    # Filter messages for this session only
-    session_messages = [
-        msg
-        for msg in messages
-        if hasattr(msg, "sessionId") and getattr(msg, "sessionId") == session_id
-    ]
+    # Filter messages for this session (SummaryTranscriptEntry.sessionId is always None)
+    session_messages = [msg for msg in messages if msg.sessionId == session_id]
 
     # Get combined transcript link if cache manager is available
     combined_link = None
     if cache_manager is not None:
-        combined_link = _get_combined_transcript_link(cache_manager)
+        try:
+            project_cache = cache_manager.get_cached_project_data()
+            if project_cache and project_cache.sessions:
+                combined_link = "combined_transcripts.html"
+        except Exception:
+            pass
 
-    if not session_messages:
-        return generate_html(
-            [],
-            title or f"Session {session_id[:8]}",
-            combined_transcript_link=combined_link,
-        )
-
-    # Use the existing generate_html function but with filtered messages and combined link
     return generate_html(
         session_messages,
         title or f"Session {session_id[:8]}",
