@@ -173,11 +173,16 @@ class TaskInput(BaseModel):
 
 
 class TodoWriteItem(BaseModel):
-    """Single todo item for TodoWrite tool (input format)."""
+    """Single todo item for TodoWrite tool (input format).
 
-    content: str
-    status: Literal["pending", "in_progress", "completed"]
-    activeForm: str
+    All fields have defaults for lenient parsing of legacy/malformed data.
+    """
+
+    content: str = ""
+    status: str = "pending"  # Allow any string, not just Literal, for flexibility
+    activeForm: str = ""
+    id: Optional[str] = None
+    priority: Optional[str] = None  # Allow any string for flexibility
 
 
 class TodoWriteInput(BaseModel):
@@ -214,8 +219,94 @@ TOOL_INPUT_MODELS: Dict[str, type[BaseModel]] = {
 }
 
 
+# -- Lenient Parsing Helpers --------------------------------------------------
+# These functions create typed models even when strict validation fails.
+# They use defaults for missing fields and skip invalid nested items.
+
+
+def _parse_todowrite_lenient(data: Dict[str, Any]) -> TodoWriteInput:
+    """Parse TodoWrite input leniently, handling malformed data."""
+    todos_raw = data.get("todos", [])
+    valid_todos: List[TodoWriteItem] = []
+    for item in todos_raw:
+        if isinstance(item, dict):
+            try:
+                valid_todos.append(TodoWriteItem.model_validate(item))
+            except Exception:
+                pass
+        elif isinstance(item, str):
+            valid_todos.append(TodoWriteItem(content=item))
+    return TodoWriteInput(todos=valid_todos)
+
+
+def _parse_bash_lenient(data: Dict[str, Any]) -> BashInput:
+    """Parse Bash input leniently."""
+    return BashInput(
+        command=data.get("command", ""),
+        description=data.get("description"),
+        timeout=data.get("timeout"),
+        run_in_background=data.get("run_in_background"),
+    )
+
+
+def _parse_write_lenient(data: Dict[str, Any]) -> WriteInput:
+    """Parse Write input leniently."""
+    return WriteInput(
+        file_path=data.get("file_path", ""),
+        content=data.get("content", ""),
+    )
+
+
+def _parse_edit_lenient(data: Dict[str, Any]) -> EditInput:
+    """Parse Edit input leniently."""
+    return EditInput(
+        file_path=data.get("file_path", ""),
+        old_string=data.get("old_string", ""),
+        new_string=data.get("new_string", ""),
+        replace_all=data.get("replace_all"),
+    )
+
+
+def _parse_multiedit_lenient(data: Dict[str, Any]) -> MultiEditInput:
+    """Parse Multiedit input leniently."""
+    edits_raw = data.get("edits", [])
+    valid_edits: List[EditItem] = []
+    for edit in edits_raw:
+        if isinstance(edit, dict):
+            try:
+                valid_edits.append(EditItem.model_validate(edit))
+            except Exception:
+                pass
+    return MultiEditInput(file_path=data.get("file_path", ""), edits=valid_edits)
+
+
+def _parse_task_lenient(data: Dict[str, Any]) -> TaskInput:
+    """Parse Task input leniently."""
+    return TaskInput(
+        prompt=data.get("prompt", ""),
+        subagent_type=data.get("subagent_type", ""),
+        description=data.get("description", ""),
+        model=data.get("model"),
+        run_in_background=data.get("run_in_background"),
+        resume=data.get("resume"),
+    )
+
+
+# Mapping of tool names to their lenient parsers
+TOOL_LENIENT_PARSERS: Dict[str, Any] = {
+    "Bash": _parse_bash_lenient,
+    "Write": _parse_write_lenient,
+    "Edit": _parse_edit_lenient,
+    "MultiEdit": _parse_multiedit_lenient,
+    "Task": _parse_task_lenient,
+    "TodoWrite": _parse_todowrite_lenient,
+}
+
+
 def parse_tool_input(tool_name: str, input_data: Dict[str, Any]) -> ToolInput:
-    """Parse tool input dictionary into a typed model if available.
+    """Parse tool input dictionary into a typed model.
+
+    Uses strict validation first, then lenient parsing if available.
 
     Args:
         tool_name: The name of the tool (e.g., "Bash", "Read")
@@ -229,7 +320,10 @@ def parse_tool_input(tool_name: str, input_data: Dict[str, Any]) -> ToolInput:
         try:
             return cast(ToolInput, model_class.model_validate(input_data))
         except Exception:
-            # Fall back to raw dict if validation fails
+            # Try lenient parsing if available
+            lenient_parser = TOOL_LENIENT_PARSERS.get(tool_name)
+            if lenient_parser is not None:
+                return cast(ToolInput, lenient_parser(input_data))
             return input_data
     return input_data
 
@@ -282,6 +376,35 @@ class ToolUseContent(BaseModel):
     id: str
     name: str
     input: Dict[str, Any]
+    _parsed_input: Optional["ToolInput"] = None  # Cached parsed input
+
+    @property
+    def parsed_input(self) -> "ToolInput":
+        """Get typed input model if available, otherwise return raw dict.
+
+        Lazily parses the input dict into a typed model.
+        Uses strict validation first, then lenient parsing if available.
+        Result is cached for subsequent accesses.
+        """
+        if self._parsed_input is None:
+            model_class = TOOL_INPUT_MODELS.get(self.name)
+            if model_class is not None:
+                try:
+                    object.__setattr__(
+                        self, "_parsed_input", model_class.model_validate(self.input)
+                    )
+                except Exception:
+                    # Try lenient parsing if available
+                    lenient_parser = TOOL_LENIENT_PARSERS.get(self.name)
+                    if lenient_parser is not None:
+                        object.__setattr__(
+                            self, "_parsed_input", lenient_parser(self.input)
+                        )
+                    else:
+                        object.__setattr__(self, "_parsed_input", self.input)
+            else:
+                object.__setattr__(self, "_parsed_input", self.input)
+        return self._parsed_input  # type: ignore[return-value]
 
 
 class ToolResultContent(BaseModel):

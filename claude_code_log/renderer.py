@@ -27,6 +27,9 @@ from .models import (
     ToolUseContent,
     ThinkingContent,
     ImageContent,
+    TaskInput,
+    is_user_entry,
+    is_assistant_entry,
 )
 from .parser import extract_text_content
 from .utils import (
@@ -1561,8 +1564,13 @@ def _process_tool_use_item(
         tool_message_title = "📝 Todo List"
     elif tool_use.name == "Task":
         # Special handling for Task tool: show subagent_type and description
-        subagent_type = tool_use.input.get("subagent_type", "")
-        description = tool_use.input.get("description", "")
+        parsed = tool_use.parsed_input
+        if isinstance(parsed, TaskInput):
+            subagent_type = parsed.subagent_type
+            description = parsed.description
+        else:
+            subagent_type = tool_use.input.get("subagent_type", "")
+            description = tool_use.input.get("description", "")
         escaped_subagent = escape_html(subagent_type) if subagent_type else ""
 
         if description and subagent_type:
@@ -2844,12 +2852,7 @@ def _process_messages_loop(
 
             # Get first user message content for preview
             first_user_message = ""
-            if (
-                message_type == MessageType.USER
-                and not isinstance(message, QueueOperationTranscriptEntry)
-                and hasattr(message, "message")
-                and should_use_as_session_starter(text_content)
-            ):
+            if is_user_entry(message) and should_use_as_session_starter(text_content):
                 content = extract_text_content(message.message.content)
                 first_user_message = create_session_preview(content)
 
@@ -2892,18 +2895,12 @@ def _process_messages_loop(
                 template_messages.append(session_header)
 
         # Update first user message if this is a user message and we don't have one yet
-        elif (
-            message_type == MessageType.USER
-            and not sessions[session_id]["first_user_message"]
-        ):
-            if not isinstance(message, QueueOperationTranscriptEntry) and hasattr(
-                message, "message"
-            ):
-                first_user_content = extract_text_content(message.message.content)
-                if should_use_as_session_starter(first_user_content):
-                    sessions[session_id]["first_user_message"] = create_session_preview(
-                        first_user_content
-                    )
+        elif is_user_entry(message) and not sessions[session_id]["first_user_message"]:
+            first_user_content = extract_text_content(message.message.content)
+            if should_use_as_session_starter(first_user_content):
+                sessions[session_id]["first_user_message"] = create_session_preview(
+                    first_user_content
+                )
 
         sessions[session_id]["message_count"] += 1
 
@@ -2914,14 +2911,13 @@ def _process_messages_loop(
 
         # Extract and accumulate token usage for assistant messages
         # Only count tokens for the first message with each requestId to avoid duplicates
-        if message_type == MessageType.ASSISTANT and hasattr(message, "message"):
-            assistant_message = getattr(message, "message")
-            request_id = getattr(message, "requestId", None)
-            message_uuid = getattr(message, "uuid", "")
+        if is_assistant_entry(message):
+            assistant_message = message.message
+            request_id = message.requestId
+            message_uuid = message.uuid
 
             if (
-                hasattr(assistant_message, "usage")
-                and assistant_message.usage
+                assistant_message.usage
                 and request_id
                 and request_id not in seen_request_ids
             ):
@@ -2943,23 +2939,17 @@ def _process_messages_loop(
                     )
 
         # Get timestamp (only for non-summary messages)
-        timestamp = (
-            getattr(message, "timestamp", "") if hasattr(message, "timestamp") else ""
-        )
+        timestamp = getattr(message, "timestamp", "")
         formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
         token_usage_str: Optional[str] = None
-        if message_type == MessageType.ASSISTANT and hasattr(message, "message"):
-            assistant_message = getattr(message, "message")
-            message_uuid = getattr(message, "uuid", "")
+        if is_assistant_entry(message):
+            assistant_message = message.message
+            message_uuid = message.uuid
 
-            if (
-                hasattr(assistant_message, "usage")
-                and assistant_message.usage
-                and message_uuid in show_tokens_for_message
-            ):
+            if assistant_message.usage and message_uuid in show_tokens_for_message:
                 # Only show token usage for messages marked as first occurrence of requestId
                 usage = assistant_message.usage
                 token_parts = [

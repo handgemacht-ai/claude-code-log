@@ -9805,30 +9805,7 @@
                   
               </div>
           </div>
-          <div class='content'><table class='tool-params-table'>
-              <tr>
-                  <td class='tool-param-key'>file_path</td>
-                  <td class='tool-param-value'>/tmp/complex_example.py</td>
-              </tr>
-          
-              <tr>
-                  <td class='tool-param-key'>edits</td>
-                  <td class='tool-param-value'>
-                          <details class='tool-param-collapsible'>
-                              <summary>[
-    {
-      &quot;old_string&quot;: &quot;&quot;,
-      &quot;new_string&quot;: &quot;#!/usr/bin/env python3\n\&quot;\&quot;\&quot;\nComplex example with ...</summary>
-                              <pre class='tool-param-structured'>[
-    {
-      &quot;old_string&quot;: &quot;&quot;,
-      &quot;new_string&quot;: &quot;#!/usr/bin/env python3\n\&quot;\&quot;\&quot;\nComplex example with multiple operations.\n\&quot;\&quot;\&quot;\n\nimport json\nimport sys\nfrom typing import List, Dict, Any\n\ndef process_data(items: List[Dict[str, Any]]) -&gt; None:\n    \&quot;\&quot;\&quot;\n    Process a list of data items.\n    \&quot;\&quot;\&quot;\n    for item in items:\n        print(f\&quot;Processing: {item[&#x27;name&#x27;]}\&quot;)\n        if item.get(&#x27;active&#x27;, False):\n            print(f\&quot;  Status: Active\&quot;)\n        else:\n            print(f\&quot;  Status: Inactive\&quot;)\n\nif __name__ == \&quot;__main__\&quot;:\n    sample_data = [\n        {\&quot;name\&quot;: \&quot;Item 1\&quot;, \&quot;active\&quot;: True},\n        {\&quot;name\&quot;: \&quot;Item 2\&quot;, \&quot;active\&quot;: False},\n        {\&quot;name\&quot;: \&quot;Item 3\&quot;, \&quot;active\&quot;: True}\n    ]\n    process_data(sample_data)&quot;
-    }
-  ]</pre>
-                          </details>
-                      </td>
-              </tr>
-          </table></div>
+          <div class='content'><div class='multiedit-tool-content'><div class='multiedit-file-path'>📝 /tmp/complex_example.py</div><div class='multiedit-count'>Applying 1 edits</div><div class='multiedit-item'><div class='multiedit-item-header'>Edit #1</div><div class='edit-diff'><div class='diff-line diff-added'><span class='diff-marker'>+</span>#!/usr/bin/env python3</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>&quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>Complex example with multiple operations.</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>&quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span>import json</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>import sys</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>from typing import List, Dict, Any</div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span>def process_data(items: List[Dict[str, Any]]) -&gt; None:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    &quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    Process a list of data items.</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    &quot;&quot;&quot;</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    for item in items:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        print(f&quot;Processing: {item[&#x27;name&#x27;]}&quot;)</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        if item.get(&#x27;active&#x27;, False):</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>            print(f&quot;  Status: Active&quot;)</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        else:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>            print(f&quot;  Status: Inactive&quot;)</div><div class='diff-line diff-added'><span class='diff-marker'>+</span></div><div class='diff-line diff-added'><span class='diff-marker'>+</span>if __name__ == &quot;__main__&quot;:</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    sample_data = [</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        {&quot;name&quot;: &quot;Item 1&quot;, &quot;active&quot;: True},</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        {&quot;name&quot;: &quot;Item 2&quot;, &quot;active&quot;: False},</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>        {&quot;name&quot;: &quot;Item 3&quot;, &quot;active&quot;: True}</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    ]</div><div class='diff-line diff-added'><span class='diff-marker'>+</span>    process_data(sample_data)</div></div></div></div></div>
           
       </div>
       
@@ -9901,35 +9878,36 @@
           <div class='content'>
       <div class="todo-list">
           
-                  <div class="todo-item pending medium">
-                      <span class="todo-status">⏳</span>
-                      <span class="todo-content">broken_todo</span>
-                  </div>
-              
-                  <div class="todo-item in_progress high">
-                      <span class="todo-status">🔄</span>
-                      <span class="todo-content">Implement core functionality</span>
-                      <span class="todo-id">#2</span>
-                  </div>
-              
-                  <div class="todo-item pending medium">
-                      <span class="todo-status">⏳</span>
-                      <span class="todo-content">Add comprehensive tests</span>
-                      <span class="todo-id">#3</span>
-                  </div>
-              
-                  <div class="todo-item pending low">
-                      <span class="todo-status">⏳</span>
-                      <span class="todo-content">Write user documentation</span>
-                      <span class="todo-id">#4</span>
-                  </div>
-              
-                  <div class="todo-item pending medium">
-                      <span class="todo-status">⏳</span>
-                      <span class="todo-content">Perform code review</span>
-                      <span class="todo-id">#5</span>
-                  </div>
-              
+              <div class="todo-item pending medium">
+                  <span class="todo-status">⏳</span>
+                  <span class="todo-content">broken_todo</span>
+                  
+              </div>
+          
+              <div class="todo-item in_progress high">
+                  <span class="todo-status">🔄</span>
+                  <span class="todo-content">Implement core functionality</span>
+                  <span class="todo-id">#2</span>
+              </div>
+          
+              <div class="todo-item pending medium">
+                  <span class="todo-status">⏳</span>
+                  <span class="todo-content">Add comprehensive tests</span>
+                  <span class="todo-id">#3</span>
+              </div>
+          
+              <div class="todo-item pending low">
+                  <span class="todo-status">⏳</span>
+                  <span class="todo-content">Write user documentation</span>
+                  <span class="todo-id">#4</span>
+              </div>
+          
+              <div class="todo-item pending medium">
+                  <span class="todo-status">⏳</span>
+                  <span class="todo-content">Perform code review</span>
+                  <span class="todo-id">#5</span>
+              </div>
+          
       </div>
       </div>
           

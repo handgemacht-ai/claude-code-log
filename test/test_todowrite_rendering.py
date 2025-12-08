@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from claude_code_log.converter import convert_jsonl_to_html
 from claude_code_log.html_tool_renderers import format_todowrite_content
-from claude_code_log.models import ToolUseContent
+from claude_code_log.models import TodoWriteInput, TodoWriteItem, ToolUseContent
 
 
 class TestTodoWriteRendering:
@@ -15,35 +15,30 @@ class TestTodoWriteRendering:
 
     def test_format_todowrite_basic(self):
         """Test basic TodoWrite formatting with mixed statuses and priorities."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_01test123",
-            name="TodoWrite",
-            input={
-                "todos": [
-                    {
-                        "id": "1",
-                        "content": "Implement user authentication",
-                        "status": "completed",
-                        "priority": "high",
-                    },
-                    {
-                        "id": "2",
-                        "content": "Add error handling",
-                        "status": "in_progress",
-                        "priority": "medium",
-                    },
-                    {
-                        "id": "3",
-                        "content": "Write documentation",
-                        "status": "pending",
-                        "priority": "low",
-                    },
-                ]
-            },
+        todo_input = TodoWriteInput(
+            todos=[
+                TodoWriteItem(
+                    id="1",
+                    content="Implement user authentication",
+                    status="completed",
+                    priority="high",
+                ),
+                TodoWriteItem(
+                    id="2",
+                    content="Add error handling",
+                    status="in_progress",
+                    priority="medium",
+                ),
+                TodoWriteItem(
+                    id="3",
+                    content="Write documentation",
+                    status="pending",
+                    priority="low",
+                ),
+            ]
         )
 
-        html = format_todowrite_content(tool_use)
+        html = format_todowrite_content(todo_input)
 
         # Check overall structure (TodoWrite now has streamlined format)
         assert 'class="todo-list"' in html
@@ -72,11 +67,9 @@ class TestTodoWriteRendering:
 
     def test_format_todowrite_empty(self):
         """Test TodoWrite formatting with no todos."""
-        tool_use = ToolUseContent(
-            type="tool_use", id="toolu_empty", name="TodoWrite", input={"todos": []}
-        )
+        todo_input = TodoWriteInput(todos=[])
 
-        html = format_todowrite_content(tool_use)
+        html = format_todowrite_content(todo_input)
 
         assert 'class="todo-content"' in html
         # Title and ID are now in the message header, not in content
@@ -84,34 +77,28 @@ class TestTodoWriteRendering:
 
     def test_format_todowrite_missing_todos(self):
         """Test TodoWrite formatting with missing todos field."""
-        tool_use = ToolUseContent(
-            type="tool_use", id="toolu_missing", name="TodoWrite", input={}
-        )
+        # TodoWriteInput with default empty list
+        todo_input = TodoWriteInput(todos=[])
 
-        html = format_todowrite_content(tool_use)
+        html = format_todowrite_content(todo_input)
 
         assert 'class="todo-content"' in html
         assert "No todos found" in html
 
     def test_format_todowrite_html_escaping(self):
         """Test that TodoWrite content is properly HTML escaped."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_escape",
-            name="TodoWrite",
-            input={
-                "todos": [
-                    {
-                        "id": "1",
-                        "content": "Fix <script>alert('xss')</script> & \"quotes\"",
-                        "status": "pending",
-                        "priority": "high",
-                    }
-                ]
-            },
+        todo_input = TodoWriteInput(
+            todos=[
+                TodoWriteItem(
+                    id="1",
+                    content="Fix <script>alert('xss')</script> & \"quotes\"",
+                    status="pending",
+                    priority="high",
+                )
+            ]
         )
 
-        html = format_todowrite_content(tool_use)
+        html = format_todowrite_content(todo_input)
 
         # Check that HTML is escaped
         assert "&lt;script&gt;" in html
@@ -122,23 +109,18 @@ class TestTodoWriteRendering:
 
     def test_format_todowrite_invalid_status_priority(self):
         """Test TodoWrite formatting with invalid status/priority values."""
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id="toolu_invalid",
-            name="TodoWrite",
-            input={
-                "todos": [
-                    {
-                        "id": "1",
-                        "content": "Test invalid values",
-                        "status": "unknown_status",
-                        "priority": "unknown_priority",
-                    }
-                ]
-            },
+        todo_input = TodoWriteInput(
+            todos=[
+                TodoWriteItem(
+                    id="1",
+                    content="Test invalid values",
+                    status="unknown_status",
+                    priority="unknown_priority",
+                )
+            ]
         )
 
-        html = format_todowrite_content(tool_use)
+        html = format_todowrite_content(todo_input)
 
         # Should use default emojis for unknown values
         assert "⏳" in html  # default status emoji

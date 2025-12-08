@@ -23,7 +23,15 @@ from .html_renderer import (
     render_file_content_collapsible,
     render_markdown_collapsible,
 )
-from .models import ToolUseContent
+from .models import (
+    BashInput,
+    EditInput,
+    MultiEditInput,
+    TaskInput,
+    TodoWriteInput,
+    ToolUseContent,
+    WriteInput,
+)
 from .renderer_code import render_single_diff
 
 
@@ -193,11 +201,13 @@ def format_exitplanmode_result(content: str) -> str:
 # -- TodoWrite Tool -----------------------------------------------------------
 
 
-def format_todowrite_content(tool_use: ToolUseContent) -> str:
-    """Format TodoWrite tool use content as a todo list."""
-    # Parse todos from input
-    todos_data = tool_use.input.get("todos", [])
-    if not todos_data:
+def format_todowrite_content(todo_input: TodoWriteInput) -> str:
+    """Format TodoWrite tool use content as a todo list.
+
+    Args:
+        todo_input: Typed TodoWriteInput with list of todo items.
+    """
+    if not todo_input.todos:
         return """
         <div class="todo-content">
             <p><em>No todos found</em></p>
@@ -207,34 +217,26 @@ def format_todowrite_content(tool_use: ToolUseContent) -> str:
     # Status emojis
     status_emojis = {"pending": "⏳", "in_progress": "🔄", "completed": "✅"}
 
-    # Build todo list HTML
+    # Build todo list HTML - todos are typed TodoWriteItem objects
     todo_items: List[str] = []
-    for todo in todos_data:
-        try:
-            todo_id = escape_html(str(todo.get("id", "")))
-            content = escape_html(str(todo.get("content", "")))
-            status = str(todo.get("status", "pending")).lower()
-            priority = str(todo.get("priority", "medium")).lower()
-            status_emoji = status_emojis.get(status, "⏳")
+    for todo in todo_input.todos:
+        todo_id = escape_html(todo.id) if todo.id else ""
+        content = escape_html(todo.content) if todo.content else ""
+        status = todo.status or "pending"
+        priority = todo.priority or "medium"
+        status_emoji = status_emojis.get(status, "⏳")
 
-            # CSS class for styling
-            item_class = f"todo-item {status} {priority}"
+        # CSS class for styling
+        item_class = f"todo-item {status} {priority}"
 
-            todo_items.append(f"""
-                <div class="{item_class}">
-                    <span class="todo-status">{status_emoji}</span>
-                    <span class="todo-content">{content}</span>
-                    <span class="todo-id">#{todo_id}</span>
-                </div>
-            """)
-        except AttributeError:
-            escaped_fallback = escape_html(str(todo))
-            todo_items.append(f"""
-                <div class="todo-item pending medium">
-                    <span class="todo-status">⏳</span>
-                    <span class="todo-content">{escaped_fallback}</span>
-                </div>
-            """)
+        id_html = f'<span class="todo-id">#{todo_id}</span>' if todo.id else ""
+        todo_items.append(f"""
+            <div class="{item_class}">
+                <span class="todo-status">{status_emoji}</span>
+                <span class="todo-content">{content}</span>
+                {id_html}
+            </div>
+        """)
 
     todos_html = "".join(todo_items)
 
@@ -258,67 +260,64 @@ def format_read_tool_content(tool_use: ToolUseContent) -> str:  # noqa: ARG001
     return ""
 
 
-def format_write_tool_content(tool_use: ToolUseContent) -> str:
+def format_write_tool_content(write_input: WriteInput) -> str:
     """Format Write tool use content with Pygments syntax highlighting.
 
+    Args:
+        write_input: Typed WriteInput with file_path and content.
     Note: File path is now shown in the header, so we skip it here.
     """
-    file_path = tool_use.input.get("file_path", "")
-    content = tool_use.input.get("content", "")
-
-    return render_file_content_collapsible(content, file_path, "write-tool-content")
+    return render_file_content_collapsible(
+        write_input.content, write_input.file_path, "write-tool-content"
+    )
 
 
 # -- Edit Tools (Edit/Multiedit) ----------------------------------------------
 
 
-def format_edit_tool_content(tool_use: ToolUseContent) -> str:
+def format_edit_tool_content(edit_input: EditInput) -> str:
     """Format Edit tool use content as a diff view with intra-line highlighting.
 
+    Args:
+        edit_input: Typed EditInput with old_string, new_string, replace_all.
     Note: File path is now shown in the header, so we skip it here.
     """
-    old_string = tool_use.input.get("old_string", "")
-    new_string = tool_use.input.get("new_string", "")
-    replace_all = tool_use.input.get("replace_all", False)
-
     html_parts = ["<div class='edit-tool-content'>"]
 
-    # File path is now shown in header, so we skip it here
-
-    if replace_all:
+    if edit_input.replace_all:
         html_parts.append(
             "<div class='edit-replace-all'>🔄 Replace all occurrences</div>"
         )
 
     # Use shared diff rendering helper
-    html_parts.append(render_single_diff(old_string, new_string))
+    html_parts.append(render_single_diff(edit_input.old_string, edit_input.new_string))
     html_parts.append("</div>")
 
     return "".join(html_parts)
 
 
-def format_multiedit_tool_content(tool_use: ToolUseContent) -> str:
-    """Format Multiedit tool use content showing multiple diffs."""
-    file_path = tool_use.input.get("file_path", "")
-    edits = tool_use.input.get("edits", [])
+def format_multiedit_tool_content(multiedit_input: MultiEditInput) -> str:
+    """Format Multiedit tool use content showing multiple diffs.
 
-    escaped_path = escape_html(file_path)
+    Args:
+        multiedit_input: Typed MultiEditInput with file_path and list of edits.
+    """
+    escaped_path = escape_html(multiedit_input.file_path)
 
     html_parts = ["<div class='multiedit-tool-content'>"]
 
     # File path header
     html_parts.append(f"<div class='multiedit-file-path'>📝 {escaped_path}</div>")
-    html_parts.append(f"<div class='multiedit-count'>Applying {len(edits)} edits</div>")
+    html_parts.append(
+        f"<div class='multiedit-count'>Applying {len(multiedit_input.edits)} edits</div>"
+    )
 
-    # Render each edit as a diff
-    for idx, edit in enumerate(edits, 1):
-        old_string = edit.get("old_string", "")
-        new_string = edit.get("new_string", "")
-
+    # Render each edit as a diff - edits are typed EditItem objects
+    for idx, edit in enumerate(multiedit_input.edits, 1):
         html_parts.append(
             f"<div class='multiedit-item'><div class='multiedit-item-header'>Edit #{idx}</div>"
         )
-        html_parts.append(render_single_diff(old_string, new_string))
+        html_parts.append(render_single_diff(edit.old_string, edit.new_string))
         html_parts.append("</div>")
 
     html_parts.append("</div>")
@@ -328,20 +327,16 @@ def format_multiedit_tool_content(tool_use: ToolUseContent) -> str:
 # -- Bash Tool ----------------------------------------------------------------
 
 
-def format_bash_tool_content(tool_use: ToolUseContent) -> str:
+def format_bash_tool_content(bash_input: BashInput) -> str:
     """Format Bash tool use content in VS Code extension style.
 
+    Args:
+        bash_input: Typed BashInput with command, description, timeout, etc.
     Note: Description is now shown in the header, so we skip it here.
     """
-    command = tool_use.input.get("command", "")
-
-    escaped_command = escape_html(command)
+    escaped_command = escape_html(bash_input.command)
 
     html_parts = ["<div class='bash-tool-content'>"]
-
-    # Description is now shown in header, so we skip it here
-
-    # Add command in preformatted block
     html_parts.append(f"<pre class='bash-tool-command'>{escaped_command}</pre>")
     html_parts.append("</div>")
 
@@ -351,8 +346,11 @@ def format_bash_tool_content(tool_use: ToolUseContent) -> str:
 # -- Task Tool ----------------------------------------------------------------
 
 
-def format_task_tool_content(tool_use: ToolUseContent) -> str:
+def format_task_tool_content(task_input: TaskInput) -> str:
     """Format Task tool content with markdown-rendered prompt.
+
+    Args:
+        task_input: Typed TaskInput with prompt, subagent_type, etc.
 
     Task tool spawns sub-agents. We render the prompt as the main content.
     The sidechain user message (which would duplicate this prompt) is skipped.
@@ -360,13 +358,7 @@ def format_task_tool_content(tool_use: ToolUseContent) -> str:
     For long prompts (>20 lines), the content is made collapsible with a
     preview of the first few lines to keep the transcript vertically compact.
     """
-    prompt = tool_use.input.get("prompt", "")
-
-    if not prompt:
-        # No prompt, show parameters table as fallback
-        return render_params_table(tool_use.input)
-
-    return render_markdown_collapsible(prompt, "task-prompt")
+    return render_markdown_collapsible(task_input.prompt, "task-prompt")
 
 
 # -- Generic Parameter Table --------------------------------------------------
@@ -438,40 +430,39 @@ def render_params_table(params: Dict[str, Any]) -> str:
 
 
 def format_tool_use_content(tool_use: ToolUseContent) -> str:
-    """Format tool use content as HTML."""
-    # Special handling for TodoWrite
-    if tool_use.name == "TodoWrite":
-        return format_todowrite_content(tool_use)
+    """Format tool use content as HTML.
 
-    # Special handling for Bash
-    if tool_use.name == "Bash":
-        return format_bash_tool_content(tool_use)
+    Uses parsed_input which handles lenient parsing at the model layer,
+    then dispatches to specialized formatters based on type.
+    """
+    parsed = tool_use.parsed_input
 
-    # Special handling for Edit
-    if tool_use.name == "Edit":
-        return format_edit_tool_content(tool_use)
+    # Dispatch based on parsed type (lenient parsing happens in parsed_input)
+    if isinstance(parsed, TodoWriteInput):
+        return format_todowrite_content(parsed)
 
-    # Special handling for Multiedit
-    if tool_use.name == "Multiedit":
-        return format_multiedit_tool_content(tool_use)
+    if isinstance(parsed, BashInput):
+        return format_bash_tool_content(parsed)
 
-    # Special handling for Read
+    if isinstance(parsed, EditInput):
+        return format_edit_tool_content(parsed)
+
+    if isinstance(parsed, MultiEditInput):
+        return format_multiedit_tool_content(parsed)
+
+    if isinstance(parsed, WriteInput):
+        return format_write_tool_content(parsed)
+
+    if isinstance(parsed, TaskInput):
+        return format_task_tool_content(parsed)
+
+    # Tools that still accept ToolUseContent directly (no typed model yet)
     if tool_use.name == "Read":
         return format_read_tool_content(tool_use)
 
-    # Special handling for Write
-    if tool_use.name == "Write":
-        return format_write_tool_content(tool_use)
-
-    # Special handling for Task (agent spawning)
-    if tool_use.name == "Task":
-        return format_task_tool_content(tool_use)
-
-    # Special handling for AskUserQuestion
     if tool_use.name == "AskUserQuestion":
         return format_askuserquestion_content(tool_use)
 
-    # Special handling for ExitPlanMode
     if tool_use.name == "ExitPlanMode":
         return format_exitplanmode_content(tool_use)
 
