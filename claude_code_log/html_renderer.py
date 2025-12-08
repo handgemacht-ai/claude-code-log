@@ -18,6 +18,7 @@ from typing import Any, Optional, TYPE_CHECKING
 
 import mistune
 
+from .renderer_code import highlight_code_with_pygments, truncate_highlighted_preview
 from .renderer_timings import timing_stat
 
 if TYPE_CHECKING:
@@ -168,3 +169,131 @@ def render_markdown(text: str) -> str:
             hard_wrap=True,  # Line break for newlines (checklists in Assistant messages)
         )
         return str(renderer(text))
+
+
+# -- Collapsible Content Rendering --------------------------------------------
+
+
+def render_collapsible_code(
+    preview_html: str,
+    full_html: str,
+    line_count: int,
+    is_markdown: bool = False,
+) -> str:
+    """Render a collapsible code/content block with preview.
+
+    Creates a details element with a line count badge and preview content
+    that expands to show the full content.
+
+    Args:
+        preview_html: HTML content to show in the collapsed summary
+        full_html: HTML content to show when expanded
+        line_count: Number of lines (shown in the badge)
+        is_markdown: If True, adds 'markdown' class to preview and full content divs
+
+    Returns:
+        HTML string with collapsible details element
+    """
+    markdown_class = " markdown" if is_markdown else ""
+    return f"""<details class='collapsible-code'>
+        <summary>
+            <span class='line-count'>{line_count} lines</span>
+            <div class='preview-content{markdown_class}'>{preview_html}</div>
+        </summary>
+        <div class='code-full{markdown_class}'>{full_html}</div>
+    </details>"""
+
+
+def render_markdown_collapsible(
+    raw_content: str,
+    css_class: str,
+    line_threshold: int = 20,
+    preview_line_count: int = 5,
+) -> str:
+    """Render markdown content, making it collapsible if it exceeds a line threshold.
+
+    For long content, creates a collapsible details element with a preview.
+    For short content, renders inline with the specified CSS class.
+
+    Args:
+        raw_content: The raw text content to render as markdown
+        css_class: CSS class for the wrapper div (e.g., "task-prompt", "task-result")
+        line_threshold: Number of lines above which content becomes collapsible (default 20)
+        preview_line_count: Number of lines to show in the preview (default 5)
+
+    Returns:
+        HTML string with rendered markdown, optionally wrapped in collapsible details
+    """
+    rendered_html = render_markdown(raw_content)
+
+    lines = raw_content.splitlines()
+    if len(lines) <= line_threshold:
+        # Short content, show inline
+        return f'<div class="{css_class} markdown">{rendered_html}</div>'
+
+    # Long content - make collapsible with rendered preview
+    preview_lines = lines[:preview_line_count]
+    preview_text = "\n".join(preview_lines)
+    if len(lines) > preview_line_count:
+        preview_text += "\n\n..."
+    # Render truncated markdown (produces valid HTML with proper tag closure)
+    preview_html = render_markdown(preview_text)
+
+    collapsible = render_collapsible_code(
+        preview_html, rendered_html, len(lines), is_markdown=True
+    )
+    return f'<div class="{css_class}">{collapsible}</div>'
+
+
+def render_file_content_collapsible(
+    code_content: str,
+    file_path: str,
+    css_class: str,
+    linenostart: int = 1,
+    line_threshold: int = 12,
+    preview_line_count: int = 5,
+    suffix_html: str = "",
+) -> str:
+    """Render file content with syntax highlighting, collapsible if long.
+
+    Highlights code using Pygments and wraps in a collapsible details element
+    if the content exceeds the line threshold. Uses preview truncation from
+    already-highlighted HTML to avoid double Pygments calls.
+
+    Args:
+        code_content: The raw code content to highlight
+        file_path: File path for syntax detection (extension-based)
+        css_class: CSS class for the wrapper div (e.g., 'write-tool-content')
+        linenostart: Starting line number for Pygments (default 1)
+        line_threshold: Number of lines above which content becomes collapsible
+        preview_line_count: Number of lines to show in the preview
+        suffix_html: Optional HTML to append after the code (inside wrapper div)
+
+    Returns:
+        HTML string with highlighted code, collapsible if >line_threshold lines
+    """
+    # Highlight code with Pygments (single call)
+    highlighted_html = highlight_code_with_pygments(
+        code_content, file_path, linenostart=linenostart
+    )
+
+    html_parts = [f"<div class='{css_class}'>"]
+
+    lines = code_content.split("\n")
+    if len(lines) > line_threshold:
+        # Extract preview from already-highlighted HTML (avoids double highlighting)
+        preview_html = truncate_highlighted_preview(
+            highlighted_html, preview_line_count
+        )
+        html_parts.append(
+            render_collapsible_code(preview_html, highlighted_html, len(lines))
+        )
+    else:
+        # Show directly without collapsible
+        html_parts.append(highlighted_html)
+
+    if suffix_html:
+        html_parts.append(suffix_html)
+
+    html_parts.append("</div>")
+    return "".join(html_parts)
