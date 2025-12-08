@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from .cache import CacheManager
 from datetime import datetime
 import html
-import mistune
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .models import (
@@ -44,7 +43,6 @@ from .utils import (
 from .renderer_timings import (
     DEBUG_TIMING,
     report_timing_statistics,
-    timing_stat,
     set_timing_var,
     log_timing,
 )
@@ -54,6 +52,12 @@ from .renderer_code import (
     highlight_code_with_pygments,
     truncate_highlighted_preview,
     render_single_diff,
+)
+from .html_renderer import (
+    css_class_from_message,
+    get_message_emoji,
+    escape_html,
+    render_markdown,
 )
 
 
@@ -175,75 +179,6 @@ def format_timestamp(timestamp_str: str | None) -> str:
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, AttributeError):
         return timestamp_str
-
-
-def escape_html(text: str) -> str:
-    """Escape HTML special characters in text.
-
-    Also normalizes line endings (CRLF -> LF) to prevent double spacing in <pre> blocks.
-    """
-    # Normalize CRLF to LF to prevent double line breaks in HTML
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    return html.escape(normalized)
-
-
-def _create_pygments_plugin() -> Any:
-    """Create a mistune plugin that uses Pygments for code block syntax highlighting."""
-    from pygments import highlight  # type: ignore[reportUnknownVariableType]
-    from pygments.lexers import get_lexer_by_name, TextLexer  # type: ignore[reportUnknownVariableType]
-    from pygments.formatters import HtmlFormatter  # type: ignore[reportUnknownVariableType]
-    from pygments.util import ClassNotFound  # type: ignore[reportUnknownVariableType]
-
-    def plugin_pygments(md: Any) -> None:
-        """Plugin to add Pygments syntax highlighting to code blocks."""
-        original_render = md.renderer.block_code
-
-        def block_code(code: str, info: Optional[str] = None) -> str:
-            """Render code block with Pygments syntax highlighting if language is specified."""
-            if info:
-                # Language hint provided, use Pygments
-                lang = info.split()[0] if info else ""
-                try:
-                    lexer = get_lexer_by_name(lang, stripall=True)  # type: ignore[reportUnknownVariableType]
-                except ClassNotFound:
-                    lexer = TextLexer()  # type: ignore[reportUnknownVariableType]
-
-                formatter = HtmlFormatter(  # type: ignore[reportUnknownVariableType]
-                    linenos=False,  # No line numbers in markdown code blocks
-                    cssclass="highlight",
-                    wrapcode=True,
-                )
-                # Track Pygments timing if enabled
-                with timing_stat("_pygments_timings"):
-                    return str(highlight(code, lexer, formatter))  # type: ignore[reportUnknownArgumentType]
-            else:
-                # No language hint, use default rendering
-                return original_render(code, info)
-
-        md.renderer.block_code = block_code
-
-    return plugin_pygments
-
-
-def render_markdown(text: str) -> str:
-    """Convert markdown text to HTML using mistune with Pygments syntax highlighting."""
-    # Track markdown rendering time if enabled
-    with timing_stat("_markdown_timings"):
-        # Configure mistune with GitHub-flavored markdown features
-        renderer = mistune.create_markdown(
-            plugins=[
-                "strikethrough",
-                "footnotes",
-                "table",
-                "url",
-                "task_lists",
-                "def_list",
-                _create_pygments_plugin(),
-            ],
-            escape=False,  # Don't escape HTML since we want to render markdown properly
-            hard_wrap=True,  # Line break for newlines (checklists in Assistant messages)
-        )
-        return str(renderer(text))
 
 
 def render_collapsible_code(
@@ -3118,9 +3053,6 @@ def generate_html(
     with log_timing("Template environment setup", t_start):
         env = _get_template_environment()
         template = env.get_template("transcript.html")
-
-    # Import html_renderer functions for template use
-    from .html_renderer import css_class_from_message, get_message_emoji
 
     with log_timing(lambda: f"Template rendering ({len(html_output)} chars)", t_start):
         html_output = str(
