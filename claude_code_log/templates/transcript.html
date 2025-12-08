@@ -101,19 +101,14 @@
         {% endif %}
     </div>
     {% else %}
-    {% set markdown = message.css_class in ['assistant', 'thinking', 'sidechain'] or (message.css_class and 'compacted' in message.css_class) %}
-    <div class='message {{ message.css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}{% for ancestor_id in message.ancestry %} {{ ancestor_id }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}{% if message.is_paired and message.pair_role %}-{{ message.pair_role.replace("pair_", "") }}{% endif %}'>
+    {%- set msg_css_class = css_class_from_message(message) %}
+    {% set markdown = message.type in ['assistant', 'thinking'] or message.modifiers.is_sidechain or message.modifiers.is_compacted %}
+    <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}{% for ancestor_id in message.ancestry %} {{ ancestor_id }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}{% if message.is_paired and message.pair_role %}-{{ message.pair_role.replace("pair_", "") }}{% endif %}'>
         <div class='header'>
+            {% set msg_emoji = get_message_emoji(message) -%}
             <span{% if message.title_hint %} title="{{ message.title_hint }}"{% endif %}>{% if message.message_title %}{%
                 if message.message_title == 'Memory' %}💭 {%
-                elif message.css_class.startswith('user') %}🤷 {%
-                elif message.css_class.startswith('assistant') %}🤖 {%
-                elif message.css_class == 'system' %}⚙️ {%
-                elif message.css_class.startswith('tool_use') and not starts_with_emoji(message.message_title) %}🛠️ {%
-                elif message.css_class == 'tool_result error' %}🚨 {%
-                elif message.css_class.startswith('tool_result') %}🧰 {%
-                elif message.css_class.startswith('thinking') %}💭 {%
-                elif message.css_class == 'image' %}🖼️ {% endif %}{{ message.message_title | safe }}{% endif %}</span>
+                elif msg_emoji and (message.type != 'tool_use' or not starts_with_emoji(message.message_title)) %}{{ msg_emoji }} {% endif %}{{ message.message_title | safe }}{% endif %}</span>
             <div class='header-info'>
                 <div class='timestamp-row'>
                     <span class='timestamp'{% if message.raw_timestamp %} data-timestamp='{{ message.raw_timestamp }}'{% if message.pair_duration %} data-duration='{{ message.pair_duration }}'{% endif %}{% endif %}>{{ message.formatted_timestamp }}</span>
@@ -125,7 +120,7 @@
         </div>
         <div class='content{% if markdown %} markdown{% endif %}'>{{ message.content_html | safe }}</div>
         {% if message.has_children %}
-        <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='{{ message.css_class }}'>
+        <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='{{ msg_css_class }}'>
             {% if message.immediate_children_count == message.total_descendants_count %}
             {# Same count = only one level, show single full-width button #}
             <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='{{ message.message_id }}' data-title-unfolded='Fold {{ message.get_immediate_children_label() }}' data-title-folded='Unfold (1st level) {{ message.get_immediate_children_label() }}' title='Fold {{ message.get_immediate_children_label() }}'>

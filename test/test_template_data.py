@@ -23,14 +23,12 @@ class TestTemplateMessage:
             message_type="user",
             content_html="<p>Test content</p>",
             formatted_timestamp="2025-06-14 10:00:00",
-            css_class="user",
             raw_timestamp=None,
         )
 
         assert msg.type == "user"
         assert msg.content_html == "<p>Test content</p>"
         assert msg.formatted_timestamp == "2025-06-14 10:00:00"
-        assert msg.css_class == "user"
         assert msg.message_title == "User"
 
     def test_template_message_title_capitalization(self):
@@ -47,7 +45,6 @@ class TestTemplateMessage:
                 message_type=msg_type,
                 content_html="content",
                 formatted_timestamp="time",
-                css_class="class",
                 raw_timestamp=None,
             )
             assert msg.message_title == expected_display
@@ -386,7 +383,6 @@ class TestTemplateMessageTree:
             message_type=msg_type,
             content_html=f"<p>{msg_type} content</p>",
             formatted_timestamp="2025-06-14 10:00:00",
-            css_class=msg_type,
             raw_timestamp=None,
         )
         if msg_id:
@@ -540,7 +536,6 @@ class TestTreeBuildingIntegration:
             message_type="session",
             content_html="<p>Session</p>",
             formatted_timestamp="2025-06-14 10:00:00",
-            css_class="session",
             raw_timestamp=None,
         )
         root.message_id = "session-1"
@@ -550,7 +545,6 @@ class TestTreeBuildingIntegration:
             message_type="user",
             content_html="<p>User</p>",
             formatted_timestamp="2025-06-14 10:00:01",
-            css_class="user",
             raw_timestamp=None,
         )
         user.message_id = "d-1"
@@ -560,7 +554,6 @@ class TestTreeBuildingIntegration:
             message_type="assistant",
             content_html="<p>Assistant</p>",
             formatted_timestamp="2025-06-14 10:00:02",
-            css_class="assistant",
             raw_timestamp=None,
         )
         assistant.message_id = "d-2"
@@ -570,7 +563,6 @@ class TestTreeBuildingIntegration:
             message_type="tool_use",
             content_html="<p>Tool</p>",
             formatted_timestamp="2025-06-14 10:00:03",
-            css_class="tool_use",
             raw_timestamp=None,
         )
         tool.message_id = "d-3"

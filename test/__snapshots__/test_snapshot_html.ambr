@@ -9543,13 +9543,13 @@
           <div class='fold-bar' data-message-id='session-edge_cases' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-edge_cases' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users, 1 user slash-command' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-edge_cases' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 5 users' title='Fold (all levels) all 9 descendants'>
                   <span class='fold-icon'>▼</span>
-                  <span class='fold-label'>4 users, 1 user slash-command</span>
+                  <span class='fold-label'>5 users</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-edge_cases' data-title-unfolded='Fold (to 1st level) 4 users, 1 user slash-command' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users, 1 user slash-command'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-edge_cases' data-title-unfolded='Fold (to 1st level) 5 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 5 users'>
                   <span class='fold-icon'>▼▼</span>
-                  <span class='fold-label'>4 users, 2 assistants, 3 more total</span>
+                  <span class='fold-label'>5 users, 2 assistants, 2 more total</span>
               </div>
               
           </div>

@@ -1531,6 +1531,23 @@ def _format_type_counts(type_counts: dict[str, int]) -> str:
         return f"{parts[0]}, {parts[1]}, {remaining} more"
 
 
+def _modifiers_from_css_class(css_class: str) -> MessageModifiers:
+    """Parse CSS class string into MessageModifiers.
+
+    This is a temporary bridge function during migration from css_class to modifiers.
+    It parses the space-separated CSS class string back into structured modifiers.
+    """
+    classes = css_class.split()
+    return MessageModifiers(
+        is_sidechain="sidechain" in classes,
+        is_slash_command="slash-command" in classes,
+        is_command_output="command-output" in classes,
+        is_compacted="compacted" in classes,
+        is_error="error" in classes,
+        is_steering="steering" in classes,
+    )
+
+
 class TemplateMessage:
     """Structured message data for template rendering."""
 
@@ -1539,7 +1556,6 @@ class TemplateMessage:
         message_type: str,
         content_html: str,
         formatted_timestamp: str,
-        css_class: str,
         raw_timestamp: Optional[str] = None,
         session_summary: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -1560,7 +1576,6 @@ class TemplateMessage:
         self.type = message_type
         self.content_html = content_html
         self.formatted_timestamp = formatted_timestamp
-        self.css_class = css_class
         self.modifiers = modifiers if modifiers is not None else MessageModifiers()
         self.raw_timestamp = raw_timestamp
         # Display title for message header (capitalized, with decorations)
@@ -2128,7 +2143,6 @@ def _process_system_message(
         message_type="system",
         content_html=content_html,
         formatted_timestamp=formatted_timestamp,
-        css_class=level_css,
         raw_timestamp=timestamp,
         session_id=session_id,
         message_title=f"System {level.title()}",
@@ -2136,6 +2150,7 @@ def _process_system_message(
         ancestry=[],  # Will be assigned by _build_message_hierarchy
         uuid=message.uuid,
         parent_uuid=parent_uuid,
+        modifiers=MessageModifiers(system_level=level),
     )
 
 
@@ -2145,11 +2160,11 @@ class ToolItemResult:
 
     message_type: str
     content_html: str
-    css_class: str
     message_title: str
     tool_use_id: Optional[str] = None
     title_hint: Optional[str] = None
     pending_dedup: Optional[str] = None  # For Task result deduplication
+    is_error: bool = False  # For tool_result error state
 
 
 def _process_tool_use_item(
@@ -2239,7 +2254,6 @@ def _process_tool_use_item(
     return ToolItemResult(
         message_type="tool_use",
         content_html=tool_content_html,
-        css_class="tool_use",
         message_title=tool_message_title,
         tool_use_id=item_tool_use_id,
         title_hint=tool_title_hint,
@@ -2306,16 +2320,15 @@ def _process_tool_result_item(
     escaped_id = escape_html(tool_result.tool_use_id)
     tool_title_hint = f"ID: {escaped_id}"
     tool_message_title = "Error" if tool_result.is_error else ""
-    tool_css_class = "tool_result error" if tool_result.is_error else "tool_result"
 
     return ToolItemResult(
         message_type="tool_result",
         content_html=tool_content_html,
-        css_class=tool_css_class,
         message_title=tool_message_title,
         tool_use_id=tool_result.tool_use_id,
         title_hint=tool_title_hint,
         pending_dedup=pending_dedup,
+        is_error=tool_result.is_error,
     )
 
 
@@ -2337,7 +2350,6 @@ def _process_thinking_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
     return ToolItemResult(
         message_type="thinking",
         content_html=format_thinking_content(thinking),
-        css_class="thinking",
         message_title="Thinking",
     )
 
@@ -2356,7 +2368,6 @@ def _process_image_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
     return ToolItemResult(
         message_type="image",
         content_html=format_image_content(tool_item),
-        css_class="image",
         message_title="Image",
     )
 
@@ -2403,17 +2414,17 @@ def _build_pairing_indices(messages: List[TemplateMessage]) -> PairingIndices:
         # Index tool_use and tool_result by (session_id, tool_use_id)
         if msg.tool_use_id and msg.session_id:
             key = (msg.session_id, msg.tool_use_id)
-            if "tool_use" in msg.css_class:
+            if msg.type == "tool_use":
                 tool_use_index[key] = i
-            elif "tool_result" in msg.css_class:
+            elif msg.type == "tool_result":
                 tool_result_index[key] = i
 
         # Index system messages by UUID for parent-child pairing
-        if msg.uuid and "system" in msg.css_class:
+        if msg.uuid and msg.type == "system":
             uuid_index[msg.uuid] = i
 
         # Index slash-command user messages by parent_uuid
-        if msg.parent_uuid and "slash-command" in msg.css_class:
+        if msg.parent_uuid and msg.modifiers.is_slash_command:
             slash_command_by_parent[msg.parent_uuid] = i
 
     return PairingIndices(
@@ -2446,17 +2457,17 @@ def _try_pair_adjacent(
     - thinking + assistant
     """
     # Slash command + command output (both are user messages)
-    if "slash-command" in current.css_class and "command-output" in next_msg.css_class:
+    if current.modifiers.is_slash_command and next_msg.modifiers.is_command_output:
         _mark_pair(current, next_msg)
         return True
 
     # Bash input + bash output
-    if current.css_class == "bash-input" and next_msg.css_class == "bash-output":
+    if current.type == "bash-input" and next_msg.type == "bash-output":
         _mark_pair(current, next_msg)
         return True
 
     # Thinking + assistant
-    if "thinking" in current.css_class and "assistant" in next_msg.css_class:
+    if current.type == "thinking" and next_msg.type == "assistant":
         _mark_pair(current, next_msg)
         return True
 
@@ -2476,20 +2487,20 @@ def _try_pair_by_index(
     - system + slash-command (by uuid -> parent_uuid)
     """
     # Tool use + tool result (by tool_use_id within same session)
-    if "tool_use" in current.css_class and current.tool_use_id and current.session_id:
+    if current.type == "tool_use" and current.tool_use_id and current.session_id:
         key = (current.session_id, current.tool_use_id)
         if key in indices.tool_result:
             result_msg = messages[indices.tool_result[key]]
             _mark_pair(current, result_msg)
 
     # System child message finding its parent (by parent_uuid)
-    if "system" in current.css_class and current.parent_uuid:
+    if current.type == "system" and current.parent_uuid:
         if current.parent_uuid in indices.uuid:
             parent_msg = messages[indices.uuid[current.parent_uuid]]
             _mark_pair(parent_msg, current)
 
     # System command finding its slash-command child (by uuid -> parent_uuid)
-    if "system" in current.css_class and current.uuid:
+    if current.type == "system" and current.uuid:
         if current.uuid in indices.slash_command_by_parent:
             slash_msg = messages[indices.slash_command_by_parent[current.uuid]]
             _mark_pair(current, slash_msg)
@@ -2570,7 +2581,7 @@ def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMe
             msg.is_paired
             and msg.pair_role == "pair_last"
             and msg.parent_uuid
-            and "slash-command" in msg.css_class
+            and msg.modifiers.is_slash_command
         ):
             slash_command_pair_index[msg.parent_uuid] = i
 
@@ -2671,8 +2682,8 @@ def generate_session_html(
     )
 
 
-def _get_message_hierarchy_level(css_class: str, is_sidechain: bool) -> int:
-    """Determine the hierarchy level for a message based on its type and sidechain status.
+def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
+    """Determine the hierarchy level for a message based on its type and modifiers.
 
     Correct hierarchy based on logical nesting:
     - Level 0: Session headers
@@ -2688,35 +2699,41 @@ def _get_message_hierarchy_level(css_class: str, is_sidechain: bool) -> int:
     Returns:
         Integer hierarchy level (1-5, session headers are 0)
     """
+    msg_type = msg.type
+    is_sidechain = msg.modifiers.is_sidechain
+    system_level = msg.modifiers.system_level
+
     # User messages at level 1 (under session)
     # Note: sidechain user messages are skipped before reaching this function
-    if "user" in css_class and not is_sidechain:
+    if msg_type == "user" and not is_sidechain:
         return 1
 
     # System info/warning at level 3 (tool-related, e.g., hook notifications)
     if (
-        "system-info" in css_class or "system-warning" in css_class
-    ) and not is_sidechain:
+        msg_type == "system"
+        and system_level in ("info", "warning")
+        and not is_sidechain
+    ):
         return 3
 
     # System commands/errors at level 2 (siblings to assistant)
-    if "system" in css_class and not is_sidechain:
+    if msg_type == "system" and not is_sidechain:
         return 2
 
     # Sidechain assistant/thinking at level 4 (nested under Task tool result)
-    if is_sidechain and ("assistant" in css_class or "thinking" in css_class):
+    if is_sidechain and msg_type in ("assistant", "thinking"):
         return 4
 
     # Sidechain tools at level 5
-    if is_sidechain and ("tool" in css_class):
+    if is_sidechain and msg_type in ("tool_use", "tool_result"):
         return 5
 
     # Main assistant/thinking at level 2 (nested under user)
-    if "assistant" in css_class or "thinking" in css_class:
+    if msg_type in ("assistant", "thinking"):
         return 2
 
     # Main tools at level 3 (nested under assistant)
-    if "tool" in css_class:
+    if msg_type in ("tool_use", "tool_result"):
         return 3
 
     # Default to level 1
@@ -2743,11 +2760,8 @@ def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
         if message.is_session_header:
             current_level = 0
         else:
-            # Determine level from css_class
-            is_sidechain = "sidechain" in message.css_class
-            current_level = _get_message_hierarchy_level(
-                message.css_class, is_sidechain
-            )
+            # Determine level from message type and modifiers
+            current_level = _get_message_hierarchy_level(message)
 
         # Pop stack until we find the appropriate parent level
         while hierarchy_stack and hierarchy_stack[-1][0] >= current_level:
@@ -2805,7 +2819,7 @@ def _mark_messages_with_children(messages: List[TemplateMessage]) -> None:
         immediate_parent_id = message.ancestry[-1]
 
         # Get message type for categorization
-        msg_type = message.css_class or message.type
+        msg_type = message.type
 
         # Increment immediate parent's child count
         if immediate_parent_id in message_by_id:
@@ -3115,6 +3129,9 @@ def generate_html(
         env = _get_template_environment()
         template = env.get_template("transcript.html")
 
+    # Import html_renderer functions for template use
+    from .html_renderer import css_class_from_message, get_message_emoji
+
     with log_timing(lambda: f"Template rendering ({len(html_output)} chars)", t_start):
         html_output = str(
             template.render(
@@ -3123,6 +3140,8 @@ def generate_html(
                 sessions=session_nav,
                 combined_transcript_link=combined_transcript_link,
                 library_version=get_library_version(),
+                css_class_from_message=css_class_from_message,
+                get_message_emoji=get_message_emoji,
             )
         )
 
@@ -3219,7 +3238,7 @@ def _reorder_sidechain_template_messages(
     sidechain_map: Dict[str, List[TemplateMessage]] = {}
 
     for message in messages:
-        is_sidechain = "sidechain" in message.css_class
+        is_sidechain = message.modifiers.is_sidechain
         agent_id = message.agent_id
 
         if is_sidechain and agent_id:
@@ -3503,13 +3522,13 @@ def _process_messages_loop(
                     message_type="session_header",
                     content_html=session_title,
                     formatted_timestamp="",
-                    css_class="session-header",
                     raw_timestamp=None,
                     session_summary=current_session_summary,
                     session_id=session_id,
                     is_session_header=True,
                     message_id=None,  # Will be assigned by _build_message_hierarchy
                     ancestry=[],  # Session headers are top-level
+                    modifiers=MessageModifiers(),  # No modifiers for session headers
                 )
                 template_messages.append(session_header)
 
@@ -3646,7 +3665,6 @@ def _process_messages_loop(
                 message_type=message_type,
                 content_html=content_html,
                 formatted_timestamp=formatted_timestamp,
-                css_class=css_class,
                 raw_timestamp=timestamp,
                 session_summary=session_summary,
                 session_id=session_id,
@@ -3657,6 +3675,7 @@ def _process_messages_loop(
                 agent_id=getattr(message, "agentId", None),
                 uuid=getattr(message, "uuid", None),
                 parent_uuid=getattr(message, "parentUuid", None),
+                modifiers=_modifiers_from_css_class(css_class),
             )
 
             # Store raw text content for potential future use (e.g., deduplication,
@@ -3690,7 +3709,6 @@ def _process_messages_loop(
                 tool_result = ToolItemResult(
                     message_type="unknown",
                     content_html=f"<p>Unknown content type: {escape_html(str(type(tool_item)))}</p>",
-                    css_class="unknown",
                     message_title="Unknown Content",
                 )
 
@@ -3699,10 +3717,13 @@ def _process_messages_loop(
                 continue
 
             # Preserve sidechain context for tool/thinking/image content within sidechain messages
-            tool_css_class = tool_result.css_class
             tool_is_sidechain = getattr(message, "isSidechain", False)
-            if tool_is_sidechain:
-                tool_css_class += " sidechain"
+
+            # Build modifiers directly from tool_result properties
+            tool_modifiers = MessageModifiers(
+                is_sidechain=tool_is_sidechain,
+                is_error=tool_result.is_error,
+            )
 
             # Generate unique UUID for this tool message
             # Use tool_use_id if available, otherwise fall back to message UUID + index
@@ -3716,7 +3737,6 @@ def _process_messages_loop(
                 message_type=tool_result.message_type,
                 content_html=tool_result.content_html,
                 formatted_timestamp=tool_formatted_timestamp,
-                css_class=tool_css_class,
                 raw_timestamp=tool_timestamp,
                 session_summary=session_summary,
                 session_id=session_id,
@@ -3727,6 +3747,7 @@ def _process_messages_loop(
                 ancestry=[],  # Will be assigned by _build_message_hierarchy
                 agent_id=getattr(message, "agentId", None),
                 uuid=tool_uuid,
+                modifiers=tool_modifiers,
             )
 
             # Store raw text for Task result deduplication
