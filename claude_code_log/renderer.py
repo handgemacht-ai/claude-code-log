@@ -27,7 +27,6 @@ from .models import (
     ToolUseContent,
     ThinkingContent,
     ImageContent,
-    TaskInput,
     is_user_entry,
     is_assistant_entry,
 )
@@ -62,8 +61,9 @@ from .html_renderer import (
 from .html_tool_renderers import (
     format_askuserquestion_result,
     format_exitplanmode_result,
-    render_params_table,
     format_tool_use_content,
+    format_tool_use_title,
+    render_params_table,
 )
 
 
@@ -205,35 +205,6 @@ def extract_command_info(text_content: str) -> tuple[str, str, str]:
 
 # -- Tool Summary and Result Parsing ------------------------------------------
 # NOTE: Tool content formatters have been moved to html_tool_renderers.py
-
-
-def get_tool_summary(tool_use: ToolUseContent) -> Optional[str]:
-    """Extract a one-line summary from tool parameters for display in header.
-
-    Returns a brief description or filename that can be shown in the message header
-    to save vertical space.
-    """
-    tool_name = tool_use.name
-    params = tool_use.input
-
-    if tool_name == "Bash":
-        # Return description if present
-        return params.get("description")
-
-    elif tool_name in ("Read", "Edit", "Write"):
-        # Return file path (without icon - caller adds it)
-        file_path = params.get("file_path")
-        if file_path:
-            return file_path
-
-    elif tool_name == "Task":
-        # Return description if present
-        description = params.get("description")
-        if description:
-            return description
-
-    # No summary for other tools
-    return None
 
 
 def _parse_cat_n_snippet(
@@ -1548,69 +1519,13 @@ def _process_tool_use_item(
         tool_use = tool_item
 
     tool_content_html = format_tool_use_content(tool_use)
-    escaped_name = escape_html(tool_use.name)
+    tool_message_title = format_tool_use_title(tool_use)
     escaped_id = escape_html(tool_use.id)
     item_tool_use_id = tool_use.id
     tool_title_hint = f"ID: {escaped_id}"
 
     # Populate tool_use_context for later use when processing tool results
     tool_use_context[item_tool_use_id] = tool_use
-
-    # Get summary for header (description or filepath)
-    summary = get_tool_summary(tool_use)
-
-    # Set message_type (for CSS/logic) and message_title (for display)
-    if tool_use.name == "TodoWrite":
-        tool_message_title = "📝 Todo List"
-    elif tool_use.name == "Task":
-        # Special handling for Task tool: show subagent_type and description
-        parsed = tool_use.parsed_input
-        if isinstance(parsed, TaskInput):
-            subagent_type = parsed.subagent_type
-            description = parsed.description
-        else:
-            subagent_type = tool_use.input.get("subagent_type", "")
-            description = tool_use.input.get("description", "")
-        escaped_subagent = escape_html(subagent_type) if subagent_type else ""
-
-        if description and subagent_type:
-            escaped_desc = escape_html(description)
-            tool_message_title = f"🔧 {escaped_name} <span class='tool-summary'>{escaped_desc}</span> <span class='tool-subagent'>({escaped_subagent})</span>"
-        elif description:
-            escaped_desc = escape_html(description)
-            tool_message_title = (
-                f"🔧 {escaped_name} <span class='tool-summary'>{escaped_desc}</span>"
-            )
-        elif subagent_type:
-            tool_message_title = f"🔧 {escaped_name} <span class='tool-subagent'>({escaped_subagent})</span>"
-        else:
-            tool_message_title = f"🔧 {escaped_name}"
-    elif tool_use.name in ("Edit", "Write"):
-        # Use 📝 icon for Edit/Write
-        if summary:
-            escaped_summary = escape_html(summary)
-            tool_message_title = (
-                f"📝 {escaped_name} <span class='tool-summary'>{escaped_summary}</span>"
-            )
-        else:
-            tool_message_title = f"📝 {escaped_name}"
-    elif tool_use.name == "Read":
-        # Use 📄 icon for Read
-        if summary:
-            escaped_summary = escape_html(summary)
-            tool_message_title = (
-                f"📄 {escaped_name} <span class='tool-summary'>{escaped_summary}</span>"
-            )
-        else:
-            tool_message_title = f"📄 {escaped_name}"
-    elif summary:
-        # For other tools (like Bash), append summary
-        escaped_summary = escape_html(summary)
-        tool_message_title = (
-            f"{escaped_name} <span class='tool-summary'>{escaped_summary}</span>"
-        )
-    else:
-        tool_message_title = escaped_name
 
     return ToolItemResult(
         message_type="tool_use",
