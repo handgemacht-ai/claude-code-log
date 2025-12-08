@@ -2113,7 +2113,6 @@ def _process_system_message(
             return None
         # Render hook summary with collapsible details
         content_html = _render_hook_summary(message)
-        level_css = "system system-hook"
         level = "hook"
     elif not message.content:
         # Skip system messages without content (shouldn't happen normally)
@@ -2122,7 +2121,6 @@ def _process_system_message(
         # Create level-specific styling and icons
         level = getattr(message, "level", "info")
         level_icon = {"warning": "⚠️", "error": "❌", "info": "ℹ️"}.get(level, "ℹ️")
-        level_css = f"system system-{level}"
 
         # Process ANSI codes in system messages (they may contain colored output)
         html_content = convert_ansi_to_html(message.content)
@@ -2320,7 +2318,7 @@ def _process_tool_result_item(
         tool_use_id=tool_result.tool_use_id,
         title_hint=tool_title_hint,
         pending_dedup=pending_dedup,
-        is_error=tool_result.is_error,
+        is_error=tool_result.is_error or False,
     )
 
 
