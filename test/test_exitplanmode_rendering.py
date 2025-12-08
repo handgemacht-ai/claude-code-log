@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test cases for ExitPlanMode tool rendering."""
 
-from claude_code_log.renderer import (
+from claude_code_log.html_tool_renderers import (
     format_exitplanmode_content,
     format_exitplanmode_result,
 )

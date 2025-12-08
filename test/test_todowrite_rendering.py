@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 import pytest
 from claude_code_log.converter import convert_jsonl_to_html
-from claude_code_log.renderer import format_todowrite_content
+from claude_code_log.html_tool_renderers import format_todowrite_content
 from claude_code_log.models import ToolUseContent
 
 
@@ -247,7 +247,7 @@ class TestTodoWriteRendering:
         )
 
         # Test both through the main format function
-        from claude_code_log.renderer import format_tool_use_content
+        from claude_code_log.html_tool_renderers import format_tool_use_content
 
         regular_html = format_tool_use_content(regular_tool)
         todowrite_html = format_tool_use_content(todowrite_tool)
