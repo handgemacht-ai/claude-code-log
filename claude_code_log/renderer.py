@@ -16,6 +16,7 @@ import mistune
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .models import (
+    MessageModifiers,
     MessageType,
     TranscriptEntry,
     AssistantTranscriptEntry,
@@ -1554,11 +1555,13 @@ class TemplateMessage:
         uuid: Optional[str] = None,
         parent_uuid: Optional[str] = None,
         agent_id: Optional[str] = None,
+        modifiers: Optional[MessageModifiers] = None,
     ):
         self.type = message_type
         self.content_html = content_html
         self.formatted_timestamp = formatted_timestamp
         self.css_class = css_class
+        self.modifiers = modifiers if modifiers is not None else MessageModifiers()
         self.raw_timestamp = raw_timestamp
         # Display title for message header (capitalized, with decorations)
         self.message_title = (

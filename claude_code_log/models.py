@@ -3,6 +3,7 @@
 Enhanced to leverage official Anthropic types where beneficial.
 """
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, List, Union, Optional, Dict, Literal, cast, TypeGuard
 
@@ -49,6 +50,28 @@ class MessageType(str, Enum):
     SYSTEM_INFO = "system-info"
     SYSTEM_WARNING = "system-warning"
     SYSTEM_ERROR = "system-error"
+
+
+@dataclass
+class MessageModifiers:
+    """Semantic modifiers that affect message display.
+
+    These are format-neutral flags that renderers can use to determine
+    how to display a message. HTML renderer converts these to CSS classes,
+    text renderer might use them for indentation or formatting.
+
+    The modifiers capture traits that were previously encoded in the
+    css_class string (e.g., "user sidechain slash-command").
+    """
+
+    is_sidechain: bool = False
+    is_slash_command: bool = False
+    is_command_output: bool = False
+    is_compacted: bool = False
+    is_error: bool = False
+    is_steering: bool = False
+    # System message level (mutually exclusive: info, warning, error, hook)
+    system_level: Optional[str] = None
 
 
 class TodoItem(BaseModel):
