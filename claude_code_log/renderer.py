@@ -32,6 +32,7 @@ from .models import (
 from .parser import extract_text_content
 from .utils import (
     format_timestamp,
+    format_timestamp_range,
     get_project_display_name,
     is_command_message,
     is_local_command_output,
@@ -1049,6 +1050,115 @@ class TemplateSummary:
             self.token_summary = " | ".join(token_parts)
 
 
+# -- Session Utilities --------------------------------------------------------
+
+
+def prepare_session_summaries(messages: List[TranscriptEntry]) -> None:
+    """Pre-process messages to find and attach session summaries.
+
+    Modifies messages in place by attaching _session_summary attribute.
+    """
+    session_summaries: Dict[str, str] = {}
+    uuid_to_session: Dict[str, str] = {}
+    uuid_to_session_backup: Dict[str, str] = {}
+
+    # Build mapping from message UUID to session ID
+    for message in messages:
+        if hasattr(message, "uuid") and hasattr(message, "sessionId"):
+            message_uuid = getattr(message, "uuid", "")
+            session_id = getattr(message, "sessionId", "")
+            if message_uuid and session_id:
+                # There is often duplication, in that case we want to prioritise the assistant
+                # message because summaries are generated from Claude's (last) success message
+                if type(message) is AssistantTranscriptEntry:
+                    uuid_to_session[message_uuid] = session_id
+                else:
+                    uuid_to_session_backup[message_uuid] = session_id
+
+    # Map summaries to sessions via leafUuid -> message UUID -> session ID
+    for message in messages:
+        if isinstance(message, SummaryTranscriptEntry):
+            leaf_uuid = message.leafUuid
+            if leaf_uuid in uuid_to_session:
+                session_summaries[uuid_to_session[leaf_uuid]] = message.summary
+            elif (
+                leaf_uuid in uuid_to_session_backup
+                and uuid_to_session_backup[leaf_uuid] not in session_summaries
+            ):
+                session_summaries[uuid_to_session_backup[leaf_uuid]] = message.summary
+
+    # Attach summaries to messages
+    for message in messages:
+        if hasattr(message, "sessionId"):
+            session_id = getattr(message, "sessionId", "")
+            if session_id in session_summaries:
+                setattr(message, "_session_summary", session_summaries[session_id])
+
+
+def prepare_session_navigation(
+    sessions: Dict[str, Dict[str, Any]],
+    session_order: List[str],
+) -> List[Dict[str, Any]]:
+    """Prepare session navigation data for template rendering.
+
+    Args:
+        sessions: Dictionary mapping session_id to session info dict
+        session_order: List of session IDs in display order
+
+    Returns:
+        List of session navigation dicts for template rendering
+    """
+    session_nav: List[Dict[str, Any]] = []
+
+    for session_id in session_order:
+        session_info = sessions[session_id]
+
+        # Skip empty sessions (agent-only, no user messages)
+        if not session_info["first_user_message"]:
+            continue
+
+        # Format timestamp range
+        first_ts = session_info["first_timestamp"]
+        last_ts = session_info["last_timestamp"]
+        timestamp_range = format_timestamp_range(first_ts, last_ts)
+
+        # Format token usage summary
+        token_summary = ""
+        total_input = session_info["total_input_tokens"]
+        total_output = session_info["total_output_tokens"]
+        total_cache_creation = session_info["total_cache_creation_tokens"]
+        total_cache_read = session_info["total_cache_read_tokens"]
+
+        if total_input > 0 or total_output > 0:
+            token_parts: List[str] = []
+            if total_input > 0:
+                token_parts.append(f"Input: {total_input}")
+            if total_output > 0:
+                token_parts.append(f"Output: {total_output}")
+            if total_cache_creation > 0:
+                token_parts.append(f"Cache Creation: {total_cache_creation}")
+            if total_cache_read > 0:
+                token_parts.append(f"Cache Read: {total_cache_read}")
+            token_summary = "Token usage – " + " | ".join(token_parts)
+
+        session_nav.append(
+            {
+                "id": session_id,
+                "summary": session_info["summary"],
+                "timestamp_range": timestamp_range,
+                "first_timestamp": first_ts,
+                "last_timestamp": last_ts,
+                "message_count": session_info["message_count"],
+                "first_user_message": session_info["first_user_message"]
+                if session_info["first_user_message"] != ""
+                else "[No user message found in session.]",
+                "token_summary": token_summary,
+            }
+        )
+
+    return session_nav
+
+
 # -- Message Processing Functions ---------------------------------------------
 
 
@@ -1583,7 +1693,7 @@ def _process_image_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
     )
 
 
-# -- Message Pairing and Hierarchy --------------------------------------------
+# -- Message Pairing ----------------------------------------------------------
 
 
 @dataclass
@@ -1851,6 +1961,9 @@ def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMe
     return reordered
 
 
+# -- Message Hierarchy --------------------------------------------------------
+
+
 def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
     """Determine the hierarchy level for a message based on its type and modifiers.
 
@@ -2088,106 +2201,16 @@ def generate_html(
 
     # Pre-process to find and attach session summaries
     with log_timing("Session summary processing", t_start):
-        session_summaries: Dict[str, str] = {}
-        uuid_to_session: Dict[str, str] = {}
-        uuid_to_session_backup: Dict[str, str] = {}
-
-        # Build mapping from message UUID to session ID
-        for message in messages:
-            if hasattr(message, "uuid") and hasattr(message, "sessionId"):
-                message_uuid = getattr(message, "uuid", "")
-                session_id = getattr(message, "sessionId", "")
-                if message_uuid and session_id:
-                    # There is often duplication, in that case we want to prioritise the assistant
-                    # message because summaries are generated from Claude's (last) success message
-                    if type(message) is AssistantTranscriptEntry:
-                        uuid_to_session[message_uuid] = session_id
-                    else:
-                        uuid_to_session_backup[message_uuid] = session_id
-
-        # Map summaries to sessions via leafUuid -> message UUID -> session ID
-        for message in messages:
-            if isinstance(message, SummaryTranscriptEntry):
-                leaf_uuid = message.leafUuid
-                if leaf_uuid in uuid_to_session:
-                    session_summaries[uuid_to_session[leaf_uuid]] = message.summary
-                elif (
-                    leaf_uuid in uuid_to_session_backup
-                    and uuid_to_session_backup[leaf_uuid] not in session_summaries
-                ):
-                    session_summaries[uuid_to_session_backup[leaf_uuid]] = (
-                        message.summary
-                    )
-
-        # Attach summaries to messages
-        for message in messages:
-            if hasattr(message, "sessionId"):
-                session_id = getattr(message, "sessionId", "")
-                if session_id in session_summaries:
-                    setattr(message, "_session_summary", session_summaries[session_id])
+        prepare_session_summaries(messages)
 
     # Process messages through the main rendering loop
     template_messages, sessions, session_order = _process_messages_loop(messages)
 
     # Prepare session navigation data
-    session_nav: List[Dict[str, Any]] = []
     with log_timing(
         lambda: f"Session navigation building ({len(session_nav)} sessions)", t_start
     ):
-        for session_id in session_order:
-            session_info = sessions[session_id]
-
-            # Skip empty sessions (agent-only, no user messages)
-            if not session_info["first_user_message"]:
-                continue
-
-            # Format timestamp range
-            first_ts = session_info["first_timestamp"]
-            last_ts = session_info["last_timestamp"]
-            timestamp_range = ""
-            if first_ts and last_ts:
-                if first_ts == last_ts:
-                    timestamp_range = format_timestamp(first_ts)
-                else:
-                    timestamp_range = (
-                        f"{format_timestamp(first_ts)} - {format_timestamp(last_ts)}"
-                    )
-            elif first_ts:
-                timestamp_range = format_timestamp(first_ts)
-
-            # Format token usage summary
-            token_summary = ""
-            total_input = session_info["total_input_tokens"]
-            total_output = session_info["total_output_tokens"]
-            total_cache_creation = session_info["total_cache_creation_tokens"]
-            total_cache_read = session_info["total_cache_read_tokens"]
-
-            if total_input > 0 or total_output > 0:
-                token_parts: List[str] = []
-                if total_input > 0:
-                    token_parts.append(f"Input: {total_input}")
-                if total_output > 0:
-                    token_parts.append(f"Output: {total_output}")
-                if total_cache_creation > 0:
-                    token_parts.append(f"Cache Creation: {total_cache_creation}")
-                if total_cache_read > 0:
-                    token_parts.append(f"Cache Read: {total_cache_read}")
-                token_summary = "Token usage – " + " | ".join(token_parts)
-
-            session_nav.append(
-                {
-                    "id": session_id,
-                    "summary": session_info["summary"],
-                    "timestamp_range": timestamp_range,
-                    "first_timestamp": first_ts,
-                    "last_timestamp": last_ts,
-                    "message_count": session_info["message_count"],
-                    "first_user_message": session_info["first_user_message"]
-                    if session_info["first_user_message"] != ""
-                    else "[No user message found in session.]",
-                    "token_summary": token_summary,
-                }
-            )
+        session_nav = prepare_session_navigation(sessions, session_order)
 
     # Reorder messages so each session's messages follow their session header
     # This fixes interleaving that occurs when sessions are resumed
