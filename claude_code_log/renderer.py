@@ -50,20 +50,18 @@ from .renderer_timings import (
 from .cache import get_library_version
 from .ansi_colors import convert_ansi_to_html
 
-from .html_renderer import (
+from .html import (
     css_class_from_message,
-    get_message_emoji,
     escape_html,
-    render_collapsible_code,
-    render_markdown_collapsible,
-    render_file_content_collapsible,
-    get_template_environment,
-)
-from .html_tool_renderers import (
     format_askuserquestion_result,
     format_exitplanmode_result,
     format_tool_use_content,
     format_tool_use_title,
+    get_message_emoji,
+    get_template_environment,
+    render_collapsible_code,
+    render_file_content_collapsible,
+    render_markdown_collapsible,
     render_params_table,
 )
 

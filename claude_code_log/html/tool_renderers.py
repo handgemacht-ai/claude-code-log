@@ -18,12 +18,12 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from .html_renderer import (
+from .utils import (
     escape_html,
     render_file_content_collapsible,
     render_markdown_collapsible,
 )
-from .models import (
+from ..models import (
     AskUserQuestionInput,
     AskUserQuestionItem,
     BashInput,
@@ -36,7 +36,7 @@ from .models import (
     ToolUseContent,
     WriteInput,
 )
-from .renderer_code import render_single_diff
+from ..renderer_code import render_single_diff
 
 
 # -- AskUserQuestion Tool -----------------------------------------------------

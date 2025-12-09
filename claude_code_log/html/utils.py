@@ -20,11 +20,11 @@ from typing import Any, Optional, TYPE_CHECKING
 import mistune
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from .renderer_code import highlight_code_with_pygments, truncate_highlighted_preview
-from .renderer_timings import timing_stat
+from ..renderer_code import highlight_code_with_pygments, truncate_highlighted_preview
+from ..renderer_timings import timing_stat
 
 if TYPE_CHECKING:
-    from .renderer import TemplateMessage
+    from ..renderer import TemplateMessage
 
 
 # -- CSS and Message Display --------------------------------------------------
@@ -342,7 +342,7 @@ def get_template_environment() -> Environment:
     Returns:
         Configured Jinja2 Environment
     """
-    templates_dir = Path(__file__).parent / "templates"
+    templates_dir = Path(__file__).parent.parent / "templates"
     env = Environment(
         loader=FileSystemLoader(templates_dir),
         autoescape=select_autoescape(["html", "xml"]),

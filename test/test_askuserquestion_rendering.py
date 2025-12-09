@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test cases for AskUserQuestion tool rendering."""
 
-from claude_code_log.html_tool_renderers import (
+from claude_code_log.html import (
     format_askuserquestion_content,
     format_askuserquestion_result,
 )
