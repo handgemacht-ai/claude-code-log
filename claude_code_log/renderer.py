@@ -2951,14 +2951,26 @@ def prepare_projects_index(
     return template_projects, template_summary
 
 
-def generate_projects_index_html(
+def title_for_projects_index(
     project_summaries: List[Dict[str, Any]],
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
 ) -> str:
-    """Generate an index HTML page listing all projects using Jinja2 templates."""
-    # Try to get a better title from working directories in projects
+    """Generate a title for the projects index page.
+
+    Determines a meaningful title based on working directories from projects,
+    with optional date range suffix.
+
+    Args:
+        project_summaries: List of project summary dictionaries.
+        from_date: Optional start date filter string.
+        to_date: Optional end date filter string.
+
+    Returns:
+        A title string for the projects index page.
+    """
     title = "Claude Code Projects"
+
     if project_summaries:
         # Collect all working directories from all projects
         all_working_dirs: set[str] = set()
@@ -3001,6 +3013,8 @@ def generate_projects_index_html(
                 except Exception:
                     # Fall back to default title if path analysis fails
                     pass
+
+    # Add date range suffix if provided
     if from_date or to_date:
         date_range_parts: List[str] = []
         if from_date:
@@ -3010,20 +3024,19 @@ def generate_projects_index_html(
         date_range_str = " ".join(date_range_parts)
         title += f" ({date_range_str})"
 
-    # Prepare project data
-    template_projects, template_summary = prepare_projects_index(project_summaries)
+    return title
 
-    # Render template
-    env = get_template_environment()
-    template = env.get_template("index.html")
-    return str(
-        template.render(
-            title=title,
-            projects=template_projects,
-            summary=template_summary,
-            library_version=get_library_version(),
-        )
-    )
+
+def generate_projects_index_html(
+    project_summaries: List[Dict[str, Any]],
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> str:
+    """Generate an index HTML page listing all projects using Jinja2 templates.
+
+    This is a convenience function that delegates to HtmlRenderer.generate_projects_index.
+    """
+    return HtmlRenderer().generate_projects_index(project_summaries, from_date, to_date)
 
 
 # -- Renderer Classes ---------------------------------------------------------
@@ -3109,7 +3122,19 @@ class HtmlRenderer(Renderer):
         to_date: Optional[str] = None,
     ) -> str:
         """Generate an HTML projects index page."""
-        return generate_projects_index_html(project_summaries, from_date, to_date)
+        title = title_for_projects_index(project_summaries, from_date, to_date)
+        template_projects, template_summary = prepare_projects_index(project_summaries)
+
+        env = get_template_environment()
+        template = env.get_template("index.html")
+        return str(
+            template.render(
+                title=title,
+                projects=template_projects,
+                summary=template_summary,
+                library_version=get_library_version(),
+            )
+        )
 
     def is_outdated(self, file_path: Path) -> bool:
         """Check if an HTML file is outdated based on version."""
