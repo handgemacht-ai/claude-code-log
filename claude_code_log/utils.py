@@ -2,10 +2,39 @@
 """Utility functions for message filtering and processing."""
 
 import re
-from typing import Dict, List, Union
+from pathlib import Path
+from typing import Dict, List, Optional, Union
 
 from claude_code_log.cache import SessionCacheData
 from .models import ContentItem, TextContent, TranscriptEntry, UserTranscriptEntry
+
+
+def get_project_display_name(
+    project_dir_name: str, working_directories: Optional[List[str]] = None
+) -> str:
+    """Get the display name for a project based on working directories.
+
+    Args:
+        project_dir_name: The Claude project directory name (e.g., "-Users-dain-workspace-claude-code-log")
+        working_directories: List of working directories from cache data
+
+    Returns:
+        The project display name (e.g., "claude-code-log")
+    """
+    if working_directories:
+        # Convert to Path objects with their original indices for tracking recency
+        paths_with_indices = [(Path(wd), i) for i, wd in enumerate(working_directories)]
+
+        # Sort by: 1) path depth (fewer parts = less nested), 2) recency (lower index = more recent)
+        # This gives us the least nested path, with ties broken by recency
+        best_path, _ = min(paths_with_indices, key=lambda p: (len(p[0].parts), p[1]))
+        return best_path.name
+    else:
+        # Fall back to converting project directory name
+        display_name = project_dir_name
+        if display_name.startswith("-"):
+            display_name = display_name[1:].replace("-", "/")
+        return display_name
 
 
 def is_system_message(text_content: str) -> bool:

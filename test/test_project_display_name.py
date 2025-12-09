@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for project display name generation logic."""
 
-from claude_code_log.renderer import get_project_display_name
+from claude_code_log.utils import get_project_display_name
 
 
 class TestProjectDisplayName:

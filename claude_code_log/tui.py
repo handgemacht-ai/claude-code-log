@@ -21,7 +21,7 @@ from textual.reactive import reactive
 
 from .cache import CacheManager, SessionCacheData, get_library_version
 from .converter import ensure_fresh_cache
-from .renderer import get_project_display_name
+from .utils import get_project_display_name
 
 
 class ProjectSelector(App[Path]):

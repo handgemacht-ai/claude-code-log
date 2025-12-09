@@ -10,7 +10,8 @@ from claude_code_log.models import (
     ToolUseContent,
     ToolResultContent,
 )
-from claude_code_log.renderer import deduplicate_messages, generate_html
+from claude_code_log.converter import deduplicate_messages
+from claude_code_log.renderer import generate_html
 
 
 class TestVersionDeduplication:

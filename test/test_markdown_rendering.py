@@ -4,10 +4,8 @@
 import json
 import tempfile
 from pathlib import Path
-from claude_code_log.converter import (
-    load_transcript,
-    generate_html,
-)
+from claude_code_log.parser import load_transcript
+from claude_code_log.renderer import generate_html
 
 
 def test_server_side_markdown_rendering():

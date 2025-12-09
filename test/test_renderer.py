@@ -12,7 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_code_log.converter import load_transcript, generate_html
+from claude_code_log.parser import load_transcript
+from claude_code_log.renderer import generate_html
 
 
 class TestRendererEdgeCases:

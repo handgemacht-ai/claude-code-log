@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .cache import CacheManager
 
 from .utils import (
+    get_project_display_name,
     should_use_as_session_starter,
     create_session_preview,
     extract_working_directories,
@@ -24,16 +25,82 @@ from .models import (
     TranscriptEntry,
     AssistantTranscriptEntry,
     SummaryTranscriptEntry,
+    SystemTranscriptEntry,
     UserTranscriptEntry,
+    ToolResultContent,
 )
-from .renderer import (
-    deduplicate_messages,
-    generate_html,
-    generate_session_html,
-    generate_projects_index_html,
-    is_html_outdated,
-    get_project_display_name,
-)
+from .renderer import get_renderer
+
+
+def deduplicate_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
+    """Remove duplicate messages based on (type, timestamp, sessionId, content_key).
+
+    Messages with the exact same timestamp are duplicates by definition -
+    the differences (like IDE selection tags) are just logging artifacts.
+
+    We need a content-based key to handle two cases:
+    1. Version stutter: Same message logged twice during Claude Code upgrade
+       -> Same timestamp, same message.id or tool_use_id -> SHOULD deduplicate
+    2. Concurrent tool results: Multiple tool results with same timestamp
+       -> Same timestamp, different tool_use_ids -> should NOT deduplicate
+
+    Args:
+        messages: List of transcript entries to deduplicate
+
+    Returns:
+        List of deduplicated messages, preserving order (first occurrence kept)
+    """
+    # Track seen (message_type, timestamp, is_meta, session_id, content_key) tuples
+    seen: set[tuple[str, str, bool, str, str]] = set()
+    deduplicated: List[TranscriptEntry] = []
+
+    for message in messages:
+        # Get basic message type
+        message_type = getattr(message, "type", "unknown")
+
+        # For system messages, include level to differentiate info/warning/error
+        if isinstance(message, SystemTranscriptEntry):
+            level = getattr(message, "level", "info")
+            message_type = f"system-{level}"
+
+        # Get timestamp
+        timestamp = getattr(message, "timestamp", "")
+
+        # Get isMeta flag (slash command prompts have isMeta=True with same timestamp as parent)
+        is_meta = getattr(message, "isMeta", False)
+
+        # Get sessionId for multi-session report deduplication
+        session_id = getattr(message, "sessionId", "")
+
+        # Get content key for differentiating concurrent messages
+        # - For assistant messages: use message.id (same for stutters, different for different msgs)
+        # - For user messages with tool results: use first tool_use_id
+        # - For other messages: use uuid as fallback
+        content_key = ""
+        if isinstance(message, AssistantTranscriptEntry):
+            # For assistant messages, use the message id
+            content_key = message.message.id
+        elif isinstance(message, UserTranscriptEntry):
+            # For user messages, check for tool results
+            if isinstance(message.message.content, list):
+                for item in message.message.content:
+                    if isinstance(item, ToolResultContent):
+                        content_key = item.tool_use_id
+                        break
+        # Fallback to uuid if no content key found
+        if not content_key:
+            content_key = getattr(message, "uuid", "")
+
+        # Create deduplication key - include content_key for proper handling
+        # of both version stutters and concurrent tool results
+        dedup_key = (message_type, timestamp, is_meta, session_id, content_key)
+
+        # Keep only first occurrence
+        if dedup_key not in seen:
+            seen.add(dedup_key)
+            deduplicated.append(message)
+
+    return deduplicated
 
 
 def convert_jsonl_to_html(
@@ -104,8 +171,9 @@ def convert_jsonl_to_html(
 
     # Generate combined HTML file (check if regeneration needed)
     assert output_path is not None
+    renderer = get_renderer("html")
     should_regenerate = (
-        is_html_outdated(output_path)
+        renderer.is_outdated(output_path)
         or from_date is not None
         or to_date is not None
         or not output_path.exists()
@@ -115,7 +183,8 @@ def convert_jsonl_to_html(
     )
 
     if should_regenerate:
-        html_content = generate_html(messages, title)
+        html_content = renderer.generate(messages, title)
+        assert html_content is not None
         output_path.write_text(html_content, encoding="utf-8")
     else:
         print(f"HTML file {output_path.name} is current, skipping regeneration")
@@ -529,10 +598,11 @@ def _generate_individual_session_files(
 
         # Check if session file needs regeneration
         session_file_path = output_dir / f"session-{session_id}.html"
+        renderer = get_renderer("html")
 
         # Only regenerate if outdated, doesn't exist, or date filtering is active
         should_regenerate_session = (
-            is_html_outdated(session_file_path)
+            renderer.is_outdated(session_file_path)
             or from_date is not None
             or to_date is not None
             or not session_file_path.exists()
@@ -541,9 +611,10 @@ def _generate_individual_session_files(
 
         if should_regenerate_session:
             # Generate session HTML
-            session_html = generate_session_html(
+            session_html = renderer.generate_session(
                 messages, session_id, session_title, cache_manager
             )
+            assert session_html is not None
             # Write session file
             session_file_path.write_text(session_html, encoding="utf-8")
         else:
@@ -749,8 +820,12 @@ def process_projects_hierarchy(
 
     # Generate index HTML (always regenerate if outdated)
     index_path = projects_path / "index.html"
-    if is_html_outdated(index_path) or from_date or to_date or any_cache_updated:
-        index_html = generate_projects_index_html(project_summaries, from_date, to_date)
+    renderer = get_renderer("html")
+    if renderer.is_outdated(index_path) or from_date or to_date or any_cache_updated:
+        index_html = renderer.generate_projects_index(
+            project_summaries, from_date, to_date
+        )
+        assert index_html is not None
         index_path.write_text(index_html, encoding="utf-8")
     else:
         print("Index HTML is current, skipping regeneration")
