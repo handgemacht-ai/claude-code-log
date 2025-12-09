@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .cache import CacheManager
 
 from .utils import (
+    format_timestamp_range,
     get_project_display_name,
     should_use_as_session_starter,
     create_session_preview,
@@ -402,21 +403,6 @@ def _update_cache_with_session_data(
     )
 
 
-def _format_session_timestamp_range(first_timestamp: str, last_timestamp: str) -> str:
-    """Format session timestamp range for display."""
-    from .renderer import format_timestamp
-
-    if first_timestamp and last_timestamp:
-        if first_timestamp == last_timestamp:
-            return format_timestamp(first_timestamp)
-        else:
-            return f"{format_timestamp(first_timestamp)} - {format_timestamp(last_timestamp)}"
-    elif first_timestamp:
-        return format_timestamp(first_timestamp)
-    else:
-        return ""
-
-
 def _collect_project_sessions(messages: List[TranscriptEntry]) -> List[Dict[str, Any]]:
     """Collect session data for project index navigation."""
     from .parser import extract_text_content
@@ -497,7 +483,7 @@ def _collect_project_sessions(messages: List[TranscriptEntry]) -> List[Dict[str,
     # Convert to list format with formatted timestamps
     session_list: List[Dict[str, Any]] = []
     for session_data in sessions.values():
-        from .renderer import format_timestamp
+        from .utils import format_timestamp
 
         first_ts = session_data["first_timestamp"]
         last_ts = session_data["last_timestamp"]
@@ -709,7 +695,7 @@ def process_projects_hierarchy(
                                 {
                                     "id": session_data.session_id,
                                     "summary": session_data.summary,
-                                    "timestamp_range": _format_session_timestamp_range(
+                                    "timestamp_range": format_timestamp_range(
                                         session_data.first_timestamp,
                                         session_data.last_timestamp,
                                     ),

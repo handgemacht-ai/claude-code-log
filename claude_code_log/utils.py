@@ -2,11 +2,56 @@
 """Utility functions for message filtering and processing."""
 
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from claude_code_log.cache import SessionCacheData
 from .models import ContentItem, TextContent, TranscriptEntry, UserTranscriptEntry
+
+
+def format_timestamp(timestamp_str: str | None) -> str:
+    """Format ISO timestamp for display, converting to UTC."""
+    if timestamp_str is None:
+        return ""
+    try:
+        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        # Convert to UTC if timezone-aware
+        if dt.tzinfo is not None:
+            utc_timetuple = dt.utctimetuple()
+            dt = datetime(
+                utc_timetuple.tm_year,
+                utc_timetuple.tm_mon,
+                utc_timetuple.tm_mday,
+                utc_timetuple.tm_hour,
+                utc_timetuple.tm_min,
+                utc_timetuple.tm_sec,
+            )
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, AttributeError):
+        return timestamp_str
+
+
+def format_timestamp_range(first_timestamp: str, last_timestamp: str) -> str:
+    """Format timestamp range for display.
+
+    Args:
+        first_timestamp: ISO timestamp for range start
+        last_timestamp: ISO timestamp for range end
+
+    Returns:
+        Formatted string like "2025-01-01 10:00:00 - 2025-01-01 11:00:00"
+        or single timestamp if both are equal, or empty string if neither provided.
+    """
+    if first_timestamp and last_timestamp:
+        if first_timestamp == last_timestamp:
+            return format_timestamp(first_timestamp)
+        else:
+            return f"{format_timestamp(first_timestamp)} - {format_timestamp(last_timestamp)}"
+    elif first_timestamp:
+        return format_timestamp(first_timestamp)
+    else:
+        return ""
 
 
 def get_project_display_name(

@@ -17,7 +17,6 @@ from .models import (
     MessageType,
     TranscriptEntry,
     AssistantTranscriptEntry,
-    UserTranscriptEntry,
     SystemTranscriptEntry,
     SummaryTranscriptEntry,
     QueueOperationTranscriptEntry,
@@ -32,6 +31,7 @@ from .models import (
 )
 from .parser import extract_text_content
 from .utils import (
+    format_timestamp,
     get_project_display_name,
     is_command_message,
     is_local_command_output,
@@ -98,42 +98,6 @@ def check_html_version(html_file_path: Path) -> Optional[str]:
         pass
 
     return None
-
-
-def is_html_outdated(html_file_path: Path) -> bool:
-    """Check if an HTML file is outdated based on its version comment.
-
-    Returns:
-        True if the file should be regenerated (missing version, different version, or file doesn't exist).
-        False if the file is current.
-    """
-    html_version = check_html_version(html_file_path)
-    current_version = get_library_version()
-
-    # If no version found or different version, it's outdated
-    return html_version != current_version
-
-
-def format_timestamp(timestamp_str: str | None) -> str:
-    """Format ISO timestamp for display, converting to UTC."""
-    if timestamp_str is None:
-        return ""
-    try:
-        dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        # Convert to UTC if timezone-aware
-        if dt.tzinfo is not None:
-            utc_timetuple = dt.utctimetuple()
-            dt = datetime(
-                utc_timetuple.tm_year,
-                utc_timetuple.tm_mon,
-                utc_timetuple.tm_mday,
-                utc_timetuple.tm_hour,
-                utc_timetuple.tm_min,
-                utc_timetuple.tm_sec,
-            )
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    except (ValueError, AttributeError):
-        return timestamp_str
 
 
 def extract_command_info(text_content: str) -> tuple[str, str, str]:
@@ -2622,8 +2586,7 @@ def _process_messages_loop(
             # Get first user message content for preview
             first_user_message = ""
             if is_user_entry(message) and should_use_as_session_starter(text_content):
-                user_entry = cast(UserTranscriptEntry, message)
-                content = extract_text_content(user_entry.message.content)
+                content = extract_text_content(message.message.content)
                 first_user_message = create_session_preview(content)
 
             sessions[session_id] = {
@@ -2666,8 +2629,7 @@ def _process_messages_loop(
 
         # Update first user message if this is a user message and we don't have one yet
         elif is_user_entry(message) and not sessions[session_id]["first_user_message"]:
-            user_entry = cast(UserTranscriptEntry, message)
-            first_user_content = extract_text_content(user_entry.message.content)
+            first_user_content = extract_text_content(message.message.content)
             if should_use_as_session_starter(first_user_content):
                 sessions[session_id]["first_user_message"] = create_session_preview(
                     first_user_content
@@ -2683,10 +2645,9 @@ def _process_messages_loop(
         # Extract and accumulate token usage for assistant messages
         # Only count tokens for the first message with each requestId to avoid duplicates
         if is_assistant_entry(message):
-            assistant_entry = cast(AssistantTranscriptEntry, message)
-            assistant_message = assistant_entry.message
-            request_id = assistant_entry.requestId
-            message_uuid = assistant_entry.uuid
+            assistant_message = message.message
+            request_id = message.requestId
+            message_uuid = message.uuid
 
             if (
                 assistant_message.usage
@@ -2718,9 +2679,8 @@ def _process_messages_loop(
         # Only show token usage for the first message with each requestId to avoid duplicates
         token_usage_str: Optional[str] = None
         if is_assistant_entry(message):
-            assistant_entry = cast(AssistantTranscriptEntry, message)
-            assistant_message = assistant_entry.message
-            message_uuid = assistant_entry.uuid
+            assistant_message = message.message
+            message_uuid = message.uuid
 
             if assistant_message.usage and message_uuid in show_tokens_for_message:
                 # Only show token usage for messages marked as first occurrence of requestId
@@ -2908,24 +2868,7 @@ def generate_session_html(
     cache_manager: Optional["CacheManager"] = None,
 ) -> str:
     """Generate HTML for a single session using Jinja2 templates."""
-    # Filter messages for this session (SummaryTranscriptEntry.sessionId is always None)
-    session_messages = [msg for msg in messages if msg.sessionId == session_id]
-
-    # Get combined transcript link if cache manager is available
-    combined_link = None
-    if cache_manager is not None:
-        try:
-            project_cache = cache_manager.get_cached_project_data()
-            if project_cache and project_cache.sessions:
-                combined_link = "combined_transcripts.html"
-        except Exception:
-            pass
-
-    return generate_html(
-        session_messages,
-        title or f"Session {session_id[:8]}",
-        combined_transcript_link=combined_link,
-    )
+    return HtmlRenderer().generate_session(messages, session_id, title, cache_manager)
 
 
 def prepare_projects_index(
@@ -3113,7 +3056,24 @@ class HtmlRenderer(Renderer):
         cache_manager: Optional["CacheManager"] = None,
     ) -> str:
         """Generate HTML for a single session."""
-        return generate_session_html(messages, session_id, title, cache_manager)
+        # Filter messages for this session (SummaryTranscriptEntry.sessionId is always None)
+        session_messages = [msg for msg in messages if msg.sessionId == session_id]
+
+        # Get combined transcript link if cache manager is available
+        combined_link = None
+        if cache_manager is not None:
+            try:
+                project_cache = cache_manager.get_cached_project_data()
+                if project_cache and project_cache.sessions:
+                    combined_link = "combined_transcripts.html"
+            except Exception:
+                pass
+
+        return self.generate(
+            session_messages,
+            title or f"Session {session_id[:8]}",
+            combined_transcript_link=combined_link,
+        )
 
     def generate_projects_index(
         self,
@@ -3137,8 +3097,17 @@ class HtmlRenderer(Renderer):
         )
 
     def is_outdated(self, file_path: Path) -> bool:
-        """Check if an HTML file is outdated based on version."""
-        return is_html_outdated(file_path)
+        """Check if an HTML file is outdated based on version.
+
+        Returns:
+            True if the file should be regenerated (missing version,
+            different version, or file doesn't exist).
+            False if the file is current.
+        """
+        html_version = check_html_version(file_path)
+        current_version = get_library_version()
+        # If no version found or different version, it's outdated
+        return html_version != current_version
 
 
 def get_renderer(format: str) -> Renderer:

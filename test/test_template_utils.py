@@ -4,11 +4,9 @@
 import pytest
 from datetime import datetime
 from claude_code_log.parser import parse_timestamp, extract_text_content
-from claude_code_log.renderer import (
-    format_timestamp,
-    extract_command_info,
-    escape_html,
-)
+from claude_code_log.renderer import extract_command_info
+from claude_code_log.html_renderer import escape_html
+from claude_code_log.utils import format_timestamp
 from claude_code_log.models import TextContent, ToolUseContent, ToolResultContent
 
 
