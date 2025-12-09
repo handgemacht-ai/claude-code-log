@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 from claude_code_log.parser import load_transcript
-from claude_code_log.renderer import generate_html
+from claude_code_log.html.renderer import generate_html
 
 
 def test_agent_insertion():

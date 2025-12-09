@@ -8,11 +8,12 @@ from ..models import TranscriptEntry
 from ..renderer import (
     Renderer,
     check_html_version,
-    generate_html,
+    generate_template_messages,
     prepare_projects_index,
     title_for_projects_index,
 )
-from .utils import get_template_environment
+from ..renderer_timings import log_timing
+from .utils import css_class_from_message, get_message_emoji, get_template_environment
 
 if TYPE_CHECKING:
     from ..cache import CacheManager
@@ -28,7 +29,37 @@ class HtmlRenderer(Renderer):
         combined_transcript_link: Optional[str] = None,
     ) -> str:
         """Generate HTML from transcript messages."""
-        return generate_html(messages, title, combined_transcript_link)
+        import time
+
+        t_start = time.time()
+
+        if not title:
+            title = "Claude Transcript"
+
+        # Get template messages and session navigation from format-neutral renderer
+        template_messages, session_nav = generate_template_messages(messages)
+
+        # Render template
+        with log_timing("Template environment setup", t_start):
+            env = get_template_environment()
+            template = env.get_template("transcript.html")
+
+        with log_timing(
+            lambda: f"Template rendering ({len(html_output)} chars)", t_start
+        ):
+            html_output = str(
+                template.render(
+                    title=title,
+                    messages=template_messages,
+                    sessions=session_nav,
+                    combined_transcript_link=combined_transcript_link,
+                    library_version=get_library_version(),
+                    css_class_from_message=css_class_from_message,
+                    get_message_emoji=get_message_emoji,
+                )
+            )
+
+        return html_output
 
     def generate_session(
         self,
@@ -93,6 +124,18 @@ class HtmlRenderer(Renderer):
 
 
 # -- Convenience Functions ----------------------------------------------------
+
+
+def generate_html(
+    messages: List[TranscriptEntry],
+    title: Optional[str] = None,
+    combined_transcript_link: Optional[str] = None,
+) -> str:
+    """Generate HTML from transcript messages using Jinja2 templates.
+
+    This is a convenience function that delegates to HtmlRenderer.generate.
+    """
+    return HtmlRenderer().generate(messages, title, combined_transcript_link)
 
 
 def generate_session_html(

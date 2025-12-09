@@ -1,7 +1,7 @@
 """Tests for hook summary (stop_hook_summary) parsing and rendering."""
 
 from claude_code_log.models import parse_transcript_entry, SystemTranscriptEntry
-from claude_code_log.renderer import generate_html
+from claude_code_log.html.renderer import generate_html
 
 
 class TestHookSummaryParsing:

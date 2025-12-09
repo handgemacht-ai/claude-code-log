@@ -8,7 +8,7 @@ import pytest
 from claude_code_log.converter import convert_jsonl_to_html
 from claude_code_log.html.renderer import generate_projects_index_html
 from claude_code_log.parser import load_transcript
-from claude_code_log.renderer import generate_html
+from claude_code_log.html.renderer import generate_html
 
 
 class TestTemplateRendering:

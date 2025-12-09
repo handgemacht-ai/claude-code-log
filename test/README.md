@@ -9,7 +9,7 @@ Representative JSONL files covering all message types and edge cases:
 **Note**: After the module split, import paths have changed:
 
 - `from claude_code_log.parser import load_transcript, extract_text_content`
-- `from claude_code_log.renderer import generate_html, format_timestamp`
+- `from claude_code_log.html.renderer import generate_html, format_timestamp`
 - `from claude_code_log.converter import convert_jsonl_to_html`
 
 ### `representative_messages.jsonl`

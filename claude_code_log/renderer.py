@@ -6,7 +6,7 @@ import re
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import List, Optional, Dict, Any, cast, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .cache import CacheManager
@@ -48,18 +48,14 @@ from .renderer_timings import (
     set_timing_var,
     log_timing,
 )
-from .cache import get_library_version
 from .ansi_colors import convert_ansi_to_html
 
 from .html import (
-    css_class_from_message,
     escape_html,
     format_askuserquestion_result,
     format_exitplanmode_result,
     format_tool_use_content,
     format_tool_use_title,
-    get_message_emoji,
-    get_template_environment,
     render_collapsible_code,
     render_file_content_collapsible,
     render_markdown_collapsible,
@@ -2174,20 +2170,26 @@ def _build_message_tree(messages: List[TemplateMessage]) -> List[TemplateMessage
 # -- High-Level HTML Generation -----------------------------------------------
 
 
-def generate_html(
+def generate_template_messages(
     messages: List[TranscriptEntry],
-    title: Optional[str] = None,
-    combined_transcript_link: Optional[str] = None,
-) -> str:
-    """Generate HTML from transcript messages using Jinja2 templates."""
+) -> Tuple[List[TemplateMessage], List[Dict[str, Any]]]:
+    """Generate template messages and session navigation from transcript messages.
+
+    This is the format-neutral rendering step that produces data structures
+    ready for template rendering by any format-specific renderer.
+
+    Args:
+        messages: List of transcript entries to process.
+
+    Returns:
+        A tuple of (template_messages, session_nav) where:
+        - template_messages: Processed messages ready for template rendering
+        - session_nav: Session navigation data with summaries and metadata
+    """
     from .utils import get_warmup_session_ids
 
     # Performance timing
     t_start = time.time()
-
-    with log_timing("Initialization", t_start):
-        if not title:
-            title = "Claude Transcript"
 
     # Filter out warmup-only sessions
     with log_timing("Filter warmup sessions", t_start):
@@ -2248,25 +2250,7 @@ def generate_html(
         # For now, we continue using template_messages (flat list) for template rendering
         # Future: pass root_messages to a recursive template macro
 
-    # Render template
-    with log_timing("Template environment setup", t_start):
-        env = get_template_environment()
-        template = env.get_template("transcript.html")
-
-    with log_timing(lambda: f"Template rendering ({len(html_output)} chars)", t_start):
-        html_output = str(
-            template.render(
-                title=title,
-                messages=template_messages,
-                sessions=session_nav,
-                combined_transcript_link=combined_transcript_link,
-                library_version=get_library_version(),
-                css_class_from_message=css_class_from_message,
-                get_message_emoji=get_message_emoji,
-            )
-        )
-
-    return html_output
+    return template_messages, session_nav
 
 
 def _reorder_session_template_messages(

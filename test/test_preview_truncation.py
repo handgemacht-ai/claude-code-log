@@ -8,7 +8,7 @@ but HtmlFormatter(linenos="table") produces a single <tr> with two <td>s.
 from pathlib import Path
 
 from claude_code_log.parser import load_transcript
-from claude_code_log.renderer import generate_html
+from claude_code_log.html.renderer import generate_html
 from claude_code_log.renderer_code import (
     truncate_highlighted_preview,
     highlight_code_with_pygments,

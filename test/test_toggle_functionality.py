@@ -7,7 +7,7 @@ from claude_code_log.models import (
     UsageInfo,
     parse_content_item,
 )
-from claude_code_log.renderer import generate_html
+from claude_code_log.html.renderer import generate_html
 
 
 class TestToggleFunctionality:

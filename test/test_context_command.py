@@ -1,6 +1,6 @@
 """Tests for /context command output rendering."""
 
-from claude_code_log.renderer import generate_html
+from claude_code_log.html.renderer import generate_html
 from claude_code_log.parser import parse_transcript_entry
 
 

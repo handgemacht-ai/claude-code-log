@@ -17,7 +17,7 @@ import pytest
 
 from claude_code_log.models import TranscriptEntry
 from claude_code_log.parser import load_transcript
-from claude_code_log.renderer import generate_html
+from claude_code_log.html.renderer import generate_html
 
 # Path to realistic test data
 REAL_PROJECTS_DIR = Path(__file__).parent / "test_data" / "real_projects"
