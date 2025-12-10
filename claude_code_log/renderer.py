@@ -1046,6 +1046,92 @@ class TemplateSummary:
             self.token_summary = " | ".join(token_parts)
 
 
+# -- Template Generation ------------------------------------------------------
+
+
+def generate_template_messages(
+    messages: List[TranscriptEntry],
+) -> Tuple[List[TemplateMessage], List[Dict[str, Any]]]:
+    """Generate template messages and session navigation from transcript messages.
+
+    This is the format-neutral rendering step that produces data structures
+    ready for template rendering by any format-specific renderer.
+
+    Args:
+        messages: List of transcript entries to process.
+
+    Returns:
+        A tuple of (template_messages, session_nav) where:
+        - template_messages: Processed messages ready for template rendering
+        - session_nav: Session navigation data with summaries and metadata
+    """
+    from .utils import get_warmup_session_ids
+
+    # Performance timing
+    t_start = time.time()
+
+    # Filter out warmup-only sessions
+    with log_timing("Filter warmup sessions", t_start):
+        warmup_session_ids = get_warmup_session_ids(messages)
+        if warmup_session_ids:
+            messages = [
+                msg
+                for msg in messages
+                if getattr(msg, "sessionId", None) not in warmup_session_ids
+            ]
+
+    # Pre-process to find and attach session summaries
+    with log_timing("Session summary processing", t_start):
+        prepare_session_summaries(messages)
+
+    # Process messages through the main rendering loop
+    template_messages, sessions, session_order = _process_messages_loop(messages)
+
+    # Prepare session navigation data
+    with log_timing(
+        lambda: f"Session navigation building ({len(session_nav)} sessions)", t_start
+    ):
+        session_nav = prepare_session_navigation(sessions, session_order)
+
+    # Reorder messages so each session's messages follow their session header
+    # This fixes interleaving that occurs when sessions are resumed
+    with log_timing("Reorder session messages", t_start):
+        template_messages = _reorder_session_template_messages(template_messages)
+
+    # Identify and mark paired messages (command+output, tool_use+tool_result, etc.)
+    with log_timing("Identify message pairs", t_start):
+        _identify_message_pairs(template_messages)
+
+    # Reorder messages so pairs are adjacent while preserving chronological order
+    with log_timing("Reorder paired messages", t_start):
+        template_messages = _reorder_paired_messages(template_messages)
+
+    # Reorder sidechains to appear after their Task results
+    # This must happen AFTER pair reordering, since that moves tool_results
+    with log_timing("Reorder sidechain messages", t_start):
+        template_messages = _reorder_sidechain_template_messages(template_messages)
+
+    # Build hierarchy (message_id and ancestry) based on final order
+    # This must happen AFTER all reordering to get correct parent-child relationships
+    with log_timing("Build message hierarchy", t_start):
+        _build_message_hierarchy(template_messages)
+
+    # Mark messages that have children for fold/unfold controls
+    with log_timing("Mark messages with children", t_start):
+        _mark_messages_with_children(template_messages)
+
+    # Build tree structure by populating children fields
+    # This enables future recursive template rendering while maintaining
+    # backward compatibility with the current flat-list approach
+    with log_timing("Build message tree", t_start):
+        _root_messages = _build_message_tree(template_messages)
+        # Note: root_messages contains just the top-level messages with children populated
+        # For now, we continue using template_messages (flat list) for template rendering
+        # Future: pass root_messages to a recursive template macro
+
+    return template_messages, session_nav
+
+
 # -- Session Utilities --------------------------------------------------------
 
 
@@ -2167,90 +2253,7 @@ def _build_message_tree(messages: List[TemplateMessage]) -> List[TemplateMessage
     return root_messages
 
 
-# -- High-Level HTML Generation -----------------------------------------------
-
-
-def generate_template_messages(
-    messages: List[TranscriptEntry],
-) -> Tuple[List[TemplateMessage], List[Dict[str, Any]]]:
-    """Generate template messages and session navigation from transcript messages.
-
-    This is the format-neutral rendering step that produces data structures
-    ready for template rendering by any format-specific renderer.
-
-    Args:
-        messages: List of transcript entries to process.
-
-    Returns:
-        A tuple of (template_messages, session_nav) where:
-        - template_messages: Processed messages ready for template rendering
-        - session_nav: Session navigation data with summaries and metadata
-    """
-    from .utils import get_warmup_session_ids
-
-    # Performance timing
-    t_start = time.time()
-
-    # Filter out warmup-only sessions
-    with log_timing("Filter warmup sessions", t_start):
-        warmup_session_ids = get_warmup_session_ids(messages)
-        if warmup_session_ids:
-            messages = [
-                msg
-                for msg in messages
-                if getattr(msg, "sessionId", None) not in warmup_session_ids
-            ]
-
-    # Pre-process to find and attach session summaries
-    with log_timing("Session summary processing", t_start):
-        prepare_session_summaries(messages)
-
-    # Process messages through the main rendering loop
-    template_messages, sessions, session_order = _process_messages_loop(messages)
-
-    # Prepare session navigation data
-    with log_timing(
-        lambda: f"Session navigation building ({len(session_nav)} sessions)", t_start
-    ):
-        session_nav = prepare_session_navigation(sessions, session_order)
-
-    # Reorder messages so each session's messages follow their session header
-    # This fixes interleaving that occurs when sessions are resumed
-    with log_timing("Reorder session messages", t_start):
-        template_messages = _reorder_session_template_messages(template_messages)
-
-    # Identify and mark paired messages (command+output, tool_use+tool_result, etc.)
-    with log_timing("Identify message pairs", t_start):
-        _identify_message_pairs(template_messages)
-
-    # Reorder messages so pairs are adjacent while preserving chronological order
-    with log_timing("Reorder paired messages", t_start):
-        template_messages = _reorder_paired_messages(template_messages)
-
-    # Reorder sidechains to appear after their Task results
-    # This must happen AFTER pair reordering, since that moves tool_results
-    with log_timing("Reorder sidechain messages", t_start):
-        template_messages = _reorder_sidechain_template_messages(template_messages)
-
-    # Build hierarchy (message_id and ancestry) based on final order
-    # This must happen AFTER all reordering to get correct parent-child relationships
-    with log_timing("Build message hierarchy", t_start):
-        _build_message_hierarchy(template_messages)
-
-    # Mark messages that have children for fold/unfold controls
-    with log_timing("Mark messages with children", t_start):
-        _mark_messages_with_children(template_messages)
-
-    # Build tree structure by populating children fields
-    # This enables future recursive template rendering while maintaining
-    # backward compatibility with the current flat-list approach
-    with log_timing("Build message tree", t_start):
-        _root_messages = _build_message_tree(template_messages)
-        # Note: root_messages contains just the top-level messages with children populated
-        # For now, we continue using template_messages (flat list) for template rendering
-        # Future: pass root_messages to a recursive template macro
-
-    return template_messages, session_nav
+# -- Message Reordering -------------------------------------------------------
 
 
 def _reorder_session_template_messages(
