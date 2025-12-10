@@ -12,10 +12,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from claude_code_log.converter import (
-    convert_jsonl_to_html,
-    generate_projects_index_html,
-)
+from claude_code_log.converter import convert_jsonl_to_html
+from claude_code_log.html.renderer import generate_projects_index_html
 
 
 def create_style_guide_data():

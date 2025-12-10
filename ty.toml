@@ -1,0 +1,8 @@
+# ty type checker configuration
+# https://github.com/astral-sh/ty
+
+[rules]
+# Ignore false positives from TypeGuard not being recognized by ty
+# The is_user_entry() and is_assistant_entry() functions use TypeGuard
+# which pyright handles correctly, but ty doesn't support yet
+"possibly-missing-attribute" = "ignore"
