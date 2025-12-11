@@ -9,85 +9,20 @@ Part of the thematic formatter organization:
 """
 
 import re
-from dataclasses import dataclass
 from typing import List, Optional
 
 import mistune
 
 from ..ansi_colors import convert_ansi_to_html
-from ..models import MessageContent
+from ..models import (
+    BashInputContent,
+    CommandOutputContent,
+    CompactedSummaryContent,
+    IdeNotificationContent,
+    SlashCommandContent,
+    UserMemoryContent,
+)
 from .utils import escape_html, render_collapsible_code
-
-
-# =============================================================================
-# User Message Content Models
-# =============================================================================
-
-
-@dataclass
-class SlashCommandContent(MessageContent):
-    """Content for slash command invocations (e.g., /context, /model).
-
-    These are user messages containing command-name, command-args, and
-    command-contents tags parsed from the text.
-    """
-
-    command_name: str
-    command_args: str
-    command_contents: str
-
-
-@dataclass
-class CommandOutputContent(MessageContent):
-    """Content for local command output (e.g., output from /context).
-
-    These are user messages containing local-command-stdout tags.
-    """
-
-    stdout: str
-    is_markdown: bool  # True if content appears to be markdown
-
-
-@dataclass
-class BashInputContent(MessageContent):
-    """Content for inline bash commands in user messages.
-
-    These are user messages containing bash-input tags.
-    """
-
-    command: str
-
-
-@dataclass
-class CompactedSummaryContent(MessageContent):
-    """Content for compacted session summaries.
-
-    These are user messages that contain previous conversation context
-    in a compacted format.
-    """
-
-    summary_text: str
-
-
-@dataclass
-class UserMemoryContent(MessageContent):
-    """Content for user memory input.
-
-    These are user messages containing user-memory-input tags.
-    """
-
-    memory_text: str
-
-
-@dataclass
-class IdeNotificationContent(MessageContent):
-    """Content for IDE notification tags.
-
-    These are user messages containing ide-notification-* tags.
-    """
-
-    notifications: List[str]  # HTML strings for each notification
-    remaining_text: str  # Text after notifications extracted
 
 
 # =============================================================================
