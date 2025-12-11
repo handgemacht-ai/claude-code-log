@@ -28,9 +28,11 @@ from ..models import (
     AskUserQuestionItem,
     BashInput,
     EditInput,
+    EditOutputContent,
     ExitPlanModeInput,
     MultiEditInput,
     ReadInput,
+    ReadOutputContent,
     TaskInput,
     TodoWriteInput,
     ToolUseContent,
@@ -256,6 +258,187 @@ def format_read_tool_content(read_input: ReadInput) -> str:  # noqa: ARG001
     # File path is now shown in header, so no content needed
     # Don't show offset/limit parameters as they'll be visible in the result
     return ""
+
+
+# -- Tool Result Parsing (cat-n format) ---------------------------------------
+
+
+def _parse_cat_n_snippet(
+    lines: List[str], start_idx: int = 0
+) -> Optional[tuple[str, Optional[str], int]]:
+    """Parse cat-n formatted snippet from lines.
+
+    Args:
+        lines: List of lines to parse
+        start_idx: Index to start parsing from (default: 0)
+
+    Returns:
+        Tuple of (code_content, system_reminder, line_offset) or None if not parseable
+    """
+    code_lines: List[str] = []
+    system_reminder: Optional[str] = None
+    in_system_reminder = False
+    line_offset = 1  # Default offset
+
+    for line in lines[start_idx:]:
+        # Check for system-reminder start
+        if "<system-reminder>" in line:
+            in_system_reminder = True
+            system_reminder = ""
+            continue
+
+        # Check for system-reminder end
+        if "</system-reminder>" in line:
+            in_system_reminder = False
+            continue
+
+        # If in system reminder, accumulate reminder text
+        if in_system_reminder:
+            if system_reminder is not None:
+                system_reminder += line + "\n"
+            continue
+
+        # Parse regular code line (format: "  123→content")
+        match = re.match(r"\s+(\d+)→(.*)$", line)
+        if match:
+            line_num = int(match.group(1))
+            # Capture the first line number as offset
+            if not code_lines:
+                line_offset = line_num
+            code_lines.append(match.group(2))
+        elif line.strip() == "":  # Allow empty lines between cat-n lines
+            continue
+        else:  # Non-matching non-empty line, stop parsing
+            break
+
+    if not code_lines:
+        return None
+
+    # Join code lines and trim trailing reminder text
+    code_content = "\n".join(code_lines)
+    if system_reminder:
+        system_reminder = system_reminder.strip()
+
+    return (code_content, system_reminder, line_offset)
+
+
+def parse_read_output(content: str, file_path: str) -> Optional[ReadOutputContent]:
+    """Parse Read tool result into structured content.
+
+    Args:
+        content: Raw tool result string
+        file_path: Path to the file that was read
+
+    Returns:
+        ReadOutputContent if parsing succeeds, None otherwise
+    """
+    # Check if content matches the cat-n format pattern (line_number → content)
+    lines = content.split("\n")
+    if not lines or not re.match(r"\s+\d+→", lines[0]):
+        return None
+
+    result = _parse_cat_n_snippet(lines)
+    if result is None:
+        return None
+
+    code_content, system_reminder, line_offset = result
+    num_lines = len(code_content.split("\n"))
+
+    return ReadOutputContent(
+        file_path=file_path,
+        content=code_content,
+        start_line=line_offset,
+        num_lines=num_lines,
+        total_lines=num_lines,  # We don't know total from result
+        is_truncated=False,  # Can't determine from result
+        system_reminder=system_reminder,
+    )
+
+
+def format_read_tool_result(output: ReadOutputContent) -> str:
+    """Format Read tool result as HTML with syntax highlighting.
+
+    Args:
+        output: Parsed ReadOutputContent
+
+    Returns:
+        HTML string with syntax-highlighted, collapsible file content
+    """
+    # Build system reminder suffix if present
+    suffix_html = ""
+    if output.system_reminder:
+        escaped_reminder = escape_html(output.system_reminder)
+        suffix_html = (
+            f"<div class='system-reminder'>🤖 <em>{escaped_reminder}</em></div>"
+        )
+
+    return render_file_content_collapsible(
+        output.content,
+        output.file_path,
+        "read-tool-result",
+        linenostart=output.start_line,
+        suffix_html=suffix_html,
+    )
+
+
+def parse_edit_output(content: str, file_path: str) -> Optional[EditOutputContent]:
+    """Parse Edit tool result into structured content.
+
+    Edit tool results typically have format:
+    "The file ... has been updated. Here's the result of running `cat -n` on a snippet..."
+    followed by cat-n formatted lines.
+
+    Args:
+        content: Raw tool result string
+        file_path: Path to the file that was edited
+
+    Returns:
+        EditOutputContent if parsing succeeds, None otherwise
+    """
+    # Look for the cat-n snippet after the preamble
+    # Pattern: look for first line that matches the cat-n format
+    lines = content.split("\n")
+    code_start_idx = None
+
+    for i, line in enumerate(lines):
+        if re.match(r"\s+\d+→", line):
+            code_start_idx = i
+            break
+
+    if code_start_idx is None:
+        return None
+
+    result = _parse_cat_n_snippet(lines, code_start_idx)
+    if result is None:
+        return None
+
+    code_content, _system_reminder, line_offset = result
+    # Edit tool doesn't use system_reminder
+
+    return EditOutputContent(
+        file_path=file_path,
+        success=True,  # If we got here, edit succeeded
+        diffs=[],  # We don't have diff info from result
+        message=code_content,
+        start_line=line_offset,
+    )
+
+
+def format_edit_tool_result(output: EditOutputContent) -> str:
+    """Format Edit tool result as HTML with syntax highlighting.
+
+    Args:
+        output: Parsed EditOutputContent
+
+    Returns:
+        HTML string with syntax-highlighted, collapsible file content
+    """
+    return render_file_content_collapsible(
+        output.message,  # message contains the code snippet
+        output.file_path,
+        "edit-tool-result",
+        linenostart=output.start_line,
+    )
 
 
 def format_write_tool_content(write_input: WriteInput) -> str:
@@ -562,9 +745,14 @@ __all__ = [
     "format_exitplanmode_result",
     # TodoWrite
     "format_todowrite_content",
-    # File tools
+    # File tools (input)
     "format_read_tool_content",
     "format_write_tool_content",
+    # File tools (output/result)
+    "parse_read_output",
+    "format_read_tool_result",
+    "parse_edit_output",
+    "format_edit_tool_result",
     # Edit tools
     "format_edit_tool_content",
     "format_multiedit_tool_content",

@@ -4,7 +4,7 @@
 import pytest
 from datetime import datetime
 from claude_code_log.parser import parse_timestamp, extract_text_content
-from claude_code_log.renderer import extract_command_info
+from claude_code_log.html import parse_slash_command
 from claude_code_log.html import escape_html
 from claude_code_log.utils import format_timestamp
 from claude_code_log.models import TextContent, ToolUseContent, ToolResultContent
@@ -97,45 +97,46 @@ class TestContentExtraction:
 class TestCommandExtraction:
     """Test command information extraction from system messages."""
 
-    def test_extract_command_info_complete(self):
-        """Test extracting complete command information."""
+    def test_parse_slash_command_complete(self):
+        """Test parsing complete slash command information."""
         text = '<command-message>Testing...</command-message>\n<command-name>test-cmd</command-name>\n<command-args>--verbose</command-args>\n<command-contents>{"type": "text", "text": "Test content"}</command-contents>'
 
-        command_name, command_args, command_contents = extract_command_info(text)
+        result = parse_slash_command(text)
 
-        assert command_name == "test-cmd"
-        assert command_args == "--verbose"
-        assert command_contents == "Test content"
+        assert result is not None
+        assert result.command_name == "test-cmd"
+        assert result.command_args == "--verbose"
+        assert result.command_contents == "Test content"
 
-    def test_extract_command_info_missing_parts(self):
-        """Test extracting command info with missing parts."""
+    def test_parse_slash_command_missing_parts(self):
+        """Test parsing slash command with missing parts."""
         text = "<command-name>minimal-cmd</command-name>"
 
-        command_name, command_args, command_contents = extract_command_info(text)
+        result = parse_slash_command(text)
 
-        assert command_name == "minimal-cmd"
-        assert command_args == ""
-        assert command_contents == ""
+        assert result is not None
+        assert result.command_name == "minimal-cmd"
+        assert result.command_args == ""
+        assert result.command_contents == ""
 
-    def test_extract_command_info_no_command(self):
-        """Test extracting command info from non-command text."""
+    def test_parse_slash_command_no_command(self):
+        """Test parsing text without command tags returns None."""
         text = "This is just regular text with no command tags"
 
-        command_name, command_args, command_contents = extract_command_info(text)
+        result = parse_slash_command(text)
 
-        assert command_name == "system"
-        assert command_args == ""
-        assert command_contents == ""
+        assert result is None  # No command-name tag found
 
-    def test_extract_command_info_malformed_json(self):
-        """Test extracting command contents with malformed JSON."""
+    def test_parse_slash_command_malformed_json(self):
+        """Test parsing command contents with malformed JSON."""
         text = '<command-name>bad-json</command-name>\n<command-contents>{"invalid": json</command-contents>'
 
-        command_name, command_args, command_contents = extract_command_info(text)
+        result = parse_slash_command(text)
 
-        assert command_name == "bad-json"
+        assert result is not None
+        assert result.command_name == "bad-json"
         assert (
-            command_contents == '{"invalid": json'
+            result.command_contents == '{"invalid": json'
         )  # Raw text when JSON parsing fails
 
 
@@ -180,13 +181,11 @@ class TestEdgeCases:
         result = extract_text_content(None)
         assert result == ""
 
-    def test_extract_command_info_empty_string(self):
-        """Test extracting command info from empty string."""
-        command_name, command_args, command_contents = extract_command_info("")
+    def test_parse_slash_command_empty_string(self):
+        """Test parsing slash command from empty string returns None."""
+        result = parse_slash_command("")
 
-        assert command_name == "system"
-        assert command_args == ""
-        assert command_contents == ""
+        assert result is None  # No command-name tag found
 
     def test_escape_html_unicode(self):
         """Test escaping Unicode characters."""

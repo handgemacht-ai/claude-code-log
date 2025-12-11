@@ -4,14 +4,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..cache import get_library_version
-from ..models import TranscriptEntry
+from ..models import (
+    HookSummaryContent,
+    SystemContent,
+    TranscriptEntry,
+)
 from ..renderer import (
     Renderer,
+    TemplateMessage,
     generate_template_messages,
     prepare_projects_index,
     title_for_projects_index,
 )
 from ..renderer_timings import log_timing
+from .system_formatters import format_hook_summary_content, format_system_content
 from .utils import css_class_from_message, get_message_emoji, get_template_environment
 
 if TYPE_CHECKING:
@@ -50,6 +56,35 @@ def check_html_version(html_file_path: Path) -> Optional[str]:
 class HtmlRenderer(Renderer):
     """HTML renderer for Claude Code transcripts."""
 
+    def _format_message_content(self, message: TemplateMessage) -> None:
+        """Format structured content to HTML for a single message.
+
+        This populates message.content_html from message.content for messages
+        that have structured content. Messages without structured content
+        (content is None) are left unchanged.
+        """
+        if message.content is None:
+            return
+
+        # Dispatch to appropriate formatter based on content type
+        if isinstance(message.content, SystemContent):
+            message.content_html = format_system_content(message.content)
+        elif isinstance(message.content, HookSummaryContent):
+            message.content_html = format_hook_summary_content(message.content)
+        # Future content types will be added here as they are migrated
+
+    def _format_all_content(self, messages: List[TemplateMessage]) -> None:
+        """Format structured content to HTML for all messages.
+
+        Iterates through all messages (including children) and populates
+        content_html from content where structured content exists.
+        """
+        for message in messages:
+            self._format_message_content(message)
+            # Recursively process children
+            if message.children:
+                self._format_all_content(message.children)
+
     def generate(
         self,
         messages: List[TranscriptEntry],
@@ -66,6 +101,10 @@ class HtmlRenderer(Renderer):
 
         # Get template messages and session navigation from format-neutral renderer
         template_messages, session_nav = generate_template_messages(messages)
+
+        # Format structured content to HTML
+        with log_timing("Content formatting", t_start):
+            self._format_all_content(template_messages)
 
         # Render template
         with log_timing("Template environment setup", t_start):

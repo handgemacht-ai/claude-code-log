@@ -74,6 +74,150 @@ class MessageModifiers:
     system_level: Optional[str] = None
 
 
+# =============================================================================
+# Message Content Models
+# =============================================================================
+# Structured content models for format-neutral message representation.
+# These replace the direct HTML generation in renderer.py, allowing different
+# renderers (HTML, text, etc.) to format the content appropriately.
+
+
+@dataclass
+class MessageContent:
+    """Base class for structured message content.
+
+    Subclasses represent specific content types that renderers can format
+    appropriately for their output format.
+    """
+
+    pass
+
+
+@dataclass
+class SystemContent(MessageContent):
+    """System message with level indicator.
+
+    Used for info, warning, and error system messages.
+    """
+
+    level: str  # "info", "warning", "error"
+    text: str  # Raw text content (may contain ANSI codes)
+
+
+@dataclass
+class HookInfo:
+    """Information about a single hook execution."""
+
+    command: str
+    # Could add more fields like exit_code, duration, etc.
+
+
+@dataclass
+class HookSummaryContent(MessageContent):
+    """Hook execution summary.
+
+    Used for subtype="stop_hook_summary" system messages.
+    """
+
+    has_output: bool
+    hook_errors: List[str]  # Error messages from hooks
+    hook_infos: List[HookInfo]  # Info about each hook executed
+
+
+# =============================================================================
+# Tool Output Content Models
+# =============================================================================
+# Structured content models for tool results (symmetric with Tool Input Models).
+# These provide format-neutral representation of tool outputs that renderers
+# can format appropriately.
+
+
+@dataclass
+class ReadOutputContent(MessageContent):
+    """Parsed Read tool output.
+
+    Represents the result of reading a file with optional line range.
+    """
+
+    file_path: str
+    content: str  # File content (may be truncated)
+    start_line: int  # 1-based starting line number
+    num_lines: int  # Number of lines in content
+    total_lines: int  # Total lines in file
+    is_truncated: bool  # Whether content was truncated
+    system_reminder: Optional[str] = None  # Embedded system reminder text
+
+
+@dataclass
+class WriteOutputContent(MessageContent):
+    """Parsed Write tool output."""
+
+    file_path: str
+    success: bool
+    message: str  # Success or error message
+
+
+@dataclass
+class EditDiff:
+    """Single diff hunk for edit operations."""
+
+    old_text: str
+    new_text: str
+
+
+@dataclass
+class EditOutputContent(MessageContent):
+    """Parsed Edit tool output.
+
+    Contains diff information for file edits.
+    """
+
+    file_path: str
+    success: bool
+    diffs: List[EditDiff]  # Changes made
+    message: str  # Result message or code snippet
+    start_line: int = 1  # Starting line number for code display
+
+
+@dataclass
+class BashOutputContent(MessageContent):
+    """Parsed Bash tool output."""
+
+    stdout: str
+    stderr: str
+    exit_code: Optional[int]
+    interrupted: bool
+    is_image: bool  # True if output contains image data
+
+
+@dataclass
+class TaskOutputContent(MessageContent):
+    """Parsed Task (sub-agent) tool output."""
+
+    agent_id: Optional[str]
+    result: str  # Agent's response
+    is_background: bool
+
+
+@dataclass
+class GlobOutputContent(MessageContent):
+    """Parsed Glob tool output."""
+
+    pattern: str
+    files: List[str]  # Matching file paths
+    truncated: bool  # Whether list was truncated
+
+
+@dataclass
+class GrepOutputContent(MessageContent):
+    """Parsed Grep tool output."""
+
+    pattern: str
+    matches: List[str]  # Matching lines/files
+    output_mode: str  # "content", "files_with_matches", or "count"
+    truncated: bool
+
+
 class TodoItem(BaseModel):
     id: str
     content: str

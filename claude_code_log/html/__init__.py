@@ -1,6 +1,6 @@
 """HTML-specific rendering utilities package.
 
-Re-exports all functions from utils and tool_renderers modules for backward compatibility.
+Re-exports all functions from utils and formatter modules for backward compatibility.
 """
 
 from .utils import (
@@ -14,22 +14,50 @@ from .utils import (
     render_markdown_collapsible,
     starts_with_emoji,
 )
-from .tool_renderers import (
+from .tool_formatters import (
     format_askuserquestion_content,
     format_askuserquestion_result,
     format_bash_tool_content,
     format_edit_tool_content,
+    format_edit_tool_result,
     format_exitplanmode_content,
     format_exitplanmode_result,
     format_multiedit_tool_content,
     format_read_tool_content,
+    format_read_tool_result,
     format_task_tool_content,
     format_todowrite_content,
     format_tool_use_content,
     format_tool_use_title,
     format_write_tool_content,
     get_tool_summary,
+    parse_edit_output,
+    parse_read_output,
     render_params_table,
+)
+from .system_formatters import (
+    format_hook_summary_content,
+    format_system_content,
+)
+from .user_formatters import (
+    BashInputContent,
+    CommandOutputContent,
+    CompactedSummaryContent,
+    IdeNotificationContent,
+    SlashCommandContent,
+    UserMemoryContent,
+    format_bash_input_content,
+    format_command_output_content,
+    format_slash_command_content,
+    parse_bash_input,
+    parse_command_output,
+    parse_slash_command,
+)
+from .assistant_formatters import (
+    AssistantTextContent,
+    ThinkingContentModel,
+    format_assistant_text_content,
+    format_thinking_content,
 )
 
 __all__ = [
@@ -43,7 +71,7 @@ __all__ = [
     "render_markdown",
     "render_markdown_collapsible",
     "starts_with_emoji",
-    # tool_renderers
+    # tool_formatters (input)
     "format_askuserquestion_content",
     "format_askuserquestion_result",
     "format_bash_tool_content",
@@ -59,4 +87,33 @@ __all__ = [
     "format_write_tool_content",
     "get_tool_summary",
     "render_params_table",
+    # tool_formatters (output/result)
+    "parse_read_output",
+    "format_read_tool_result",
+    "parse_edit_output",
+    "format_edit_tool_result",
+    # system_formatters
+    "format_hook_summary_content",
+    "format_system_content",
+    # user_formatters (content models)
+    "SlashCommandContent",
+    "CommandOutputContent",
+    "BashInputContent",
+    "CompactedSummaryContent",
+    "UserMemoryContent",
+    "IdeNotificationContent",
+    # user_formatters (formatting)
+    "format_slash_command_content",
+    "format_command_output_content",
+    "format_bash_input_content",
+    # user_formatters (parsing)
+    "parse_slash_command",
+    "parse_command_output",
+    "parse_bash_input",
+    # assistant_formatters (content models)
+    "AssistantTextContent",
+    "ThinkingContentModel",
+    # assistant_formatters (formatting)
+    "format_assistant_text_content",
+    "format_thinking_content",
 ]

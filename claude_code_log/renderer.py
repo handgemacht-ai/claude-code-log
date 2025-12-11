@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .cache import CacheManager
+    from .models import MessageContent
 from datetime import datetime
 import html
 from .models import (
@@ -28,6 +29,10 @@ from .models import (
     ImageContent,
     is_user_entry,
     is_assistant_entry,
+    # Structured content types
+    HookInfo,
+    HookSummaryContent,
+    SystemContent,
 )
 from .parser import extract_text_content
 from .utils import (
@@ -53,9 +58,19 @@ from .ansi_colors import convert_ansi_to_html
 from .html import (
     escape_html,
     format_askuserquestion_result,
+    format_bash_input_content,
+    format_command_output_content,
+    format_edit_tool_result,
     format_exitplanmode_result,
+    format_read_tool_result,
+    format_slash_command_content,
     format_tool_use_content,
     format_tool_use_title,
+    parse_bash_input,
+    parse_command_output,
+    parse_edit_output,
+    parse_read_output,
+    parse_slash_command,
     render_collapsible_code,
     render_file_content_collapsible,
     render_markdown_collapsible,
@@ -63,161 +78,9 @@ from .html import (
 )
 
 
-# -- Utility Functions --------------------------------------------------------
-
-
-def extract_command_info(text_content: str) -> tuple[str, str, str]:
-    """Extract command info from system message with command tags."""
-    import re
-
-    # Extract command name
-    command_name_match = re.search(
-        r"<command-name>([^<]+)</command-name>", text_content
-    )
-    command_name = (
-        command_name_match.group(1).strip() if command_name_match else "system"
-    )
-
-    # Extract command args
-    command_args_match = re.search(
-        r"<command-args>([^<]*)</command-args>", text_content
-    )
-    command_args = command_args_match.group(1).strip() if command_args_match else ""
-
-    # Extract command contents
-    command_contents_match = re.search(
-        r"<command-contents>(.+?)</command-contents>", text_content, re.DOTALL
-    )
-    command_contents: str = ""
-    if command_contents_match:
-        contents_text = command_contents_match.group(1).strip()
-        # Try to parse as JSON and extract the text field
-        try:
-            contents_json: Any = json.loads(contents_text)
-            if isinstance(contents_json, dict) and "text" in contents_json:
-                text_dict = cast(Dict[str, Any], contents_json)
-                text_value = text_dict["text"]
-                command_contents = str(text_value)
-            else:
-                command_contents = contents_text
-        except json.JSONDecodeError:
-            command_contents = contents_text
-
-    return command_name, command_args, command_contents
-
-
-# -- Tool Summary and Result Parsing ------------------------------------------
-# NOTE: Tool content formatters have been moved to html_tool_renderers.py
-
-
-def _parse_cat_n_snippet(
-    lines: List[str], start_idx: int = 0
-) -> Optional[tuple[str, Optional[str], int]]:
-    """Parse cat-n formatted snippet from lines.
-
-    Args:
-        lines: List of lines to parse
-        start_idx: Index to start parsing from (default: 0)
-
-    Returns:
-        Tuple of (code_content, system_reminder, line_offset) or None if not parseable
-    """
-    import re
-
-    code_lines: List[str] = []
-    system_reminder: Optional[str] = None
-    in_system_reminder = False
-    line_offset = 1  # Default offset
-
-    for line in lines[start_idx:]:
-        # Check for system-reminder start
-        if "<system-reminder>" in line:
-            in_system_reminder = True
-            system_reminder = ""
-            continue
-
-        # Check for system-reminder end
-        if "</system-reminder>" in line:
-            in_system_reminder = False
-            continue
-
-        # If in system reminder, accumulate reminder text
-        if in_system_reminder:
-            if system_reminder is not None:
-                system_reminder += line + "\n"
-            continue
-
-        # Parse regular code line (format: "  123→content")
-        match = re.match(r"\s+(\d+)→(.*)$", line)
-        if match:
-            line_num = int(match.group(1))
-            # Capture the first line number as offset
-            if not code_lines:
-                line_offset = line_num
-            code_lines.append(match.group(2))
-        elif line.strip() == "":  # Allow empty lines between cat-n lines
-            continue
-        else:  # Non-matching non-empty line, stop parsing
-            break
-
-    if not code_lines:
-        return None
-
-    return (
-        "\n".join(code_lines),
-        system_reminder.strip() if system_reminder else None,
-        line_offset,
-    )
-
-
-def _parse_read_tool_result(content: str) -> Optional[tuple[str, Optional[str], int]]:
-    """Parse Read tool result in cat-n format.
-
-    Returns:
-        Tuple of (code_content, system_reminder, line_offset) or None if not parseable
-    """
-    import re
-
-    # Check if content matches the cat-n format pattern (line_number → content)
-    lines = content.split("\n")
-    if not lines or not re.match(r"\s+\d+→", lines[0]):
-        return None
-
-    return _parse_cat_n_snippet(lines)
-
-
-def _parse_edit_tool_result(content: str) -> Optional[tuple[str, int]]:
-    """Parse Edit tool result to extract code snippet.
-
-    Edit tool results typically have format:
-    "The file ... has been updated. Here's the result of running `cat -n` on a snippet..."
-    followed by cat-n formatted lines.
-
-    Returns:
-        Tuple of (code_content, line_offset) or None if not parseable
-    """
-    import re
-
-    # Look for the cat-n snippet after the preamble
-    # Pattern: look for first line that matches the cat-n format
-    lines = content.split("\n")
-    code_start_idx = None
-
-    for i, line in enumerate(lines):
-        if re.match(r"\s+\d+→", line):
-            code_start_idx = i
-            break
-
-    if code_start_idx is None:
-        return None
-
-    result = _parse_cat_n_snippet(lines, code_start_idx)
-    if result is None:
-        return None
-
-    code_content, _system_reminder, line_offset = result
-    # Edit tool doesn't use system_reminder, so we just return code and offset
-    return (code_content, line_offset)
+# -- Tool Result Content Formatting -------------------------------------------
+# NOTE: Slash command parsing moved to html/user_formatters.py (parse_slash_command)
+# NOTE: Parsing functions moved to html/tool_formatters.py
 
 
 def format_tool_result_content(
@@ -288,38 +151,15 @@ def format_tool_result_content(
 
     # Try to parse as Read tool result if file_path is provided
     if file_path and tool_name == "Read" and not has_images:
-        parsed_result = _parse_read_tool_result(raw_content)
-
-        if parsed_result:
-            code_content, system_reminder, line_offset = parsed_result
-
-            # Build system reminder suffix if present
-            suffix_html = ""
-            if system_reminder:
-                escaped_reminder = escape_html(system_reminder)
-                suffix_html = (
-                    f"<div class='system-reminder'>🤖 <em>{escaped_reminder}</em></div>"
-                )
-
-            return render_file_content_collapsible(
-                code_content,
-                file_path,
-                "read-tool-result",
-                linenostart=line_offset,
-                suffix_html=suffix_html,
-            )
+        read_output = parse_read_output(raw_content, file_path)
+        if read_output:
+            return format_read_tool_result(read_output)
 
     # Try to parse as Edit tool result if file_path is provided
     if file_path and tool_name == "Edit" and not has_images:
-        parsed_result = _parse_edit_tool_result(raw_content)
-        if parsed_result:
-            parsed_code, line_offset = parsed_result
-            return render_file_content_collapsible(
-                parsed_code,
-                file_path,
-                "edit-tool-result",
-                linenostart=line_offset,
-            )
+        edit_output = parse_edit_output(raw_content, file_path)
+        if edit_output:
+            return format_edit_tool_result(edit_output)
 
     # Special handling for Task tool: render result as markdown with Pygments (agent's final message)
     # Deduplication is now handled retroactively by replacing the sub-assistant content
@@ -792,9 +632,12 @@ class TemplateMessage:
         parent_uuid: Optional[str] = None,
         agent_id: Optional[str] = None,
         modifiers: Optional[MessageModifiers] = None,
+        content: Optional["MessageContent"] = None,
     ):
         self.type = message_type
         self.content_html = content_html
+        # Structured content for format-neutral rendering (migration in progress)
+        self.content = content
         self.formatted_timestamp = formatted_timestamp
         self.modifiers = modifiers if modifiers is not None else MessageModifiers()
         self.raw_timestamp = raw_timestamp
@@ -1213,48 +1056,8 @@ def prepare_session_navigation(
 
 
 # -- Message Processing Functions ---------------------------------------------
-
-
-def _render_hook_summary(message: "SystemTranscriptEntry") -> str:
-    """Render a hook summary as collapsible details.
-
-    Shows a compact summary with expandable hook commands and error output.
-    """
-    # Extract command names from hookInfos
-    commands = [info.get("command", "unknown") for info in (message.hookInfos or [])]
-
-    # Determine if this is a failure or just output
-    has_errors = bool(message.hookErrors)
-    summary_icon = "🪝"
-    summary_text = "Hook failed" if has_errors else "Hook output"
-
-    # Build the command section
-    command_html = ""
-    if commands:
-        command_html = '<div class="hook-commands">'
-        for cmd in commands:
-            # Truncate very long commands
-            display_cmd = cmd if len(cmd) <= 100 else cmd[:97] + "..."
-            command_html += f"<code>{html.escape(display_cmd)}</code>"
-        command_html += "</div>"
-
-    # Build the error output section
-    error_html = ""
-    if message.hookErrors:
-        error_html = '<div class="hook-errors">'
-        for err in message.hookErrors:
-            # Convert ANSI codes in error output
-            formatted_err = convert_ansi_to_html(err)
-            error_html += f'<pre class="hook-error">{formatted_err}</pre>'
-        error_html += "</div>"
-
-    return f"""<details class="hook-summary">
-<summary><strong>{summary_icon}</strong> {summary_text}</summary>
-<div class="hook-details">
-{command_html}
-{error_html}
-</div>
-</details>"""
+# Note: HTML formatting logic has been moved to html/content_formatters.py
+# as part of the refactoring to support format-neutral content models.
 
 
 # def _process_summary_message(message: SummaryTranscriptEntry) -> tuple[str, str, str]:
@@ -1274,38 +1077,15 @@ def _process_command_message(
     The JSONL type is "user", not "system".
     """
     modifiers = MessageModifiers(is_slash_command=True)
-    command_name, command_args, command_contents = extract_command_info(text_content)
-    escaped_command_name = escape_html(command_name)
-    escaped_command_args = escape_html(command_args)
 
-    # Format the command contents with proper line breaks
-    formatted_contents = command_contents.replace("\\n", "\n")
-    escaped_command_contents = escape_html(formatted_contents)
+    # Parse and format using user_formatters
+    slash_command = parse_slash_command(text_content)
+    if slash_command:
+        content_html = format_slash_command_content(slash_command)
+    else:
+        # Fallback to escaped text if parsing fails
+        content_html = f"<pre>{escape_html(text_content)}</pre>"
 
-    # Build the content HTML - command name is the primary content
-    content_parts: List[str] = [f"<code>{escaped_command_name}</code>"]
-    if command_args:
-        content_parts.append(f"<strong>Args:</strong> {escaped_command_args}")
-    if command_contents:
-        lines = escaped_command_contents.splitlines()
-        line_count = len(lines)
-        if line_count <= 12:
-            # Short content, show inline
-            details_html = (
-                f"<strong>Content:</strong><pre>{escaped_command_contents}</pre>"
-            )
-        else:
-            # Long content, make collapsible
-            preview = "\n".join(lines[:5])
-            collapsible = render_collapsible_code(
-                f"<pre>{preview}</pre>",
-                f"<pre>{escaped_command_contents}</pre>",
-                line_count,
-            )
-            details_html = f"<strong>Content:</strong>{collapsible}"
-        content_parts.append(details_html)
-
-    content_html = "<br>".join(content_parts)
     message_type = "user"
     message_title = "Slash Command"
     return modifiers, content_html, message_type, message_title
@@ -1319,32 +1099,12 @@ def _process_local_command_output(
     These are user messages containing the output from slash commands (e.g., /context, /model).
     The JSONL type is "user", not "system".
     """
-    import re
-
     modifiers = MessageModifiers(is_command_output=True)
 
-    stdout_match = re.search(
-        r"<local-command-stdout>(.*?)</local-command-stdout>",
-        text_content,
-        re.DOTALL,
-    )
-    if stdout_match:
-        stdout_content = stdout_match.group(1).strip()
-
-        # Check if content looks like markdown (starts with markdown headers)
-        is_markdown = bool(re.match(r"^#+\s+", stdout_content, re.MULTILINE))
-
-        if is_markdown:
-            # Render as markdown
-            import mistune
-
-            markdown_html = mistune.html(stdout_content)
-            content_html = f"<div class='command-output-content'>{markdown_html}</div>"
-        else:
-            # Convert ANSI codes to HTML for colored display
-            html_content = convert_ansi_to_html(stdout_content)
-            # Use <pre> to preserve formatting and line breaks
-            content_html = f"<pre class='command-output-content'>{html_content}</pre>"
+    # Parse and format using user_formatters
+    command_output = parse_command_output(text_content)
+    if command_output:
+        content_html = format_command_output_content(command_output)
     else:
         content_html = escape_html(text_content)
 
@@ -1355,22 +1115,12 @@ def _process_local_command_output(
 
 def _process_bash_input(text_content: str) -> tuple[MessageModifiers, str, str, str]:
     """Process bash input command and return (modifiers, content_html, message_type, message_title)."""
-    import re
-
     modifiers = MessageModifiers()  # bash-input is a message type, not a modifier
 
-    bash_match = re.search(
-        r"<bash-input>(.*?)</bash-input>",
-        text_content,
-        re.DOTALL,
-    )
-    if bash_match:
-        bash_command = bash_match.group(1).strip()
-        escaped_command = escape_html(bash_command)
-        content_html = (
-            f"<span class='bash-prompt'>❯</span> "
-            f"<code class='bash-command'>{escaped_command}</code>"
-        )
+    # Parse and format using user_formatters
+    bash_input = parse_bash_input(text_content)
+    if bash_input:
+        content_html = format_bash_input_content(bash_input)
     else:
         content_html = escape_html(text_content)
 
@@ -1537,36 +1287,45 @@ def _process_system_message(
     not system messages. They are handled by _process_command_message and
     _process_local_command_output in the main processing loop.
     """
+    from .models import MessageContent  # Local import to avoid circular dependency
+
     session_id = getattr(message, "sessionId", "unknown")
     timestamp = getattr(message, "timestamp", "")
     formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
 
-    # Handle hook summaries (subtype="stop_hook_summary")
+    # Build structured content based on message subtype
+    content: MessageContent
     if message.subtype == "stop_hook_summary":
         # Skip silent hook successes (no output, no errors)
         if not message.hasOutput and not message.hookErrors:
             return None
-        # Render hook summary with collapsible details
-        content_html = _render_hook_summary(message)
+        # Create structured hook summary content
+        hook_infos = [
+            HookInfo(command=info.get("command", "unknown"))
+            for info in (message.hookInfos or [])
+        ]
+        content = HookSummaryContent(
+            has_output=bool(message.hasOutput),
+            hook_errors=message.hookErrors or [],
+            hook_infos=hook_infos,
+        )
         level = "hook"
     elif not message.content:
         # Skip system messages without content (shouldn't happen normally)
         return None
     else:
-        # Create level-specific styling and icons
+        # Create structured system content
         level = getattr(message, "level", "info")
-        level_icon = {"warning": "⚠️", "error": "❌", "info": "ℹ️"}.get(level, "ℹ️")
-
-        # Process ANSI codes in system messages (they may contain colored output)
-        html_content = convert_ansi_to_html(message.content)
-        content_html = f"<strong>{level_icon}</strong> {html_content}"
+        content = SystemContent(level=level, text=message.content)
 
     # Store parent UUID for hierarchy rebuild (handled by _build_message_hierarchy)
     parent_uuid = getattr(message, "parentUuid", None)
 
+    # Note: content_html will be populated by HtmlRenderer from content
     return TemplateMessage(
         message_type="system",
-        content_html=content_html,
+        content_html="",  # Populated by renderer from content
+        content=content,
         formatted_timestamp=formatted_timestamp,
         raw_timestamp=timestamp,
         session_id=session_id,
