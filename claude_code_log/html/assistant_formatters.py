@@ -4,43 +4,14 @@ This module formats assistant message content types to HTML.
 Part of the thematic formatter organization:
 - system_formatters.py: SystemContent, HookSummaryContent
 - user_formatters.py: SlashCommandContent, CommandOutputContent, BashInputContent
-- assistant_formatters.py: AssistantTextContent, ThinkingContent
+- assistant_formatters.py: AssistantTextContent, ThinkingContentModel
 - tool_formatters.py: tool use/result content
+
+Content models are defined in models.py, this module only handles formatting.
 """
 
-from dataclasses import dataclass
-from typing import Optional
-
-from ..models import MessageContent
+from ..models import AssistantTextContent, ThinkingContentModel
 from .utils import render_markdown_collapsible
-
-
-# =============================================================================
-# Assistant Message Content Models
-# =============================================================================
-
-
-@dataclass
-class AssistantTextContent(MessageContent):
-    """Content for assistant text messages.
-
-    These are the text portions of assistant messages that get
-    rendered as markdown with syntax highlighting.
-    """
-
-    text: str
-
-
-@dataclass
-class ThinkingContentModel(MessageContent):
-    """Content for assistant thinking/reasoning blocks.
-
-    These are the <thinking> blocks that show the assistant's
-    internal reasoning process.
-    """
-
-    thinking: str
-    signature: Optional[str] = None
 
 
 # =============================================================================
@@ -99,9 +70,6 @@ def format_thinking_content(
 # =============================================================================
 
 __all__ = [
-    # Content models
-    "AssistantTextContent",
-    "ThinkingContentModel",
     # Formatting functions
     "format_assistant_text_content",
     "format_thinking_content",

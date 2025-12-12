@@ -198,6 +198,39 @@ class IdeNotificationContent(MessageContent):
 
 
 # =============================================================================
+# Assistant Message Content Models
+# =============================================================================
+# Structured content models for assistant message variants.
+# These classify assistant message parts for format-neutral rendering.
+
+
+@dataclass
+class AssistantTextContent(MessageContent):
+    """Content for assistant text messages.
+
+    These are the text portions of assistant messages that get
+    rendered as markdown with syntax highlighting.
+    """
+
+    text: str
+
+
+@dataclass
+class ThinkingContentModel(MessageContent):
+    """Content for assistant thinking/reasoning blocks.
+
+    These are the <thinking> blocks that show the assistant's
+    internal reasoning process.
+
+    Note: This is distinct from ThinkingContent (the Pydantic model
+    for parsing JSONL). This dataclass is for rendering purposes.
+    """
+
+    thinking: str
+    signature: Optional[str] = None
+
+
+# =============================================================================
 # Tool Output Content Models
 # =============================================================================
 # Structured content models for tool results (symmetric with Tool Input Models).

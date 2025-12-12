@@ -40,11 +40,13 @@ from .system_formatters import (
     format_system_content,
 )
 from ..models import (
+    AssistantTextContent,
     BashInputContent,
     CommandOutputContent,
     CompactedSummaryContent,
     IdeNotificationContent,
     SlashCommandContent,
+    ThinkingContentModel,
     UserMemoryContent,
 )
 from ..parser import (
@@ -58,8 +60,6 @@ from .user_formatters import (
     format_slash_command_content,
 )
 from .assistant_formatters import (
-    AssistantTextContent,
-    ThinkingContentModel,
     format_assistant_text_content,
     format_thinking_content,
 )
