@@ -132,7 +132,7 @@ User messages contain `ContentItem` instances that are either:
 
 ## 1.2 User Text Variants
 
-Based on flags and tag patterns in `TextContent`, user text messages are classified into specialized content types defined in `html/user_formatters.py`.
+Based on flags and tag patterns in `TextContent`, user text messages are classified into specialized content types defined in `models.py`.
 
 ### Regular User Prompt
 
@@ -155,7 +155,7 @@ Based on flags and tag patterns in `TextContent`, user text messages are classif
 ### Slash Command (isMeta)
 
 - **Condition**: `isMeta: true` flag
-- **Content Model**: `SlashCommandContent` (html/user_formatters.py)
+- **Content Model**: `SlashCommandContent` (models.py)
 - **CSS Class**: `user slash-command`
 - **Files**: [user_slash_command.json](messages/user/user_slash_command.json)
 
@@ -346,7 +346,7 @@ Assistant messages contain `ContentItem` instances that are:
 
 ## 2.2 Assistant Text → AssistantTextContent
 
-- **Content Model**: `AssistantTextContent` (html/assistant_formatters.py)
+- **Content Model**: `AssistantTextContent` (models.py)
 - **CSS Class**: `assistant` (or `assistant sidechain`)
 - **Files**: [assistant.json](messages/assistant/assistant.json)
 
@@ -365,7 +365,7 @@ class AssistantTextContent(MessageContent):
 
 ## 2.3 Thinking Content → ThinkingContentModel
 
-- **Content Model**: `ThinkingContentModel` (html/assistant_formatters.py)
+- **Content Model**: `ThinkingContentModel` (models.py)
 - **CSS Class**: `thinking`
 - **Files**: [thinking.json](messages/assistant/thinking.json)
 
@@ -609,10 +609,10 @@ Sub-agent messages (from `Task` tool):
 - [css-classes.md](css-classes.md) - Complete CSS class reference with support status
 - [models.py](../claude_code_log/models.py) - Pydantic models for transcript data
 - [renderer.py](../claude_code_log/renderer.py) - Main rendering module
-- [html/](../claude_code_log/html/) - HTML-specific formatters
-  - [system_formatters.py](../claude_code_log/html/system_formatters.py) - SystemContent, HookSummaryContent
-  - [user_formatters.py](../claude_code_log/html/user_formatters.py) - SlashCommandContent, etc.
-  - [assistant_formatters.py](../claude_code_log/html/assistant_formatters.py) - AssistantTextContent, ThinkingContentModel
+- [html/](../claude_code_log/html/) - HTML-specific formatters (formatting only, content models in models.py)
+  - [system_formatters.py](../claude_code_log/html/system_formatters.py) - SystemContent, HookSummaryContent formatting
+  - [user_formatters.py](../claude_code_log/html/user_formatters.py) - User message formatting
+  - [assistant_formatters.py](../claude_code_log/html/assistant_formatters.py) - AssistantText, Thinking, Image formatting
   - [tool_formatters.py](../claude_code_log/html/tool_formatters.py) - Tool use/result formatting
 - [parser.py](../claude_code_log/parser.py) - JSONL parsing module
 - [TEMPLATE_MESSAGE_CHILDREN.md](TEMPLATE_MESSAGE_CHILDREN.md) - Tree architecture exploration
