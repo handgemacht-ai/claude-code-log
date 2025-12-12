@@ -12,7 +12,7 @@ from claude_code_log.html.renderer import (
     generate_projects_index_html,
     generate_session_html,
 )
-from claude_code_log.parser import load_transcript
+from claude_code_log.converter import load_transcript
 from claude_code_log.html.renderer import generate_html
 
 

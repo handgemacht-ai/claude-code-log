@@ -39,19 +39,23 @@ from .system_formatters import (
     format_hook_summary_content,
     format_system_content,
 )
-from .user_formatters import (
+from ..models import (
     BashInputContent,
     CommandOutputContent,
     CompactedSummaryContent,
     IdeNotificationContent,
     SlashCommandContent,
     UserMemoryContent,
-    format_bash_input_content,
-    format_command_output_content,
-    format_slash_command_content,
+)
+from ..parser import (
     parse_bash_input,
     parse_command_output,
     parse_slash_command,
+)
+from .user_formatters import (
+    format_bash_input_content,
+    format_command_output_content,
+    format_slash_command_content,
 )
 from .assistant_formatters import (
     AssistantTextContent,

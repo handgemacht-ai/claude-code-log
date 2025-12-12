@@ -8,8 +8,7 @@ Part of the thematic formatter organization:
 - tool_formatters.py: tool use/result content
 """
 
-import re
-from typing import List, Optional
+from typing import List
 
 import mistune
 
@@ -17,10 +16,7 @@ from ..ansi_colors import convert_ansi_to_html
 from ..models import (
     BashInputContent,
     CommandOutputContent,
-    CompactedSummaryContent,
-    IdeNotificationContent,
     SlashCommandContent,
-    UserMemoryContent,
 )
 from .utils import escape_html, render_collapsible_code
 
@@ -109,115 +105,12 @@ def format_bash_input_content(content: BashInputContent) -> str:
 
 
 # =============================================================================
-# Parsing Helpers
-# =============================================================================
-
-
-def parse_slash_command(text: str) -> Optional[SlashCommandContent]:
-    """Parse slash command tags from text.
-
-    Args:
-        text: Raw text that may contain command-name, command-args, command-contents tags
-
-    Returns:
-        SlashCommandContent if tags found, None otherwise
-    """
-    import json
-    from typing import Any, Dict, cast
-
-    command_name_match = re.search(r"<command-name>([^<]+)</command-name>", text)
-    if not command_name_match:
-        return None
-
-    command_name = command_name_match.group(1).strip()
-
-    command_args_match = re.search(r"<command-args>([^<]*)</command-args>", text)
-    command_args = command_args_match.group(1).strip() if command_args_match else ""
-
-    # Parse command contents, handling JSON format
-    command_contents_match = re.search(
-        r"<command-contents>(.+?)</command-contents>", text, re.DOTALL
-    )
-    command_contents = ""
-    if command_contents_match:
-        contents_text = command_contents_match.group(1).strip()
-        # Try to parse as JSON and extract the text field
-        try:
-            contents_json: Any = json.loads(contents_text)
-            if isinstance(contents_json, dict) and "text" in contents_json:
-                text_dict = cast(Dict[str, Any], contents_json)
-                text_value = text_dict["text"]
-                command_contents = str(text_value)
-            else:
-                command_contents = contents_text
-        except json.JSONDecodeError:
-            command_contents = contents_text
-
-    return SlashCommandContent(
-        command_name=command_name,
-        command_args=command_args,
-        command_contents=command_contents,
-    )
-
-
-def parse_command_output(text: str) -> Optional[CommandOutputContent]:
-    """Parse command output tags from text.
-
-    Args:
-        text: Raw text that may contain local-command-stdout tags
-
-    Returns:
-        CommandOutputContent if tags found, None otherwise
-    """
-    stdout_match = re.search(
-        r"<local-command-stdout>(.*?)</local-command-stdout>",
-        text,
-        re.DOTALL,
-    )
-    if not stdout_match:
-        return None
-
-    stdout_content = stdout_match.group(1).strip()
-    # Check if content looks like markdown (starts with markdown headers)
-    is_markdown = bool(re.match(r"^#+\s+", stdout_content, re.MULTILINE))
-
-    return CommandOutputContent(stdout=stdout_content, is_markdown=is_markdown)
-
-
-def parse_bash_input(text: str) -> Optional[BashInputContent]:
-    """Parse bash input tags from text.
-
-    Args:
-        text: Raw text that may contain bash-input tags
-
-    Returns:
-        BashInputContent if tags found, None otherwise
-    """
-    bash_match = re.search(r"<bash-input>(.*?)</bash-input>", text, re.DOTALL)
-    if not bash_match:
-        return None
-
-    return BashInputContent(command=bash_match.group(1).strip())
-
-
-# =============================================================================
 # Public Exports
 # =============================================================================
 
 __all__ = [
-    # Content models
-    "SlashCommandContent",
-    "CommandOutputContent",
-    "BashInputContent",
-    "CompactedSummaryContent",
-    "UserMemoryContent",
-    "IdeNotificationContent",
     # Formatting functions
     "format_slash_command_content",
     "format_command_output_content",
     "format_bash_input_content",
-    # Parsing helpers
-    "parse_slash_command",
-    "parse_command_output",
-    "parse_bash_input",
 ]

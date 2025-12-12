@@ -7,7 +7,7 @@ from typing import List
 import pytest
 from playwright.sync_api import Page, expect
 
-from claude_code_log.parser import load_transcript
+from claude_code_log.converter import load_transcript
 from claude_code_log.html.renderer import generate_html
 from claude_code_log.models import TranscriptEntry
 
