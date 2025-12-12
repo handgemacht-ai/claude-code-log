@@ -27,6 +27,7 @@ from .tool_formatters import (
     format_read_tool_result,
     format_task_tool_content,
     format_todowrite_content,
+    format_tool_result_content,
     format_tool_use_content,
     format_tool_use_title,
     format_write_tool_content,
@@ -96,6 +97,7 @@ __all__ = [
     "format_read_tool_result",
     "parse_edit_output",
     "format_edit_tool_result",
+    "format_tool_result_content",
     # system_formatters
     "format_hook_summary_content",
     "format_system_content",

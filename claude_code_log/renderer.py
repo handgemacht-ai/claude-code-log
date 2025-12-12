@@ -60,210 +60,24 @@ from .ansi_colors import convert_ansi_to_html
 
 from .html import (
     escape_html,
-    format_askuserquestion_result,
     format_bash_input_content,
     format_command_output_content,
-    format_edit_tool_result,
-    format_exitplanmode_result,
-    format_read_tool_result,
     format_slash_command_content,
     format_thinking_content,
+    format_tool_result_content,
     format_tool_use_content,
     format_tool_use_title,
     parse_bash_input,
     parse_command_output,
-    parse_edit_output,
-    parse_read_output,
     parse_slash_command,
     render_markdown_collapsible,
     render_params_table,
 )
 
 
-# -- Tool Result Content Formatting -------------------------------------------
-# NOTE: Slash command parsing moved to html/user_formatters.py (parse_slash_command)
-# NOTE: Parsing functions moved to html/tool_formatters.py
-
-
-def format_tool_result_content(
-    tool_result: ToolResultContent,
-    file_path: Optional[str] = None,
-    tool_name: Optional[str] = None,
-) -> str:
-    """Format tool result content as HTML, including images.
-
-    Args:
-        tool_result: The tool result content
-        file_path: Optional file path for context (used for Read/Edit/Write tool rendering)
-        tool_name: Optional tool name for specialized rendering (e.g., "Write", "Read", "Edit", "Task")
-    """
-    # Handle both string and structured content
-    if isinstance(tool_result.content, str):
-        raw_content = tool_result.content
-        has_images = False
-        image_html_parts: List[str] = []
-    else:
-        # Content is a list of structured items, extract text and images
-        content_parts: List[str] = []
-        image_html_parts: List[str] = []
-        for item in tool_result.content:
-            item_type = item.get("type")
-            if item_type == "text":
-                text_value = item.get("text")
-                if isinstance(text_value, str):
-                    content_parts.append(text_value)
-            elif item_type == "image":
-                # Handle image content within tool results
-                source = cast(Dict[str, Any], item.get("source", {}))
-                if source:
-                    media_type: str = str(source.get("media_type", "image/png"))
-                    data: str = str(source.get("data", ""))
-                    if data:
-                        data_url = f"data:{media_type};base64,{data}"
-                        image_html_parts.append(
-                            f'<img src="{data_url}" alt="Tool result image" '
-                            f'class="tool-result-image" />'
-                        )
-        raw_content = "\n".join(content_parts)
-        has_images = len(image_html_parts) > 0
-
-    # Strip <tool_use_error> XML tags but keep the content inside
-    # Also strip redundant "String: ..." portions that echo the input
-    import re
-
-    if raw_content:
-        # Remove <tool_use_error>...</tool_use_error> tags but keep inner content
-        raw_content = re.sub(
-            r"<tool_use_error>(.*?)</tool_use_error>",
-            r"\1",
-            raw_content,
-            flags=re.DOTALL,
-        )
-        # Remove "String: ..." portions that echo the input (everything after "String:" to end)
-        raw_content = re.sub(r"\nString:.*$", "", raw_content, flags=re.DOTALL)
-
-    # Special handling for Write tool: only show first line (acknowledgment) on success
-    if tool_name == "Write" and not tool_result.is_error and not has_images:
-        lines = raw_content.split("\n")
-        if lines:
-            # Keep only the first acknowledgment line and add ellipsis
-            first_line = lines[0]
-            escaped_html = escape_html(first_line)
-            return f"<pre>{escaped_html} ...</pre>"
-
-    # Try to parse as Read tool result if file_path is provided
-    if file_path and tool_name == "Read" and not has_images:
-        read_output = parse_read_output(raw_content, file_path)
-        if read_output:
-            return format_read_tool_result(read_output)
-
-    # Try to parse as Edit tool result if file_path is provided
-    if file_path and tool_name == "Edit" and not has_images:
-        edit_output = parse_edit_output(raw_content, file_path)
-        if edit_output:
-            return format_edit_tool_result(edit_output)
-
-    # Special handling for Task tool: render result as markdown with Pygments (agent's final message)
-    # Deduplication is now handled retroactively by replacing the sub-assistant content
-    if tool_name == "Task" and not has_images:
-        return render_markdown_collapsible(raw_content, "task-result")
-
-    # Special handling for ExitPlanMode tool: truncate redundant plan echo on success
-    if tool_name == "ExitPlanMode" and not has_images:
-        processed_content = format_exitplanmode_result(raw_content)
-        escaped_content = escape_html(processed_content)
-        return f"<pre>{escaped_content}</pre>"
-
-    # Special handling for AskUserQuestion tool: render Q&A pairs with styling
-    if tool_name == "AskUserQuestion" and not has_images:
-        styled_result = format_askuserquestion_result(raw_content)
-        if styled_result:
-            return styled_result
-        # Fall through to default handling if parsing fails
-
-    # Check if this looks like Bash tool output and process ANSI codes
-    # Bash tool results often contain ANSI escape sequences and terminal output
-    if _looks_like_bash_output(raw_content):
-        escaped_content = convert_ansi_to_html(raw_content)
-    else:
-        escaped_content = escape_html(raw_content)
-
-    # Build final HTML based on content length and presence of images
-    if has_images:
-        # Combine text and images
-        text_html = f"<pre>{escaped_content}</pre>" if escaped_content else ""
-        images_html = "".join(image_html_parts)
-        combined_content = f"{text_html}{images_html}"
-
-        # Always make collapsible when images are present
-        preview_text = "Text and image content"
-        return f"""
-    <details class="collapsible-details">
-        <summary>
-            <span class='preview-text'>{preview_text}</span>
-        </summary>
-        <div class="details-content">
-            {combined_content}
-        </div>
-    </details>
-    """
-    else:
-        # Text-only content (existing behavior)
-        # For simple content, show directly without collapsible wrapper
-        if len(escaped_content) <= 200:
-            return f"<pre>{escaped_content}</pre>"
-
-        # For longer content, use collapsible details but no extra wrapper
-        preview_text = escaped_content[:200] + "..."
-        return f"""
-    <details class="collapsible-details">
-        <summary>
-            <div class="preview-content"><pre>{preview_text}</pre></div>
-        </summary>
-        <div class="details-content">
-            <pre>{escaped_content}</pre>
-        </div>
-    </details>
-    """
-
-
-def _looks_like_bash_output(content: str) -> bool:
-    """Check if content looks like it's from a Bash tool based on common patterns."""
-    if not content:
-        return False
-
-    # Check for ANSI escape sequences
-    if "\x1b[" in content:
-        return True
-
-    # Check for common bash/terminal patterns
-    bash_indicators = [
-        "$ ",  # Shell prompt
-        "❯ ",  # Modern shell prompt
-        "> ",  # Shell continuation
-        "\n+ ",  # Bash -x output
-        "bash: ",  # Bash error messages
-        "/bin/bash",  # Bash path
-        "command not found",  # Common bash error
-        "Permission denied",  # Common bash error
-        "No such file or directory",  # Common bash error
-    ]
-
-    # Check for file path patterns that suggest command output
-    import re
-
-    if re.search(r"/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_.-]+)*", content):  # Unix-style paths
-        return True
-
-    # Check for common command output patterns
-    if any(indicator in content for indicator in bash_indicators):
-        return True
-
-    return False
-
-
 # -- Content Formatters -------------------------------------------------------
 # NOTE: format_thinking_content moved to html/assistant_formatters.py
+# NOTE: format_tool_result_content moved to html/tool_formatters.py
 
 
 def format_image_content(image: ImageContent) -> str:

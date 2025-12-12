@@ -337,7 +337,7 @@ def test_bash_ansi_color_rendering():
 
 def test_bash_tool_result_ansi_processing():
     """Test that Bash tool results have ANSI codes processed."""
-    from claude_code_log.renderer import (
+    from claude_code_log.html.tool_formatters import (
         format_tool_result_content,
         _looks_like_bash_output,
     )
