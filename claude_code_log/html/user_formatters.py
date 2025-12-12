@@ -169,6 +169,22 @@ def format_bash_output_content(
     return full_html
 
 
+def format_user_text_content(text: str) -> str:
+    """Format plain user text content as HTML.
+
+    User text is displayed as-is in preformatted blocks to preserve
+    formatting and whitespace.
+
+    Args:
+        text: The raw user message text
+
+    Returns:
+        HTML string with escaped text in a pre tag
+    """
+    escaped_text = escape_html(text)
+    return f"<pre>{escaped_text}</pre>"
+
+
 # =============================================================================
 # Public Exports
 # =============================================================================
@@ -179,4 +195,5 @@ __all__ = [
     "format_command_output_content",
     "format_bash_input_content",
     "format_bash_output_content",
+    "format_user_text_content",
 ]

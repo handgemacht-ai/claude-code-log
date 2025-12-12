@@ -62,6 +62,7 @@ from .user_formatters import (
     format_bash_output_content,
     format_command_output_content,
     format_slash_command_content,
+    format_user_text_content,
 )
 from .assistant_formatters import (
     format_assistant_text_content,
@@ -118,6 +119,7 @@ __all__ = [
     "format_command_output_content",
     "format_bash_input_content",
     "format_bash_output_content",
+    "format_user_text_content",
     # user_formatters (parsing)
     "parse_slash_command",
     "parse_command_output",

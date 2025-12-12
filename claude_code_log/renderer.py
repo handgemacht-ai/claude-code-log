@@ -68,6 +68,7 @@ from .html import (
     format_tool_result_content,
     format_tool_use_content,
     format_tool_use_title,
+    format_user_text_content,
     parse_bash_input,
     parse_bash_output,
     parse_command_output,
@@ -264,8 +265,7 @@ def render_message_content(content: List[ContentItem], message_type: str) -> str
     if len(content) == 1 and isinstance(content[0], TextContent):
         if message_type == MessageType.USER:
             # User messages are shown as-is in preformatted blocks
-            escaped_text = escape_html(content[0].text)
-            return "<pre>" + escaped_text + "</pre>"
+            return format_user_text_content(content[0].text)
         else:
             # Assistant messages get markdown rendering with collapsible for long content
             return render_markdown_collapsible(
@@ -289,8 +289,7 @@ def render_message_content(content: List[ContentItem], message_type: str) -> str
             text_value = getattr(item, "text", str(item))
             if message_type == MessageType.USER:
                 # User messages are shown as-is in preformatted blocks
-                escaped_text = escape_html(text_value)
-                rendered_parts.append("<pre>" + escaped_text + "</pre>")
+                rendered_parts.append(format_user_text_content(text_value))
             else:
                 # Assistant messages get markdown rendering with collapsible for long content
                 rendered_parts.append(
