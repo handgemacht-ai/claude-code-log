@@ -24,6 +24,7 @@ from .models import (
     SlashCommandContent,
     CommandOutputContent,
     BashInputContent,
+    BashOutputContent,
     # Tool input models
     BashInput,
     ReadInput,
@@ -170,6 +171,33 @@ def parse_bash_input(text: str) -> Optional[BashInputContent]:
         return None
 
     return BashInputContent(command=bash_match.group(1).strip())
+
+
+def parse_bash_output(text: str) -> Optional[BashOutputContent]:
+    """Parse bash output tags from text.
+
+    Args:
+        text: Raw text that may contain bash-stdout/bash-stderr tags
+
+    Returns:
+        BashOutputContent if tags found, None otherwise
+    """
+    stdout_match = re.search(r"<bash-stdout>(.*?)</bash-stdout>", text, re.DOTALL)
+    stderr_match = re.search(r"<bash-stderr>(.*?)</bash-stderr>", text, re.DOTALL)
+
+    if not stdout_match and not stderr_match:
+        return None
+
+    stdout = stdout_match.group(1).strip() if stdout_match else None
+    stderr = stderr_match.group(1).strip() if stderr_match else None
+
+    # Convert empty strings to None for cleaner representation
+    if stdout == "":
+        stdout = None
+    if stderr == "":
+        stderr = None
+
+    return BashOutputContent(stdout=stdout, stderr=stderr)
 
 
 # =============================================================================

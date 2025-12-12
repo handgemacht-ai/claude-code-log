@@ -43,6 +43,7 @@ from .system_formatters import (
 from ..models import (
     AssistantTextContent,
     BashInputContent,
+    BashOutputContent,
     CommandOutputContent,
     CompactedSummaryContent,
     IdeNotificationContent,
@@ -52,11 +53,13 @@ from ..models import (
 )
 from ..parser import (
     parse_bash_input,
+    parse_bash_output,
     parse_command_output,
     parse_slash_command,
 )
 from .user_formatters import (
     format_bash_input_content,
+    format_bash_output_content,
     format_command_output_content,
     format_slash_command_content,
 )
@@ -106,6 +109,7 @@ __all__ = [
     "SlashCommandContent",
     "CommandOutputContent",
     "BashInputContent",
+    "BashOutputContent",
     "CompactedSummaryContent",
     "UserMemoryContent",
     "IdeNotificationContent",
@@ -113,10 +117,12 @@ __all__ = [
     "format_slash_command_content",
     "format_command_output_content",
     "format_bash_input_content",
+    "format_bash_output_content",
     # user_formatters (parsing)
     "parse_slash_command",
     "parse_command_output",
     "parse_bash_input",
+    "parse_bash_output",
     # assistant_formatters (content models)
     "AssistantTextContent",
     "ThinkingContentModel",

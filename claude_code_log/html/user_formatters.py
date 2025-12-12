@@ -15,6 +15,7 @@ import mistune
 from ..ansi_colors import convert_ansi_to_html
 from ..models import (
     BashInputContent,
+    BashOutputContent,
     CommandOutputContent,
     SlashCommandContent,
 )
@@ -104,6 +105,70 @@ def format_bash_input_content(content: BashInputContent) -> str:
     )
 
 
+def format_bash_output_content(
+    content: BashOutputContent,
+    collapse_threshold: int = 10,
+    preview_lines: int = 3,
+) -> str:
+    """Format bash output content as HTML.
+
+    Args:
+        content: BashOutputContent with stdout and/or stderr
+        collapse_threshold: Number of lines before output becomes collapsible
+        preview_lines: Number of preview lines to show when collapsed
+
+    Returns:
+        HTML string for the bash output display
+    """
+    output_parts: List[tuple[str, str, int, str]] = []
+    total_lines = 0
+
+    if content.stdout:
+        escaped_stdout = convert_ansi_to_html(content.stdout)
+        stdout_lines = content.stdout.count("\n") + 1
+        total_lines += stdout_lines
+        output_parts.append(("stdout", escaped_stdout, stdout_lines, content.stdout))
+
+    if content.stderr:
+        escaped_stderr = convert_ansi_to_html(content.stderr)
+        stderr_lines = content.stderr.count("\n") + 1
+        total_lines += stderr_lines
+        output_parts.append(("stderr", escaped_stderr, stderr_lines, content.stderr))
+
+    if not output_parts:
+        # Empty output
+        return (
+            "<pre class='bash-stdout'><span class='bash-empty'>(no output)</span></pre>"
+        )
+
+    # Build the HTML parts
+    html_parts: List[str] = []
+    for output_type, escaped_content, _, _ in output_parts:
+        css_name = f"bash-{output_type}"
+        html_parts.append(f"<pre class='{css_name}'>{escaped_content}</pre>")
+
+    full_html = "".join(html_parts)
+
+    # Wrap in collapsible if output is large
+    if total_lines > collapse_threshold:
+        # Create preview (first few lines)
+        first_output = output_parts[0]
+        raw_preview = "\n".join(first_output[3].split("\n")[:preview_lines])
+        preview_html = escape_html(raw_preview)
+        if total_lines > preview_lines:
+            preview_html += "\n..."
+
+        return f"""<details class='collapsible-code'>
+            <summary>
+                <span class='line-count'>{total_lines} lines</span>
+                <pre class='preview-content bash-stdout'>{preview_html}</pre>
+            </summary>
+            <div class='code-full'>{full_html}</div>
+        </details>"""
+
+    return full_html
+
+
 # =============================================================================
 # Public Exports
 # =============================================================================
@@ -113,4 +178,5 @@ __all__ = [
     "format_slash_command_content",
     "format_command_output_content",
     "format_bash_input_content",
+    "format_bash_output_content",
 ]

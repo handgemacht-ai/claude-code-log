@@ -166,6 +166,17 @@ class BashInputContent(MessageContent):
 
 
 @dataclass
+class BashOutputContent(MessageContent):
+    """Content for bash command output.
+
+    These are user messages containing bash-stdout and/or bash-stderr tags.
+    """
+
+    stdout: Optional[str] = None  # Raw stdout content (may contain ANSI codes)
+    stderr: Optional[str] = None  # Raw stderr content (may contain ANSI codes)
+
+
+@dataclass
 class CompactedSummaryContent(MessageContent):
     """Content for compacted session summaries.
 
