@@ -62,6 +62,7 @@ from .user_formatters import (
 )
 from .assistant_formatters import (
     format_assistant_text_content,
+    format_image_content,
     format_thinking_content,
 )
 
@@ -122,4 +123,5 @@ __all__ = [
     # assistant_formatters (formatting)
     "format_assistant_text_content",
     "format_thinking_content",
+    "format_image_content",
 ]

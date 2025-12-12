@@ -62,6 +62,7 @@ from .html import (
     escape_html,
     format_bash_input_content,
     format_command_output_content,
+    format_image_content,
     format_slash_command_content,
     format_thinking_content,
     format_tool_result_content,
@@ -78,14 +79,7 @@ from .html import (
 # -- Content Formatters -------------------------------------------------------
 # NOTE: format_thinking_content moved to html/assistant_formatters.py
 # NOTE: format_tool_result_content moved to html/tool_formatters.py
-
-
-def format_image_content(image: ImageContent) -> str:
-    """Format image content as HTML."""
-    # Create a data URL from the base64 image data
-    data_url = f"data:{image.source.media_type};base64,{image.source.data}"
-
-    return f'<img src="{data_url}" alt="Uploaded image" class="uploaded-image" />'
+# NOTE: format_image_content moved to html/assistant_formatters.py
 
 
 def _is_compacted_session_summary(text: str) -> bool:

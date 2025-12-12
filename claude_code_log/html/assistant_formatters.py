@@ -4,13 +4,13 @@ This module formats assistant message content types to HTML.
 Part of the thematic formatter organization:
 - system_formatters.py: SystemContent, HookSummaryContent
 - user_formatters.py: SlashCommandContent, CommandOutputContent, BashInputContent
-- assistant_formatters.py: AssistantTextContent, ThinkingContentModel
+- assistant_formatters.py: AssistantTextContent, ThinkingContentModel, ImageContent
 - tool_formatters.py: tool use/result content
 
 Content models are defined in models.py, this module only handles formatting.
 """
 
-from ..models import AssistantTextContent, ThinkingContentModel
+from ..models import AssistantTextContent, ImageContent, ThinkingContentModel
 from .utils import render_markdown_collapsible
 
 
@@ -65,6 +65,19 @@ def format_thinking_content(
     )
 
 
+def format_image_content(image: ImageContent) -> str:
+    """Format image content as HTML.
+
+    Args:
+        image: ImageContent with base64 image data
+
+    Returns:
+        HTML img tag with data URL
+    """
+    data_url = f"data:{image.source.media_type};base64,{image.source.data}"
+    return f'<img src="{data_url}" alt="Uploaded image" class="uploaded-image" />'
+
+
 # =============================================================================
 # Public Exports
 # =============================================================================
@@ -73,4 +86,5 @@ __all__ = [
     # Formatting functions
     "format_assistant_text_content",
     "format_thinking_content",
+    "format_image_content",
 ]
