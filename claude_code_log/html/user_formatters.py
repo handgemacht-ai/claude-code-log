@@ -322,8 +322,7 @@ def format_ide_notification_content(content: IdeNotificationContent) -> List[str
     """Format IDE notification content as HTML.
 
     Takes structured IdeNotificationContent and returns a list of HTML
-    notification strings, preserving the same output format as the original
-    extract_ide_notifications function.
+    notification strings.
 
     Args:
         content: IdeNotificationContent with opened_files, selections, diagnostics

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Render Claude transcript data to HTML format."""
 
-import re
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -33,7 +32,6 @@ from .models import (
     DedupNoticeContent,
     HookInfo,
     HookSummaryContent,
-    IdeNotificationContent,
     SessionHeaderContent,
     SystemContent,
     UserMemoryContent,
@@ -150,80 +148,11 @@ def parse_user_message_content(
     return UserTextContent(text=all_text, ide_notifications=ide_content), False, False
 
 
-# -- Backward-Compatible Wrappers ---------------------------------------------
-# These functions combine parsing + formatting for backward compatibility with
-# existing tests. New code should use the separate parse_* and format_* functions.
-
-
-def extract_ide_notifications(text: str) -> tuple[List[str], str]:
-    """Extract IDE notifications from text and return HTML notifications.
-
-    DEPRECATED: Use parse_ide_notifications() + format_ide_notification_content() instead.
-
-    This is a backward-compatible wrapper that combines parsing (parse_ide_notifications)
-    and formatting (format_ide_notification_content) for existing tests.
-
-    Returns:
-        A tuple of (notifications_html_list, remaining_text)
-    """
-    from .html.user_formatters import format_ide_notification_content
-
-    ide_content = parse_ide_notifications(text)
-    if ide_content:
-        notifications = format_ide_notification_content(ide_content)
-        return notifications, ide_content.remaining_text
-    return [], text
-
-
-def render_user_message_content(
-    content_list: List[ContentItem],
-) -> tuple[str, bool, bool]:
-    """Render user message content to HTML.
-
-    DEPRECATED: Use parse_user_message_content() for parsing, then use
-    HtmlRenderer._format_message_content() or the appropriate formatter.
-
-    This is a backward-compatible wrapper that combines parsing and formatting
-    for existing tests.
-
-    Returns:
-        A tuple of (content_html, is_compacted, is_memory_input)
-    """
-    from .html.user_formatters import (
-        format_compacted_summary_content,
-        format_user_memory_content,
-        format_user_text_model_content,
-    )
-
-    content_model, is_compacted, is_memory_input = parse_user_message_content(
-        content_list
-    )
-
-    if content_model is None:
-        return "", False, False
-
-    # Dispatch to appropriate formatter based on content type
-    if isinstance(content_model, CompactedSummaryContent):
-        content_html = format_compacted_summary_content(content_model)
-    elif isinstance(content_model, UserMemoryContent):
-        content_html = format_user_memory_content(content_model)
-    elif isinstance(content_model, UserTextContent):
-        content_html = format_user_text_model_content(content_model)
-        # Also include images from original content_list
-        for item in content_list:
-            if isinstance(item, ImageContent):
-                content_html += format_image_content(item)
-    else:
-        content_html = ""
-
-    return content_html, is_compacted, is_memory_input
-
-
 def render_message_content(content: List[ContentItem], message_type: str) -> str:
     """Render message content with proper tool use and tool result formatting.
 
     Note: This does NOT handle user-specific preprocessing like IDE tags or
-    compacted session summaries. Those should be handled by render_user_message_content.
+    compacted session summaries. Those should be handled by parse_user_message_content().
     """
     if len(content) == 1 and isinstance(content[0], TextContent):
         if message_type == MessageType.USER:
