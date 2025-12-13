@@ -10,8 +10,13 @@ Part of the thematic formatter organization:
 Content models are defined in models.py, this module only handles formatting.
 """
 
-from ..models import AssistantTextContent, ImageContent, ThinkingContentModel
-from .utils import render_markdown_collapsible
+from ..models import (
+    AssistantTextContent,
+    ImageContent,
+    ThinkingContentModel,
+    UnknownContent,
+)
+from .utils import escape_html, render_markdown_collapsible
 
 
 # =============================================================================
@@ -78,6 +83,19 @@ def format_image_content(image: ImageContent) -> str:
     return f'<img src="{data_url}" alt="Uploaded image" class="uploaded-image" />'
 
 
+def format_unknown_content(content: UnknownContent) -> str:
+    """Format unknown content type as HTML.
+
+    Args:
+        content: UnknownContent with the type name
+
+    Returns:
+        HTML paragraph with escaped type name
+    """
+    escaped_type = escape_html(content.type_name)
+    return f"<p>Unknown content type: {escaped_type}</p>"
+
+
 # =============================================================================
 # Public Exports
 # =============================================================================
@@ -87,4 +105,5 @@ __all__ = [
     "format_assistant_text_content",
     "format_thinking_content",
     "format_image_content",
+    "format_unknown_content",
 ]

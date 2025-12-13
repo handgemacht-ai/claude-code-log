@@ -35,6 +35,7 @@ from .models import (
     HookSummaryContent,
     SessionHeaderContent,
     SystemContent,
+    UnknownContent,
     UserMemoryContent,
     UserTextContent,
 )
@@ -2147,7 +2148,7 @@ def _render_messages(
                 # Handle unknown content types
                 tool_result = ToolItemResult(
                     message_type="unknown",
-                    content_html=f"<p>Unknown content type: {escape_html(str(type(tool_item)))}</p>",
+                    content=UnknownContent(type_name=str(type(tool_item))),
                     message_title="Unknown Content",
                 )
 

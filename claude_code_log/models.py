@@ -311,6 +311,17 @@ class ThinkingContentModel(MessageContent):
     signature: Optional[str] = None
 
 
+@dataclass
+class UnknownContent(MessageContent):
+    """Content for unknown/unrecognized content types.
+
+    Used as a fallback when encountering content types that don't have
+    specific handlers. Stores the type name for display purposes.
+    """
+
+    type_name: str  # The name/description of the unknown type
+
+
 # =============================================================================
 # Tool Output Content Models
 # =============================================================================

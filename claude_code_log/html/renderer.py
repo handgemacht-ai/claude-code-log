@@ -21,6 +21,7 @@ from ..models import (
     ToolResultContentModel,
     ToolUseContent,
     TranscriptEntry,
+    UnknownContent,
     UserMemoryContent,
     UserTextContent,
 )
@@ -51,6 +52,7 @@ from .assistant_formatters import (
     format_assistant_text_content,
     format_image_content,
     format_thinking_content,
+    format_unknown_content,
 )
 from .tool_formatters import format_tool_result_content, format_tool_use_content
 from .utils import css_class_from_message, get_message_emoji, get_template_environment
@@ -160,6 +162,8 @@ class HtmlRenderer(Renderer):
                 )
             else:
                 message.content_html = format_user_text_model_content(message.content)
+        elif isinstance(message.content, UnknownContent):
+            message.content_html = format_unknown_content(message.content)
         # Future content types will be added here as they are migrated
 
     def _flatten_preorder(self, roots: List[TemplateMessage]) -> List[TemplateMessage]:
