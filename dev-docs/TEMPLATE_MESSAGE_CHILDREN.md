@@ -21,13 +21,15 @@ TranscriptEntry[] → generate_template_messages() → root_messages (tree)
 
 ### Hierarchy Levels
 ```
-Level 0: Session headers (tree roots)
+Level 0: Tree roots (messages without ancestry - typically session headers)
 Level 1: User messages
 Level 2: Assistant, System, Thinking
 Level 3: Tool use/result
 Level 4: Sidechain assistant/thinking
 Level 5: Sidechain tools
 ```
+
+**Note:** Tree roots are any messages with empty `ancestry`. This is typically session headers, but in degenerate cases (no session headers), user messages or other top-level messages become roots.
 
 ### Template Rendering (current)
 - Single `{% for message in messages %}` loop over flattened list
