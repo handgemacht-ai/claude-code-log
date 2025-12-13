@@ -671,15 +671,12 @@ def generate_template_messages(
         _mark_messages_with_children(template_messages)
 
     # Build tree structure by populating children fields
-    # This enables future recursive template rendering while maintaining
-    # backward compatibility with the current flat-list approach
+    # Returns root messages (typically session headers) with children populated
+    # HtmlRenderer flattens this via pre-order traversal for template rendering
     with log_timing("Build message tree", t_start):
-        _root_messages = _build_message_tree(template_messages)
-        # Note: root_messages contains just the top-level messages with children populated
-        # For now, we continue using template_messages (flat list) for template rendering
-        # Future: pass root_messages to a recursive template macro
+        root_messages = _build_message_tree(template_messages)
 
-    return template_messages, session_nav
+    return root_messages, session_nav
 
 
 # -- Session Utilities --------------------------------------------------------

@@ -130,18 +130,30 @@ class HtmlRenderer(Renderer):
             )
         # Future content types will be added here as they are migrated
 
-    def _format_all_content(self, messages: List[TemplateMessage]) -> None:
-        """Format structured content to HTML for all messages.
+    def _flatten_preorder(self, roots: List[TemplateMessage]) -> List[TemplateMessage]:
+        """Flatten message tree via pre-order traversal, formatting each message.
 
-        Iterates through the flat message list and populates content_html
-        from content where structured content exists.
+        Traverses the tree depth-first (pre-order), formats each message's
+        content to HTML, and builds a flat list for template rendering.
 
-        Note: Does NOT recurse into children because the template renders
-        from a flat list, not a tree structure. The .children relationship
-        is only used for the folding UI in JavaScript.
+        Args:
+            roots: Root messages (typically session headers) with children populated
+
+        Returns:
+            Flat list of all messages in pre-order (parent before children)
         """
-        for message in messages:
-            self._format_message_content(message)
+        flat: List[TemplateMessage] = []
+
+        def visit(msg: TemplateMessage) -> None:
+            self._format_message_content(msg)
+            flat.append(msg)
+            for child in msg.children:
+                visit(child)
+
+        for root in roots:
+            visit(root)
+
+        return flat
 
     def generate(
         self,
@@ -157,12 +169,12 @@ class HtmlRenderer(Renderer):
         if not title:
             title = "Claude Transcript"
 
-        # Get template messages and session navigation from format-neutral renderer
-        template_messages, session_nav = generate_template_messages(messages)
+        # Get root messages (tree) and session navigation from format-neutral renderer
+        root_messages, session_nav = generate_template_messages(messages)
 
-        # Format structured content to HTML
-        with log_timing("Content formatting", t_start):
-            self._format_all_content(template_messages)
+        # Flatten tree via pre-order traversal, formatting content along the way
+        with log_timing("Content formatting (pre-order)", t_start):
+            template_messages = self._flatten_preorder(root_messages)
 
         # Render template
         with log_timing("Template environment setup", t_start):
