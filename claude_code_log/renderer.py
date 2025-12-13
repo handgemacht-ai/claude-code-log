@@ -1415,7 +1415,13 @@ def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMe
                 last_idx = slash_command_pair_index[msg.uuid]
                 pair_last = messages[last_idx]
 
-            if pair_last is not None and last_idx is not None:
+            # Only append if we haven't already added this pair_last
+            # (handles case where multiple pair_firsts match the same pair_last)
+            if (
+                pair_last is not None
+                and last_idx is not None
+                and last_idx not in skip_indices
+            ):
                 reordered.append(pair_last)
                 skip_indices.add(last_idx)
 
@@ -1781,10 +1787,13 @@ def _reorder_sidechain_template_messages(
         # tool_use ever gets agent_id in the future
         agent_id = message.agent_id
 
+        # Only insert sidechain if not already inserted (handles case where
+        # multiple tool_results have the same agent_id)
         if (
             agent_id
             and message.type == MessageType.TOOL_RESULT
             and agent_id in sidechain_map
+            and agent_id not in used_agents
         ):
             sidechain_msgs = sidechain_map[agent_id]
 
