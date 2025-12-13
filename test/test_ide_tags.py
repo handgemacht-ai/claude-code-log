@@ -147,6 +147,7 @@ class TestParseIdeNotifications:
         assert len(result.diagnostics) == 1
         assert "User opened main.py" in result.opened_files[0].content
         assert "selected_variable" in result.selections[0].content
+        assert result.diagnostics[0].diagnostics is not None
         assert result.diagnostics[0].diagnostics[0]["message"] == "Unused variable"
         assert result.remaining_text == "Please help."
 
@@ -168,6 +169,7 @@ class TestFormatIdeNotificationContent:
         )
 
         result = parse_ide_notifications(text)
+        assert result is not None
         notifications = format_ide_notification_content(result)
 
         assert len(notifications) == 1
@@ -183,6 +185,7 @@ class TestFormatIdeNotificationContent:
         )
 
         result = parse_ide_notifications(text)
+        assert result is not None
         notifications = format_ide_notification_content(result)
 
         assert len(notifications) == 2
@@ -193,6 +196,7 @@ class TestFormatIdeNotificationContent:
         text = '<ide_opened_file>File with <special> & "characters" in path.</ide_opened_file>'
 
         result = parse_ide_notifications(text)
+        assert result is not None
         notifications = format_ide_notification_content(result)
 
         assert len(notifications) == 1
@@ -212,6 +216,7 @@ class TestFormatIdeNotificationContent:
         )
 
         result = parse_ide_notifications(text)
+        assert result is not None
         notifications = format_ide_notification_content(result)
 
         # Should have two diagnostic notifications (one per diagnostic object)
@@ -230,6 +235,7 @@ class TestFormatIdeNotificationContent:
         )
 
         result = parse_ide_notifications(text)
+        assert result is not None
         notifications = format_ide_notification_content(result)
 
         assert len(notifications) == 1
@@ -243,6 +249,7 @@ class TestFormatIdeNotificationContent:
         text = f"<ide_selection>{long_selection}</ide_selection>\nQuestion."
 
         result = parse_ide_notifications(text)
+        assert result is not None
         notifications = format_ide_notification_content(result)
 
         assert len(notifications) == 1
@@ -262,6 +269,7 @@ class TestFormatIdeNotificationContent:
         )
 
         result = parse_ide_notifications(text)
+        assert result is not None
         notifications = format_ide_notification_content(result)
 
         # Should have 2 notifications total: 1 file open + 1 diagnostic

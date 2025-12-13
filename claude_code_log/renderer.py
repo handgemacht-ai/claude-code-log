@@ -1790,7 +1790,7 @@ def _collect_session_info(
         else:
             message_content = message.message.content  # type: ignore
 
-        text_content = extract_text_content(message_content)
+        text_content = extract_text_content(message_content)  # type: ignore[arg-type]
 
         # Get session info
         session_id = getattr(message, "sessionId", "unknown")
@@ -1935,7 +1935,7 @@ def _render_messages(
         else:
             message_content = message.message.content  # type: ignore
 
-        text_content = extract_text_content(message_content)
+        text_content = extract_text_content(message_content)  # type: ignore[arg-type]
 
         # Separate tool/thinking/image content from text content
         tool_items: List[ContentItem] = []
@@ -1943,8 +1943,8 @@ def _render_messages(
 
         if isinstance(message_content, list):
             text_only_items: List[ContentItem] = []
-            for item in message_content:
-                item_type = getattr(item, "type", None)
+            for item in message_content:  # type: ignore[union-attr]
+                item_type = getattr(item, "type", None)  # type: ignore[arg-type]
                 is_image = isinstance(item, ImageContent) or item_type == "image"
                 is_tool_item = isinstance(
                     item,
@@ -1955,16 +1955,16 @@ def _render_messages(
                     message_type == MessageType.USER
                     or isinstance(message, QueueOperationTranscriptEntry)
                 ):
-                    text_only_items.append(item)
+                    text_only_items.append(item)  # type: ignore[arg-type]
                 elif is_tool_item or is_image:
-                    tool_items.append(item)
+                    tool_items.append(item)  # type: ignore[arg-type]
                 else:
-                    text_only_items.append(item)
+                    text_only_items.append(item)  # type: ignore[arg-type]
             text_only_content = text_only_items
         else:
-            message_content = message_content.strip()
+            message_content = message_content.strip()  # type: ignore[union-attr]
             if message_content:
-                text_only_content = [TextContent(type="text", text=message_content)]
+                text_only_content = [TextContent(type="text", text=message_content)]  # type: ignore[arg-type]
 
         # For sidechain user messages with tool results, clear text content
         # (prompts duplicate Task result; filtering already done in pass 1)

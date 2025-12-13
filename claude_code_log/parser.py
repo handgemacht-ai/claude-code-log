@@ -33,8 +33,6 @@ from .models import (
     IdeSelection,
     IdeDiagnostic,
     # Assistant message content models
-    AssistantTextContent,
-    # Tool input models
     BashInput,
     ReadInput,
     WriteInput,
@@ -315,7 +313,11 @@ def parse_compacted_summary(
 
     # Combine all text content for compacted summaries
     # Use hasattr check to handle both TextContent models and SDK TextBlock objects
-    all_text = "\n\n".join(item.text for item in content_list if hasattr(item, "text"))
+    texts = cast(
+        list[str],
+        [item.text for item in content_list if hasattr(item, "text")],  # type: ignore[union-attr]
+    )
+    all_text = "\n\n".join(texts)
     return CompactedSummaryContent(summary_text=all_text)
 
 
@@ -392,7 +394,11 @@ def parse_user_message_content(
 
     # Combine remaining text with any other text items
     # Use hasattr check to handle both TextContent models and SDK TextBlock objects
-    other_text = [item.text for item in content_list[1:] if hasattr(item, "text")]
+    other_text: list[str] = [
+        item.text  # type: ignore[union-attr]
+        for item in content_list[1:]
+        if hasattr(item, "text")
+    ]
     all_text = remaining_text
     if other_text:
         all_text = "\n\n".join([remaining_text] + other_text)
