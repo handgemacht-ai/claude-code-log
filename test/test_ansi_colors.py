@@ -1,6 +1,6 @@
 """Tests for ANSI color code conversion to HTML."""
 
-from claude_code_log.ansi_colors import convert_ansi_to_html
+from claude_code_log.html.ansi_colors import convert_ansi_to_html
 
 
 class TestAnsiColorConversion:
