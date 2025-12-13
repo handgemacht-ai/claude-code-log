@@ -82,12 +82,14 @@ class MessageModifiers:
 # renderers (HTML, text, etc.) to format the content appropriately.
 
 
-@dataclass
 class MessageContent:
     """Base class for structured message content.
 
     Subclasses represent specific content types that renderers can format
     appropriately for their output format.
+
+    Note: This is a plain class (not dataclass) to allow Pydantic BaseModel
+    subclasses like ToolUseContent and ImageContent to inherit from it.
     """
 
     pass
@@ -661,7 +663,7 @@ class TextContent(BaseModel):
     text: str
 
 
-class ToolUseContent(BaseModel):
+class ToolUseContent(BaseModel, MessageContent):
     type: Literal["tool_use"]
     id: str
     name: str
@@ -705,7 +707,7 @@ class ImageSource(BaseModel):
     data: str
 
 
-class ImageContent(BaseModel):
+class ImageContent(BaseModel, MessageContent):
     type: Literal["image"]
     source: ImageSource
 

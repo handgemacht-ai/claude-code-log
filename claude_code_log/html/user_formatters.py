@@ -261,14 +261,13 @@ def _format_diagnostic(diagnostic: IdeDiagnostic) -> List[str]:
     if diagnostic.diagnostics:
         # Parsed JSON diagnostics - render each as a table
         for diag_item in diagnostic.diagnostics:
-            if isinstance(diag_item, dict):
-                table_html = render_params_table(diag_item)
-                notification_html = (
-                    f"<div class='ide-notification ide-diagnostic'>"
-                    f"⚠️ IDE Diagnostic<br>{table_html}"
-                    f"</div>"
-                )
-                notifications.append(notification_html)
+            table_html = render_params_table(diag_item)
+            notification_html = (
+                f"<div class='ide-notification ide-diagnostic'>"
+                f"⚠️ IDE Diagnostic<br>{table_html}"
+                f"</div>"
+            )
+            notifications.append(notification_html)
     elif diagnostic.raw_content:
         # JSON parsing failed, render as plain text
         escaped_content = escape_html(diagnostic.raw_content[:200])
