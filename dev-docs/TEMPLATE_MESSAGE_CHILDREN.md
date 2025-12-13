@@ -42,23 +42,23 @@ Level 5: Sidechain tools
 The next step would be to pass tree roots directly to the template and use a recursive macro, eliminating the flatten step.
 
 ### Template Rendering (future)
-Recursive macro approach:
+Recursive macro approach (Note: html_content is now passed separately, not stored in message):
 ```jinja2
-{% macro render_message(message, depth=0) %}
+{% macro render_message(message, html_content, depth=0) %}
 <div class='message {{ message.css_class }}' data-depth='{{ depth }}'>
-    <div class='content'>{{ message.content_html | safe }}</div>
+    <div class='content'>{{ html_content | safe }}</div>
     {% if message.children %}
     <div class='children'>
-        {% for child in message.children %}
-        {{ render_message(child, depth + 1) }}
+        {% for child, child_html in message.children_with_html %}
+        {{ render_message(child, child_html, depth + 1) }}
         {% endfor %}
     </div>
     {% endif %}
 </div>
 {% endmacro %}
 
-{% for root in roots %}
-{{ render_message(root) }}
+{% for root, root_html in roots_with_html %}
+{{ render_message(root, root_html) }}
 {% endfor %}
 ```
 

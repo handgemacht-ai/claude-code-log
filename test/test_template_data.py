@@ -20,13 +20,11 @@ class TestTemplateMessage:
         """Test creating a TemplateMessage with all fields."""
         msg = TemplateMessage(
             message_type="user",
-            content_html="<p>Test content</p>",
             formatted_timestamp="2025-06-14 10:00:00",
             raw_timestamp=None,
         )
 
         assert msg.type == "user"
-        assert msg.content_html == "<p>Test content</p>"
         assert msg.formatted_timestamp == "2025-06-14 10:00:00"
         assert msg.message_title == "User"
 
@@ -42,7 +40,6 @@ class TestTemplateMessage:
         for msg_type, expected_display in test_cases:
             msg = TemplateMessage(
                 message_type=msg_type,
-                content_html="content",
                 formatted_timestamp="time",
                 raw_timestamp=None,
             )
@@ -380,7 +377,6 @@ class TestTemplateMessageTree:
         """Helper to create a minimal TemplateMessage for testing."""
         msg = TemplateMessage(
             message_type=msg_type,
-            content_html=f"<p>{msg_type} content</p>",
             formatted_timestamp="2025-06-14 10:00:00",
             raw_timestamp=None,
         )
@@ -533,7 +529,6 @@ class TestTreeBuildingIntegration:
         # Create a manual tree and verify flatten returns all messages
         root = TemplateMessage(
             message_type="session",
-            content_html="<p>Session</p>",
             formatted_timestamp="2025-06-14 10:00:00",
             raw_timestamp=None,
         )
@@ -542,7 +537,6 @@ class TestTreeBuildingIntegration:
 
         user = TemplateMessage(
             message_type="user",
-            content_html="<p>User</p>",
             formatted_timestamp="2025-06-14 10:00:01",
             raw_timestamp=None,
         )
@@ -551,7 +545,6 @@ class TestTreeBuildingIntegration:
 
         assistant = TemplateMessage(
             message_type="assistant",
-            content_html="<p>Assistant</p>",
             formatted_timestamp="2025-06-14 10:00:02",
             raw_timestamp=None,
         )
@@ -560,7 +553,6 @@ class TestTreeBuildingIntegration:
 
         tool = TemplateMessage(
             message_type="tool_use",
-            content_html="<p>Tool</p>",
             formatted_timestamp="2025-06-14 10:00:03",
             raw_timestamp=None,
         )

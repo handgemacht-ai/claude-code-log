@@ -68,7 +68,7 @@ class TemplateMessage:
 
     # Content (format-neutral)
     content: Optional[MessageContent]  # Structured content model
-    content_html: str                  # Rendered HTML (populated by HtmlRenderer)
+    # Note: HTML is generated during template rendering, not stored in the message
 
     # Display
     message_title: str         # Display title (e.g., "User", "Assistant")

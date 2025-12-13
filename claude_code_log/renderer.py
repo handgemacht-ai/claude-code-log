@@ -170,7 +170,6 @@ class TemplateMessage:
     def __init__(
         self,
         message_type: str,
-        content_html: str,
         formatted_timestamp: str,
         raw_timestamp: Optional[str] = None,
         session_summary: Optional[str] = None,
@@ -191,8 +190,7 @@ class TemplateMessage:
         content: Optional["MessageContent"] = None,
     ):
         self.type = message_type
-        self.content_html = content_html
-        # Structured content for format-neutral rendering (migration in progress)
+        # Structured content for rendering
         self.content = content
         self.formatted_timestamp = formatted_timestamp
         self.modifiers = modifiers if modifiers is not None else MessageModifiers()
@@ -821,11 +819,8 @@ def _process_system_message(
     # Store parent UUID for hierarchy rebuild (handled by _build_message_hierarchy)
     parent_uuid = getattr(message, "parentUuid", None)
 
-    # Note: content_html will be populated by HtmlRenderer from content
     return TemplateMessage(
         message_type="system",
-        content_html="",  # Populated by renderer from content
-        content=content,
         formatted_timestamp=formatted_timestamp,
         raw_timestamp=timestamp,
         session_id=session_id,
@@ -835,6 +830,7 @@ def _process_system_message(
         uuid=message.uuid,
         parent_uuid=parent_uuid,
         modifiers=MessageModifiers(system_level=level),
+        content=content,
     )
 
 
@@ -843,11 +839,8 @@ class ToolItemResult:
     """Result of processing a single tool/thinking/image item."""
 
     message_type: str
-    content_html: str  # Deprecated: will be removed once all use content field
     message_title: str
-    content: Optional["MessageContent"] = (
-        None  # Structured content (migration in progress)
-    )
+    content: Optional["MessageContent"] = None  # Structured content for rendering
     tool_use_id: Optional[str] = None
     title_hint: Optional[str] = None
     pending_dedup: Optional[str] = None  # For Task result deduplication
@@ -889,9 +882,8 @@ def _process_tool_use_item(
 
     return ToolItemResult(
         message_type="tool_use",
-        content_html="",  # Populated by HtmlRenderer
-        content=tool_use,  # ToolUseContent is the model
         message_title=tool_message_title,
+        content=tool_use,  # ToolUseContent is the model
         tool_use_id=item_tool_use_id,
         title_hint=tool_title_hint,
     )
@@ -965,9 +957,8 @@ def _process_tool_result_item(
 
     return ToolItemResult(
         message_type="tool_result",
-        content_html="",  # Populated by HtmlRenderer
-        content=content_model,
         message_title=tool_message_title,
+        content=content_model,
         tool_use_id=tool_result.tool_use_id,
         title_hint=tool_title_hint,
         pending_dedup=pending_dedup,
@@ -994,9 +985,8 @@ def _process_thinking_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
 
     return ToolItemResult(
         message_type="thinking",
-        content_html="",  # Populated by HtmlRenderer
-        content=thinking_model,
         message_title="Thinking",
+        content=thinking_model,
     )
 
 
@@ -1013,9 +1003,8 @@ def _process_image_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
 
     return ToolItemResult(
         message_type="image",
-        content_html="",  # Populated by HtmlRenderer
-        content=tool_item,  # ImageContent is already the model
         message_title="Image",
+        content=tool_item,  # ImageContent is already the model
     )
 
 
@@ -1656,7 +1645,6 @@ def _reorder_sidechain_template_messages(
                         sidechain_msg.content = DedupNoticeContent(
                             notice_text="(Task summary — already displayed in Task tool result above)"
                         )
-                        sidechain_msg.content_html = ""  # Populated by HtmlRenderer
                         # Mark as deduplicated for potential debugging
                         sidechain_msg.raw_text_content = None
                         break
@@ -2006,12 +1994,6 @@ def _render_messages(
 
             session_header = TemplateMessage(
                 message_type="session_header",
-                content_html="",  # Populated by HtmlRenderer
-                content=SessionHeaderContent(
-                    title=session_title,
-                    session_id=session_id,
-                    summary=current_session_summary,
-                ),
                 formatted_timestamp="",
                 raw_timestamp=None,
                 session_summary=current_session_summary,
@@ -2020,6 +2002,11 @@ def _render_messages(
                 message_id=None,
                 ancestry=[],
                 modifiers=MessageModifiers(),
+                content=SessionHeaderContent(
+                    title=session_title,
+                    session_id=session_id,
+                    summary=current_session_summary,
+                ),
             )
             template_messages.append(session_header)
 
@@ -2049,11 +2036,8 @@ def _render_messages(
                     token_parts.append(f"Cache Read: {usage.cache_read_input_tokens}")
                 token_usage_str = " | ".join(token_parts)
 
-        # Determine modifiers and content based on message type and duplicate status
-        # content_model: structured content (None if not parsed or using legacy path)
-        # content_html: HTML string (empty if using content model, populated for legacy)
+        # Determine modifiers and content based on message type
         content_model: Optional[MessageContent] = None
-        content_html: str = ""
 
         if is_command:
             modifiers, content_model, message_type, message_title = (
@@ -2102,8 +2086,6 @@ def _render_messages(
         if text_only_content:
             template_message = TemplateMessage(
                 message_type=message_type,
-                content_html=content_html,  # Empty if using content_model
-                content=content_model,  # Structured content (None for legacy path)
                 formatted_timestamp=formatted_timestamp,
                 raw_timestamp=timestamp,
                 session_summary=session_summary,
@@ -2116,6 +2098,7 @@ def _render_messages(
                 uuid=getattr(message, "uuid", None),
                 parent_uuid=getattr(message, "parentUuid", None),
                 modifiers=modifiers,
+                content=content_model,
             )
 
             # Store raw text content for potential future use (e.g., deduplication,
@@ -2175,8 +2158,6 @@ def _render_messages(
 
             tool_template_message = TemplateMessage(
                 message_type=tool_result.message_type,
-                content_html=tool_result.content_html,  # Empty if using content
-                content=tool_result.content,  # Structured content model
                 formatted_timestamp=tool_formatted_timestamp,
                 raw_timestamp=tool_timestamp,
                 session_summary=session_summary,
@@ -2189,6 +2170,7 @@ def _render_messages(
                 agent_id=getattr(message, "agentId", None),
                 uuid=tool_uuid,
                 modifiers=tool_modifiers,
+                content=tool_result.content,  # Structured content model
             )
 
             # Store raw text for Task result deduplication

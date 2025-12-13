@@ -1,7 +1,7 @@
 """HTML renderer implementation for Claude Code transcripts."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..cache import get_library_version
 from ..models import (
@@ -93,43 +93,43 @@ def check_html_version(html_file_path: Path) -> Optional[str]:
 class HtmlRenderer(Renderer):
     """HTML renderer for Claude Code transcripts."""
 
-    def _format_message_content(self, message: TemplateMessage) -> None:
+    def _format_message_content(self, message: TemplateMessage) -> str:
         """Format structured content to HTML for a single message.
 
-        This populates message.content_html from message.content for messages
-        that have structured content. Messages without structured content
-        (content is None) are left unchanged.
+        Args:
+            message: TemplateMessage with content model to format
+
+        Returns:
+            HTML string for the message content, or empty string if no content
         """
         if message.content is None:
-            return
+            return ""
 
         # Dispatch to appropriate formatter based on content type
         if isinstance(message.content, SystemContent):
-            message.content_html = format_system_content(message.content)
+            return format_system_content(message.content)
         elif isinstance(message.content, HookSummaryContent):
-            message.content_html = format_hook_summary_content(message.content)
+            return format_hook_summary_content(message.content)
         elif isinstance(message.content, SessionHeaderContent):
-            message.content_html = format_session_header_content(message.content)
+            return format_session_header_content(message.content)
         elif isinstance(message.content, DedupNoticeContent):
-            message.content_html = format_dedup_notice_content(message.content)
+            return format_dedup_notice_content(message.content)
         elif isinstance(message.content, SlashCommandContent):
-            message.content_html = format_slash_command_content(message.content)
+            return format_slash_command_content(message.content)
         elif isinstance(message.content, CommandOutputContent):
-            message.content_html = format_command_output_content(message.content)
+            return format_command_output_content(message.content)
         elif isinstance(message.content, BashInputContent):
-            message.content_html = format_bash_input_content(message.content)
+            return format_bash_input_content(message.content)
         elif isinstance(message.content, BashOutputContent):
-            message.content_html = format_bash_output_content(message.content)
+            return format_bash_output_content(message.content)
         elif isinstance(message.content, ThinkingContentModel):
-            message.content_html = format_thinking_content(
-                message.content, line_threshold=10
-            )
+            return format_thinking_content(message.content, line_threshold=10)
         elif isinstance(message.content, AssistantTextContent):
-            message.content_html = format_assistant_text_content(message.content)
+            return format_assistant_text_content(message.content)
         elif isinstance(message.content, ImageContent):
-            message.content_html = format_image_content(message.content)
+            return format_image_content(message.content)
         elif isinstance(message.content, ToolUseContent):
-            message.content_html = format_tool_use_content(message.content)
+            return format_tool_use_content(message.content)
         elif isinstance(message.content, ToolResultContentModel):
             # Create ToolResultContent from the model for formatting
             tool_result = ToolResultContent(
@@ -138,51 +138,54 @@ class HtmlRenderer(Renderer):
                 content=message.content.content,
                 is_error=message.content.is_error,
             )
-            message.content_html = format_tool_result_content(
+            return format_tool_result_content(
                 tool_result,
                 message.content.file_path,
                 message.content.tool_name,
             )
         # User message content types
         elif isinstance(message.content, CompactedSummaryContent):
-            message.content_html = format_compacted_summary_content(message.content)
+            return format_compacted_summary_content(message.content)
         elif isinstance(message.content, UserMemoryContent):
-            message.content_html = format_user_memory_content(message.content)
+            return format_user_memory_content(message.content)
         elif isinstance(message.content, UserTextContent):
             # Check if this is a slash command expanded prompt (via modifiers)
             if message.modifiers and message.modifiers.is_slash_command:
                 # Slash command expanded prompts are markdown (LLM-generated)
                 from .utils import render_markdown_collapsible
 
-                message.content_html = render_markdown_collapsible(
+                return render_markdown_collapsible(
                     message.content.text,
                     "slash-command-content",
                     line_threshold=20,
                     preview_line_count=5,
                 )
             else:
-                message.content_html = format_user_text_model_content(message.content)
+                return format_user_text_model_content(message.content)
         elif isinstance(message.content, UnknownContent):
-            message.content_html = format_unknown_content(message.content)
+            return format_unknown_content(message.content)
         # Future content types will be added here as they are migrated
+        return ""
 
-    def _flatten_preorder(self, roots: List[TemplateMessage]) -> List[TemplateMessage]:
+    def _flatten_preorder(
+        self, roots: List[TemplateMessage]
+    ) -> List[Tuple[TemplateMessage, str]]:
         """Flatten message tree via pre-order traversal, formatting each message.
 
         Traverses the tree depth-first (pre-order), formats each message's
-        content to HTML, and builds a flat list for template rendering.
+        content to HTML, and builds a flat list of (message, html) pairs.
 
         Args:
             roots: Root messages (typically session headers) with children populated
 
         Returns:
-            Flat list of all messages in pre-order (parent before children)
+            Flat list of (message, html_content) tuples in pre-order
         """
-        flat: List[TemplateMessage] = []
+        flat: List[Tuple[TemplateMessage, str]] = []
 
         def visit(msg: TemplateMessage) -> None:
-            self._format_message_content(msg)
-            flat.append(msg)
+            html = self._format_message_content(msg)
+            flat.append((msg, html))
             for child in msg.children:
                 visit(child)
 
