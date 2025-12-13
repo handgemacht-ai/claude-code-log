@@ -342,7 +342,7 @@ def get_template_environment() -> Environment:
     Returns:
         Configured Jinja2 Environment
     """
-    templates_dir = Path(__file__).parent.parent / "templates"
+    templates_dir = Path(__file__).parent / "templates"
     env = Environment(
         loader=FileSystemLoader(templates_dir),
         autoescape=select_autoescape(["html", "xml"]),
