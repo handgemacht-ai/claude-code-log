@@ -17,7 +17,7 @@ from pygments.lexers import TextLexer, get_lexer_by_name, get_all_lexers  # type
 from pygments.formatters import HtmlFormatter  # type: ignore[reportUnknownVariableType]
 from pygments.util import ClassNotFound  # type: ignore[reportUnknownVariableType]
 
-from .renderer_timings import timing_stat
+from ..renderer_timings import timing_stat
 
 
 def _escape_html(text: str) -> str:

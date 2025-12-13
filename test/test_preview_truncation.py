@@ -9,7 +9,7 @@ from pathlib import Path
 
 from claude_code_log.converter import load_transcript
 from claude_code_log.html.renderer import generate_html
-from claude_code_log.renderer_code import (
+from claude_code_log.html.renderer_code import (
     truncate_highlighted_preview,
     highlight_code_with_pygments,
 )

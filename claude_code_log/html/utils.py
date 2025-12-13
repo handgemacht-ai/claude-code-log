@@ -20,7 +20,7 @@ from typing import Any, Optional, TYPE_CHECKING
 import mistune
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..renderer_code import highlight_code_with_pygments, truncate_highlighted_preview
+from .renderer_code import highlight_code_with_pygments, truncate_highlighted_preview
 from ..renderer_timings import timing_stat
 
 if TYPE_CHECKING:

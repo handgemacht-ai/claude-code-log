@@ -7,7 +7,7 @@ algorithms in renderer_code.py.
 
 import pytest
 
-from claude_code_log.renderer_code import (
+from claude_code_log.html.renderer_code import (
     highlight_code_with_pygments,
     render_line_diff,
     render_single_diff,

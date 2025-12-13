@@ -40,7 +40,7 @@ from ..models import (
     WriteInput,
 )
 from .ansi_colors import convert_ansi_to_html
-from ..renderer_code import render_single_diff
+from .renderer_code import render_single_diff
 
 
 # -- AskUserQuestion Tool -----------------------------------------------------
