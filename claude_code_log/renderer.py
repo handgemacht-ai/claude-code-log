@@ -29,11 +29,15 @@ from .models import (
     ThinkingContentModel,
     ImageContent,
     # Structured content types
+    CompactedSummaryContent,
     DedupNoticeContent,
     HookInfo,
     HookSummaryContent,
+    IdeNotificationContent,
     SessionHeaderContent,
     SystemContent,
+    UserMemoryContent,
+    UserTextContent,
 )
 from .parser import (
     extract_text_content,
@@ -61,7 +65,6 @@ from .renderer_timings import (
 
 from .html import (
     escape_html,
-    format_ide_notification_content,
     format_image_content,
     format_tool_use_title,
     format_user_text_content,
@@ -71,7 +74,11 @@ from .html import (
     parse_slash_command,
     render_markdown_collapsible,
 )
-from .parser import parse_ide_notifications
+from .parser import (
+    parse_compacted_summary,
+    parse_ide_notifications,
+    parse_user_memory,
+)
 
 
 # -- Content Formatters -------------------------------------------------------
@@ -82,102 +89,134 @@ from .parser import parse_ide_notifications
 #   - format_image_content -> html/assistant_formatters.py (still used in legacy render_message_content)
 
 
-def _is_compacted_session_summary(text: str) -> bool:
-    """Check if text is a compacted session summary (model-generated markdown).
+# Type alias for content models returned by parse_user_message_content
+from typing import Union
 
-    Compacted summaries are generated when a session runs out of context and
-    needs to be continued. They are well-formed markdown and should be rendered
-    as such rather than in preformatted blocks.
+UserMessageContent = Union[CompactedSummaryContent, UserMemoryContent, UserTextContent]
+
+
+def parse_user_message_content(
+    content_list: List[ContentItem],
+) -> tuple[Optional[UserMessageContent], bool, bool]:
+    """Parse user message content into a structured content model.
+
+    Returns a content model for HtmlRenderer to format. Handles:
+    - CompactedSummaryContent: Session continuation summaries
+    - UserMemoryContent: User memory input from CLAUDE.md
+    - UserTextContent: Normal user text with optional IDE notifications
+
+    Returns:
+        A tuple of (content_model, is_compacted, is_memory_input)
+        content_model is None only if content_list is empty or has no text.
     """
-    return text.startswith(
-        "This session is being continued from a previous conversation that ran out of context"
-    )
+    # Check first text item
+    if not content_list or not hasattr(content_list[0], "text"):
+        return None, False, False
+
+    first_text = getattr(content_list[0], "text", "")
+
+    # Check for compacted session summary first
+    compacted = parse_compacted_summary(first_text)
+    if compacted:
+        # Combine all text content for compacted summaries
+        all_text = "\n\n".join(
+            item.text for item in content_list if isinstance(item, TextContent)
+        )
+        return CompactedSummaryContent(summary_text=all_text), True, False
+
+    # Check for user memory input
+    user_memory = parse_user_memory(first_text)
+    if user_memory:
+        return user_memory, False, True
+
+    # Parse IDE notifications from first text item
+    ide_content = parse_ide_notifications(first_text)
+
+    # Get remaining text after IDE notifications extracted
+    if ide_content:
+        remaining_text = ide_content.remaining_text
+    else:
+        remaining_text = first_text
+
+    # Combine remaining text with any other text items
+    other_text = [
+        item.text for item in content_list[1:] if isinstance(item, TextContent)
+    ]
+    all_text = remaining_text
+    if other_text:
+        all_text = "\n\n".join([remaining_text] + other_text)
+
+    # Return UserTextContent with optional IDE notifications
+    return UserTextContent(text=all_text, ide_notifications=ide_content), False, False
+
+
+# -- Backward-Compatible Wrappers ---------------------------------------------
+# These functions combine parsing + formatting for backward compatibility with
+# existing tests. New code should use the separate parse_* and format_* functions.
 
 
 def extract_ide_notifications(text: str) -> tuple[List[str], str]:
-    """Extract IDE notification tags from user message text.
+    """Extract IDE notifications from text and return HTML notifications.
 
-    Handles:
-    - <ide_opened_file>: Simple file open notifications
-    - <ide_selection>: Code selection notifications (collapsible for large selections)
-    - <post-tool-use-hook><ide_diagnostics>: JSON diagnostic arrays
+    DEPRECATED: Use parse_ide_notifications() + format_ide_notification_content() instead.
+
+    This is a backward-compatible wrapper that combines parsing (parse_ide_notifications)
+    and formatting (format_ide_notification_content) for existing tests.
 
     Returns:
         A tuple of (notifications_html_list, remaining_text)
-        where notifications are pre-rendered HTML divs and remaining_text
-        is the message content with IDE tags removed.
     """
-    # Parse structured content from text
-    ide_content = parse_ide_notifications(text)
-    if ide_content is None:
-        return [], text
+    from .html.user_formatters import format_ide_notification_content
 
-    # Format to HTML and return with remaining text
-    notifications = format_ide_notification_content(ide_content)
-    return notifications, ide_content.remaining_text
+    ide_content = parse_ide_notifications(text)
+    if ide_content:
+        notifications = format_ide_notification_content(ide_content)
+        return notifications, ide_content.remaining_text
+    return [], text
 
 
 def render_user_message_content(
     content_list: List[ContentItem],
 ) -> tuple[str, bool, bool]:
-    """Render user message content with IDE tag extraction and compacted summary handling.
+    """Render user message content to HTML.
+
+    DEPRECATED: Use parse_user_message_content() for parsing, then use
+    HtmlRenderer._format_message_content() or the appropriate formatter.
+
+    This is a backward-compatible wrapper that combines parsing and formatting
+    for existing tests.
 
     Returns:
         A tuple of (content_html, is_compacted, is_memory_input)
     """
-    # Check first text item
-    if content_list and hasattr(content_list[0], "text"):
-        first_text = getattr(content_list[0], "text", "")
+    from .html.user_formatters import (
+        format_compacted_summary_content,
+        format_user_memory_content,
+        format_user_text_model_content,
+    )
 
-        # Check for compacted session summary first
-        if _is_compacted_session_summary(first_text):
-            # Combine all text content for compacted summaries
-            all_text = "\n\n".join(
-                item.text for item in content_list if isinstance(item, TextContent)
-            )
-            # Render as collapsible markdown (threshold=30, preview=10 for large summaries)
-            content_html = render_markdown_collapsible(
-                all_text, "compacted-summary", line_threshold=30, preview_line_count=10
-            )
-            return content_html, True, False
+    content_model, is_compacted, is_memory_input = parse_user_message_content(
+        content_list
+    )
 
-        # Check for user memory input
-        memory_match = re.search(
-            r"<user-memory-input>(.*?)</user-memory-input>",
-            first_text,
-            re.DOTALL,
-        )
-        if memory_match:
-            memory_content = memory_match.group(1).strip()
-            # Render the memory content as user message
-            memory_content_list: List[ContentItem] = [
-                TextContent(type="text", text=memory_content)
-            ]
-            content_html = render_message_content(memory_content_list, "user")
-            return content_html, False, True
+    if content_model is None:
+        return "", False, False
 
-        # Extract IDE notifications from first text item
-        ide_notifications_html, remaining_text = extract_ide_notifications(first_text)
-        modified_content = content_list[1:]
-
-        # Build new content list with remaining text
-        if remaining_text:
-            # Replace first item with remaining text
-            modified_content = [
-                TextContent(type="text", text=remaining_text)
-            ] + modified_content
-
-        # Render the content
-        content_html = render_message_content(modified_content, "user")
-
-        # Prepend IDE notifications
-        if ide_notifications_html:
-            content_html = "".join(ide_notifications_html) + content_html
+    # Dispatch to appropriate formatter based on content type
+    if isinstance(content_model, CompactedSummaryContent):
+        content_html = format_compacted_summary_content(content_model)
+    elif isinstance(content_model, UserMemoryContent):
+        content_html = format_user_memory_content(content_model)
+    elif isinstance(content_model, UserTextContent):
+        content_html = format_user_text_model_content(content_model)
+        # Also include images from original content_list
+        for item in content_list:
+            if isinstance(item, ImageContent):
+                content_html += format_image_content(item)
     else:
-        # No text in first item or empty list, render normally
-        content_html = render_message_content(content_list, "user")
+        content_html = ""
 
-    return content_html, False, False
+    return content_html, is_compacted, is_memory_input
 
 
 def render_message_content(content: List[ContentItem], message_type: str) -> str:
@@ -878,8 +917,11 @@ def _process_regular_message(
     message_type: str,
     is_sidechain: bool,
     is_meta: bool = False,
-) -> tuple[MessageModifiers, str, str, str]:
-    """Process regular message and return (modifiers, content_html, message_type, message_title).
+) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
+    """Process regular message and return (modifiers, content_model, message_type, message_title).
+
+    Returns content_model for user messages, None for non-user messages.
+    Non-user messages (assistant) are handled by the legacy render_message_content path.
 
     Note: Sidechain user messages (Sub-assistant prompts) are now skipped entirely
     in the main processing loop since they duplicate the Task tool input prompt.
@@ -891,12 +933,13 @@ def _process_regular_message(
     is_compacted = False
     is_slash_command = False
     is_memory_input = False
+    content_model: Optional["MessageContent"] = None
 
     # Handle user-specific preprocessing
     if message_type == MessageType.USER:
         # Note: sidechain user messages are skipped before reaching this function
         if is_meta:
-            # Slash command expanded prompts - render as collapsible markdown
+            # Slash command expanded prompts
             # These contain LLM-generated instruction text (markdown formatted)
             is_slash_command = True
             message_title = "User (slash command)"
@@ -906,23 +949,18 @@ def _process_regular_message(
                 for item in text_only_content
                 if hasattr(item, "text")
             )
-            content_html = render_markdown_collapsible(
-                all_text,
-                "slash-command-content",
-                line_threshold=20,
-                preview_line_count=5,
-            )
+            # Use UserTextContent with is_slash_command flag for HtmlRenderer to format
+            content_model = UserTextContent(text=all_text)
         else:
-            content_html, is_compacted, is_memory_input = render_user_message_content(
+            content_model, is_compacted, is_memory_input = parse_user_message_content(
                 text_only_content
             )
             if is_compacted:
                 message_title = "User (compacted conversation)"
             elif is_memory_input:
                 message_title = "Memory"
-    else:
-        # Non-user messages: render directly
-        content_html = render_message_content(text_only_content, message_type)
+    # Non-user messages (assistant): content_model stays None
+    # The calling code will handle this via render_message_content
 
     if is_sidechain:
         # Update message title for display (only non-user types reach here)
@@ -935,7 +973,7 @@ def _process_regular_message(
         is_compacted=is_compacted,
     )
 
-    return modifiers, content_html, message_type, message_title
+    return modifiers, content_model, message_type, message_title
 
 
 def _process_system_message(
@@ -2242,7 +2280,7 @@ def _render_messages(
             else:
                 effective_type = message_type
 
-            modifiers, content_html, message_type_result, message_title = (
+            modifiers, content_model, message_type_result, message_title = (
                 _process_regular_message(
                     text_only_content,
                     effective_type,
@@ -2251,6 +2289,11 @@ def _render_messages(
                 )
             )
             message_type = message_type_result  # Update message_type with result
+
+            # For non-user messages (assistant), content_model is None
+            # Use legacy render_message_content for now
+            if content_model is None and text_only_content:
+                content_html = render_message_content(text_only_content, message_type)
 
             # Add 'steering' modifier for queue-operation 'remove' messages
             if (

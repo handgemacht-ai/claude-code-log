@@ -8,6 +8,7 @@ from ..models import (
     BashInputContent,
     BashOutputContent,
     CommandOutputContent,
+    CompactedSummaryContent,
     DedupNoticeContent,
     HookSummaryContent,
     ImageContent,
@@ -19,6 +20,8 @@ from ..models import (
     ToolResultContentModel,
     ToolUseContent,
     TranscriptEntry,
+    UserMemoryContent,
+    UserTextContent,
 )
 from ..renderer import (
     Renderer,
@@ -38,7 +41,10 @@ from .user_formatters import (
     format_bash_input_content,
     format_bash_output_content,
     format_command_output_content,
+    format_compacted_summary_content,
     format_slash_command_content,
+    format_user_memory_content,
+    format_user_text_model_content,
 )
 from .assistant_formatters import format_image_content, format_thinking_content
 from .tool_formatters import format_tool_result_content, format_tool_use_content
@@ -128,6 +134,25 @@ class HtmlRenderer(Renderer):
                 message.content.file_path,
                 message.content.tool_name,
             )
+        # User message content types
+        elif isinstance(message.content, CompactedSummaryContent):
+            message.content_html = format_compacted_summary_content(message.content)
+        elif isinstance(message.content, UserMemoryContent):
+            message.content_html = format_user_memory_content(message.content)
+        elif isinstance(message.content, UserTextContent):
+            # Check if this is a slash command expanded prompt (via modifiers)
+            if message.modifiers and message.modifiers.is_slash_command:
+                # Slash command expanded prompts are markdown (LLM-generated)
+                from .utils import render_markdown_collapsible
+
+                message.content_html = render_markdown_collapsible(
+                    message.content.text,
+                    "slash-command-content",
+                    line_threshold=20,
+                    preview_line_count=5,
+                )
+            else:
+                message.content_html = format_user_text_model_content(message.content)
         # Future content types will be added here as they are migrated
 
     def _flatten_preorder(self, roots: List[TemplateMessage]) -> List[TemplateMessage]:

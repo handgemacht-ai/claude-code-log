@@ -198,7 +198,9 @@ class CompactedSummaryContent(MessageContent):
     """Content for compacted session summaries.
 
     These are user messages that contain previous conversation context
-    in a compacted format.
+    in a compacted format when sessions run out of context.
+    Parsed by parse_compacted_summary() in parser.py, formatted by
+    format_compacted_summary_content() in html/user_formatters.py.
     """
 
     summary_text: str
@@ -209,8 +211,8 @@ class UserMemoryContent(MessageContent):
     """Content for user memory input.
 
     These are user messages containing user-memory-input tags.
-
-    TODO: Not currently used - parser for <user-memory-input> tag not implemented.
+    Parsed by parse_user_memory() in parser.py, formatted by
+    format_user_memory_content() in html/user_formatters.py.
     """
 
     memory_text: str

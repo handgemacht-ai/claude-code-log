@@ -25,6 +25,8 @@ from .models import (
     CommandOutputContent,
     BashInputContent,
     BashOutputContent,
+    CompactedSummaryContent,
+    UserMemoryContent,
     IdeNotificationContent,
     IdeOpenedFile,
     IdeSelection,
@@ -278,6 +280,52 @@ def parse_ide_notifications(text: str) -> Optional[IdeNotificationContent]:
         diagnostics=diagnostics,
         remaining_text=remaining_text.strip(),
     )
+
+
+# Pattern for compacted session summary detection
+COMPACTED_SUMMARY_PREFIX = "This session is being continued from a previous conversation that ran out of context"
+
+
+def parse_compacted_summary(text: str) -> Optional[CompactedSummaryContent]:
+    """Parse compacted session summary from text.
+
+    Compacted summaries are generated when a session runs out of context and
+    needs to be continued. They contain a summary of the previous conversation.
+
+    Args:
+        text: Raw text that may be a compacted summary
+
+    Returns:
+        CompactedSummaryContent if text is a compacted summary, None otherwise
+    """
+    if text.startswith(COMPACTED_SUMMARY_PREFIX):
+        return CompactedSummaryContent(summary_text=text)
+    return None
+
+
+# Pattern for user memory input tag
+USER_MEMORY_PATTERN = re.compile(
+    r"<user-memory-input>(.*?)</user-memory-input>", re.DOTALL
+)
+
+
+def parse_user_memory(text: str) -> Optional[UserMemoryContent]:
+    """Parse user memory input tag from text.
+
+    User memory input contains context that the user has provided from
+    their CLAUDE.md or other memory sources.
+
+    Args:
+        text: Raw text that may contain user memory input tag
+
+    Returns:
+        UserMemoryContent if tag found, None otherwise
+    """
+    match = USER_MEMORY_PATTERN.search(text)
+    if match:
+        memory_content = match.group(1).strip()
+        return UserMemoryContent(memory_text=memory_content)
+    return None
 
 
 # =============================================================================
