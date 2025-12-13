@@ -287,21 +287,34 @@ def parse_ide_notifications(text: str) -> Optional[IdeNotificationContent]:
 COMPACTED_SUMMARY_PREFIX = "This session is being continued from a previous conversation that ran out of context"
 
 
-def parse_compacted_summary(text: str) -> Optional[CompactedSummaryContent]:
-    """Parse compacted session summary from text.
+def parse_compacted_summary(
+    content_list: List[ContentItem],
+) -> Optional[CompactedSummaryContent]:
+    """Parse compacted session summary from content list.
 
     Compacted summaries are generated when a session runs out of context and
     needs to be continued. They contain a summary of the previous conversation.
 
+    If the first text item starts with the compacted summary prefix, all text
+    items are combined into a single CompactedSummaryContent.
+
     Args:
-        text: Raw text that may be a compacted summary
+        content_list: List of ContentItem from user message
 
     Returns:
-        CompactedSummaryContent if text is a compacted summary, None otherwise
+        CompactedSummaryContent if first text is a compacted summary, None otherwise
     """
-    if text.startswith(COMPACTED_SUMMARY_PREFIX):
-        return CompactedSummaryContent(summary_text=text)
-    return None
+    if not content_list or not hasattr(content_list[0], "text"):
+        return None
+
+    first_text = getattr(content_list[0], "text", "")
+    if not first_text.startswith(COMPACTED_SUMMARY_PREFIX):
+        return None
+
+    # Combine all text content for compacted summaries
+    # Use hasattr check to handle both TextContent models and SDK TextBlock objects
+    all_text = "\n\n".join(item.text for item in content_list if hasattr(item, "text"))
+    return CompactedSummaryContent(summary_text=all_text)
 
 
 # Pattern for user memory input tag
@@ -354,16 +367,12 @@ def parse_user_message_content(
     if not content_list or not hasattr(content_list[0], "text"):
         return None, False, False
 
-    first_text = getattr(content_list[0], "text", "")
-
-    # Check for compacted session summary first
-    compacted = parse_compacted_summary(first_text)
+    # Check for compacted session summary first (handles text combining internally)
+    compacted = parse_compacted_summary(content_list)
     if compacted:
-        # Combine all text content for compacted summaries
-        all_text = "\n\n".join(
-            item.text for item in content_list if isinstance(item, TextContent)
-        )
-        return CompactedSummaryContent(summary_text=all_text), True, False
+        return compacted, True, False
+
+    first_text = getattr(content_list[0], "text", "")
 
     # Check for user memory input
     user_memory = parse_user_memory(first_text)
@@ -380,9 +389,8 @@ def parse_user_message_content(
         remaining_text = first_text
 
     # Combine remaining text with any other text items
-    other_text = [
-        item.text for item in content_list[1:] if isinstance(item, TextContent)
-    ]
+    # Use hasattr check to handle both TextContent models and SDK TextBlock objects
+    other_text = [item.text for item in content_list[1:] if hasattr(item, "text")]
     all_text = remaining_text
     if other_text:
         all_text = "\n\n".join([remaining_text] + other_text)
