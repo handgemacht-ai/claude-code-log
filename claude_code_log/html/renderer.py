@@ -133,14 +133,15 @@ class HtmlRenderer(Renderer):
     def _format_all_content(self, messages: List[TemplateMessage]) -> None:
         """Format structured content to HTML for all messages.
 
-        Iterates through all messages (including children) and populates
-        content_html from content where structured content exists.
+        Iterates through the flat message list and populates content_html
+        from content where structured content exists.
+
+        Note: Does NOT recurse into children because the template renders
+        from a flat list, not a tree structure. The .children relationship
+        is only used for the folding UI in JavaScript.
         """
         for message in messages:
             self._format_message_content(message)
-            # Recursively process children
-            if message.children:
-                self._format_all_content(message.children)
 
     def generate(
         self,
