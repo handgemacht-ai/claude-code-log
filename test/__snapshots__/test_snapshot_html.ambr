@@ -2726,6 +2726,20 @@
       font-family: var(--font-ui);
   }
   
+  .markdown table {
+      border-collapse: collapse;
+  }
+  
+  .markdown td {
+      padding: .5em;
+      border-top: 1px solid #bbb;
+  }
+  
+  .markdown th {
+      padding: .5em;
+      border-bottom: 1px solid #888;
+  }
+  
   /* Code block styling */
   pre > code {
       display: block;
@@ -7446,6 +7460,20 @@
   .user.compacted .content,
   .markdown {
       font-family: var(--font-ui);
+  }
+  
+  .markdown table {
+      border-collapse: collapse;
+  }
+  
+  .markdown td {
+      padding: .5em;
+      border-top: 1px solid #bbb;
+  }
+  
+  .markdown th {
+      padding: .5em;
+      border-bottom: 1px solid #888;
   }
   
   /* Code block styling */
@@ -12258,6 +12286,20 @@
   .user.compacted .content,
   .markdown {
       font-family: var(--font-ui);
+  }
+  
+  .markdown table {
+      border-collapse: collapse;
+  }
+  
+  .markdown td {
+      padding: .5em;
+      border-top: 1px solid #bbb;
+  }
+  
+  .markdown th {
+      padding: .5em;
+      border-bottom: 1px solid #888;
   }
   
   /* Code block styling */
@@ -17118,6 +17160,20 @@
   .user.compacted .content,
   .markdown {
       font-family: var(--font-ui);
+  }
+  
+  .markdown table {
+      border-collapse: collapse;
+  }
+  
+  .markdown td {
+      padding: .5em;
+      border-top: 1px solid #bbb;
+  }
+  
+  .markdown th {
+      padding: .5em;
+      border-bottom: 1px solid #888;
   }
   
   /* Code block styling */
