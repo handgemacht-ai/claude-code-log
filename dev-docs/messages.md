@@ -57,8 +57,6 @@ JSONL Parsing (parser.py)
 
 The intermediate representation is `TemplateMessage`, a Python class (in `renderer.py`) that captures all fields needed for rendering.
 
-**Important**: Traits like "sidechain", "compacted", "slash-command", "error" are NOT stored as boolean fields. They are encoded in the `css_class` string (e.g., `"user sidechain"`, `"tool_result error"`). This is a current limitation - a truly format-neutral representation would store these as explicit fields.
-
 ### Key Fields
 
 ```python
@@ -74,7 +72,8 @@ class TemplateMessage:
 
     # Display
     message_title: str         # Display title (e.g., "User", "Assistant")
-    css_class: str             # CSS classes (encodes type + traits)
+    css_class: str             # CSS classes (derived from type + modifiers)
+    modifiers: MessageModifiers  # Format-neutral display traits
 
     # Metadata
     raw_timestamp: str         # ISO 8601 timestamp
@@ -92,28 +91,30 @@ class TemplateMessage:
     tool_use_id: Optional[str]  # ID linking tool_use to tool_result
 ```
 
-### Traits Encoded in css_class
+### MessageModifiers → CSS Classes
 
-| css_class | Base Type | Traits |
-|-----------|-----------|--------|
+Display traits are stored in `MessageModifiers` (see [Part 6](#part-6-infrastructure-models)) and converted to CSS classes for HTML rendering:
+
+| css_class | Base Type | MessageModifiers Field |
+|-----------|-----------|------------------------|
 | `"user"` | user | (none) |
-| `"user compacted"` | user | compacted conversation |
-| `"user slash-command"` | user | isMeta=true or command tags |
-| `"user command-output"` | user | command output |
-| `"user sidechain"` | user | isSidechain=true |
-| `"user steering"` | user | queue-operation remove |
+| `"user compacted"` | user | `is_compacted=True` |
+| `"user slash-command"` | user | `is_slash_command=True` |
+| `"user command-output"` | user | `is_command_output=True` |
+| `"user sidechain"` | user | `is_sidechain=True` |
+| `"user steering"` | user | `is_steering=True` |
 | `"assistant"` | assistant | (none) |
-| `"assistant sidechain"` | assistant | isSidechain=true |
+| `"assistant sidechain"` | assistant | `is_sidechain=True` |
 | `"tool_use"` | tool_use | (none) |
-| `"tool_use sidechain"` | tool_use | isSidechain=true |
+| `"tool_use sidechain"` | tool_use | `is_sidechain=True` |
 | `"tool_result"` | tool_result | (none) |
-| `"tool_result error"` | tool_result | is_error=true |
-| `"tool_result sidechain"` | tool_result | isSidechain=true |
+| `"tool_result error"` | tool_result | `is_error=True` |
+| `"tool_result sidechain"` | tool_result | `is_sidechain=True` |
 | `"thinking"` | thinking | (none) |
-| `"system system-info"` | system | level=info |
-| `"system system-warning"` | system | level=warning |
-| `"system system-error"` | system | level=error |
-| `"system system-hook"` | system | hook summary |
+| `"system system-info"` | system | `system_level="info"` |
+| `"system system-warning"` | system | `system_level="warning"` |
+| `"system system-error"` | system | `system_level="error"` |
+| `"system system-hook"` | system | `system_level="hook"` |
 
 **Note**: See [css-classes.md](css-classes.md) for complete CSS support status.
 
@@ -237,6 +238,39 @@ class CompactedSummaryContent(MessageContent):
 - **Note**: Typically skipped during rendering (duplicates Task prompt)
 - **Files**: [user_sidechain.json](messages/user/user_sidechain.json)
 
+### IDE Notifications
+
+User messages may contain IDE notification tags that are parsed into structured content:
+
+- **Condition**: Contains `<ide_opened_file>`, `<ide_selection>`, or `<ide_diagnostics>` tags
+- **Content Model**: `IdeNotificationContent` containing lists of:
+  - `IdeOpenedFile`: File open notifications
+  - `IdeSelection`: Code selection notifications
+  - `IdeDiagnostic`: Diagnostic messages (parsed JSON or raw text fallback)
+- **CSS Class**: Notifications rendered as inline elements within user message
+
+```python
+@dataclass
+class IdeOpenedFile:
+    content: str  # Raw content from the tag
+
+@dataclass
+class IdeSelection:
+    content: str  # Raw selection content
+
+@dataclass
+class IdeDiagnostic:
+    diagnostics: Optional[List[Dict[str, Any]]]  # Parsed JSON
+    raw_content: Optional[str]  # Fallback if parsing failed
+
+@dataclass
+class IdeNotificationContent(MessageContent):
+    opened_files: List[IdeOpenedFile]
+    selections: List[IdeSelection]
+    diagnostics: List[IdeDiagnostic]
+    remaining_text: str  # Text after notifications extracted
+```
+
 ## 1.3 Tool Results (ToolResultContent)
 
 Tool results appear as `ToolResultContent` items in user messages, linked to their corresponding `ToolUseContent` via `tool_use_id`.
@@ -247,11 +281,14 @@ Tool results appear as `ToolResultContent` items in user messages, linked to the
 |------|--------------|------------|-------|
 | Read | `ReadOutput` | file_path, content, start_line, num_lines, is_truncated | [tool_result](messages/tools/Read-tool_result.json) |
 | Edit | `EditOutput` | file_path, success, diffs, message, start_line | [tool_result](messages/tools/Edit-tool_result.json) |
-| Bash | — | Raw stdout/stderr | [tool_result](messages/tools/Bash-tool_result.json) |
-| Glob | — | File list | [tool_result](messages/tools/Glob-tool_result.json) |
-| Grep | — | Match results | [tool_result](messages/tools/Grep-tool_result.json) |
-| Task | — | Agent output | [tool_result](messages/tools/Task-tool_result.json) |
+| Write | `WriteOutput` *(TODO)* | file_path, success, message | [tool_result](messages/tools/Write-tool_result.json) |
+| Bash | `BashOutput` *(TODO)* | stdout, stderr, exit_code, interrupted, is_image | [tool_result](messages/tools/Bash-tool_result.json) |
+| Glob | `GlobOutput` *(TODO)* | pattern, files, truncated | [tool_result](messages/tools/Glob-tool_result.json) |
+| Grep | `GrepOutput` *(TODO)* | pattern, matches, output_mode, truncated | [tool_result](messages/tools/Grep-tool_result.json) |
+| Task | `TaskOutput` *(TODO)* | agent_id, result, is_background | [tool_result](messages/tools/Task-tool_result.json) |
 | (error) | — | is_error: true | [Bash error](messages/tools/Bash-tool_result_error.json) |
+
+**(TODO)**: Output model defined in models.py but not yet used - tool results currently handled as raw strings.
 
 ### Generic Tool Result
 
@@ -310,6 +347,20 @@ class EditOutput(MessageContent):
     start_line: int        # Starting line for display
 ```
 
+### Tool Result Rendering Wrapper
+
+Tool results are wrapped in `ToolResultContentModel` for rendering, which provides additional context:
+
+```python
+@dataclass
+class ToolResultContentModel(MessageContent):
+    tool_use_id: str
+    content: Any  # Union[str, List[Dict[str, Any]]]
+    is_error: bool = False
+    tool_name: Optional[str] = None   # Name of the tool
+    file_path: Optional[str] = None   # File path for Read/Edit/Write
+```
+
 ## 1.4 Images (ImageContent)
 
 - **CSS Class**: `image`
@@ -329,6 +380,19 @@ class EditOutput(MessageContent):
     }]
   }
 }
+```
+
+Image data is structured using `ImageSource`:
+
+```python
+class ImageSource(BaseModel):
+    type: Literal["base64"]
+    media_type: str  # e.g., "image/png"
+    data: str        # Base64-encoded image data
+
+class ImageContent(BaseModel, MessageContent):
+    type: Literal["image"]
+    source: ImageSource
 ```
 
 ---
@@ -409,6 +473,36 @@ The `parsed_input` property returns a typed input model via `parse_tool_input()`
 | TodoWrite | `TodoWriteInput` | todos[] |
 | AskUserQuestion | `AskUserQuestionInput` | questions[], question |
 | ExitPlanMode | `ExitPlanModeInput` | plan, launchSwarm, teammateCount |
+
+### Tool Input Helper Models
+
+Some tool inputs contain nested structures with their own models:
+
+```python
+# MultiEdit tool uses EditItem for individual edits
+class EditItem(BaseModel):
+    old_string: str
+    new_string: str
+
+# TodoWrite tool uses TodoWriteItem for individual todos
+class TodoWriteItem(BaseModel):
+    content: str = ""
+    status: str = "pending"
+    activeForm: str = ""
+    id: Optional[str] = None
+    priority: Optional[str] = None
+
+# AskUserQuestion tool uses nested models for questions/options
+class AskUserQuestionOption(BaseModel):
+    label: str = ""
+    description: Optional[str] = None
+
+class AskUserQuestionItem(BaseModel):
+    question: str = ""
+    header: Optional[str] = None
+    options: List[AskUserQuestionOption] = []
+    multiSelect: bool = False
+```
 
 ### Tool Use Message Structure
 
@@ -515,9 +609,89 @@ The `leafUuid` links the summary to the last message of the session.
 
 ---
 
-# Part 5: Message Relationships
+# Part 5: Renderer Content Models
 
-## 5.1 Hierarchy (Parent/Child)
+These models are created during rendering to represent synthesized content not directly from JSONL entries.
+
+## 5.1 SessionHeaderContent
+
+Session headers are rendered at the start of each session:
+
+```python
+@dataclass
+class SessionHeaderContent(MessageContent):
+    title: str           # e.g., "Session 2025-12-13 10:30"
+    session_id: str      # Session UUID
+    summary: Optional[str] = None  # Session summary if available
+```
+
+## 5.2 DedupNoticeContent
+
+Deduplication notices are shown when content is deduplicated (e.g., sidechain assistant text that duplicates the Task tool result):
+
+```python
+@dataclass
+class DedupNoticeContent(MessageContent):
+    notice_text: str  # e.g., "Content omitted (duplicates Task result)"
+```
+
+---
+
+# Part 6: Infrastructure Models
+
+## 6.1 MessageModifiers
+
+Semantic modifiers that affect message display. These are format-neutral flags that renderers use to determine how to display a message:
+
+```python
+@dataclass
+class MessageModifiers:
+    is_sidechain: bool = False      # Sub-agent message
+    is_slash_command: bool = False  # Slash command invocation
+    is_command_output: bool = False # Command output
+    is_compacted: bool = False      # Compacted conversation
+    is_error: bool = False          # Error message
+    is_steering: bool = False       # Queue remove (steering)
+    system_level: Optional[str] = None  # "info", "warning", "error", "hook"
+```
+
+## 6.2 UsageInfo
+
+Token usage tracking for assistant messages:
+
+```python
+class UsageInfo(BaseModel):
+    input_tokens: Optional[int] = None
+    cache_creation_input_tokens: Optional[int] = None
+    cache_read_input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    service_tier: Optional[str] = None
+    server_tool_use: Optional[Dict[str, Any]] = None
+```
+
+## 6.3 BaseTranscriptEntry
+
+Base class for all transcript entries, providing common fields:
+
+```python
+class BaseTranscriptEntry(BaseModel):
+    parentUuid: Optional[str]  # UUID of parent message
+    isSidechain: bool          # Whether this is a sub-agent message
+    userType: str              # User type identifier
+    cwd: str                   # Working directory
+    sessionId: str             # Session UUID
+    version: str               # Transcript format version
+    uuid: str                  # Unique message ID
+    timestamp: str             # ISO 8601 timestamp
+    isMeta: Optional[bool] = None   # Slash command marker
+    agentId: Optional[str] = None   # Sub-agent ID
+```
+
+---
+
+# Part 7: Message Relationships
+
+## 7.1 Hierarchy (Parent/Child)
 
 The message hierarchy is determined by **sequence and message type**, not by `parentUuid`:
 
@@ -538,7 +712,7 @@ Session header (Level 0)
 
 **Note**: `parentUuid` links messages temporally (which message preceded this one) but is not used for rendering hierarchy.
 
-## 5.2 Tool Pairing
+## 7.2 Tool Pairing
 
 `tool_use` and `tool_result` messages are paired by `tool_use_id`:
 
@@ -554,7 +728,7 @@ Session header (Level 0)
 | `thinking` | `assistant` | Sequential |
 | `slash-command` | `command-output` | Sequential |
 
-## 5.3 Sidechain Linking
+## 7.3 Sidechain Linking
 
 Sub-agent messages (from `Task` tool):
 - Have `isSidechain: true`
@@ -563,7 +737,7 @@ Sub-agent messages (from `Task` tool):
 
 ---
 
-# Part 6: Tool Reference
+# Part 8: Tool Reference
 
 ## Available Tools by Category
 
@@ -572,17 +746,17 @@ Sub-agent messages (from `Task` tool):
 | Tool | Use Sample | Result Sample | Input Model | Output Model |
 |------|------------|---------------|-------------|--------------|
 | Read | [tool_use](messages/tools/Read-tool_use.json) | [tool_result](messages/tools/Read-tool_result.json) | `ReadInput` | `ReadOutput` |
-| Write | [tool_use](messages/tools/Write-tool_use.json) | [tool_result](messages/tools/Write-tool_result.json) | `WriteInput` | — |
+| Write | [tool_use](messages/tools/Write-tool_use.json) | [tool_result](messages/tools/Write-tool_result.json) | `WriteInput` | `WriteOutput` *(TODO)* |
 | Edit | [tool_use](messages/tools/Edit-tool_use.json) | [tool_result](messages/tools/Edit-tool_result.json) | `EditInput` | `EditOutput` |
 | MultiEdit | [tool_use](messages/tools/MultiEdit-tool_use.json) | [tool_result](messages/tools/MultiEdit-tool_result.json) | `MultiEditInput` | — |
-| Glob | [tool_use](messages/tools/Glob-tool_use.json) | [tool_result](messages/tools/Glob-tool_result.json) | `GlobInput` | — |
-| Grep | [tool_use](messages/tools/Grep-tool_use.json) | [tool_result](messages/tools/Grep-tool_result.json) | `GrepInput` | — |
+| Glob | [tool_use](messages/tools/Glob-tool_use.json) | [tool_result](messages/tools/Glob-tool_result.json) | `GlobInput` | `GlobOutput` *(TODO)* |
+| Grep | [tool_use](messages/tools/Grep-tool_use.json) | [tool_result](messages/tools/Grep-tool_result.json) | `GrepInput` | `GrepOutput` *(TODO)* |
 
 ### Shell Operations
 
 | Tool | Use Sample | Result Sample | Input Model | Output Model |
 |------|------------|---------------|-------------|--------------|
-| Bash | [tool_use](messages/tools/Bash-tool_use.json) | [tool_result](messages/tools/Bash-tool_result.json) | `BashInput` | — |
+| Bash | [tool_use](messages/tools/Bash-tool_use.json) | [tool_result](messages/tools/Bash-tool_result.json) | `BashInput` | `BashOutput` *(TODO)* |
 | BashOutput | [tool_use](messages/tools/BashOutput-tool_use.json) | [tool_result](messages/tools/BashOutput-tool_result.json) | — | — |
 | KillShell | [tool_use](messages/tools/KillShell-tool_use.json) | [tool_result](messages/tools/KillShell-tool_result.json) | — | — |
 
@@ -590,7 +764,7 @@ Sub-agent messages (from `Task` tool):
 
 | Tool | Use Sample | Result Sample | Input Model | Output Model |
 |------|------------|---------------|-------------|--------------|
-| Task | [tool_use](messages/tools/Task-tool_use.json) | [tool_result](messages/tools/Task-tool_result.json) | `TaskInput` | — |
+| Task | [tool_use](messages/tools/Task-tool_use.json) | [tool_result](messages/tools/Task-tool_result.json) | `TaskInput` | `TaskOutput` *(TODO)* |
 | TodoWrite | [tool_use](messages/tools/TodoWrite-tool_use.json) | [tool_result](messages/tools/TodoWrite-tool_result.json) | `TodoWriteInput` | — |
 | AskUserQuestion | [tool_use](messages/tools/AskUserQuestion-tool_use.json) | [tool_result](messages/tools/AskUserQuestion-tool_result.json) | `AskUserQuestionInput` | — |
 | ExitPlanMode | [tool_use](messages/tools/ExitPlanMode-tool_use.json) | [tool_result](messages/tools/ExitPlanMode-tool_result.json) | `ExitPlanModeInput` | — |

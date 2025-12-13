@@ -209,6 +209,8 @@ class UserMemoryContent(MessageContent):
     """Content for user memory input.
 
     These are user messages containing user-memory-input tags.
+
+    TODO: Not currently used - parser for <user-memory-input> tag not implemented.
     """
 
     memory_text: str
@@ -263,6 +265,9 @@ class UserTextContent(MessageContent):
 
     Wraps user text that may have been preprocessed to extract
     IDE notifications, compacted summaries, or memory input markers.
+
+    TODO: Not currently instantiated - formatter exists but pipeline uses
+    separate IdeNotificationContent and plain text instead.
     """
 
     text: str
@@ -334,6 +339,8 @@ class WriteOutput(MessageContent):
     """Parsed Write tool output.
 
     Symmetric with WriteInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
     """
 
     file_path: str
@@ -369,6 +376,8 @@ class BashOutput(MessageContent):
     """Parsed Bash tool output.
 
     Symmetric with BashInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
     """
 
     stdout: str
@@ -383,6 +392,8 @@ class TaskOutput(MessageContent):
     """Parsed Task (sub-agent) tool output.
 
     Symmetric with TaskInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
     """
 
     agent_id: Optional[str]
@@ -395,6 +406,8 @@ class GlobOutput(MessageContent):
     """Parsed Glob tool output.
 
     Symmetric with GlobInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
     """
 
     pattern: str
@@ -407,19 +420,14 @@ class GrepOutput(MessageContent):
     """Parsed Grep tool output.
 
     Symmetric with GrepInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
     """
 
     pattern: str
     matches: List[str]  # Matching lines/files
     output_mode: str  # "content", "files_with_matches", or "count"
     truncated: bool
-
-
-class TodoItem(BaseModel):
-    id: str
-    content: str
-    status: Literal["pending", "in_progress", "completed"]
-    priority: Literal["high", "medium", "low"]
 
 
 # =============================================================================
@@ -768,7 +776,7 @@ class AssistantMessage(BaseModel):
 # ReadOutput, EditOutput, etc. (see Tool Output Content Models section)
 ToolUseResult = Union[
     str,
-    List[Any],  # Covers List[TodoItem], List[ContentItem], etc.
+    List[Any],  # Covers List[TodoWriteItem], List[ContentItem], etc.
     Dict[str, Any],  # Covers structured results
 ]
 
