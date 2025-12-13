@@ -623,10 +623,14 @@ def generate_template_messages(
     with log_timing("Session summary processing", t_start):
         prepare_session_summaries(messages)
 
+    # Filter messages (removes summaries, warmup, empty, etc.)
+    with log_timing("Filter messages", t_start):
+        filtered_messages = _filter_messages(messages)
+
     # Pass 1: Collect session metadata and token tracking
     with log_timing("Collect session info", t_start):
         sessions, session_order, show_tokens_for_message = _collect_session_info(
-            messages
+            filtered_messages
         )
 
     # Pass 2: Render messages to TemplateMessage objects
@@ -634,7 +638,7 @@ def generate_template_messages(
         lambda: f"Render messages ({len(template_messages)} messages)", t_start
     ):
         template_messages = _render_messages(
-            messages, sessions, show_tokens_for_message
+            filtered_messages, sessions, show_tokens_for_message
         )
 
     # Prepare session navigation data
@@ -1834,36 +1838,25 @@ def _reorder_sidechain_template_messages(
     return result
 
 
-def _collect_session_info(
-    messages: List[TranscriptEntry],
-) -> tuple[
-    Dict[str, Dict[str, Any]],  # sessions
-    List[str],  # session_order
-    set[str],  # show_tokens_for_message
-]:
-    """Pass 1: Collect session metadata and token tracking.
+def _filter_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
+    """Filter messages to those that should be rendered.
 
-    This pass iterates through messages to:
-    - Build session metadata (timestamps, message counts, first user message)
-    - Track token usage per session (deduplicating by requestId)
-    - Determine which messages should display token usage
+    This function filters out:
+    - Summary messages (already attached to sessions)
+    - Queue operations except 'remove' (steering messages)
+    - Messages with no meaningful content (no text and no tool items)
+    - Messages matching should_skip_message() (warmup, etc.)
+    - Sidechain user messages without tool results (prompts duplicate Task result)
+
+    System messages are included as they need special processing in _render_messages.
 
     Args:
-        messages: List of transcript entries to process
+        messages: List of transcript entries to filter
 
     Returns:
-        Tuple containing:
-        - sessions: Session metadata dict mapping session_id to info
-        - session_order: List of session IDs in chronological order
-        - show_tokens_for_message: Set of message UUIDs that should display tokens
+        Filtered list of messages that should be rendered
     """
-    sessions: Dict[str, Dict[str, Any]] = {}
-    session_order: List[str] = []
-
-    # Track requestIds to avoid double-counting token usage
-    seen_request_ids: set[str] = set()
-    # Track which messages should show token usage (first occurrence of each requestId)
-    show_tokens_for_message: set[str] = set()
+    filtered: List[TranscriptEntry] = []
 
     for message in messages:
         message_type = message.type
@@ -1877,8 +1870,9 @@ def _collect_session_info(
             if message.operation != "remove":
                 continue
 
-        # Skip system messages for session tracking
+        # System messages bypass other checks but are included
         if isinstance(message, SystemTranscriptEntry):
+            filtered.append(message)
             continue
 
         # Get message content for filtering checks
@@ -1920,6 +1914,59 @@ def _collect_session_info(
                 )
                 if not has_tool_results:
                     continue
+
+        # Message passes all filters
+        filtered.append(message)
+
+    return filtered
+
+
+def _collect_session_info(
+    messages: List[TranscriptEntry],
+) -> tuple[
+    Dict[str, Dict[str, Any]],  # sessions
+    List[str],  # session_order
+    set[str],  # show_tokens_for_message
+]:
+    """Collect session metadata and token tracking from pre-filtered messages.
+
+    This function iterates through messages to:
+    - Build session metadata (timestamps, message counts, first user message)
+    - Track token usage per session (deduplicating by requestId)
+    - Determine which messages should display token usage
+
+    Note: Messages should be pre-filtered by _filter_messages. System messages
+    in the input are skipped for session tracking purposes.
+
+    Args:
+        messages: Pre-filtered list of transcript entries
+
+    Returns:
+        Tuple containing:
+        - sessions: Session metadata dict mapping session_id to info
+        - session_order: List of session IDs in chronological order
+        - show_tokens_for_message: Set of message UUIDs that should display tokens
+    """
+    sessions: Dict[str, Dict[str, Any]] = {}
+    session_order: List[str] = []
+
+    # Track requestIds to avoid double-counting token usage
+    seen_request_ids: set[str] = set()
+    # Track which messages should show token usage (first occurrence of each requestId)
+    show_tokens_for_message: set[str] = set()
+
+    for message in messages:
+        # Skip system messages for session tracking
+        if isinstance(message, SystemTranscriptEntry):
+            continue
+
+        # Get message content
+        if isinstance(message, QueueOperationTranscriptEntry):
+            message_content = message.content if message.content else []
+        else:
+            message_content = message.message.content  # type: ignore
+
+        text_content = extract_text_content(message_content)
 
         # Get session info
         session_id = getattr(message, "sessionId", "unknown")
@@ -2000,7 +2047,7 @@ def _render_messages(
     sessions: Dict[str, Dict[str, Any]],
     show_tokens_for_message: set[str],
 ) -> List[TemplateMessage]:
-    """Pass 2: Render messages to TemplateMessage objects.
+    """Pass 2: Render pre-filtered messages to TemplateMessage objects.
 
     This pass creates the actual TemplateMessage objects for rendering:
     - Creates session headers when entering new sessions
@@ -2008,8 +2055,11 @@ def _render_messages(
     - Handles tool use, tool result, thinking, and image content
     - Collects timing statistics
 
+    Note: Messages are pre-filtered by _collect_session_info, so no additional
+    filtering is needed here except for system message processing.
+
     Args:
-        messages: List of transcript entries to process
+        messages: Pre-filtered list of transcript entries from _collect_session_info
         sessions: Session metadata from _collect_session_info
         show_tokens_for_message: Set of message UUIDs that should display tokens
 
@@ -2047,16 +2097,7 @@ def _render_messages(
         # Update current message UUID for timing tracking
         set_timing_var("_current_msg_uuid", msg_uuid)
 
-        # Skip summary messages - they should already be attached to their sessions
-        if isinstance(message, SummaryTranscriptEntry):
-            continue
-
-        # Skip most queue operations - only render 'remove' as steering user messages
-        if isinstance(message, QueueOperationTranscriptEntry):
-            if message.operation != "remove":
-                continue
-
-        # Handle system messages separately
+        # Handle system messages separately (already filtered in pass 1)
         if isinstance(message, SystemTranscriptEntry):
             system_template_message = _process_system_message(message)
             if system_template_message:
@@ -2101,23 +2142,9 @@ def _render_messages(
             if message_content:
                 text_only_content = [TextContent(type="text", text=message_content)]
 
-        # Skip if no meaningful content
-        if not text_content.strip() and not tool_items:
-            continue
-
-        # Skip messages that should be filtered out
-        if should_skip_message(text_content):
-            continue
-
-        # Skip sidechain user messages that are just prompts (no tool results)
+        # For sidechain user messages with tool results, clear text content
+        # (prompts duplicate Task result; filtering already done in pass 1)
         if message_type == MessageType.USER and getattr(message, "isSidechain", False):
-            has_tool_results = any(
-                getattr(item, "type", None) == "tool_result"
-                or isinstance(item, ToolResultContent)
-                for item in tool_items
-            )
-            if not has_tool_results:
-                continue
             text_only_content = []
             text_content = ""
 
