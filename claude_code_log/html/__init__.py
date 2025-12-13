@@ -37,7 +37,9 @@ from .tool_formatters import (
     render_params_table,
 )
 from .system_formatters import (
+    format_dedup_notice_content,
     format_hook_summary_content,
+    format_session_header_content,
     format_system_content,
 )
 from ..models import (
@@ -46,13 +48,16 @@ from ..models import (
     BashOutputContent,
     CommandOutputContent,
     CompactedSummaryContent,
+    DedupNoticeContent,
     IdeDiagnostic,
     IdeNotificationContent,
     IdeOpenedFile,
     IdeSelection,
+    SessionHeaderContent,
     SlashCommandContent,
     ThinkingContentModel,
     UserMemoryContent,
+    UserTextContent,
 )
 from ..parser import (
     parse_bash_input,
@@ -68,6 +73,7 @@ from .user_formatters import (
     format_ide_notification_content,
     format_slash_command_content,
     format_user_text_content,
+    format_user_text_model_content,
 )
 from .assistant_formatters import (
     format_assistant_text_content,
@@ -109,8 +115,13 @@ __all__ = [
     "format_edit_tool_result",
     "format_tool_result_content",
     # system_formatters
+    "format_dedup_notice_content",
     "format_hook_summary_content",
+    "format_session_header_content",
     "format_system_content",
+    # system content models
+    "DedupNoticeContent",
+    "SessionHeaderContent",
     # user_formatters (content models)
     "SlashCommandContent",
     "CommandOutputContent",
@@ -118,6 +129,7 @@ __all__ = [
     "BashOutputContent",
     "CompactedSummaryContent",
     "UserMemoryContent",
+    "UserTextContent",
     "IdeNotificationContent",
     "IdeOpenedFile",
     "IdeSelection",
@@ -128,6 +140,7 @@ __all__ = [
     "format_bash_input_content",
     "format_bash_output_content",
     "format_user_text_content",
+    "format_user_text_model_content",
     "format_ide_notification_content",
     # user_formatters (parsing)
     "parse_slash_command",

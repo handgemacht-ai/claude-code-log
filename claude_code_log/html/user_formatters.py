@@ -22,9 +22,10 @@ from ..models import (
     IdeOpenedFile,
     IdeSelection,
     SlashCommandContent,
+    UserTextContent,
 )
 from .tool_formatters import render_params_table
-from .utils import escape_html, render_collapsible_code
+from .utils import escape_html, render_collapsible_code, render_markdown_collapsible
 
 
 # =============================================================================
@@ -190,6 +191,44 @@ def format_user_text_content(text: str) -> str:
     return f"<pre>{escaped_text}</pre>"
 
 
+def format_user_text_model_content(content: UserTextContent) -> str:
+    """Format UserTextContent model as HTML.
+
+    Handles user text with optional IDE notifications, compacted summaries,
+    and memory input markers.
+
+    Args:
+        content: UserTextContent with text and optional flags/notifications
+
+    Returns:
+        HTML string combining IDE notifications and main text content
+    """
+    parts: List[str] = []
+
+    # Add IDE notifications first if present
+    if content.ide_notifications:
+        notifications = format_ide_notification_content(content.ide_notifications)
+        parts.extend(notifications)
+
+    # Format main text content based on type
+    if content.is_compacted:
+        # Render compacted summaries as markdown
+        text_html = render_markdown_collapsible(
+            content.text, "compacted-summary", line_threshold=20
+        )
+    elif content.is_memory_input:
+        # Render memory input as markdown
+        text_html = render_markdown_collapsible(
+            content.text, "user-memory", line_threshold=20
+        )
+    else:
+        # Regular user text as preformatted
+        text_html = format_user_text_content(content.text)
+
+    parts.append(text_html)
+    return "\n".join(parts)
+
+
 def _format_opened_file(opened_file: IdeOpenedFile) -> str:
     """Format a single IDE opened file notification as HTML."""
     escaped_content = escape_html(opened_file.content)
@@ -283,5 +322,6 @@ __all__ = [
     "format_bash_input_content",
     "format_bash_output_content",
     "format_user_text_content",
+    "format_user_text_model_content",
     "format_ide_notification_content",
 ]

@@ -1,6 +1,6 @@
 """Test image rendering within tool results."""
 
-from claude_code_log.renderer import format_tool_result_content
+from claude_code_log.html import format_tool_result_content
 from claude_code_log.models import ToolResultContent
 
 

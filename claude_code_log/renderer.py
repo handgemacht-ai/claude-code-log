@@ -23,13 +23,16 @@ from .models import (
     ContentItem,
     TextContent,
     ToolResultContent,
+    ToolResultContentModel,
     ToolUseContent,
     ThinkingContent,
     ThinkingContentModel,
     ImageContent,
     # Structured content types
+    DedupNoticeContent,
     HookInfo,
     HookSummaryContent,
+    SessionHeaderContent,
     SystemContent,
 )
 from .parser import (
@@ -58,15 +61,8 @@ from .renderer_timings import (
 
 from .html import (
     escape_html,
-    format_bash_input_content,
-    format_bash_output_content,
-    format_command_output_content,
     format_ide_notification_content,
     format_image_content,
-    format_slash_command_content,
-    format_thinking_content,
-    format_tool_result_content,
-    format_tool_use_content,
     format_tool_use_title,
     format_user_text_content,
     parse_bash_input,
@@ -79,9 +75,11 @@ from .parser import parse_ide_notifications
 
 
 # -- Content Formatters -------------------------------------------------------
-# NOTE: format_thinking_content moved to html/assistant_formatters.py
-# NOTE: format_tool_result_content moved to html/tool_formatters.py
-# NOTE: format_image_content moved to html/assistant_formatters.py
+# NOTE: Most content formatters have been moved to html/ submodules:
+#   - format_thinking_content -> html/assistant_formatters.py
+#   - format_tool_result_content -> html/tool_formatters.py
+#   - format_tool_use_content -> html/tool_formatters.py
+#   - format_image_content -> html/assistant_formatters.py (still used in legacy render_message_content)
 
 
 def _is_compacted_session_summary(text: str) -> bool:
@@ -625,8 +623,19 @@ def generate_template_messages(
     with log_timing("Session summary processing", t_start):
         prepare_session_summaries(messages)
 
-    # Process messages through the main rendering loop
-    template_messages, sessions, session_order = _process_messages_loop(messages)
+    # Pass 1: Collect session metadata and token tracking
+    with log_timing("Collect session info", t_start):
+        sessions, session_order, show_tokens_for_message = _collect_session_info(
+            messages
+        )
+
+    # Pass 2: Render messages to TemplateMessage objects
+    with log_timing(
+        lambda: f"Render messages ({len(template_messages)} messages)", t_start
+    ):
+        template_messages = _render_messages(
+            messages, sessions, show_tokens_for_message
+        )
 
     # Prepare session navigation data
     with log_timing(
@@ -797,82 +806,70 @@ def prepare_session_navigation(
 
 def _process_command_message(
     text_content: str,
-) -> tuple[MessageModifiers, str, str, str]:
-    """Process a slash command message and return (modifiers, content_html, message_type, message_title).
+) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
+    """Process a slash command message and return (modifiers, content, message_type, message_title).
 
     These are user messages containing slash command invocations (e.g., /context, /model).
     The JSONL type is "user", not "system".
     """
     modifiers = MessageModifiers(is_slash_command=True)
 
-    # Parse and format using user_formatters
-    slash_command = parse_slash_command(text_content)
-    if slash_command:
-        content_html = format_slash_command_content(slash_command)
-    else:
-        # Fallback to escaped text if parsing fails
-        content_html = f"<pre>{escape_html(text_content)}</pre>"
+    # Parse to content model (formatting happens in HtmlRenderer)
+    content = parse_slash_command(text_content)
+    # If parsing fails, content will be None and caller will handle fallback
 
     message_type = "user"
     message_title = "Slash Command"
-    return modifiers, content_html, message_type, message_title
+    return modifiers, content, message_type, message_title
 
 
 def _process_local_command_output(
     text_content: str,
-) -> tuple[MessageModifiers, str, str, str]:
-    """Process slash command output and return (modifiers, content_html, message_type, message_title).
+) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
+    """Process slash command output and return (modifiers, content, message_type, message_title).
 
     These are user messages containing the output from slash commands (e.g., /context, /model).
     The JSONL type is "user", not "system".
     """
     modifiers = MessageModifiers(is_command_output=True)
 
-    # Parse and format using user_formatters
-    command_output = parse_command_output(text_content)
-    if command_output:
-        content_html = format_command_output_content(command_output)
-    else:
-        content_html = escape_html(text_content)
+    # Parse to content model (formatting happens in HtmlRenderer)
+    content = parse_command_output(text_content)
+    # If parsing fails, content will be None and caller will handle fallback
 
     message_type = "user"
     message_title = "Command Output"
-    return modifiers, content_html, message_type, message_title
+    return modifiers, content, message_type, message_title
 
 
-def _process_bash_input(text_content: str) -> tuple[MessageModifiers, str, str, str]:
-    """Process bash input command and return (modifiers, content_html, message_type, message_title)."""
+def _process_bash_input(
+    text_content: str,
+) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
+    """Process bash input command and return (modifiers, content, message_type, message_title)."""
     modifiers = MessageModifiers()  # bash-input is a message type, not a modifier
 
-    # Parse and format using user_formatters
-    bash_input = parse_bash_input(text_content)
-    if bash_input:
-        content_html = format_bash_input_content(bash_input)
-    else:
-        content_html = escape_html(text_content)
+    # Parse to content model (formatting happens in HtmlRenderer)
+    content = parse_bash_input(text_content)
+    # If parsing fails, content will be None and caller will handle fallback
 
     message_type = "bash-input"
     message_title = "Bash"
-    return modifiers, content_html, message_type, message_title
+    return modifiers, content, message_type, message_title
 
 
-def _process_bash_output(text_content: str) -> tuple[MessageModifiers, str, str, str]:
-    """Process bash output and return (modifiers, content_html, message_type, message_title)."""
+def _process_bash_output(
+    text_content: str,
+) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
+    """Process bash output and return (modifiers, content, message_type, message_title)."""
     modifiers = MessageModifiers()  # bash-output is a message type, not a modifier
 
-    # Parse and format using user_formatters
-    bash_output = parse_bash_output(text_content)
-    if bash_output:
-        content_html = format_bash_output_content(bash_output)
-    else:
-        # Fallback: no stdout/stderr tags found, show empty output
-        content_html = (
-            "<pre class='bash-stdout'><span class='bash-empty'>(no output)</span></pre>"
-        )
+    # Parse to content model (formatting happens in HtmlRenderer)
+    content = parse_bash_output(text_content)
+    # If parsing fails, content will be None - caller/renderer handles empty output
 
     message_type = "bash"
     message_title = "Bash"
-    return modifiers, content_html, message_type, message_title
+    return modifiers, content, message_type, message_title
 
 
 def _process_regular_message(
@@ -1009,8 +1006,11 @@ class ToolItemResult:
     """Result of processing a single tool/thinking/image item."""
 
     message_type: str
-    content_html: str
+    content_html: str  # Deprecated: will be removed once all use content field
     message_title: str
+    content: Optional["MessageContent"] = (
+        None  # Structured content (migration in progress)
+    )
     tool_use_id: Optional[str] = None
     title_hint: Optional[str] = None
     pending_dedup: Optional[str] = None  # For Task result deduplication
@@ -1028,7 +1028,7 @@ def _process_tool_use_item(
         tool_use_context: Dict to populate with tool_use_id -> ToolUseContent mapping
 
     Returns:
-        ToolItemResult with processed content, or None if item should be skipped
+        ToolItemResult with tool_use content model, or None if item should be skipped
     """
     # Convert Anthropic type to our format if necessary
     if not isinstance(tool_item, ToolUseContent):
@@ -1041,7 +1041,7 @@ def _process_tool_use_item(
     else:
         tool_use = tool_item
 
-    tool_content_html = format_tool_use_content(tool_use)
+    # Title is computed here but content formatting happens in HtmlRenderer
     tool_message_title = format_tool_use_title(tool_use)
     escaped_id = escape_html(tool_use.id)
     item_tool_use_id = tool_use.id
@@ -1052,7 +1052,8 @@ def _process_tool_use_item(
 
     return ToolItemResult(
         message_type="tool_use",
-        content_html=tool_content_html,
+        content_html="",  # Populated by HtmlRenderer
+        content=tool_use,  # ToolUseContent is the model
         message_title=tool_message_title,
         tool_use_id=item_tool_use_id,
         title_hint=tool_title_hint,
@@ -1070,7 +1071,7 @@ def _process_tool_result_item(
         tool_use_context: Dict with tool_use_id -> ToolUseContent mapping
 
     Returns:
-        ToolItemResult with processed content, or None if item should be skipped
+        ToolItemResult with tool_result content model, or None if item should be skipped
     """
     # Convert Anthropic type to our format if necessary
     if not isinstance(tool_item, ToolResultContent):
@@ -1095,8 +1096,13 @@ def _process_tool_result_item(
         ):
             result_file_path = tool_use_from_ctx.input["file_path"]
 
-    tool_content_html = format_tool_result_content(
-        tool_result, result_file_path, result_tool_name
+    # Create content model with rendering context
+    content_model = ToolResultContentModel(
+        tool_use_id=tool_result.tool_use_id,
+        content=tool_result.content,
+        is_error=tool_result.is_error or False,
+        tool_name=result_tool_name,
+        file_path=result_file_path,
     )
 
     # Retroactive deduplication: if Task result, extract content for later matching
@@ -1122,7 +1128,8 @@ def _process_tool_result_item(
 
     return ToolItemResult(
         message_type="tool_result",
-        content_html=tool_content_html,
+        content_html="",  # Populated by HtmlRenderer
+        content=content_model,
         message_title=tool_message_title,
         tool_use_id=tool_result.tool_use_id,
         title_hint=tool_title_hint,
@@ -1135,7 +1142,7 @@ def _process_thinking_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
     """Process a thinking content item.
 
     Returns:
-        ToolItemResult with processed content
+        ToolItemResult with thinking content model
     """
     # Extract thinking text from the content item
     if isinstance(tool_item, ThinkingContent):
@@ -1145,12 +1152,13 @@ def _process_thinking_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
         thinking_text = getattr(tool_item, "thinking", str(tool_item)).strip()
         signature = None
 
-    # Create the content model and format
+    # Create the content model (formatting happens in HtmlRenderer)
     thinking_model = ThinkingContentModel(thinking=thinking_text, signature=signature)
 
     return ToolItemResult(
         message_type="thinking",
-        content_html=format_thinking_content(thinking_model, line_threshold=10),
+        content_html="",  # Populated by HtmlRenderer
+        content=thinking_model,
         message_title="Thinking",
     )
 
@@ -1159,7 +1167,7 @@ def _process_image_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
     """Process an image content item.
 
     Returns:
-        ToolItemResult with processed content, or None if item should be skipped
+        ToolItemResult with image content model, or None if item should be skipped
     """
     # Convert Anthropic type to our format if necessary
     if not isinstance(tool_item, ImageContent):
@@ -1168,7 +1176,8 @@ def _process_image_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
 
     return ToolItemResult(
         message_type="image",
-        content_html=format_image_content(tool_item),
+        content_html="",  # Populated by HtmlRenderer
+        content=tool_item,  # ImageContent is already the model
         message_title="Image",
     )
 
@@ -1798,8 +1807,10 @@ def _reorder_sidechain_template_messages(
                         and sidechain_text == task_result_content
                     ):
                         # Replace with note pointing to the Task result
-                        forward_link_html = "<p><em>(Task summary — already displayed in Task tool result above)</em></p>"
-                        sidechain_msg.content_html = forward_link_html
+                        sidechain_msg.content = DedupNoticeContent(
+                            notice_text="(Task summary — already displayed in Task tool result above)"
+                        )
+                        sidechain_msg.content_html = ""  # Populated by HtmlRenderer
                         # Mark as deduplicated for potential debugging
                         sidechain_msg.raw_text_content = None
                         break
@@ -1817,176 +1828,98 @@ def _reorder_sidechain_template_messages(
     return result
 
 
-def _process_messages_loop(
+def _collect_session_info(
     messages: List[TranscriptEntry],
 ) -> tuple[
-    List[TemplateMessage],
     Dict[str, Dict[str, Any]],  # sessions
     List[str],  # session_order
+    set[str],  # show_tokens_for_message
 ]:
-    """Process messages through the main rendering loop.
+    """Pass 1: Collect session metadata and token tracking.
 
-    This function handles the core message processing logic:
-    - Processes each message into template-friendly format
-    - Tracks sessions and token usage
-    - Handles message deduplication and hierarchy
-    - Collects timing statistics
-
-    Note: Tool use context must be built before calling this function via
-    _define_tool_use_context()
+    This pass iterates through messages to:
+    - Build session metadata (timestamps, message counts, first user message)
+    - Track token usage per session (deduplicating by requestId)
+    - Determine which messages should display token usage
 
     Args:
         messages: List of transcript entries to process
 
     Returns:
         Tuple containing:
-        - template_messages: Processed messages ready for template rendering
         - sessions: Session metadata dict mapping session_id to info
         - session_order: List of session IDs in chronological order
+        - show_tokens_for_message: Set of message UUIDs that should display tokens
     """
-    # Group messages by session and collect session info for navigation
     sessions: Dict[str, Dict[str, Any]] = {}
     session_order: List[str] = []
-    seen_sessions: set[str] = set()
 
     # Track requestIds to avoid double-counting token usage
     seen_request_ids: set[str] = set()
     # Track which messages should show token usage (first occurrence of each requestId)
     show_tokens_for_message: set[str] = set()
 
-    # Build mapping of tool_use_id to ToolUseContent for specialized tool result rendering
-    # This will be populated inline as we encounter tool_use items during message processing
-    tool_use_context: Dict[str, ToolUseContent] = {}
-
-    # Process messages into template-friendly format
-    template_messages: List[TemplateMessage] = []
-
-    # Per-message timing tracking
-    message_timings: List[
-        tuple[float, str, int, str]
-    ] = []  # (duration, message_type, index, uuid)
-
-    # Track expensive operations
-    markdown_timings: List[tuple[float, str]] = []  # (duration, context_uuid)
-    pygments_timings: List[tuple[float, str]] = []  # (duration, context_uuid)
-
-    # Initialize timing tracking
-    set_timing_var("_markdown_timings", markdown_timings)
-    set_timing_var("_pygments_timings", pygments_timings)
-    set_timing_var("_current_msg_uuid", "")
-
-    for msg_idx, message in enumerate(messages):
-        msg_start_time = time.time() if DEBUG_TIMING else 0.0
+    for message in messages:
         message_type = message.type
-        msg_uuid = getattr(message, "uuid", f"no-uuid-{msg_idx}")
 
-        # Update current message UUID for timing tracking
-        set_timing_var("_current_msg_uuid", msg_uuid)
-
-        # NOTE: Sidechain user messages are handled below after content extraction
-        # to distinguish prompts (skip) from tool results (render)
-
-        # Skip summary messages - they should already be attached to their sessions
+        # Skip summary messages
         if isinstance(message, SummaryTranscriptEntry):
             continue
 
-        # Skip most queue operations - only render 'remove' as steering user messages
+        # Skip most queue operations - only process 'remove' for counts
         if isinstance(message, QueueOperationTranscriptEntry):
             if message.operation != "remove":
                 continue
-            # 'remove' operations fall through to be rendered as user messages
 
-        # Handle system messages separately
+        # Skip system messages for session tracking
         if isinstance(message, SystemTranscriptEntry):
-            system_template_message = _process_system_message(message)
-            if system_template_message:
-                template_messages.append(system_template_message)
             continue
 
-        # Handle queue-operation 'remove' messages as user messages
+        # Get message content for filtering checks
         if isinstance(message, QueueOperationTranscriptEntry):
-            # Queue operations have content directly, not in message.message
             message_content = message.content if message.content else []
-            # Treat as user message type
-            message_type = MessageType.QUEUE_OPERATION
         else:
-            # Extract message content first to check for duplicates
-            # Must be UserTranscriptEntry or AssistantTranscriptEntry
             message_content = message.message.content  # type: ignore
 
         text_content = extract_text_content(message_content)
 
-        # Separate tool/thinking/image content from text content
-        # Images in user messages stay inline, images in assistant messages are separate
-        tool_items: List[ContentItem] = []
-        text_only_content: List[ContentItem] = []
-
-        if isinstance(message_content, list):
-            text_only_items: List[ContentItem] = []
-            for item in message_content:
-                # Check for both custom types and Anthropic types
-                item_type = getattr(item, "type", None)
-                is_image = isinstance(item, ImageContent) or item_type == "image"
-                is_tool_item = isinstance(
-                    item,
-                    (ToolUseContent, ToolResultContent, ThinkingContent),
-                ) or item_type in ("tool_use", "tool_result", "thinking")
-
-                # Keep images inline for user messages and queue operations (steering),
-                # extract for assistant messages
-                if is_image and (
-                    message_type == MessageType.USER
-                    or isinstance(message, QueueOperationTranscriptEntry)
-                ):
-                    text_only_items.append(item)
-                elif is_tool_item or is_image:
-                    tool_items.append(item)
-                else:
-                    text_only_items.append(item)
-            text_only_content = text_only_items
-        else:
-            # Single string content
-            message_content = message_content.strip()
-            if message_content:
-                text_only_content = [TextContent(type="text", text=message_content)]
-
         # Skip if no meaningful content
-        if not text_content.strip() and not tool_items:
-            continue
+        if not text_content.strip():
+            # Check for tool items
+            if isinstance(message_content, list):
+                has_tool_items = any(
+                    isinstance(
+                        item, (ToolUseContent, ToolResultContent, ThinkingContent)
+                    )
+                    or getattr(item, "type", None)
+                    in ("tool_use", "tool_result", "thinking")
+                    for item in message_content
+                )
+                if not has_tool_items:
+                    continue
+            else:
+                continue
 
         # Skip messages that should be filtered out
         if should_skip_message(text_content):
             continue
 
         # Skip sidechain user messages that are just prompts (no tool results)
-        # Sidechain prompts duplicate the Task tool input and are redundant,
-        # but tool results from sidechain agents should be rendered
         if message_type == MessageType.USER and getattr(message, "isSidechain", False):
-            has_tool_results = any(
-                getattr(item, "type", None) == "tool_result"
-                or isinstance(item, ToolResultContent)
-                for item in tool_items
-            )
-            if not has_tool_results:
-                continue
-            # For sidechain user messages with tool results, clear text content
-            # to avoid rendering the redundant prompt text
-            text_only_content = []
-            text_content = ""
+            if isinstance(message_content, list):
+                has_tool_results = any(
+                    getattr(item, "type", None) == "tool_result"
+                    or isinstance(item, ToolResultContent)
+                    for item in message_content
+                )
+                if not has_tool_results:
+                    continue
 
-        # Check message types for special handling
-        is_command = is_command_message(text_content)
-        is_local_output = is_local_command_output(text_content)
-        is_bash_cmd = is_bash_input(text_content)
-        is_bash_result = is_bash_output(text_content)
-
-        # Check if we're in a new session
+        # Get session info
         session_id = getattr(message, "sessionId", "unknown")
-        session_summary = getattr(message, "_session_summary", None)
 
-        # Track sessions for navigation and add session header if new
+        # Initialize session if new
         if session_id not in sessions:
-            # Get the session summary for this session (may be None)
             current_session_summary = getattr(message, "_session_summary", None)
 
             # Get first user message content for preview
@@ -2008,30 +1941,6 @@ def _process_messages_loop(
                 "total_cache_read_tokens": 0,
             }
             session_order.append(session_id)
-
-            # Add session header message
-            if session_id not in seen_sessions:
-                seen_sessions.add(session_id)
-                # Create a meaningful session title
-                session_title = (
-                    f"{current_session_summary} • {session_id[:8]}"
-                    if current_session_summary
-                    else session_id[:8]
-                )
-
-                session_header = TemplateMessage(
-                    message_type="session_header",
-                    content_html=session_title,
-                    formatted_timestamp="",
-                    raw_timestamp=None,
-                    session_summary=current_session_summary,
-                    session_id=session_id,
-                    is_session_header=True,
-                    message_id=None,  # Will be assigned by _build_message_hierarchy
-                    ancestry=[],  # Session headers are top-level
-                    modifiers=MessageModifiers(),  # No modifiers for session headers
-                )
-                template_messages.append(session_header)
 
         # Update first user message if this is a user message and we don't have one yet
         elif is_user_entry(message) and not sessions[session_id]["first_user_message"]:
@@ -2077,6 +1986,174 @@ def _process_messages_loop(
                         usage.cache_read_input_tokens
                     )
 
+    return sessions, session_order, show_tokens_for_message
+
+
+def _render_messages(
+    messages: List[TranscriptEntry],
+    sessions: Dict[str, Dict[str, Any]],
+    show_tokens_for_message: set[str],
+) -> List[TemplateMessage]:
+    """Pass 2: Render messages to TemplateMessage objects.
+
+    This pass creates the actual TemplateMessage objects for rendering:
+    - Creates session headers when entering new sessions
+    - Processes text content into HTML
+    - Handles tool use, tool result, thinking, and image content
+    - Collects timing statistics
+
+    Args:
+        messages: List of transcript entries to process
+        sessions: Session metadata from _collect_session_info
+        show_tokens_for_message: Set of message UUIDs that should display tokens
+
+    Returns:
+        List of TemplateMessage objects ready for template rendering
+    """
+    # Track which sessions have had headers added
+    seen_sessions: set[str] = set()
+
+    # Build mapping of tool_use_id to ToolUseContent for specialized tool result rendering
+    tool_use_context: Dict[str, ToolUseContent] = {}
+
+    # Process messages into template-friendly format
+    template_messages: List[TemplateMessage] = []
+
+    # Per-message timing tracking
+    message_timings: List[
+        tuple[float, str, int, str]
+    ] = []  # (duration, message_type, index, uuid)
+
+    # Track expensive operations
+    markdown_timings: List[tuple[float, str]] = []  # (duration, context_uuid)
+    pygments_timings: List[tuple[float, str]] = []  # (duration, context_uuid)
+
+    # Initialize timing tracking
+    set_timing_var("_markdown_timings", markdown_timings)
+    set_timing_var("_pygments_timings", pygments_timings)
+    set_timing_var("_current_msg_uuid", "")
+
+    for msg_idx, message in enumerate(messages):
+        msg_start_time = time.time() if DEBUG_TIMING else 0.0
+        message_type = message.type
+        msg_uuid = getattr(message, "uuid", f"no-uuid-{msg_idx}")
+
+        # Update current message UUID for timing tracking
+        set_timing_var("_current_msg_uuid", msg_uuid)
+
+        # Skip summary messages - they should already be attached to their sessions
+        if isinstance(message, SummaryTranscriptEntry):
+            continue
+
+        # Skip most queue operations - only render 'remove' as steering user messages
+        if isinstance(message, QueueOperationTranscriptEntry):
+            if message.operation != "remove":
+                continue
+
+        # Handle system messages separately
+        if isinstance(message, SystemTranscriptEntry):
+            system_template_message = _process_system_message(message)
+            if system_template_message:
+                template_messages.append(system_template_message)
+            continue
+
+        # Handle queue-operation 'remove' messages as user messages
+        if isinstance(message, QueueOperationTranscriptEntry):
+            message_content = message.content if message.content else []
+            message_type = MessageType.QUEUE_OPERATION
+        else:
+            message_content = message.message.content  # type: ignore
+
+        text_content = extract_text_content(message_content)
+
+        # Separate tool/thinking/image content from text content
+        tool_items: List[ContentItem] = []
+        text_only_content: List[ContentItem] = []
+
+        if isinstance(message_content, list):
+            text_only_items: List[ContentItem] = []
+            for item in message_content:
+                item_type = getattr(item, "type", None)
+                is_image = isinstance(item, ImageContent) or item_type == "image"
+                is_tool_item = isinstance(
+                    item,
+                    (ToolUseContent, ToolResultContent, ThinkingContent),
+                ) or item_type in ("tool_use", "tool_result", "thinking")
+
+                if is_image and (
+                    message_type == MessageType.USER
+                    or isinstance(message, QueueOperationTranscriptEntry)
+                ):
+                    text_only_items.append(item)
+                elif is_tool_item or is_image:
+                    tool_items.append(item)
+                else:
+                    text_only_items.append(item)
+            text_only_content = text_only_items
+        else:
+            message_content = message_content.strip()
+            if message_content:
+                text_only_content = [TextContent(type="text", text=message_content)]
+
+        # Skip if no meaningful content
+        if not text_content.strip() and not tool_items:
+            continue
+
+        # Skip messages that should be filtered out
+        if should_skip_message(text_content):
+            continue
+
+        # Skip sidechain user messages that are just prompts (no tool results)
+        if message_type == MessageType.USER and getattr(message, "isSidechain", False):
+            has_tool_results = any(
+                getattr(item, "type", None) == "tool_result"
+                or isinstance(item, ToolResultContent)
+                for item in tool_items
+            )
+            if not has_tool_results:
+                continue
+            text_only_content = []
+            text_content = ""
+
+        # Check message types for special handling
+        is_command = is_command_message(text_content)
+        is_local_output = is_local_command_output(text_content)
+        is_bash_cmd = is_bash_input(text_content)
+        is_bash_result = is_bash_output(text_content)
+
+        # Get session info
+        session_id = getattr(message, "sessionId", "unknown")
+        session_summary = getattr(message, "_session_summary", None)
+
+        # Add session header if this is a new session
+        if session_id not in seen_sessions:
+            seen_sessions.add(session_id)
+            current_session_summary = sessions.get(session_id, {}).get("summary")
+            session_title = (
+                f"{current_session_summary} • {session_id[:8]}"
+                if current_session_summary
+                else session_id[:8]
+            )
+
+            session_header = TemplateMessage(
+                message_type="session_header",
+                content_html="",  # Populated by HtmlRenderer
+                content=SessionHeaderContent(
+                    title=session_title,
+                    session_id=session_id,
+                    summary=current_session_summary,
+                ),
+                formatted_timestamp="",
+                raw_timestamp=None,
+                session_summary=current_session_summary,
+                session_id=session_id,
+                is_session_header=True,
+                message_id=None,
+                ancestry=[],
+                modifiers=MessageModifiers(),
+            )
+            template_messages.append(session_header)
+
         # Get timestamp (only for non-summary messages)
         timestamp = getattr(message, "timestamp", "")
         formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
@@ -2104,21 +2181,26 @@ def _process_messages_loop(
                 token_usage_str = " | ".join(token_parts)
 
         # Determine modifiers and content based on message type and duplicate status
+        # content_model: structured content (None if not parsed or using legacy path)
+        # content_html: HTML string (empty if using content model, populated for legacy)
+        content_model: Optional[MessageContent] = None
+        content_html: str = ""
+
         if is_command:
-            modifiers, content_html, message_type, message_title = (
+            modifiers, content_model, message_type, message_title = (
                 _process_command_message(text_content)
             )
         elif is_local_output:
-            modifiers, content_html, message_type, message_title = (
+            modifiers, content_model, message_type, message_title = (
                 _process_local_command_output(text_content)
             )
         elif is_bash_cmd:
-            modifiers, content_html, message_type, message_title = _process_bash_input(
+            modifiers, content_model, message_type, message_title = _process_bash_input(
                 text_content
             )
         elif is_bash_result:
-            modifiers, content_html, message_type, message_title = _process_bash_output(
-                text_content
+            modifiers, content_model, message_type, message_title = (
+                _process_bash_output(text_content)
             )
         else:
             # For queue-operation messages, treat them as user messages
@@ -2151,7 +2233,8 @@ def _process_messages_loop(
         if text_only_content:
             template_message = TemplateMessage(
                 message_type=message_type,
-                content_html=content_html,
+                content_html=content_html,  # Empty if using content_model
+                content=content_model,  # Structured content (None for legacy path)
                 formatted_timestamp=formatted_timestamp,
                 raw_timestamp=timestamp,
                 session_summary=session_summary,
@@ -2223,7 +2306,8 @@ def _process_messages_loop(
 
             tool_template_message = TemplateMessage(
                 message_type=tool_result.message_type,
-                content_html=tool_result.content_html,
+                content_html=tool_result.content_html,  # Empty if using content
+                content=tool_result.content,  # Structured content model
                 formatted_timestamp=tool_formatted_timestamp,
                 raw_timestamp=tool_timestamp,
                 session_summary=session_summary,
@@ -2257,11 +2341,7 @@ def _process_messages_loop(
             [("Markdown", markdown_timings), ("Pygments", pygments_timings)],
         )
 
-    return (
-        template_messages,
-        sessions,
-        session_order,
-    )
+    return template_messages
 
 
 # -- Project Index Generation -------------------------------------------------

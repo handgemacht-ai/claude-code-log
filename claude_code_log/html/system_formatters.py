@@ -12,7 +12,9 @@ import html
 
 from ..ansi_colors import convert_ansi_to_html
 from ..models import (
+    DedupNoticeContent,
     HookSummaryContent,
+    SessionHeaderContent,
     SystemContent,
 )
 
@@ -75,3 +77,37 @@ def format_hook_summary_content(content: HookSummaryContent) -> str:
 {error_html}
 </div>
 </details>"""
+
+
+def format_session_header_content(content: SessionHeaderContent) -> str:
+    """Format a session header as HTML.
+
+    Args:
+        content: SessionHeaderContent with title, session_id, and optional summary
+
+    Returns:
+        HTML for the session header display
+    """
+    escaped_title = html.escape(content.title)
+    return escaped_title
+
+
+def format_dedup_notice_content(content: DedupNoticeContent) -> str:
+    """Format a deduplication notice as HTML.
+
+    Args:
+        content: DedupNoticeContent with notice text
+
+    Returns:
+        HTML for the dedup notice display
+    """
+    escaped_notice = html.escape(content.notice_text)
+    return f"<p><em>{escaped_notice}</em></p>"
+
+
+__all__ = [
+    "format_system_content",
+    "format_hook_summary_content",
+    "format_session_header_content",
+    "format_dedup_notice_content",
+]

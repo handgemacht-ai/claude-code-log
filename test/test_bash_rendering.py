@@ -367,7 +367,7 @@ def test_bash_tool_result_ansi_processing():
 
 def test_bash_tool_result_cursor_stripping():
     """Test that cursor movement codes are stripped from Bash tool results."""
-    from claude_code_log.renderer import format_tool_result_content
+    from claude_code_log.html import format_tool_result_content
     from claude_code_log.models import ToolResultContent
 
     # Content with cursor movement codes

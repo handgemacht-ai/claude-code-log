@@ -5,8 +5,19 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..cache import get_library_version
 from ..models import (
+    BashInputContent,
+    BashOutputContent,
+    CommandOutputContent,
+    DedupNoticeContent,
     HookSummaryContent,
+    ImageContent,
+    SessionHeaderContent,
+    SlashCommandContent,
     SystemContent,
+    ThinkingContentModel,
+    ToolResultContent,
+    ToolResultContentModel,
+    ToolUseContent,
     TranscriptEntry,
 )
 from ..renderer import (
@@ -17,7 +28,20 @@ from ..renderer import (
     title_for_projects_index,
 )
 from ..renderer_timings import log_timing
-from .system_formatters import format_hook_summary_content, format_system_content
+from .system_formatters import (
+    format_dedup_notice_content,
+    format_hook_summary_content,
+    format_session_header_content,
+    format_system_content,
+)
+from .user_formatters import (
+    format_bash_input_content,
+    format_bash_output_content,
+    format_command_output_content,
+    format_slash_command_content,
+)
+from .assistant_formatters import format_image_content, format_thinking_content
+from .tool_formatters import format_tool_result_content, format_tool_use_content
 from .utils import css_class_from_message, get_message_emoji, get_template_environment
 
 if TYPE_CHECKING:
@@ -71,6 +95,39 @@ class HtmlRenderer(Renderer):
             message.content_html = format_system_content(message.content)
         elif isinstance(message.content, HookSummaryContent):
             message.content_html = format_hook_summary_content(message.content)
+        elif isinstance(message.content, SessionHeaderContent):
+            message.content_html = format_session_header_content(message.content)
+        elif isinstance(message.content, DedupNoticeContent):
+            message.content_html = format_dedup_notice_content(message.content)
+        elif isinstance(message.content, SlashCommandContent):
+            message.content_html = format_slash_command_content(message.content)
+        elif isinstance(message.content, CommandOutputContent):
+            message.content_html = format_command_output_content(message.content)
+        elif isinstance(message.content, BashInputContent):
+            message.content_html = format_bash_input_content(message.content)
+        elif isinstance(message.content, BashOutputContent):
+            message.content_html = format_bash_output_content(message.content)
+        elif isinstance(message.content, ThinkingContentModel):
+            message.content_html = format_thinking_content(
+                message.content, line_threshold=10
+            )
+        elif isinstance(message.content, ImageContent):
+            message.content_html = format_image_content(message.content)
+        elif isinstance(message.content, ToolUseContent):
+            message.content_html = format_tool_use_content(message.content)
+        elif isinstance(message.content, ToolResultContentModel):
+            # Create ToolResultContent from the model for formatting
+            tool_result = ToolResultContent(
+                type="tool_result",
+                tool_use_id=message.content.tool_use_id,
+                content=message.content.content,
+                is_error=message.content.is_error,
+            )
+            message.content_html = format_tool_result_content(
+                tool_result,
+                message.content.file_path,
+                message.content.tool_name,
+            )
         # Future content types will be added here as they are migrated
 
     def _format_all_content(self, messages: List[TemplateMessage]) -> None:

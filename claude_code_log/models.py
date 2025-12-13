@@ -177,6 +177,21 @@ class BashOutputContent(MessageContent):
 
 
 @dataclass
+class ToolResultContentModel(MessageContent):
+    """Content model for tool results with rendering context.
+
+    Wraps ToolResultContent with additional context needed for rendering,
+    such as the associated tool name and file path.
+    """
+
+    tool_use_id: str
+    content: Any  # Union[str, List[Dict[str, Any]]]
+    is_error: bool = False
+    tool_name: Optional[str] = None  # Name of the tool that produced this result
+    file_path: Optional[str] = None  # File path for Read/Edit/Write tools
+
+
+@dataclass
 class CompactedSummaryContent(MessageContent):
     """Content for compacted session summaries.
 
@@ -238,6 +253,20 @@ class IdeNotificationContent(MessageContent):
     selections: List[IdeSelection]
     diagnostics: List[IdeDiagnostic]
     remaining_text: str  # Text after notifications extracted
+
+
+@dataclass
+class UserTextContent(MessageContent):
+    """Content for plain user text with optional IDE notifications.
+
+    Wraps user text that may have been preprocessed to extract
+    IDE notifications, compacted summaries, or memory input markers.
+    """
+
+    text: str
+    ide_notifications: Optional[IdeNotificationContent] = None
+    is_compacted: bool = False
+    is_memory_input: bool = False
 
 
 # =============================================================================
@@ -389,6 +418,37 @@ class TodoItem(BaseModel):
     content: str
     status: Literal["pending", "in_progress", "completed"]
     priority: Literal["high", "medium", "low"]
+
+
+# =============================================================================
+# Renderer Content Models
+# =============================================================================
+# Structured content models for renderer-specific elements.
+# These are used by the HTML renderer but represent format-neutral data.
+
+
+@dataclass
+class SessionHeaderContent(MessageContent):
+    """Content for session headers in transcript rendering.
+
+    Represents the header displayed at the start of each session
+    with session title and optional summary.
+    """
+
+    title: str
+    session_id: str
+    summary: Optional[str] = None
+
+
+@dataclass
+class DedupNoticeContent(MessageContent):
+    """Content for deduplication notices.
+
+    Displayed when content is deduplicated (e.g., sidechain assistant
+    text that duplicates the Task tool result).
+    """
+
+    notice_text: str
 
 
 # =============================================================================
