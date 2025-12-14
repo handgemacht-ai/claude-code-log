@@ -83,6 +83,9 @@ def get_message_emoji(msg: "TemplateMessage") -> str:
     if msg_type == "session_header":
         return "📋"
     elif msg_type == "user":
+        # Command output has no emoji (neutral - can be from built-in or user command)
+        if msg.modifiers.is_command_output:
+            return ""
         return "🤷"
     elif msg_type == "bash-input":
         return "🤷"

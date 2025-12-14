@@ -668,7 +668,7 @@ def _process_local_command_output(
     # If parsing fails, content will be None and caller will handle fallback
 
     message_type = "user"
-    message_title = "Command Output"
+    message_title = "Command output"
     return modifiers, content, message_type, message_title
 
 

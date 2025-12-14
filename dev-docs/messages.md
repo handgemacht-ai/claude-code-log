@@ -168,6 +168,11 @@ Based on flags and tag patterns in `TextContent`, user text messages are classif
 }
 ```
 
+> **Note**: These are "caveat" messages that precede slash command messages (with
+> `<command-name>` tags). They instruct the LLM to not respond to the following
+> local command output unless explicitly asked. The actual slash command details
+> appear in the subsequent message with tags.
+
 ### Slash Command (Tags)
 
 - **Condition**: Contains `<command-name>` tags
@@ -182,6 +187,11 @@ class SlashCommandContent(MessageContent):
     command_args: str      # Arguments after command
     command_contents: str  # Content inside command
 ```
+
+> **Note**: Both built-in commands (e.g., `/init`, `/model`, `/context`) and
+> user-defined commands (e.g., `/my-command` from `~/.claude/commands/my-command.md`)
+> use the same `<command-name>` tag format. There is no field in the JSONL to
+> differentiate between them.
 
 ### Command Output
 
