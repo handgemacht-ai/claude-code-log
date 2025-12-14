@@ -346,6 +346,7 @@ def deduplicate_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntr
         # Get content key for differentiating concurrent messages
         # - For assistant messages: use message.id (same for stutters, different for different msgs)
         # - For user messages with tool results: use first tool_use_id
+        # - For summary messages: use leafUuid (summaries have no timestamp/uuid)
         # - For other messages: use uuid as fallback
         content_key = ""
         if isinstance(message, AssistantTranscriptEntry):
@@ -358,6 +359,9 @@ def deduplicate_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntr
                     if isinstance(item, ToolResultContent):
                         content_key = item.tool_use_id
                         break
+        elif isinstance(message, SummaryTranscriptEntry):
+            # Summaries have no timestamp or uuid - use leafUuid to keep them distinct
+            content_key = message.leafUuid
         # Fallback to uuid if no content key found
         if not content_key:
             content_key = getattr(message, "uuid", "")
