@@ -683,7 +683,7 @@ def _process_bash_input(
     # If parsing fails, content will be None and caller will handle fallback
 
     message_type = "bash-input"
-    message_title = "Bash"
+    message_title = "Bash command"
     return modifiers, content, message_type, message_title
 
 
@@ -698,7 +698,7 @@ def _process_bash_output(
     # If parsing fails, content will be None - caller/renderer handles empty output
 
     message_type = "bash-output"
-    message_title = "Bash"
+    message_title = "Command output"
     return modifiers, content, message_type, message_title
 
 
