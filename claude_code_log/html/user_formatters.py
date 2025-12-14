@@ -132,13 +132,13 @@ def format_bash_output_content(
 
     if content.stdout:
         escaped_stdout = convert_ansi_to_html(content.stdout)
-        stdout_lines = content.stdout.count("\n") + 1
+        stdout_lines = len(content.stdout.splitlines())
         total_lines += stdout_lines
         output_parts.append(("stdout", escaped_stdout, stdout_lines, content.stdout))
 
     if content.stderr:
         escaped_stderr = convert_ansi_to_html(content.stderr)
-        stderr_lines = content.stderr.count("\n") + 1
+        stderr_lines = len(content.stderr.splitlines())
         total_lines += stderr_lines
         output_parts.append(("stderr", escaped_stderr, stderr_lines, content.stderr))
 
@@ -307,10 +307,12 @@ def _format_diagnostic(diagnostic: IdeDiagnostic) -> List[str]:
             notifications.append(notification_html)
     elif diagnostic.raw_content:
         # JSON parsing failed, render as plain text
+        is_truncated = len(diagnostic.raw_content) > 200
         escaped_content = escape_html(diagnostic.raw_content[:200])
+        truncation_marker = "..." if is_truncated else ""
         notification_html = (
             f"<div class='ide-notification'>🤖 IDE Diagnostics (parse error)<br>"
-            f"<pre>{escaped_content}...</pre></div>"
+            f"<pre>{escaped_content}{truncation_marker}</pre></div>"
         )
         notifications.append(notification_html)
 
