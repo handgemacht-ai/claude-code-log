@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 
 import click
 from git import Repo, InvalidGitRepositoryError
@@ -108,7 +108,7 @@ def convert_project_path_to_claude_dir(
 
 def find_projects_by_cwd(
     projects_dir: Path, current_cwd: Optional[str] = None
-) -> List[Path]:
+) -> list[Path]:
     """Find Claude projects that match the current working directory.
 
     Uses three-tier priority matching:
@@ -148,8 +148,8 @@ def find_projects_by_cwd(
 
 
 def _find_exact_matches(
-    project_dirs: List[Path], current_cwd_path: Path, base_projects_dir: Path
-) -> List[Path]:
+    project_dirs: list[Path], current_cwd_path: Path, base_projects_dir: Path
+) -> list[Path]:
     """Find projects with exact working directory matches using path-based matching."""
     expected_project_dir = convert_project_path_to_claude_dir(
         current_cwd_path, base_projects_dir
@@ -163,8 +163,8 @@ def _find_exact_matches(
 
 
 def _find_git_root_matches(
-    project_dirs: List[Path], current_cwd_path: Path, base_projects_dir: Path
-) -> List[Path]:
+    project_dirs: list[Path], current_cwd_path: Path, base_projects_dir: Path
+) -> list[Path]:
     """Find projects that match the git repository root using path-based matching."""
     try:
         # Check if we're inside a git repository
@@ -182,10 +182,10 @@ def _find_git_root_matches(
 
 
 def _find_relative_matches(
-    project_dirs: List[Path], current_cwd_path: Path
-) -> List[Path]:
+    project_dirs: list[Path], current_cwd_path: Path
+) -> list[Path]:
     """Find projects using relative path matching (original behavior)."""
-    relative_matches: List[Path] = []
+    relative_matches: list[Path] = []
 
     for project_dir in project_dirs:
         try:

@@ -7,7 +7,7 @@ All timing-related configuration and functionality is centralized here.
 import os
 import time
 from contextlib import contextmanager
-from typing import List, Tuple, Iterator, Any, Dict, Callable, Union, Optional
+from typing import Tuple, Iterator, Any, Callable, Union, Optional
 
 # Performance debugging - enabled via CLAUDE_CODE_LOG_DEBUG_TIMING environment variable
 # Set to "1", "true", or "yes" to enable timing output
@@ -18,7 +18,7 @@ DEBUG_TIMING = os.getenv("CLAUDE_CODE_LOG_DEBUG_TIMING", "").lower() in (
 )
 
 # Global timing data storage
-_timing_data: Dict[str, Any] = {}
+_timing_data: dict[str, Any] = {}
 
 
 def set_timing_var(name: str, value: Any) -> None:
@@ -111,8 +111,8 @@ def timing_stat(list_name: str) -> Iterator[None]:
 
 
 def report_timing_statistics(
-    message_timings: List[Tuple[float, str, int, str]],
-    operation_timings: List[Tuple[str, List[Tuple[float, str]]]],
+    message_timings: list[Tuple[float, str, int, str]],
+    operation_timings: list[Tuple[str, list[Tuple[float, str]]]],
 ) -> None:
     """Report timing statistics for message rendering.
 

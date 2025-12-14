@@ -4,7 +4,7 @@
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .cache import CacheManager
@@ -181,7 +181,7 @@ class TemplateMessage:
         has_markdown: bool = False,
         message_title: Optional[str] = None,
         message_id: Optional[str] = None,
-        ancestry: Optional[List[str]] = None,
+        ancestry: Optional[list[str]] = None,
         has_children: bool = False,
         uuid: Optional[str] = None,
         parent_uuid: Optional[str] = None,
@@ -228,7 +228,7 @@ class TemplateMessage:
         self.pair_role: Optional[str] = None  # "pair_first", "pair_last", "pair_middle"
         self.pair_duration: Optional[str] = None  # Duration for pair_last messages
         # Children for tree-based rendering (future use)
-        self.children: List["TemplateMessage"] = []
+        self.children: list["TemplateMessage"] = []
 
     def get_immediate_children_label(self) -> str:
         """Generate human-readable label for immediate children."""
@@ -238,26 +238,26 @@ class TemplateMessage:
         """Generate human-readable label for all descendants."""
         return _format_type_counts(self.total_descendants_by_type)
 
-    def flatten(self) -> List["TemplateMessage"]:
+    def flatten(self) -> list["TemplateMessage"]:
         """Recursively flatten this message and all children into a list.
 
         Returns a list with this message followed by all descendants in
         depth-first order. This provides backward compatibility with the
         flat-list template rendering approach.
         """
-        result: List["TemplateMessage"] = [self]
+        result: list["TemplateMessage"] = [self]
         for child in self.children:
             result.extend(child.flatten())
         return result
 
     @staticmethod
-    def flatten_all(messages: List["TemplateMessage"]) -> List["TemplateMessage"]:
+    def flatten_all(messages: list["TemplateMessage"]) -> list["TemplateMessage"]:
         """Flatten a list of root messages into a single flat list.
 
         Useful for converting a tree structure back to a flat list for
         templates that expect the traditional flat message list.
         """
-        result: List["TemplateMessage"] = []
+        result: list["TemplateMessage"] = []
         for message in messages:
             result.extend(message.flatten())
         return result
@@ -266,7 +266,7 @@ class TemplateMessage:
 class TemplateProject:
     """Structured project data for template rendering."""
 
-    def __init__(self, project_data: Dict[str, Any]):
+    def __init__(self, project_data: dict[str, Any]):
         self.name = project_data["name"]
         self.html_file = project_data["html_file"]
         self.jsonl_count = project_data["jsonl_count"]
@@ -318,7 +318,7 @@ class TemplateProject:
         # Format token usage
         self.token_summary = ""
         if self.total_input_tokens > 0 or self.total_output_tokens > 0:
-            token_parts: List[str] = []
+            token_parts: list[str] = []
             if self.total_input_tokens > 0:
                 token_parts.append(f"Input: {self.total_input_tokens}")
             if self.total_output_tokens > 0:
@@ -335,7 +335,7 @@ class TemplateProject:
 class TemplateSummary:
     """Summary statistics for template rendering."""
 
-    def __init__(self, project_summaries: List[Dict[str, Any]]):
+    def __init__(self, project_summaries: list[dict[str, Any]]):
         self.total_projects = len(project_summaries)
         self.total_jsonl = sum(p["jsonl_count"] for p in project_summaries)
         self.total_messages = sum(p["message_count"] for p in project_summaries)
@@ -400,7 +400,7 @@ class TemplateSummary:
         # Format token usage summary
         self.token_summary = ""
         if self.total_input_tokens > 0 or self.total_output_tokens > 0:
-            token_parts: List[str] = []
+            token_parts: list[str] = []
             if self.total_input_tokens > 0:
                 token_parts.append(f"Input: {self.total_input_tokens}")
             if self.total_output_tokens > 0:
@@ -418,8 +418,8 @@ class TemplateSummary:
 
 
 def generate_template_messages(
-    messages: List[TranscriptEntry],
-) -> Tuple[List[TemplateMessage], List[Dict[str, Any]]]:
+    messages: list[TranscriptEntry],
+) -> Tuple[list[TemplateMessage], list[dict[str, Any]]]:
     """Generate template messages and session navigation from transcript messages.
 
     This is the format-neutral rendering step that produces data structures
@@ -515,14 +515,14 @@ def generate_template_messages(
 # -- Session Utilities --------------------------------------------------------
 
 
-def prepare_session_summaries(messages: List[TranscriptEntry]) -> None:
+def prepare_session_summaries(messages: list[TranscriptEntry]) -> None:
     """Pre-process messages to find and attach session summaries.
 
     Modifies messages in place by attaching _session_summary attribute.
     """
-    session_summaries: Dict[str, str] = {}
-    uuid_to_session: Dict[str, str] = {}
-    uuid_to_session_backup: Dict[str, str] = {}
+    session_summaries: dict[str, str] = {}
+    uuid_to_session: dict[str, str] = {}
+    uuid_to_session_backup: dict[str, str] = {}
 
     # Build mapping from message UUID to session ID
     for message in messages:
@@ -558,9 +558,9 @@ def prepare_session_summaries(messages: List[TranscriptEntry]) -> None:
 
 
 def prepare_session_navigation(
-    sessions: Dict[str, Dict[str, Any]],
-    session_order: List[str],
-) -> List[Dict[str, Any]]:
+    sessions: dict[str, dict[str, Any]],
+    session_order: list[str],
+) -> list[dict[str, Any]]:
     """Prepare session navigation data for template rendering.
 
     Args:
@@ -570,7 +570,7 @@ def prepare_session_navigation(
     Returns:
         List of session navigation dicts for template rendering
     """
-    session_nav: List[Dict[str, Any]] = []
+    session_nav: list[dict[str, Any]] = []
 
     for session_id in session_order:
         session_info = sessions[session_id]
@@ -592,7 +592,7 @@ def prepare_session_navigation(
         total_cache_read = session_info["total_cache_read_tokens"]
 
         if total_input > 0 or total_output > 0:
-            token_parts: List[str] = []
+            token_parts: list[str] = []
             if total_input > 0:
                 token_parts.append(f"Input: {total_input}")
             if total_output > 0:
@@ -703,7 +703,7 @@ def _process_bash_output(
 
 
 def _process_regular_message(
-    text_only_content: List[ContentItem],
+    text_only_content: list[ContentItem],
     message_type: str,
     is_sidechain: bool,
     is_meta: bool = False,
@@ -849,7 +849,7 @@ class ToolItemResult:
 
 def _process_tool_use_item(
     tool_item: ContentItem,
-    tool_use_context: Dict[str, ToolUseContent],
+    tool_use_context: dict[str, ToolUseContent],
 ) -> Optional[ToolItemResult]:
     """Process a tool_use content item.
 
@@ -891,7 +891,7 @@ def _process_tool_use_item(
 
 def _process_tool_result_item(
     tool_item: ContentItem,
-    tool_use_context: Dict[str, ToolUseContent],
+    tool_use_context: dict[str, ToolUseContent],
 ) -> Optional[ToolItemResult]:
     """Process a tool_result content item.
 
@@ -938,7 +938,7 @@ def _process_tool_result_item(
     pending_dedup: Optional[str] = None
     if result_tool_name == "Task":
         # Extract text content from tool result
-        # Note: tool_result.content can be str or List[Dict[str, Any]]
+        # Note: tool_result.content can be str or list[dict[str, Any]]
         if isinstance(tool_result.content, str):
             task_result_content = tool_result.content.strip()
         else:
@@ -1019,24 +1019,24 @@ class PairingIndices:
     """
 
     # (session_id, tool_use_id) -> message index for tool_use messages
-    tool_use: Dict[tuple[str, str], int]
+    tool_use: dict[tuple[str, str], int]
     # (session_id, tool_use_id) -> message index for tool_result messages
-    tool_result: Dict[tuple[str, str], int]
+    tool_result: dict[tuple[str, str], int]
     # uuid -> message index for system messages (parent-child pairing)
-    uuid: Dict[str, int]
+    uuid: dict[str, int]
     # parent_uuid -> message index for slash-command messages
-    slash_command_by_parent: Dict[str, int]
+    slash_command_by_parent: dict[str, int]
 
 
-def _build_pairing_indices(messages: List[TemplateMessage]) -> PairingIndices:
+def _build_pairing_indices(messages: list[TemplateMessage]) -> PairingIndices:
     """Build indices for efficient message pairing lookups.
 
     Single pass through messages to build all indices needed for pairing.
     """
-    tool_use_index: Dict[tuple[str, str], int] = {}
-    tool_result_index: Dict[tuple[str, str], int] = {}
-    uuid_index: Dict[str, int] = {}
-    slash_command_by_parent: Dict[str, int] = {}
+    tool_use_index: dict[tuple[str, str], int] = {}
+    tool_result_index: dict[tuple[str, str], int] = {}
+    uuid_index: dict[str, int] = {}
+    slash_command_by_parent: dict[str, int] = {}
 
     for i, msg in enumerate(messages):
         # Index tool_use and tool_result by (session_id, tool_use_id)
@@ -1104,7 +1104,7 @@ def _try_pair_adjacent(
 
 def _try_pair_by_index(
     current: TemplateMessage,
-    messages: List[TemplateMessage],
+    messages: list[TemplateMessage],
     indices: PairingIndices,
 ) -> None:
     """Try to pair current message with another using index lookups.
@@ -1134,7 +1134,7 @@ def _try_pair_by_index(
             _mark_pair(current, slash_msg)
 
 
-def _identify_message_pairs(messages: List[TemplateMessage]) -> None:
+def _identify_message_pairs(messages: list[TemplateMessage]) -> None:
     """Identify and mark paired messages (e.g., command + output, tool use + result).
 
     Modifies messages in-place by setting is_paired and pair_role fields.
@@ -1173,7 +1173,7 @@ def _identify_message_pairs(messages: List[TemplateMessage]) -> None:
         i += 1
 
 
-def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMessage]:
+def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMessage]:
     """Reorder messages so paired messages are adjacent while preserving chronological order.
 
     - Unpaired messages and first messages in pairs maintain chronological order
@@ -1189,11 +1189,11 @@ def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMe
 
     # Build index of pair_last messages by (session_id, tool_use_id)
     # Session ID is included to prevent cross-session pairing when sessions are resumed
-    pair_last_index: Dict[
+    pair_last_index: dict[
         tuple[str, str], int
     ] = {}  # (session_id, tool_use_id) -> message index
     # Index slash-command pair_last messages by parent_uuid
-    slash_command_pair_index: Dict[str, int] = {}  # parent_uuid -> message index
+    slash_command_pair_index: dict[str, int] = {}  # parent_uuid -> message index
 
     for i, msg in enumerate(messages):
         if (
@@ -1214,7 +1214,7 @@ def _reorder_paired_messages(messages: List[TemplateMessage]) -> List[TemplateMe
             slash_command_pair_index[msg.parent_uuid] = i
 
     # Create reordered list
-    reordered: List[TemplateMessage] = []
+    reordered: list[TemplateMessage] = []
     skip_indices: set[int] = set()
 
     for i, msg in enumerate(messages):
@@ -1343,7 +1343,7 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
     return 1
 
 
-def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
+def _build_message_hierarchy(messages: list[TemplateMessage]) -> None:
     """Build message_id and ancestry for all messages based on their current order.
 
     This should be called after all reordering operations (pair reordering, sidechain
@@ -1355,7 +1355,7 @@ def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
     Args:
         messages: List of template messages in their final order (modified in place)
     """
-    hierarchy_stack: List[tuple[int, str]] = []
+    hierarchy_stack: list[tuple[int, str]] = []
     message_id_counter = 0
 
     for message in messages:
@@ -1389,7 +1389,7 @@ def _build_message_hierarchy(messages: List[TemplateMessage]) -> None:
         message.ancestry = ancestry
 
 
-def _mark_messages_with_children(messages: List[TemplateMessage]) -> None:
+def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
     """Mark messages that have children and calculate descendant counts.
 
     Efficiently calculates:
@@ -1445,7 +1445,7 @@ def _mark_messages_with_children(messages: List[TemplateMessage]) -> None:
                 )
 
 
-def _build_message_tree(messages: List[TemplateMessage]) -> List[TemplateMessage]:
+def _build_message_tree(messages: list[TemplateMessage]) -> list[TemplateMessage]:
     """Build tree structure by populating children fields based on ancestry.
 
     This function takes a flat list of messages (with message_id and ancestry
@@ -1475,7 +1475,7 @@ def _build_message_tree(messages: List[TemplateMessage]) -> List[TemplateMessage
         message.children = []
 
     # Collect root messages (those with no ancestry)
-    root_messages: List[TemplateMessage] = []
+    root_messages: list[TemplateMessage] = []
 
     # Populate children based on ancestry
     for message in messages:
@@ -1496,8 +1496,8 @@ def _build_message_tree(messages: List[TemplateMessage]) -> List[TemplateMessage
 
 
 def _reorder_session_template_messages(
-    messages: List[TemplateMessage],
-) -> List[TemplateMessage]:
+    messages: list[TemplateMessage],
+) -> list[TemplateMessage]:
     """Reorder template messages to group all messages under their correct session headers.
 
     When a user resumes session A into session B, Claude Code copies messages from
@@ -1516,8 +1516,8 @@ def _reorder_session_template_messages(
         Reordered messages with all messages grouped under their session headers
     """
     # First pass: extract session headers and group non-header messages by session_id
-    session_headers: List[TemplateMessage] = []
-    session_messages_map: Dict[str, List[TemplateMessage]] = {}
+    session_headers: list[TemplateMessage] = []
+    session_messages_map: dict[str, list[TemplateMessage]] = {}
 
     for message in messages:
         if message.is_session_header:
@@ -1537,7 +1537,7 @@ def _reorder_session_template_messages(
         return messages
 
     # Second pass: for each session header, insert all messages with that session_id
-    result: List[TemplateMessage] = []
+    result: list[TemplateMessage] = []
     used_sessions: set[str] = set()
 
     for header in session_headers:
@@ -1558,8 +1558,8 @@ def _reorder_session_template_messages(
 
 
 def _reorder_sidechain_template_messages(
-    messages: List[TemplateMessage],
-) -> List[TemplateMessage]:
+    messages: list[TemplateMessage],
+) -> list[TemplateMessage]:
     """Reorder template messages to place sidechains immediately after their Task results.
 
     When parallel Task agents run, their sidechain messages may appear in arbitrary
@@ -1581,8 +1581,8 @@ def _reorder_sidechain_template_messages(
         Reordered messages with sidechains properly placed after their Task results
     """
     # First pass: extract sidechains grouped by agent_id
-    main_messages: List[TemplateMessage] = []
-    sidechain_map: Dict[str, List[TemplateMessage]] = {}
+    main_messages: list[TemplateMessage] = []
+    sidechain_map: dict[str, list[TemplateMessage]] = {}
 
     for message in messages:
         is_sidechain = message.modifiers.is_sidechain
@@ -1602,7 +1602,7 @@ def _reorder_sidechain_template_messages(
 
     # Second pass: insert sidechains after their Task result messages
     # Also perform deduplication of sidechain assistants vs Task results
-    result: List[TemplateMessage] = []
+    result: list[TemplateMessage] = []
     used_agents: set[str] = set()
 
     for message in main_messages:
@@ -1662,7 +1662,7 @@ def _reorder_sidechain_template_messages(
     return result
 
 
-def _filter_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
+def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     """Filter messages to those that should be rendered.
 
     This function filters out:
@@ -1680,7 +1680,7 @@ def _filter_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
     Returns:
         Filtered list of messages that should be rendered
     """
-    filtered: List[TranscriptEntry] = []
+    filtered: list[TranscriptEntry] = []
 
     for message in messages:
         message_type = message.type
@@ -1700,28 +1700,25 @@ def _filter_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
             continue
 
         # Get message content for filtering checks
+        message_content: list[ContentItem]
         if isinstance(message, QueueOperationTranscriptEntry):
-            message_content = message.content if message.content else []
+            content = message.content
+            message_content = content if isinstance(content, list) else []
         else:
-            message_content = message.message.content  # type: ignore
+            message_content = message.message.content  # type: ignore[union-attr]
 
         text_content = extract_text_content(message_content)
 
         # Skip if no meaningful content
         if not text_content.strip():
             # Check for tool items
-            if isinstance(message_content, list):
-                has_tool_items = any(
-                    isinstance(
-                        item, (ToolUseContent, ToolResultContent, ThinkingContent)
-                    )
-                    or getattr(item, "type", None)
-                    in ("tool_use", "tool_result", "thinking")
-                    for item in message_content
-                )
-                if not has_tool_items:
-                    continue
-            else:
+            has_tool_items = any(
+                isinstance(item, (ToolUseContent, ToolResultContent, ThinkingContent))
+                or getattr(item, "type", None)
+                in ("tool_use", "tool_result", "thinking")
+                for item in message_content
+            )
+            if not has_tool_items:
                 continue
 
         # Skip messages that should be filtered out
@@ -1730,14 +1727,13 @@ def _filter_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
 
         # Skip sidechain user messages that are just prompts (no tool results)
         if message_type == MessageType.USER and getattr(message, "isSidechain", False):
-            if isinstance(message_content, list):
-                has_tool_results = any(
-                    getattr(item, "type", None) == "tool_result"
-                    or isinstance(item, ToolResultContent)
-                    for item in message_content
-                )
-                if not has_tool_results:
-                    continue
+            has_tool_results = any(
+                getattr(item, "type", None) == "tool_result"
+                or isinstance(item, ToolResultContent)
+                for item in message_content
+            )
+            if not has_tool_results:
+                continue
 
         # Message passes all filters
         filtered.append(message)
@@ -1746,10 +1742,10 @@ def _filter_messages(messages: List[TranscriptEntry]) -> List[TranscriptEntry]:
 
 
 def _collect_session_info(
-    messages: List[TranscriptEntry],
+    messages: list[TranscriptEntry],
 ) -> tuple[
-    Dict[str, Dict[str, Any]],  # sessions
-    List[str],  # session_order
+    dict[str, dict[str, Any]],  # sessions
+    list[str],  # session_order
     set[str],  # show_tokens_for_message
 ]:
     """Collect session metadata and token tracking from pre-filtered messages.
@@ -1771,8 +1767,8 @@ def _collect_session_info(
         - session_order: List of session IDs in chronological order
         - show_tokens_for_message: Set of message UUIDs that should display tokens
     """
-    sessions: Dict[str, Dict[str, Any]] = {}
-    session_order: List[str] = []
+    sessions: dict[str, dict[str, Any]] = {}
+    session_order: list[str] = []
 
     # Track requestIds to avoid double-counting token usage
     seen_request_ids: set[str] = set()
@@ -1867,10 +1863,10 @@ def _collect_session_info(
 
 
 def _render_messages(
-    messages: List[TranscriptEntry],
-    sessions: Dict[str, Dict[str, Any]],
+    messages: list[TranscriptEntry],
+    sessions: dict[str, dict[str, Any]],
     show_tokens_for_message: set[str],
-) -> List[TemplateMessage]:
+) -> list[TemplateMessage]:
     """Pass 2: Render pre-filtered messages to TemplateMessage objects.
 
     This pass creates the actual TemplateMessage objects for rendering:
@@ -1894,19 +1890,19 @@ def _render_messages(
     seen_sessions: set[str] = set()
 
     # Build mapping of tool_use_id to ToolUseContent for specialized tool result rendering
-    tool_use_context: Dict[str, ToolUseContent] = {}
+    tool_use_context: dict[str, ToolUseContent] = {}
 
     # Process messages into template-friendly format
-    template_messages: List[TemplateMessage] = []
+    template_messages: list[TemplateMessage] = []
 
     # Per-message timing tracking
-    message_timings: List[
+    message_timings: list[
         tuple[float, str, int, str]
     ] = []  # (duration, message_type, index, uuid)
 
     # Track expensive operations
-    markdown_timings: List[tuple[float, str]] = []  # (duration, context_uuid)
-    pygments_timings: List[tuple[float, str]] = []  # (duration, context_uuid)
+    markdown_timings: list[tuple[float, str]] = []  # (duration, context_uuid)
+    pygments_timings: list[tuple[float, str]] = []  # (duration, context_uuid)
 
     # Initialize timing tracking
     set_timing_var("_markdown_timings", markdown_timings)
@@ -1938,11 +1934,11 @@ def _render_messages(
         text_content = extract_text_content(message_content)  # type: ignore[arg-type]
 
         # Separate tool/thinking/image content from text content
-        tool_items: List[ContentItem] = []
-        text_only_content: List[ContentItem] = []
+        tool_items: list[ContentItem] = []
+        text_only_content: list[ContentItem] = []
 
         if isinstance(message_content, list):
-            text_only_items: List[ContentItem] = []
+            text_only_items: list[ContentItem] = []
             for item in message_content:  # type: ignore[union-attr]
                 item_type = getattr(item, "type", None)  # type: ignore[arg-type]
                 is_image = isinstance(item, ImageContent) or item_type == "image"
@@ -2199,8 +2195,8 @@ def _render_messages(
 
 
 def prepare_projects_index(
-    project_summaries: List[Dict[str, Any]],
-) -> tuple[List["TemplateProject"], "TemplateSummary"]:
+    project_summaries: list[dict[str, Any]],
+) -> tuple[list["TemplateProject"], "TemplateSummary"]:
     """Prepare project data for rendering in any format.
 
     Args:
@@ -2222,7 +2218,7 @@ def prepare_projects_index(
 
 
 def title_for_projects_index(
-    project_summaries: List[Dict[str, Any]],
+    project_summaries: list[dict[str, Any]],
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
 ) -> str:
@@ -2286,7 +2282,7 @@ def title_for_projects_index(
 
     # Add date range suffix if provided
     if from_date or to_date:
-        date_range_parts: List[str] = []
+        date_range_parts: list[str] = []
         if from_date:
             date_range_parts.append(f"from {from_date}")
         if to_date:
@@ -2308,7 +2304,7 @@ class Renderer:
 
     def generate(
         self,
-        messages: List[TranscriptEntry],
+        messages: list[TranscriptEntry],
         title: Optional[str] = None,
         combined_transcript_link: Optional[str] = None,
     ) -> Optional[str]:
@@ -2320,7 +2316,7 @@ class Renderer:
 
     def generate_session(
         self,
-        messages: List[TranscriptEntry],
+        messages: list[TranscriptEntry],
         session_id: str,
         title: Optional[str] = None,
         cache_manager: Optional["CacheManager"] = None,
@@ -2333,7 +2329,7 @@ class Renderer:
 
     def generate_projects_index(
         self,
-        project_summaries: List[Dict[str, Any]],
+        project_summaries: list[dict[str, Any]],
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
     ) -> Optional[str]:

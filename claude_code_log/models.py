@@ -5,7 +5,7 @@ Enhanced to leverage official Anthropic types where beneficial.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, List, Union, Optional, Dict, Literal
+from typing import Any, Union, Optional, Literal
 
 from anthropic.types import Message as AnthropicMessage
 from anthropic.types import StopReason
@@ -122,8 +122,8 @@ class HookSummaryContent(MessageContent):
     """
 
     has_output: bool
-    hook_errors: List[str]  # Error messages from hooks
-    hook_infos: List[HookInfo]  # Info about each hook executed
+    hook_errors: list[str]  # Error messages from hooks
+    hook_infos: list[HookInfo]  # Info about each hook executed
 
 
 # =============================================================================
@@ -187,7 +187,7 @@ class ToolResultContentModel(MessageContent):
     """
 
     tool_use_id: str
-    content: Any  # Union[str, List[Dict[str, Any]]]
+    content: Any  # Union[str, list[dict[str, Any]]]
     is_error: bool = False
     tool_name: Optional[str] = None  # Name of the tool that produced this result
     file_path: Optional[str] = None  # File path for Read/Edit/Write tools
@@ -239,7 +239,7 @@ class IdeDiagnostic:
     Contains either parsed JSON diagnostics or raw content if parsing failed.
     """
 
-    diagnostics: Optional[List[Dict[str, Any]]] = None  # Parsed diagnostic objects
+    diagnostics: Optional[list[dict[str, Any]]] = None  # Parsed diagnostic objects
     raw_content: Optional[str] = None  # Fallback if JSON parsing failed
 
 
@@ -255,9 +255,9 @@ class IdeNotificationContent(MessageContent):
     Format-neutral: stores structured data, not HTML.
     """
 
-    opened_files: List[IdeOpenedFile]
-    selections: List[IdeSelection]
-    diagnostics: List[IdeDiagnostic]
+    opened_files: list[IdeOpenedFile]
+    selections: list[IdeSelection]
+    diagnostics: list[IdeDiagnostic]
     remaining_text: str  # Text after notifications extracted
 
 
@@ -379,7 +379,7 @@ class EditOutput(MessageContent):
 
     file_path: str
     success: bool
-    diffs: List[EditDiff]  # Changes made
+    diffs: list[EditDiff]  # Changes made
     message: str  # Result message or code snippet
     start_line: int = 1  # Starting line number for code display
 
@@ -424,7 +424,7 @@ class GlobOutput(MessageContent):
     """
 
     pattern: str
-    files: List[str]  # Matching file paths
+    files: list[str]  # Matching file paths
     truncated: bool  # Whether list was truncated
 
 
@@ -438,7 +438,7 @@ class GrepOutput(MessageContent):
     """
 
     pattern: str
-    matches: List[str]  # Matching lines/files
+    matches: list[str]  # Matching lines/files
     output_mode: str  # "content", "files_with_matches", or "count"
     truncated: bool
 
@@ -526,7 +526,7 @@ class MultiEditInput(BaseModel):
     """Input parameters for the MultiEdit tool."""
 
     file_path: str
-    edits: List[EditItem]
+    edits: list[EditItem]
 
 
 class GlobInput(BaseModel):
@@ -581,7 +581,7 @@ class TodoWriteItem(BaseModel):
 class TodoWriteInput(BaseModel):
     """Input parameters for the TodoWrite tool."""
 
-    todos: List[TodoWriteItem]
+    todos: list[TodoWriteItem]
 
 
 class AskUserQuestionOption(BaseModel):
@@ -602,7 +602,7 @@ class AskUserQuestionItem(BaseModel):
 
     question: str = ""
     header: Optional[str] = None
-    options: List[AskUserQuestionOption] = []
+    options: list[AskUserQuestionOption] = []
     multiSelect: bool = False
 
 
@@ -612,7 +612,7 @@ class AskUserQuestionInput(BaseModel):
     Supports both modern format (questions list) and legacy format (single question).
     """
 
-    questions: List[AskUserQuestionItem] = []
+    questions: list[AskUserQuestionItem] = []
     question: Optional[str] = None  # Legacy single question format
 
 
@@ -637,7 +637,7 @@ ToolInput = Union[
     TodoWriteInput,
     AskUserQuestionInput,
     ExitPlanModeInput,
-    Dict[str, Any],  # Fallback for unknown tools
+    dict[str, Any],  # Fallback for unknown tools
 ]
 
 
@@ -649,7 +649,7 @@ class UsageInfo(BaseModel):
     cache_read_input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     service_tier: Optional[str] = None
-    server_tool_use: Optional[Dict[str, Any]] = None
+    server_tool_use: Optional[dict[str, Any]] = None
 
     def to_anthropic_usage(self) -> Optional[AnthropicUsage]:
         """Convert to Anthropic Usage type if both required fields are present."""
@@ -688,7 +688,7 @@ class ToolUseContent(BaseModel, MessageContent):
     type: Literal["tool_use"]
     id: str
     name: str
-    input: Dict[str, Any]
+    input: dict[str, Any]
     _parsed_input: Optional["ToolInput"] = PrivateAttr(
         default=None
     )  # Cached parsed input
@@ -713,7 +713,7 @@ class ToolUseContent(BaseModel, MessageContent):
 class ToolResultContent(BaseModel):
     type: Literal["tool_result"]
     tool_use_id: str
-    content: Union[str, List[Dict[str, Any]]]
+    content: Union[str, list[dict[str, Any]]]
     is_error: Optional[bool] = None
     agentId: Optional[str] = None  # Reference to agent file for sub-agent messages
 
@@ -748,7 +748,7 @@ ContentItem = Union[
 
 class UserMessage(BaseModel):
     role: Literal["user"]
-    content: List[ContentItem]
+    content: list[ContentItem]
     usage: Optional["UsageInfo"] = None  # For type compatibility with AssistantMessage
 
 
@@ -759,7 +759,7 @@ class AssistantMessage(BaseModel):
     type: Literal["message"]
     role: Literal["assistant"]
     model: str
-    content: List[ContentItem]
+    content: list[ContentItem]
     stop_reason: Optional[StopReason] = None
     stop_sequence: Optional[str] = None
     usage: Optional[UsageInfo] = None
@@ -791,8 +791,8 @@ class AssistantMessage(BaseModel):
 # ReadOutput, EditOutput, etc. (see Tool Output Content Models section)
 ToolUseResult = Union[
     str,
-    List[Any],  # Covers List[TodoWriteItem], List[ContentItem], etc.
-    Dict[str, Any],  # Covers structured results
+    list[Any],  # Covers list[TodoWriteItem], list[ContentItem], etc.
+    dict[str, Any],  # Covers structured results
 ]
 
 
@@ -839,8 +839,8 @@ class SystemTranscriptEntry(BaseTranscriptEntry):
     level: Optional[str] = None  # e.g., "warning", "info", "error"
     # Hook summary fields (for subtype="stop_hook_summary")
     hasOutput: Optional[bool] = None
-    hookErrors: Optional[List[str]] = None
-    hookInfos: Optional[List[Dict[str, Any]]] = None
+    hookErrors: Optional[list[str]] = None
+    hookInfos: Optional[list[dict[str, Any]]] = None
     preventedContinuation: Optional[bool] = None
 
 
@@ -859,7 +859,7 @@ class QueueOperationTranscriptEntry(BaseModel):
     operation: Literal["enqueue", "dequeue", "remove", "popAll"]
     timestamp: str
     sessionId: str
-    content: Optional[Union[List[ContentItem], str]] = (
+    content: Optional[Union[list[ContentItem], str]] = (
         None  # List for enqueue, str for remove/popAll
     )
 

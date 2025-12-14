@@ -5,7 +5,7 @@ import os
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar, Dict, Optional, cast
+from typing import ClassVar, Optional, cast
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
@@ -230,7 +230,7 @@ class SessionBrowser(App[Optional[str]]):
     is_expanded: reactive[bool] = reactive(False)
     project_path: Path
     cache_manager: CacheManager
-    sessions: Dict[str, SessionCacheData]
+    sessions: dict[str, SessionCacheData]
 
     def __init__(self, project_path: Path):
         """Initialize the session browser with a project path."""

@@ -18,7 +18,7 @@ import base64
 import binascii
 import json
 import re
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Optional, cast
 
 from .utils import (
     escape_html,
@@ -50,7 +50,7 @@ from .renderer_code import render_single_diff
 
 def _render_question_item(q: AskUserQuestionItem) -> str:
     """Render a single question item to HTML."""
-    html_parts: List[str] = ['<div class="question-block">']
+    html_parts: list[str] = ['<div class="question-block">']
 
     # Header (if present)
     if q.header:
@@ -91,7 +91,7 @@ def format_askuserquestion_content(ask_input: AskUserQuestionInput) -> str:
     options (with label and description), and multiSelect flag.
     """
     # Build list of questions from both formats
-    questions: List[AskUserQuestionItem] = list(ask_input.questions)
+    questions: list[AskUserQuestionItem] = list(ask_input.questions)
 
     # Handle single question format (legacy)
     if not questions and ask_input.question:
@@ -101,7 +101,7 @@ def format_askuserquestion_content(ask_input: AskUserQuestionInput) -> str:
         return '<div class="askuserquestion-content"><em>No question</em></div>'
 
     # Build HTML for all questions
-    html_parts: List[str] = ['<div class="askuserquestion-content">']
+    html_parts: list[str] = ['<div class="askuserquestion-content">']
     for q in questions:
         html_parts.append(_render_question_item(q))
     html_parts.append("</div>")  # Close askuserquestion-content
@@ -142,7 +142,7 @@ def format_askuserquestion_result(content: str) -> str:
         return ""
 
     # Build styled HTML
-    html_parts: List[str] = [
+    html_parts: list[str] = [
         '<div class="askuserquestion-content askuserquestion-result">'
     ]
 
@@ -219,7 +219,7 @@ def format_todowrite_content(todo_input: TodoWriteInput) -> str:
     status_emojis = {"pending": "⏳", "in_progress": "🔄", "completed": "✅"}
 
     # Build todo list HTML - todos are typed TodoWriteItem objects
-    todo_items: List[str] = []
+    todo_items: list[str] = []
     for todo in todo_input.todos:
         todo_id = escape_html(todo.id) if todo.id else ""
         content = escape_html(todo.content) if todo.content else ""
@@ -268,7 +268,7 @@ def format_read_tool_content(read_input: ReadInput) -> str:  # noqa: ARG001
 
 
 def _parse_cat_n_snippet(
-    lines: List[str], start_idx: int = 0
+    lines: list[str], start_idx: int = 0
 ) -> Optional[tuple[str, Optional[str], int]]:
     """Parse cat-n formatted snippet from lines.
 
@@ -279,7 +279,7 @@ def _parse_cat_n_snippet(
     Returns:
         Tuple of (code_content, system_reminder, line_offset) or None if not parseable
     """
-    code_lines: List[str] = []
+    code_lines: list[str] = []
     system_reminder: Optional[str] = None
     in_system_reminder = False
     line_offset = 1  # Default offset
@@ -633,7 +633,7 @@ def format_tool_use_title(tool_use: ToolUseContent) -> str:
 # -- Generic Parameter Table --------------------------------------------------
 
 
-def render_params_table(params: Dict[str, Any]) -> str:
+def render_params_table(params: dict[str, Any]) -> str:
     """Render a dictionary of parameters as an HTML table.
 
     Reusable for tool parameters, diagnostic objects, etc.
@@ -790,11 +790,11 @@ def format_tool_result_content(
     if isinstance(tool_result.content, str):
         raw_content = tool_result.content
         has_images = False
-        image_html_parts: List[str] = []
+        image_html_parts: list[str] = []
     else:
         # Content is a list of structured items, extract text and images
-        content_parts: List[str] = []
-        image_html_parts: List[str] = []
+        content_parts: list[str] = []
+        image_html_parts: list[str] = []
         for item in tool_result.content:
             item_type = item.get("type")
             if item_type == "text":
@@ -803,7 +803,7 @@ def format_tool_result_content(
                     content_parts.append(text_value)
             elif item_type == "image":
                 # Handle image content within tool results
-                source = cast(Dict[str, Any], item.get("source", {}))
+                source = cast(dict[str, Any], item.get("source", {}))
                 if source:
                     media_type: str = str(source.get("media_type", "image/png"))
                     # Restrict to safe image types to prevent XSS via SVG

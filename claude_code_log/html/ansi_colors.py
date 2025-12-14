@@ -7,7 +7,7 @@ to HTML with appropriate CSS classes for styling.
 
 import html
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 
 def _escape_html(text: str) -> str:
@@ -54,8 +54,8 @@ def convert_ansi_to_html(text: str) -> str:
     # This catches any we might have missed, but preserves \x1b[...m color codes
     text = re.sub(r"\x1b\[(?![0-9;]*m)[0-9;]*[A-Za-z]", "", text)
 
-    result: List[str] = []
-    segments: List[Dict[str, Any]] = []
+    result: list[str] = []
+    segments: list[dict[str, Any]] = []
 
     # First pass: split text into segments with their styles
     last_end = 0
@@ -233,8 +233,8 @@ def convert_ansi_to_html(text: str) -> str:
         if not segment["text"]:
             continue
 
-        classes: List[str] = []
-        styles: List[str] = []
+        classes: list[str] = []
+        styles: list[str] = []
 
         if segment["fg"]:
             classes.append(segment["fg"])
@@ -256,7 +256,7 @@ def convert_ansi_to_html(text: str) -> str:
         escaped_text = _escape_html(segment["text"])
 
         if classes or styles:
-            attrs: List[str] = []
+            attrs: list[str] = []
             if classes:
                 attrs.append(f'class="{" ".join(classes)}"')
             if styles:

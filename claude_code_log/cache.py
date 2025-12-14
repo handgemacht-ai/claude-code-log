@@ -3,7 +3,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Optional, cast
 from datetime import datetime
 from pydantic import BaseModel
 from packaging import version
@@ -18,7 +18,7 @@ class CachedFileInfo(BaseModel):
     source_mtime: float
     cached_mtime: float
     message_count: int
-    session_ids: List[str]
+    session_ids: list[str]
 
 
 class SessionCacheData(BaseModel):
@@ -46,7 +46,7 @@ class ProjectCache(BaseModel):
     project_path: str
 
     # File-level cache information
-    cached_files: Dict[str, CachedFileInfo]
+    cached_files: dict[str, CachedFileInfo]
 
     # Aggregated project information
     total_message_count: int = 0
@@ -56,10 +56,10 @@ class ProjectCache(BaseModel):
     total_cache_read_tokens: int = 0
 
     # Session metadata
-    sessions: Dict[str, SessionCacheData]
+    sessions: dict[str, SessionCacheData]
 
     # Working directories associated with this project
-    working_directories: List[str] = []
+    working_directories: list[str] = []
 
     # Timeline information
     earliest_timestamp: str = ""
@@ -154,7 +154,7 @@ class CacheManager:
             abs(source_mtime - cached_info.source_mtime) < 1.0 and cache_file.exists()
         )
 
-    def load_cached_entries(self, jsonl_path: Path) -> Optional[List[TranscriptEntry]]:
+    def load_cached_entries(self, jsonl_path: Path) -> Optional[list[TranscriptEntry]]:
         """Load cached transcript entries for a JSONL file."""
         if not self.is_file_cached(jsonl_path):
             return None
@@ -165,11 +165,11 @@ class CacheManager:
                 cache_data = json.load(f)
 
             # Expect timestamp-keyed format - flatten all entries
-            entries_data: List[Dict[str, Any]] = []
+            entries_data: list[dict[str, Any]] = []
             for timestamp_entries in cache_data.values():
                 if isinstance(timestamp_entries, list):
-                    # Type cast to ensure Pyright knows this is List[Dict[str, Any]]
-                    entries_data.extend(cast(List[Dict[str, Any]], timestamp_entries))
+                    # Type cast to ensure Pyright knows this is list[dict[str, Any]]
+                    entries_data.extend(cast(list[dict[str, Any]], timestamp_entries))
 
             # Deserialize back to TranscriptEntry objects
             from .parser import parse_transcript_entry
@@ -184,7 +184,7 @@ class CacheManager:
 
     def load_cached_entries_filtered(
         self, jsonl_path: Path, from_date: Optional[str], to_date: Optional[str]
-    ) -> Optional[List[TranscriptEntry]]:
+    ) -> Optional[list[TranscriptEntry]]:
         """Load cached entries with efficient timestamp-based filtering."""
         if not self.is_file_cached(jsonl_path):
             return None
@@ -226,15 +226,15 @@ class CacheManager:
                         )
 
             # Filter entries by timestamp
-            filtered_entries_data: List[Dict[str, Any]] = []
+            filtered_entries_data: list[dict[str, Any]] = []
 
             for timestamp_key, timestamp_entries in cache_data.items():
                 if timestamp_key == "_no_timestamp":
                     # Always include entries without timestamps (like summaries)
                     if isinstance(timestamp_entries, list):
-                        # Type cast to ensure Pyright knows this is List[Dict[str, Any]]
+                        # Type cast to ensure Pyright knows this is list[dict[str, Any]]
                         filtered_entries_data.extend(
-                            cast(List[Dict[str, Any]], timestamp_entries)
+                            cast(list[dict[str, Any]], timestamp_entries)
                         )
                 else:
                     # Check if timestamp falls within range
@@ -251,9 +251,9 @@ class CacheManager:
                             continue
 
                     if isinstance(timestamp_entries, list):
-                        # Type cast to ensure Pyright knows this is List[Dict[str, Any]]
+                        # Type cast to ensure Pyright knows this is list[dict[str, Any]]
                         filtered_entries_data.extend(
-                            cast(List[Dict[str, Any]], timestamp_entries)
+                            cast(list[dict[str, Any]], timestamp_entries)
                         )
 
             # Deserialize filtered entries
@@ -271,14 +271,14 @@ class CacheManager:
             return None
 
     def save_cached_entries(
-        self, jsonl_path: Path, entries: List[TranscriptEntry]
+        self, jsonl_path: Path, entries: list[TranscriptEntry]
     ) -> None:
         """Save parsed transcript entries to cache with timestamp-based structure."""
         cache_file = self._get_cache_file_path(jsonl_path)
 
         try:
             # Create timestamp-keyed cache structure for efficient date filtering
-            cache_data: Dict[str, Any] = {}
+            cache_data: dict[str, Any] = {}
 
             for entry in entries:
                 # Get timestamp - use empty string as fallback for entries without timestamps
@@ -306,7 +306,7 @@ class CacheManager:
                 cached_mtime = cache_file.stat().st_mtime
 
                 # Extract session IDs from entries
-                session_ids: List[str] = []
+                session_ids: list[str] = []
                 for entry in entries:
                     if hasattr(entry, "sessionId"):
                         session_id = getattr(entry, "sessionId", "")
@@ -326,7 +326,7 @@ class CacheManager:
         except Exception as e:
             print(f"Warning: Failed to save cached entries to {cache_file}: {e}")
 
-    def update_session_cache(self, session_data: Dict[str, SessionCacheData]) -> None:
+    def update_session_cache(self, session_data: dict[str, SessionCacheData]) -> None:
         """Update cached session information."""
         if self._project_cache is None:
             return
@@ -360,7 +360,7 @@ class CacheManager:
 
         self._save_project_cache()
 
-    def update_working_directories(self, working_directories: List[str]) -> None:
+    def update_working_directories(self, working_directories: list[str]) -> None:
         """Update the list of working directories associated with this project."""
         if self._project_cache is None:
             return
@@ -368,9 +368,9 @@ class CacheManager:
         self._project_cache.working_directories = working_directories
         self._save_project_cache()
 
-    def get_modified_files(self, jsonl_files: List[Path]) -> List[Path]:
+    def get_modified_files(self, jsonl_files: list[Path]) -> list[Path]:
         """Get list of JSONL files that need to be reprocessed."""
-        modified_files: List[Path] = []
+        modified_files: list[Path] = []
 
         for jsonl_file in jsonl_files:
             if not self.is_file_cached(jsonl_file):
@@ -450,7 +450,7 @@ class CacheManager:
         # If no breaking changes affect this cache version, it's compatible
         return True
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics for reporting."""
         if self._project_cache is None:
             return {"cache_enabled": False}

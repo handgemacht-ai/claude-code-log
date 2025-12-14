@@ -3,7 +3,7 @@
 
 import json
 import re
-from typing import Any, Callable, Dict, List, Optional, Union, cast, TypeGuard
+from typing import Any, Callable, Optional, Union, cast, TypeGuard
 from datetime import datetime
 
 from anthropic.types import Message as AnthropicMessage
@@ -61,7 +61,7 @@ from .models import (
 )
 
 
-def extract_text_content(content: Optional[List[ContentItem]]) -> str:
+def extract_text_content(content: Optional[list[ContentItem]]) -> str:
     """Extract text content from Claude message content structure.
 
     Supports both custom models (TextContent, ThinkingContent) and official
@@ -69,7 +69,7 @@ def extract_text_content(content: Optional[List[ContentItem]]) -> str:
     """
     if not content:
         return ""
-    text_parts: List[str] = []
+    text_parts: list[str] = []
     for item in content:
         # Handle text content (custom TextContent or Anthropic TextBlock)
         if isinstance(item, (TextContent, TextBlock)):
@@ -122,7 +122,7 @@ def parse_slash_command(text: str) -> Optional[SlashCommandContent]:
         try:
             contents_json: Any = json.loads(contents_text)
             if isinstance(contents_json, dict) and "text" in contents_json:
-                text_dict = cast(Dict[str, Any], contents_json)
+                text_dict = cast(dict[str, Any], contents_json)
                 text_value = text_dict["text"]
                 command_contents = str(text_value)
             else:
@@ -229,9 +229,9 @@ def parse_ide_notifications(text: str) -> Optional[IdeNotificationContent]:
     Returns:
         IdeNotificationContent if any tags found, None otherwise
     """
-    opened_files: List[IdeOpenedFile] = []
-    selections: List[IdeSelection] = []
-    diagnostics: List[IdeDiagnostic] = []
+    opened_files: list[IdeOpenedFile] = []
+    selections: list[IdeSelection] = []
+    diagnostics: list[IdeDiagnostic] = []
     remaining_text = text
 
     # Pattern 1: <ide_opened_file>content</ide_opened_file>
@@ -256,7 +256,7 @@ def parse_ide_notifications(text: str) -> Optional[IdeNotificationContent]:
             if isinstance(parsed_diagnostics, list):
                 diagnostics.append(
                     IdeDiagnostic(
-                        diagnostics=cast(List[Dict[str, Any]], parsed_diagnostics)
+                        diagnostics=cast(list[dict[str, Any]], parsed_diagnostics)
                     )
                 )
             else:
@@ -285,7 +285,7 @@ COMPACTED_SUMMARY_PREFIX = "This session is being continued from a previous conv
 
 
 def parse_compacted_summary(
-    content_list: List[ContentItem],
+    content_list: list[ContentItem],
 ) -> Optional[CompactedSummaryContent]:
     """Parse compacted session summary from content list.
 
@@ -348,7 +348,7 @@ UserMessageContent = Union[CompactedSummaryContent, UserMemoryContent, UserTextC
 
 
 def parse_user_message_content(
-    content_list: List[ContentItem],
+    content_list: list[ContentItem],
 ) -> Optional[UserMessageContent]:
     """Parse user message content into a structured content model.
 
@@ -440,7 +440,7 @@ def is_bash_output(text_content: str) -> bool:
     return "<bash-stdout>" in text_content or "<bash-stderr>" in text_content
 
 
-def is_warmup_only_session(messages: List[TranscriptEntry], session_id: str) -> bool:
+def is_warmup_only_session(messages: list[TranscriptEntry], session_id: str) -> bool:
     """Check if a session contains only warmup user messages.
 
     A warmup session is one where ALL user messages are literally just "Warmup".
@@ -453,7 +453,7 @@ def is_warmup_only_session(messages: List[TranscriptEntry], session_id: str) -> 
     Returns:
         True if ALL user messages in the session are "Warmup", False otherwise
     """
-    user_messages_in_session: List[str] = []
+    user_messages_in_session: list[str] = []
 
     for message in messages:
         if (
@@ -491,7 +491,7 @@ def is_assistant_entry(entry: TranscriptEntry) -> TypeGuard[AssistantTranscriptE
 # Tool Input Parsing
 # =============================================================================
 
-TOOL_INPUT_MODELS: Dict[str, type[BaseModel]] = {
+TOOL_INPUT_MODELS: dict[str, type[BaseModel]] = {
     "Bash": BashInput,
     "Read": ReadInput,
     "Write": WriteInput,
@@ -512,10 +512,10 @@ TOOL_INPUT_MODELS: Dict[str, type[BaseModel]] = {
 # They use defaults for missing fields and skip invalid nested items.
 
 
-def _parse_todowrite_lenient(data: Dict[str, Any]) -> TodoWriteInput:
+def _parse_todowrite_lenient(data: dict[str, Any]) -> TodoWriteInput:
     """Parse TodoWrite input leniently, handling malformed data."""
     todos_raw = data.get("todos", [])
-    valid_todos: List[TodoWriteItem] = []
+    valid_todos: list[TodoWriteItem] = []
     for item in todos_raw:
         if isinstance(item, dict):
             try:
@@ -527,7 +527,7 @@ def _parse_todowrite_lenient(data: Dict[str, Any]) -> TodoWriteInput:
     return TodoWriteInput(todos=valid_todos)
 
 
-def _parse_bash_lenient(data: Dict[str, Any]) -> BashInput:
+def _parse_bash_lenient(data: dict[str, Any]) -> BashInput:
     """Parse Bash input leniently."""
     return BashInput(
         command=data.get("command", ""),
@@ -537,7 +537,7 @@ def _parse_bash_lenient(data: Dict[str, Any]) -> BashInput:
     )
 
 
-def _parse_write_lenient(data: Dict[str, Any]) -> WriteInput:
+def _parse_write_lenient(data: dict[str, Any]) -> WriteInput:
     """Parse Write input leniently."""
     return WriteInput(
         file_path=data.get("file_path", ""),
@@ -545,7 +545,7 @@ def _parse_write_lenient(data: Dict[str, Any]) -> WriteInput:
     )
 
 
-def _parse_edit_lenient(data: Dict[str, Any]) -> EditInput:
+def _parse_edit_lenient(data: dict[str, Any]) -> EditInput:
     """Parse Edit input leniently."""
     return EditInput(
         file_path=data.get("file_path", ""),
@@ -555,10 +555,10 @@ def _parse_edit_lenient(data: Dict[str, Any]) -> EditInput:
     )
 
 
-def _parse_multiedit_lenient(data: Dict[str, Any]) -> MultiEditInput:
+def _parse_multiedit_lenient(data: dict[str, Any]) -> MultiEditInput:
     """Parse Multiedit input leniently."""
     edits_raw = data.get("edits", [])
-    valid_edits: List[EditItem] = []
+    valid_edits: list[EditItem] = []
     for edit in edits_raw:
         if isinstance(edit, dict):
             try:
@@ -568,7 +568,7 @@ def _parse_multiedit_lenient(data: Dict[str, Any]) -> MultiEditInput:
     return MultiEditInput(file_path=data.get("file_path", ""), edits=valid_edits)
 
 
-def _parse_task_lenient(data: Dict[str, Any]) -> TaskInput:
+def _parse_task_lenient(data: dict[str, Any]) -> TaskInput:
     """Parse Task input leniently."""
     return TaskInput(
         prompt=data.get("prompt", ""),
@@ -580,7 +580,7 @@ def _parse_task_lenient(data: Dict[str, Any]) -> TaskInput:
     )
 
 
-def _parse_read_lenient(data: Dict[str, Any]) -> ReadInput:
+def _parse_read_lenient(data: dict[str, Any]) -> ReadInput:
     """Parse Read input leniently."""
     return ReadInput(
         file_path=data.get("file_path", ""),
@@ -589,17 +589,17 @@ def _parse_read_lenient(data: Dict[str, Any]) -> ReadInput:
     )
 
 
-def _parse_askuserquestion_lenient(data: Dict[str, Any]) -> AskUserQuestionInput:
+def _parse_askuserquestion_lenient(data: dict[str, Any]) -> AskUserQuestionInput:
     """Parse AskUserQuestion input leniently, handling malformed data."""
     questions_raw = data.get("questions", [])
-    valid_questions: List[AskUserQuestionItem] = []
+    valid_questions: list[AskUserQuestionItem] = []
     for q in questions_raw:
         if isinstance(q, dict):
-            q_dict = cast(Dict[str, Any], q)
+            q_dict = cast(dict[str, Any], q)
             try:
                 # Parse options leniently
                 options_raw = q_dict.get("options", [])
-                valid_options: List[AskUserQuestionOption] = []
+                valid_options: list[AskUserQuestionOption] = []
                 for opt in options_raw:
                     if isinstance(opt, dict):
                         try:
@@ -624,7 +624,7 @@ def _parse_askuserquestion_lenient(data: Dict[str, Any]) -> AskUserQuestionInput
     )
 
 
-def _parse_exitplanmode_lenient(data: Dict[str, Any]) -> ExitPlanModeInput:
+def _parse_exitplanmode_lenient(data: dict[str, Any]) -> ExitPlanModeInput:
     """Parse ExitPlanMode input leniently."""
     return ExitPlanModeInput(
         plan=data.get("plan", ""),
@@ -634,7 +634,7 @@ def _parse_exitplanmode_lenient(data: Dict[str, Any]) -> ExitPlanModeInput:
 
 
 # Mapping of tool names to their lenient parsers
-TOOL_LENIENT_PARSERS: Dict[str, Any] = {
+TOOL_LENIENT_PARSERS: dict[str, Any] = {
     "Bash": _parse_bash_lenient,
     "Write": _parse_write_lenient,
     "Edit": _parse_edit_lenient,
@@ -648,7 +648,7 @@ TOOL_LENIENT_PARSERS: Dict[str, Any] = {
 }
 
 
-def parse_tool_input(tool_name: str, input_data: Dict[str, Any]) -> ToolInput:
+def parse_tool_input(tool_name: str, input_data: dict[str, Any]) -> ToolInput:
     """Parse tool input dictionary into a typed model.
 
     Uses strict validation first, then lenient parsing if available.
@@ -726,7 +726,7 @@ def normalize_usage_info(usage_data: Any) -> Optional[UsageInfo]:
 # to clarify which content types can appear in which context.
 
 
-def _parse_text_content(item_data: Dict[str, Any]) -> ContentItem:
+def _parse_text_content(item_data: dict[str, Any]) -> ContentItem:
     """Parse text content, trying Anthropic types first.
 
     Common to both user and assistant messages.
@@ -737,7 +737,7 @@ def _parse_text_content(item_data: Dict[str, Any]) -> ContentItem:
         return TextContent.model_validate(item_data)
 
 
-def parse_user_content_item(item_data: Dict[str, Any]) -> ContentItem:
+def parse_user_content_item(item_data: dict[str, Any]) -> ContentItem:
     """Parse a content item from a UserTranscriptEntry.
 
     User messages can contain:
@@ -761,7 +761,7 @@ def parse_user_content_item(item_data: Dict[str, Any]) -> ContentItem:
         return TextContent(type="text", text=str(item_data))
 
 
-def parse_assistant_content_item(item_data: Dict[str, Any]) -> ContentItem:
+def parse_assistant_content_item(item_data: dict[str, Any]) -> ContentItem:
     """Parse a content item from an AssistantTranscriptEntry.
 
     Assistant messages can contain:
@@ -795,7 +795,7 @@ def parse_assistant_content_item(item_data: Dict[str, Any]) -> ContentItem:
         return TextContent(type="text", text=str(item_data))
 
 
-def parse_content_item(item_data: Dict[str, Any]) -> ContentItem:
+def parse_content_item(item_data: dict[str, Any]) -> ContentItem:
     """Parse a content item (generic fallback).
 
     For cases where the entry type is unknown. Handles all content types.
@@ -839,8 +839,8 @@ def parse_content_item(item_data: Dict[str, Any]) -> ContentItem:
 
 def parse_message_content(
     content_data: Any,
-    item_parser: Callable[[Dict[str, Any]], ContentItem] = parse_content_item,
-) -> List[ContentItem]:
+    item_parser: Callable[[dict[str, Any]], ContentItem] = parse_content_item,
+) -> list[ContentItem]:
     """Parse message content, normalizing to a list of ContentItems.
 
     Always returns a list for consistent downstream handling. String content
@@ -855,11 +855,11 @@ def parse_message_content(
     if isinstance(content_data, str):
         return [TextContent(type="text", text=content_data)]
     elif isinstance(content_data, list):
-        content_list = cast(List[Any], content_data)
-        result: List[ContentItem] = []
+        content_list = cast(list[Any], content_data)
+        result: list[ContentItem] = []
         for item in content_list:
             if isinstance(item, dict):
-                result.append(item_parser(cast(Dict[str, Any], item)))
+                result.append(item_parser(cast(dict[str, Any], item)))
             else:
                 # Non-dict items (e.g., raw strings) become TextContent
                 result.append(TextContent(type="text", text=str(item)))
@@ -873,7 +873,7 @@ def parse_message_content(
 # =============================================================================
 
 
-def parse_transcript_entry(data: Dict[str, Any]) -> TranscriptEntry:
+def parse_transcript_entry(data: dict[str, Any]) -> TranscriptEntry:
     """
     Parse a JSON dictionary into the appropriate TranscriptEntry type.
 
@@ -904,14 +904,14 @@ def parse_transcript_entry(data: Dict[str, Any]) -> TranscriptEntry:
             data_copy["toolUseResult"], list
         ):
             # Check if it's a list of content items (MCP tool results)
-            tool_use_result = cast(List[Any], data_copy["toolUseResult"])
+            tool_use_result = cast(list[Any], data_copy["toolUseResult"])
             if (
                 tool_use_result
                 and isinstance(tool_use_result[0], dict)
                 and "type" in tool_use_result[0]
             ):
                 data_copy["toolUseResult"] = [
-                    parse_content_item(cast(Dict[str, Any], item))
+                    parse_content_item(cast(dict[str, Any], item))
                     for item in tool_use_result
                     if isinstance(item, dict)
                 ]

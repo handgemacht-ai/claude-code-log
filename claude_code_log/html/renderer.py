@@ -1,7 +1,7 @@
 """HTML renderer implementation for Claude Code transcripts."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 from ..cache import get_library_version
 from ..models import (
@@ -168,8 +168,8 @@ class HtmlRenderer(Renderer):
         return ""
 
     def _flatten_preorder(
-        self, roots: List[TemplateMessage]
-    ) -> List[Tuple[TemplateMessage, str]]:
+        self, roots: list[TemplateMessage]
+    ) -> list[Tuple[TemplateMessage, str]]:
         """Flatten message tree via pre-order traversal, formatting each message.
 
         Traverses the tree depth-first (pre-order), formats each message's
@@ -181,7 +181,7 @@ class HtmlRenderer(Renderer):
         Returns:
             Flat list of (message, html_content) tuples in pre-order
         """
-        flat: List[Tuple[TemplateMessage, str]] = []
+        flat: list[Tuple[TemplateMessage, str]] = []
 
         def visit(msg: TemplateMessage) -> None:
             html = self._format_message_content(msg)
@@ -196,7 +196,7 @@ class HtmlRenderer(Renderer):
 
     def generate(
         self,
-        messages: List[TranscriptEntry],
+        messages: list[TranscriptEntry],
         title: Optional[str] = None,
         combined_transcript_link: Optional[str] = None,
     ) -> str:
@@ -239,7 +239,7 @@ class HtmlRenderer(Renderer):
 
     def generate_session(
         self,
-        messages: List[TranscriptEntry],
+        messages: list[TranscriptEntry],
         session_id: str,
         title: Optional[str] = None,
         cache_manager: Optional["CacheManager"] = None,
@@ -266,7 +266,7 @@ class HtmlRenderer(Renderer):
 
     def generate_projects_index(
         self,
-        project_summaries: List[Dict[str, Any]],
+        project_summaries: list[dict[str, Any]],
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
     ) -> str:
@@ -303,7 +303,7 @@ class HtmlRenderer(Renderer):
 
 
 def generate_html(
-    messages: List[TranscriptEntry],
+    messages: list[TranscriptEntry],
     title: Optional[str] = None,
     combined_transcript_link: Optional[str] = None,
 ) -> str:
@@ -315,7 +315,7 @@ def generate_html(
 
 
 def generate_session_html(
-    messages: List[TranscriptEntry],
+    messages: list[TranscriptEntry],
     session_id: str,
     title: Optional[str] = None,
     cache_manager: Optional["CacheManager"] = None,
@@ -325,7 +325,7 @@ def generate_session_html(
 
 
 def generate_projects_index_html(
-    project_summaries: List[Dict[str, Any]],
+    project_summaries: list[dict[str, Any]],
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
 ) -> str:

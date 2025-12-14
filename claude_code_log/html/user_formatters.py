@@ -8,8 +8,6 @@ Part of the thematic formatter organization:
 - tool_formatters.py: tool use/result content
 """
 
-from typing import List
-
 from .ansi_colors import convert_ansi_to_html
 from ..models import (
     BashInputContent,
@@ -50,7 +48,7 @@ def format_slash_command_content(content: SlashCommandContent) -> str:
     escaped_command_contents = escape_html(formatted_contents)
 
     # Build the content HTML - command name is the primary content
-    content_parts: List[str] = [f"<code>{escaped_command_name}</code>"]
+    content_parts: list[str] = [f"<code>{escaped_command_name}</code>"]
     if content.command_args:
         content_parts.append(f"<strong>Args:</strong> {escaped_command_args}")
     if content.command_contents:
@@ -127,7 +125,7 @@ def format_bash_output_content(
     Returns:
         HTML string for the bash output display
     """
-    output_parts: List[tuple[str, str, int, str]] = []
+    output_parts: list[tuple[str, str, int, str]] = []
     total_lines = 0
 
     if content.stdout:
@@ -149,7 +147,7 @@ def format_bash_output_content(
         )
 
     # Build the HTML parts
-    html_parts: List[str] = []
+    html_parts: list[str] = []
     for output_type, escaped_content, _, _ in output_parts:
         css_name = f"bash-{output_type}"
         html_parts.append(f"<pre class='{css_name}'>{escaped_content}</pre>")
@@ -204,7 +202,7 @@ def format_user_text_model_content(content: UserTextContent) -> str:
     Returns:
         HTML string combining IDE notifications and main text content
     """
-    parts: List[str] = []
+    parts: list[str] = []
 
     # Add IDE notifications first if present
     if content.ide_notifications:
@@ -291,9 +289,9 @@ def _format_selection(selection: IdeSelection) -> str:
         return f"<div class='ide-notification ide-selection'>📝 {escaped_content}</div>"
 
 
-def _format_diagnostic(diagnostic: IdeDiagnostic) -> List[str]:
+def _format_diagnostic(diagnostic: IdeDiagnostic) -> list[str]:
     """Format a single IDE diagnostic as HTML (may produce multiple notifications)."""
-    notifications: List[str] = []
+    notifications: list[str] = []
 
     if diagnostic.diagnostics:
         # Parsed JSON diagnostics - render each as a table
@@ -319,7 +317,7 @@ def _format_diagnostic(diagnostic: IdeDiagnostic) -> List[str]:
     return notifications
 
 
-def format_ide_notification_content(content: IdeNotificationContent) -> List[str]:
+def format_ide_notification_content(content: IdeNotificationContent) -> list[str]:
     """Format IDE notification content as HTML.
 
     Takes structured IdeNotificationContent and returns a list of HTML
@@ -331,7 +329,7 @@ def format_ide_notification_content(content: IdeNotificationContent) -> List[str
     Returns:
         List of HTML notification strings
     """
-    notifications: List[str] = []
+    notifications: list[str] = []
 
     # Format opened files
     for opened_file in content.opened_files:

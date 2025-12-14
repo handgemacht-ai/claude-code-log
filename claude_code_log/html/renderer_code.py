@@ -10,7 +10,7 @@ import fnmatch
 import html
 import os
 import re
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 from pygments import highlight  # type: ignore[reportUnknownVariableType]
 from pygments.lexers import TextLexer, get_lexer_by_name, get_all_lexers  # type: ignore[reportUnknownVariableType]
@@ -193,7 +193,7 @@ def render_line_diff(
     sm = difflib.SequenceMatcher(None, old_line.rstrip("\n"), new_line.rstrip("\n"))
 
     # Build old line with highlighting
-    old_parts: List[str] = []
+    old_parts: list[str] = []
     old_parts.append(
         "<div class='diff-line diff-removed'><span class='diff-marker'>-</span>"
     )
@@ -208,7 +208,7 @@ def render_line_diff(
     old_parts.append("</div>")
 
     # Build new line with highlighting
-    new_parts: List[str] = []
+    new_parts: list[str] = []
     new_parts.append(
         "<div class='diff-line diff-added'><span class='diff-marker'>+</span>"
     )
@@ -245,7 +245,7 @@ def render_single_diff(
 
     # Generate unified diff to identify changed lines
     differ = difflib.Differ()
-    diff: List[str] = list(differ.compare(old_lines, new_lines))
+    diff: list[str] = list(differ.compare(old_lines, new_lines))
 
     html_parts = ["<div class='edit-diff'>"]
 
@@ -257,7 +257,7 @@ def render_single_diff(
 
         if prefix == "- ":
             # Removed line - look ahead for corresponding addition
-            removed_lines: List[str] = [content]
+            removed_lines: list[str] = [content]
             j = i + 1
 
             # Collect consecutive removed lines
@@ -270,7 +270,7 @@ def render_single_diff(
                 j += 1
 
             # Collect consecutive added lines
-            added_lines: List[str] = []
+            added_lines: list[str] = []
             while j < len(diff) and diff[j].startswith("+ "):
                 added_lines.append(diff[j][2:])
                 j += 1

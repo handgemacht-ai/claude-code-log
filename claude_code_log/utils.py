@@ -4,7 +4,7 @@
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 from claude_code_log.cache import SessionCacheData
 from .models import ContentItem, TextContent, TranscriptEntry, UserTranscriptEntry
@@ -63,7 +63,7 @@ def format_timestamp_range(first_timestamp: str, last_timestamp: str) -> str:
 
 
 def get_project_display_name(
-    project_dir_name: str, working_directories: Optional[List[str]] = None
+    project_dir_name: str, working_directories: Optional[list[str]] = None
 ) -> str:
     """Get the display name for a project based on working directories.
 
@@ -164,7 +164,7 @@ def create_session_preview(text_content: str) -> str:
     return preview_content
 
 
-def extract_text_content_length(content: List[ContentItem]) -> int:
+def extract_text_content_length(content: list[ContentItem]) -> int:
     """Get the length of text content for quick checks without full extraction."""
     total_length = 0
     for item in content:
@@ -175,8 +175,8 @@ def extract_text_content_length(content: List[ContentItem]) -> int:
 
 
 def extract_working_directories(
-    entries: List[TranscriptEntry] | List[SessionCacheData],
-) -> List[str]:
+    entries: list[TranscriptEntry] | list[SessionCacheData],
+) -> list[str]:
     """Extract unique working directories from a list of entries.
 
     Ordered by timestamp (most recent first).
@@ -309,7 +309,7 @@ def _compact_ide_tags_for_preview(text_content: str) -> str:
     return text_content
 
 
-def get_warmup_session_ids(messages: List[TranscriptEntry]) -> set[str]:
+def get_warmup_session_ids(messages: list[TranscriptEntry]) -> set[str]:
     """Get set of session IDs that are warmup-only sessions.
 
     Pre-computes warmup status for all sessions for efficiency (O(n) once,
@@ -324,7 +324,7 @@ def get_warmup_session_ids(messages: List[TranscriptEntry]) -> set[str]:
     from .parser import extract_text_content
 
     # Group user message text by session
-    session_user_messages: Dict[str, List[str]] = {}
+    session_user_messages: dict[str, list[str]] = {}
 
     for message in messages:
         if isinstance(message, UserTranscriptEntry) and hasattr(message, "message"):
