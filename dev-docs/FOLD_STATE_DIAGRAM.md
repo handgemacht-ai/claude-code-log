@@ -273,6 +273,6 @@ Paired messages (tool_use + tool_result, thinking + assistant) are handled as un
 
 ## References
 
-- [renderer.py](../claude_code_log/renderer.py) - Hierarchy functions (lines 2698-2850)
-- [templates/components/fold_bar.html](../claude_code_log/templates/components/fold_bar.html) - JavaScript controls
-- [css-classes.md](css-classes.md) - CSS class documentation
+- [renderer.py](../claude_code_log/renderer.py) - Message hierarchy functions (lines 1285-1493)
+- [transcript.html](../claude_code_log/html/templates/transcript.html) - Fold/unfold JavaScript controls
+- [message_styles.css](../claude_code_log/html/templates/components/message_styles.css) - Fold state CSS styles
