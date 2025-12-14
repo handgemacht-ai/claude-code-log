@@ -210,12 +210,12 @@ def load_transcript(
                     else:
                         print(
                             f"Line {line_no} of {jsonl_path} | ValueError: {error_msg}"
-                            "\n{traceback.format_exc()}"
+                            f"\n{traceback.format_exc()}"
                         )
                 except Exception as e:
                     print(
                         f"Line {line_no} of {jsonl_path} | Unexpected error: {str(e)}"
-                        "\n{traceback.format_exc()}"
+                        f"\n{traceback.format_exc()}"
                     )
 
     # Load agent files if any were referenced
