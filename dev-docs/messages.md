@@ -16,7 +16,7 @@ This document maps input types to their intermediate and output representations.
 
 ## Data Flow: From Transcript Entries to Rendered Messages
 
-```
+```text
 JSONL Parsing (parser.py)
 │
 ├── UserTranscriptEntry
@@ -711,7 +711,7 @@ The message hierarchy is determined by **sequence and message type**, not by `pa
 - Tool use/result pairs nest under assistant responses (Level 3)
 - Sidechain messages nest under their Task result (Level 4+)
 
-```
+```text
 Session header (Level 0)
 └── User message (Level 1)
     ├── System message (Level 2)

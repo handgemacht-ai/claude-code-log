@@ -51,7 +51,7 @@ This branch implements tree-based message rendering. See [TEMPLATE_MESSAGE_CHILD
   - Template unchanged - still receives flat list (Phase 3 future work)
 
 **Architecture:**
-```
+```text
 TranscriptEntry[] → generate_template_messages() → root_messages (tree)
                                                           ↓
                     HtmlRenderer._flatten_preorder() → flat_list
@@ -138,7 +138,7 @@ Adds text/markdown/chat output formats via new `content_extractor.py` module.
 **Goal**: Extract ANSI color conversion to dedicated module
 
 **Changes**:
-- ✅ Created `claude_code_log/ansi_colors.py` (261 lines)
+- ✅ Created `claude_code_log/html/ansi_colors.py` (261 lines)
 - ✅ Moved `_convert_ansi_to_html()` → `convert_ansi_to_html()`
 - ✅ Updated imports in `renderer.py`
 - ✅ Updated test imports in `test_ansi_colors.py`
@@ -150,7 +150,7 @@ Adds text/markdown/chat output formats via new `content_extractor.py` module.
 **Goal**: Extract code-related rendering (Pygments highlighting, diff rendering) to dedicated module
 
 **Changes**:
-- ✅ Created `claude_code_log/renderer_code.py` (330 lines)
+- ✅ Created `claude_code_log/html/renderer_code.py` (330 lines)
 - ✅ Moved `_highlight_code_with_pygments()` → `highlight_code_with_pygments()`
 - ✅ Moved `_truncate_highlighted_preview()` → `truncate_highlighted_preview()`
 - ✅ Moved `_render_single_diff()` → `render_single_diff()`
@@ -392,10 +392,7 @@ The original plan called for two-stage (parse + render) splits. This was achieve
 - **Tree-first architecture** means HtmlRenderer traverses tree and formats during pre-order walk
 
 **Step 9 Status**:
-`generate_projects_index_html()` remains in renderer.py because:
-- Mixes format-neutral data preparation (TemplateProject/TemplateSummary) with HTML generation
-- Moving just the HTML part would require restructuring the data flow
-- Low priority: function works correctly and is ~100 lines
+`generate_projects_index_html()` is now in `claude_code_log/html/renderer.py` (thin wrapper over `HtmlRenderer.generate_projects_index()`).
 
 **Dependencies**:
 - Requires Phase 9 (type safety) for clean interfaces ✅
