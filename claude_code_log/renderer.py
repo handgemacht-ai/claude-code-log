@@ -761,7 +761,7 @@ def _process_regular_message(
     if is_sidechain:
         # Update message title for display (only non-user types reach here)
         if not is_compacted:
-            message_title = "🔗 Sub-assistant"
+            message_title = "Sub-assistant"
 
     modifiers = MessageModifiers(
         is_sidechain=is_sidechain,
