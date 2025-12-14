@@ -163,13 +163,12 @@ def format_bash_output_content(
         if total_lines > preview_lines:
             preview_html += "\n..."
 
-        return f"""<details class='collapsible-code'>
-            <summary>
-                <span class='line-count'>{total_lines} lines</span>
-                <pre class='preview-content bash-stdout'>{preview_html}</pre>
-            </summary>
-            <div class='code-full'>{full_html}</div>
-        </details>"""
+        # Use render_collapsible_code for consistent collapse markup
+        return render_collapsible_code(
+            preview_html=f"<pre class='bash-stdout'>{preview_html}</pre>",
+            full_html=full_html,
+            line_count=total_lines,
+        )
 
     return full_html
 
@@ -277,14 +276,14 @@ def _format_selection(selection: IdeSelection) -> str:
     # For large selections, make them collapsible
     if len(selection.content) > 200:
         preview = escape_html(selection.content[:150]) + "..."
-        return f"""
-            <div class='ide-notification ide-selection'>
-                <details class='ide-selection-collapsible'>
-                    <summary>📝 {preview}</summary>
-                    <pre class='ide-selection-content'>{escaped_content}</pre>
-                </details>
-            </div>
-        """
+        return (
+            f"<div class='ide-notification ide-selection'>"
+            f"<details class='ide-selection-collapsible'>"
+            f"<summary>📝 {preview}</summary>"
+            f"<pre class='ide-selection-content'>{escaped_content}</pre>"
+            f"</details>"
+            f"</div>"
+        )
     else:
         return f"<div class='ide-notification ide-selection'>📝 {escaped_content}</div>"
 
