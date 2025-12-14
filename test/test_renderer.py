@@ -20,7 +20,7 @@ class TestRendererEdgeCases:
     """Tests for renderer.py edge cases."""
 
     def test_empty_messages_label(self):
-        """Test format_children_label with 0 messages (line 1471)."""
+        """Test that transcripts with no renderable content produce valid HTML."""
         # Create a transcript with no renderable content
         empty_message = {
             "type": "queue-operation",

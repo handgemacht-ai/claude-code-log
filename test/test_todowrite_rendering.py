@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 import pytest
 from claude_code_log.converter import convert_jsonl_to_html
-from claude_code_log.html import format_todowrite_content
+from claude_code_log.html import format_todowrite_content, format_tool_use_content
 from claude_code_log.models import TodoWriteInput, TodoWriteItem, ToolUseContent
 
 
@@ -73,16 +73,6 @@ class TestTodoWriteRendering:
 
         assert 'class="todo-content"' in html
         # Title and ID are now in the message header, not in content
-        assert "No todos found" in html
-
-    def test_format_todowrite_missing_todos(self):
-        """Test TodoWrite formatting with missing todos field."""
-        # TodoWriteInput with default empty list
-        todo_input = TodoWriteInput(todos=[])
-
-        html = format_todowrite_content(todo_input)
-
-        assert 'class="todo-content"' in html
         assert "No todos found" in html
 
     def test_format_todowrite_html_escaping(self):
@@ -229,8 +219,6 @@ class TestTodoWriteRendering:
         )
 
         # Test both through the main format function
-        from claude_code_log.html import format_tool_use_content
-
         regular_html = format_tool_use_content(regular_tool)
         todowrite_html = format_tool_use_content(todowrite_tool)
 

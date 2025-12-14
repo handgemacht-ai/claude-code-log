@@ -203,7 +203,8 @@ class TestAskUserQuestionRendering:
         assert "&lt;script&gt;" in html
         assert "&lt;test&gt;" in html
         assert "&lt;option&gt;" in html
-        assert "&amp;amp;" in html or "& symbol" not in html
+        # Input "&amp;" should be escaped to "&amp;amp;"
+        assert "&amp;amp;" in html
 
 
 class TestAskUserQuestionResultRendering:
