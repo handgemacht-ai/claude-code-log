@@ -189,16 +189,20 @@ def convert_ansi_to_html(text: str) -> str:
             elif code == "38" and i + 1 < len(codes) and codes[i + 1] == "2":
                 if i + 4 < len(codes):
                     r, g, b = codes[i + 2], codes[i + 3], codes[i + 4]
-                    current_rgb_fg = f"color: rgb({r}, {g}, {b})"
-                    current_fg = None
+                    # Validate RGB values are numeric to avoid invalid CSS
+                    if r.isdigit() and g.isdigit() and b.isdigit():
+                        current_rgb_fg = f"color: rgb({r}, {g}, {b})"
+                        current_fg = None
                     i += 4
 
             # RGB background color
             elif code == "48" and i + 1 < len(codes) and codes[i + 1] == "2":
                 if i + 4 < len(codes):
                     r, g, b = codes[i + 2], codes[i + 3], codes[i + 4]
-                    current_rgb_bg = f"background-color: rgb({r}, {g}, {b})"
-                    current_bg = None
+                    # Validate RGB values are numeric to avoid invalid CSS
+                    if r.isdigit() and g.isdigit() and b.isdigit():
+                        current_rgb_bg = f"background-color: rgb({r}, {g}, {b})"
+                        current_bg = None
                     i += 4
 
             i += 1
