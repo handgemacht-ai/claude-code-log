@@ -380,11 +380,14 @@ class TestCssClassModifiers:
             messages = load_transcript(test_file_path)
             html = generate_html(messages, "Test Compacted Sidechain")
 
-            # Sidechain user messages are typically skipped, but if rendered...
-            # The presence of context-messages tag triggers compacted detection
-            if "context-messages" in html or "compacted" in html.lower():
-                # If rendered, should have both modifiers
-                pass  # Test documents behavior
+            # Sidechain user messages are skipped (duplicate of Task prompt input)
+            # Verify the raw content is not rendered
+            assert "context-messages" not in html, (
+                "Sidechain user messages should be skipped"
+            )
+            assert "[Compacted conversation]" not in html, (
+                "Sidechain user message content should not be rendered"
+            )
 
         finally:
             test_file_path.unlink()
