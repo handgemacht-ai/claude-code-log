@@ -3,7 +3,7 @@
 
 import json
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from claude_code_log.converter import convert_jsonl_to_html
 from claude_code_log.converter import filter_messages_by_date
@@ -29,19 +29,21 @@ def create_test_message(timestamp_str: str, text: str) -> dict:
 def test_date_filtering():
     """Test filtering messages by date range."""
 
-    # Create test messages with different timestamps
-    today = datetime.now()
+    # Create test messages with different timestamps (use UTC for consistency)
+    today = datetime.now(timezone.utc)
     yesterday = today - timedelta(days=1)
     two_days_ago = today - timedelta(days=2)
     three_days_ago = today - timedelta(days=3)
 
+    # Format timestamps as ISO with 'Z' suffix (standard UTC format)
+    def to_utc_iso(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
     message_dicts = [
-        create_test_message(
-            three_days_ago.isoformat() + "Z", "Message from 3 days ago"
-        ),
-        create_test_message(two_days_ago.isoformat() + "Z", "Message from 2 days ago"),
-        create_test_message(yesterday.isoformat() + "Z", "Message from yesterday"),
-        create_test_message(today.isoformat() + "Z", "Message from today"),
+        create_test_message(to_utc_iso(three_days_ago), "Message from 3 days ago"),
+        create_test_message(to_utc_iso(two_days_ago), "Message from 2 days ago"),
+        create_test_message(to_utc_iso(yesterday), "Message from yesterday"),
+        create_test_message(to_utc_iso(today), "Message from today"),
     ]
 
     # Parse dictionaries into TranscriptEntry objects
@@ -99,13 +101,16 @@ def test_invalid_date_handling():
 def test_end_to_end_date_filtering():
     """Test end-to-end date filtering with JSONL file."""
 
-    # Create test messages
-    today = datetime.now()
+    # Create test messages (use UTC for consistency)
+    today = datetime.now(timezone.utc)
     yesterday = today - timedelta(days=1)
 
+    def to_utc_iso(dt: datetime) -> str:
+        return dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
     messages = [
-        create_test_message(yesterday.isoformat() + "Z", "Yesterday's message"),
-        create_test_message(today.isoformat() + "Z", "Today's message"),
+        create_test_message(to_utc_iso(yesterday), "Yesterday's message"),
+        create_test_message(to_utc_iso(today), "Today's message"),
     ]
 
     # Write to temporary JSONL file
