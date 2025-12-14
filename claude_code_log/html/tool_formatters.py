@@ -14,6 +14,8 @@ These formatters take tool-specific input/output data and generate
 HTML for display in transcripts.
 """
 
+import base64
+import binascii
 import json
 import re
 from typing import Any, Dict, List, Optional, cast
@@ -815,9 +817,14 @@ def format_tool_result_content(
                         continue
                     data: str = str(source.get("data", ""))
                     if data:
+                        # Validate base64 data to prevent corruption/injection
+                        try:
+                            base64.b64decode(data, validate=True)
+                        except (binascii.Error, ValueError):
+                            continue
                         data_url = f"data:{media_type};base64,{data}"
                         image_html_parts.append(
-                            f'<img src="{data_url}" alt="Tool result image" '
+                            f'<img src="{escape_html(data_url)}" alt="Tool result image" '
                             f'class="tool-result-image" />'
                         )
         raw_content = "\n".join(content_parts)
