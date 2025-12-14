@@ -201,7 +201,7 @@ class CommandOutputContent(MessageContent):
 
 - **Condition**: Contains `<bash-input>` tags
 - **Content Model**: `BashInputContent`
-- **CSS Class**: Part of bash tool pairing
+- **CSS Class**: `bash-input` (filtered by User)
 - **Files**: [bash_input.json](messages/user/bash_input.json)
 
 ```python
@@ -216,7 +216,7 @@ The corresponding output uses `<bash-stdout>` and optionally `<bash-stderr>` tag
 
 - **Condition**: Contains `<bash-stdout>` tags
 - **Content Model**: `BashOutputContent`
-- **CSS Class**: Part of bash tool pairing
+- **CSS Class**: `bash-output` (filtered by User)
 - **Files**: [bash_output.json](messages/user/bash_output.json)
 
 ### Compacted Conversation

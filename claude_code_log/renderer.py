@@ -697,7 +697,7 @@ def _process_bash_output(
     content = parse_bash_output(text_content)
     # If parsing fails, content will be None - caller/renderer handles empty output
 
-    message_type = "bash"
+    message_type = "bash-output"
     message_title = "Bash"
     return modifiers, content, message_type, message_title
 
