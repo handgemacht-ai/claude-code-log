@@ -13,6 +13,7 @@ The functions here transform format-neutral TemplateMessage data into
 HTML-specific output.
 """
 
+import functools
 import html
 from pathlib import Path
 from typing import Any, Optional, TYPE_CHECKING
@@ -159,24 +160,29 @@ def _create_pygments_plugin() -> Any:
     return plugin_pygments
 
 
+@functools.lru_cache(maxsize=1)
+def _get_markdown_renderer() -> mistune.Markdown:
+    """Get cached Mistune markdown renderer with Pygments syntax highlighting."""
+    return mistune.create_markdown(
+        plugins=[
+            "strikethrough",
+            "footnotes",
+            "table",
+            "url",
+            "task_lists",
+            "def_list",
+            _create_pygments_plugin(),
+        ],
+        escape=False,  # Don't escape HTML since we want to render markdown properly
+        hard_wrap=True,  # Line break for newlines (checklists in Assistant messages)
+    )
+
+
 def render_markdown(text: str) -> str:
     """Convert markdown text to HTML using mistune with Pygments syntax highlighting."""
     # Track markdown rendering time if enabled
     with timing_stat("_markdown_timings"):
-        # Configure mistune with GitHub-flavored markdown features
-        renderer = mistune.create_markdown(
-            plugins=[
-                "strikethrough",
-                "footnotes",
-                "table",
-                "url",
-                "task_lists",
-                "def_list",
-                _create_pygments_plugin(),
-            ],
-            escape=False,  # Don't escape HTML since we want to render markdown properly
-            hard_wrap=True,  # Line break for newlines (checklists in Assistant messages)
-        )
+        renderer = _get_markdown_renderer()
         return str(renderer(text))
 
 
@@ -338,8 +344,9 @@ def starts_with_emoji(text: str) -> bool:
     )
 
 
+@functools.lru_cache(maxsize=1)
 def get_template_environment() -> Environment:
-    """Get Jinja2 template environment for HTML rendering.
+    """Get cached Jinja2 template environment for HTML rendering.
 
     Creates a Jinja2 environment configured with:
     - Template loading from the templates directory
@@ -347,7 +354,7 @@ def get_template_environment() -> Environment:
     - Custom template filters/functions (starts_with_emoji)
 
     Returns:
-        Configured Jinja2 Environment
+        Configured Jinja2 Environment (cached after first call)
     """
     templates_dir = Path(__file__).parent / "templates"
     env = Environment(

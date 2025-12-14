@@ -859,6 +859,9 @@ def _generate_individual_session_files(
 
     project_title = get_project_display_name(output_dir.name, working_directories)
 
+    # Get renderer once outside the loop
+    renderer = get_renderer(format)
+
     # Generate HTML file for each session
     for session_id in session_ids:
         # Create session-specific title using cache data if available
@@ -892,7 +895,6 @@ def _generate_individual_session_files(
 
         # Check if session file needs regeneration
         session_file_path = output_dir / f"session-{session_id}.{format}"
-        renderer = get_renderer(format)
 
         # Only regenerate if outdated, doesn't exist, or date filtering is active
         should_regenerate_session = (
