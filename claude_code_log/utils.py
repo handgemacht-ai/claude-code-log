@@ -2,7 +2,7 @@
 """Utility functions for message filtering and processing."""
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -26,15 +26,7 @@ def format_timestamp(timestamp_str: str | None) -> str:
         dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
         # Convert to UTC if timezone-aware
         if dt.tzinfo is not None:
-            utc_timetuple = dt.utctimetuple()
-            dt = datetime(
-                utc_timetuple.tm_year,
-                utc_timetuple.tm_mon,
-                utc_timetuple.tm_mday,
-                utc_timetuple.tm_hour,
-                utc_timetuple.tm_min,
-                utc_timetuple.tm_sec,
-            )
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, AttributeError):
         return timestamp_str
