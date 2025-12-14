@@ -64,8 +64,8 @@ def format_slash_command_content(content: SlashCommandContent) -> str:
                 f"<strong>Content:</strong><pre>{escaped_command_contents}</pre>"
             )
         else:
-            # Long content, make collapsible
-            preview = "\n".join(lines[:5])
+            # Long content, make collapsible with truncation indicator
+            preview = "\n".join(lines[:5]) + "\n..."
             collapsible = render_collapsible_code(
                 f"<pre>{preview}</pre>",
                 f"<pre>{escaped_command_contents}</pre>",
