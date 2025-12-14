@@ -288,7 +288,7 @@ def render_file_content_collapsible(
 
     html_parts = [f"<div class='{css_class}'>"]
 
-    lines = code_content.split("\n")
+    lines = code_content.splitlines()
     if len(lines) > line_threshold:
         # Extract preview from already-highlighted HTML (avoids double highlighting)
         preview_html = truncate_highlighted_preview(
