@@ -318,15 +318,18 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
        -> Same timestamp, same message.id or tool_use_id -> SHOULD deduplicate
     2. Concurrent tool results: Multiple tool results with same timestamp
        -> Same timestamp, different tool_use_ids -> should NOT deduplicate
+    3. User text messages with same timestamp but different UUIDs (branch switch artifacts)
+       -> Same timestamp, no tool_use_id -> SHOULD deduplicate, keep the one with most content
 
     Args:
         messages: List of transcript entries to deduplicate
 
     Returns:
-        List of deduplicated messages, preserving order (first occurrence kept)
+        List of deduplicated messages, preserving order (first occurrence kept,
+        but replaced in-place if a better version is found later)
     """
-    # Track seen (message_type, timestamp, is_meta, session_id, content_key) tuples
-    seen: set[tuple[str, str, bool, str, str]] = set()
+    # Track seen dedup_key -> index in deduplicated list (for in-place replacement)
+    seen: dict[tuple[str, str, bool, str, str], int] = {}
     deduplicated: list[TranscriptEntry] = []
 
     for message in messages:
@@ -350,9 +353,10 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
         # Get content key for differentiating concurrent messages
         # - For assistant messages: use message.id (same for stutters, different for different msgs)
         # - For user messages with tool results: use first tool_use_id
+        # - For user text messages: use empty string (deduplicate by timestamp alone)
         # - For summary messages: use leafUuid (summaries have no timestamp/uuid)
-        # - For other messages: use uuid as fallback
         content_key = ""
+        is_user_text = False
         if isinstance(message, AssistantTranscriptEntry):
             # For assistant messages, use the message id
             content_key = message.message.id
@@ -362,20 +366,29 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
                 if isinstance(item, ToolResultContent):
                     content_key = item.tool_use_id
                     break
+            else:
+                # No tool result found - this is a user text message
+                is_user_text = True
+                # content_key stays empty (dedupe by timestamp alone)
         elif isinstance(message, SummaryTranscriptEntry):
             # Summaries have no timestamp or uuid - use leafUuid to keep them distinct
             content_key = message.leafUuid
-        # Fallback to uuid if no content key found
-        if not content_key:
-            content_key = getattr(message, "uuid", "")
 
-        # Create deduplication key - include content_key for proper handling
-        # of both version stutters and concurrent tool results
+        # Create deduplication key
         dedup_key = (message_type, timestamp, is_meta, session_id, content_key)
 
-        # Keep only first occurrence
-        if dedup_key not in seen:
-            seen.add(dedup_key)
+        if dedup_key in seen:
+            # For user text messages, replace if new one has more content items
+            if is_user_text:
+                idx = seen[dedup_key]
+                existing = deduplicated[idx]
+                if isinstance(existing, UserTranscriptEntry) and len(
+                    message.message.content
+                ) > len(existing.message.content):
+                    deduplicated[idx] = message  # Replace with better version
+            # Otherwise skip duplicate
+        else:
+            seen[dedup_key] = len(deduplicated)
             deduplicated.append(message)
 
     return deduplicated

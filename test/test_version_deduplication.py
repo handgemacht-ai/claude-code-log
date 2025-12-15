@@ -270,3 +270,101 @@ class TestVersionDeduplication:
 
         content_count = html.count("Data content")
         assert content_count == 1, f"Expected 1 data content, got {content_count}"
+
+    def test_user_text_message_deduplication(self):
+        """Test deduplication of user text messages with same timestamp but different UUIDs.
+
+        This can happen during git branch switches where Claude Code logs the same
+        user input multiple times with content split across entries.
+        """
+        from claude_code_log.models import TextContent
+
+        timestamp = "2025-11-13T11:44:08.771Z"
+
+        # Message 1: Has both IDE tag and actual text (2 content items) - this is the "best"
+        msg1 = UserTranscriptEntry(
+            type="user",
+            uuid="uuid-msg1",
+            parentUuid="parent-001",
+            timestamp=timestamp,
+            version="2.0.37",
+            isSidechain=False,
+            userType="external",
+            cwd="/test",
+            sessionId="session-test",
+            message=UserMessage(
+                role="user",
+                content=[
+                    TextContent(
+                        type="text",
+                        text="<ide_opened_file>User opened test.md</ide_opened_file>",
+                    ),
+                    TextContent(
+                        type="text",
+                        text="This is the actual user message content.",
+                    ),
+                ],
+            ),
+        )
+
+        # Message 2: Only has the actual text (1 content item)
+        msg2 = UserTranscriptEntry(
+            type="user",
+            uuid="uuid-msg2",
+            parentUuid="parent-002",
+            timestamp=timestamp,  # Same timestamp
+            version="2.0.37",
+            isSidechain=False,
+            userType="external",
+            cwd="/test",
+            sessionId="session-test",
+            message=UserMessage(
+                role="user",
+                content=[
+                    TextContent(
+                        type="text",
+                        text="This is the actual user message content.",
+                    ),
+                ],
+            ),
+        )
+
+        # Message 3: Only has IDE tag (1 content item)
+        msg3 = UserTranscriptEntry(
+            type="user",
+            uuid="uuid-msg3",
+            parentUuid="parent-003",
+            timestamp=timestamp,  # Same timestamp
+            version="2.0.37",
+            isSidechain=False,
+            userType="external",
+            cwd="/test",
+            sessionId="session-test",
+            message=UserMessage(
+                role="user",
+                content=[
+                    TextContent(
+                        type="text",
+                        text="<ide_opened_file>User opened test.md</ide_opened_file>",
+                    ),
+                ],
+            ),
+        )
+
+        # Test all orderings - should always keep msg1 (most content items)
+        for messages in [
+            [msg1, msg2, msg3],
+            [msg2, msg1, msg3],
+            [msg3, msg2, msg1],
+        ]:
+            deduped = deduplicate_messages(messages)
+            html = generate_html(deduped, "User Text Dedup Test")
+
+            # The actual message should appear only once
+            content_count = html.count("This is the actual user message content.")
+            assert content_count == 1, (
+                f"Expected 1 message content, got {content_count}"
+            )
+
+            # Should have kept msg1 which has the IDE notification
+            assert "test.md" in html, "Expected IDE notification to be present"
