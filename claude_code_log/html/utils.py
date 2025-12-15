@@ -89,7 +89,7 @@ def get_message_emoji(msg: "TemplateMessage") -> str:
             return ""
         return "🤷"
     elif msg_type == "bash-input":
-        return "🤷"
+        return "💻"
     elif msg_type == "assistant":
         if msg.modifiers.is_sidechain:
             return "🔗"

@@ -672,7 +672,7 @@ def _process_local_command_output(
     # If parsing fails, content will be None and caller will handle fallback
 
     message_type = "user"
-    message_title = "Command output"
+    message_title = ""
     return modifiers, content, message_type, message_title
 
 
@@ -702,7 +702,7 @@ def _process_bash_output(
     # If parsing fails, content will be None - caller/renderer handles empty output
 
     message_type = "bash-output"
-    message_title = "Command output"
+    message_title = ""
     return modifiers, content, message_type, message_title
 
 
