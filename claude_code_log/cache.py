@@ -421,9 +421,9 @@ class CacheManager:
         # Format: "cache_version": "minimum_library_version_required"
         # If cache version is older than the minimum required, it needs invalidation
         breaking_changes: dict[str, str] = {
-            # Example breaking changes (adjust as needed):
-            # "0.3.3": "0.3.4",  # 0.3.4 introduced breaking changes to cache format
-            # "0.2.x": "0.3.0",  # 0.3.0 introduced major cache format changes
+            # 0.9.0 introduced _compact_ide_tags_for_preview() which transforms
+            # first_user_message to use emoji indicators instead of raw IDE tags
+            "0.8.0": "0.9.0",
         }
 
         cache_ver = version.parse(cache_version)

@@ -569,14 +569,18 @@ class TestCacheVersionCompatibility:
         assert cache_manager._is_cache_version_compatible("1.0.0+build.1") is True
         assert cache_manager._is_cache_version_compatible("1.0.0+20230101") is True
 
-    def test_empty_breaking_changes_dict(self, temp_project_dir):
-        """Test that empty breaking changes dict allows all versions."""
-        cache_manager = CacheManager(temp_project_dir, "2.0.0")
+    def test_breaking_changes_0_8_0(self, temp_project_dir):
+        """Test that 0.8.0 breaking change correctly invalidates old caches."""
+        cache_manager = CacheManager(temp_project_dir, "0.9.0")
 
-        # With no breaking changes defined, all versions should be compatible
+        # Caches from 0.9.0+ should be compatible
+        assert cache_manager._is_cache_version_compatible("0.9.0") is True
         assert cache_manager._is_cache_version_compatible("1.0.0") is True
-        assert cache_manager._is_cache_version_compatible("0.5.0") is True
-        assert cache_manager._is_cache_version_compatible("3.0.0") is True
+
+        # Caches from 0.8.0 and earlier should be invalidated
+        assert cache_manager._is_cache_version_compatible("0.8.0") is False
+        assert cache_manager._is_cache_version_compatible("0.7.0") is False
+        assert cache_manager._is_cache_version_compatible("0.5.0") is False
 
 
 class TestCacheErrorHandling:
