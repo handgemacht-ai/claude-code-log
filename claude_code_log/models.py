@@ -267,9 +267,6 @@ class UserTextContent(MessageContent):
 
     Wraps user text that may have been preprocessed to extract
     IDE notifications, compacted summaries, or memory input markers.
-
-    TODO: Not currently instantiated - formatter exists but pipeline uses
-    separate IdeNotificationContent and plain text instead.
     """
 
     text: str

@@ -15,9 +15,10 @@ from claude_code_log.html.user_formatters import (
 from claude_code_log.html.assistant_formatters import format_assistant_text_content
 from claude_code_log.models import (
     AssistantTextContent,
-    TextContent,
     ImageContent,
     ImageSource,
+    TextContent,
+    UserTextContent,
 )
 
 
@@ -310,7 +311,7 @@ class TestParseUserMessageContent:
         content_model = parse_user_message_content(content_list)
 
         # Should return UserTextContent with IDE notifications
-        assert content_model is not None
+        assert isinstance(content_model, UserTextContent)
         assert content_model.ide_notifications is not None
         assert len(content_model.ide_notifications.opened_files) == 1
         assert (
