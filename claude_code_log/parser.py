@@ -477,14 +477,14 @@ def is_warmup_only_session(messages: list[TranscriptEntry], session_id: str) -> 
 # =============================================================================
 
 
-def is_user_entry(entry: TranscriptEntry) -> UserTranscriptEntry | None:
+def as_user_entry(entry: TranscriptEntry) -> UserTranscriptEntry | None:
     """Return entry as UserTranscriptEntry if it is one, else None."""
     if entry.type == MessageType.USER:
         return cast(UserTranscriptEntry, entry)
     return None
 
 
-def is_assistant_entry(entry: TranscriptEntry) -> AssistantTranscriptEntry | None:
+def as_assistant_entry(entry: TranscriptEntry) -> AssistantTranscriptEntry | None:
     """Return entry as AssistantTranscriptEntry if it is one, else None."""
     if entry.type == MessageType.ASSISTANT:
         return cast(AssistantTranscriptEntry, entry)
