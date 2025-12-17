@@ -1797,11 +1797,8 @@ def _collect_session_info(
 
             # Get first user message content for preview
             first_user_message = ""
-            if (user_entry := as_user_entry(message)) and should_use_as_session_starter(
-                text_content
-            ):
-                content = extract_text_content(user_entry.message.content)
-                first_user_message = create_session_preview(content)
+            if as_user_entry(message) and should_use_as_session_starter(text_content):
+                first_user_message = create_session_preview(text_content)
 
             sessions[session_id] = {
                 "id": session_id,
@@ -1818,13 +1815,10 @@ def _collect_session_info(
             session_order.append(session_id)
 
         # Update first user message if this is a user message and we don't have one yet
-        elif (user_entry := as_user_entry(message)) and not sessions[session_id][
-            "first_user_message"
-        ]:
-            first_user_content = extract_text_content(user_entry.message.content)
-            if should_use_as_session_starter(first_user_content):
+        elif as_user_entry(message) and not sessions[session_id]["first_user_message"]:
+            if should_use_as_session_starter(text_content):
                 sessions[session_id]["first_user_message"] = create_session_preview(
-                    first_user_content
+                    text_content
                 )
 
         sessions[session_id]["message_count"] += 1
