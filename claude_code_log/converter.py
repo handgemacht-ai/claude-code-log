@@ -379,7 +379,7 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
 
         if dedup_key in seen:
             # For user text messages, replace if new one has more content items
-            if is_user_text:
+            if is_user_text and isinstance(message, UserTranscriptEntry):
                 idx = seen[dedup_key]
                 existing = deduplicated[idx]
                 if isinstance(existing, UserTranscriptEntry) and len(
