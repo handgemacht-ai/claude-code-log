@@ -96,13 +96,21 @@ def format_dedup_notice_content(content: DedupNoticeContent) -> str:
     """Format a deduplication notice as HTML.
 
     Args:
-        content: DedupNoticeContent with notice text
+        content: DedupNoticeContent with notice text and optional target link
 
     Returns:
-        HTML for the dedup notice display
+        HTML for the dedup notice display with optional anchor link
     """
     escaped_notice = html.escape(content.notice_text)
-    return f"<p><em>{escaped_notice}</em></p>"
+
+    if content.target_message_id:
+        # Create clickable link to the target message
+        return (
+            f'<p><em><a href="#msg-{content.target_message_id}">'
+            f"{escaped_notice}</a></em></p>"
+        )
+    else:
+        return f"<p><em>{escaped_notice}</em></p>"
 
 
 __all__ = [

@@ -72,9 +72,11 @@ def test_deduplication_task_result_vs_sidechain():
 
         # Verify deduplication occurred:
         # The sidechain assistant's final message should be replaced with a forward link
-        assert "(Task summary" in html
-        assert "already displayed in" in html
-        assert "Task tool result above" in html
+        assert "Task summary" in html
+        assert "see result above" in html
+
+        # Verify the dedup notice has an anchor link to the Task result
+        assert 'href="#msg-' in html
 
         # The actual content "I created the test file successfully" should only appear once
         # in the Task result, not in the sidechain assistant
@@ -110,7 +112,7 @@ def test_no_deduplication_when_content_different():
         # No deduplication should occur - both "Done A" and "Done B" should appear
         assert "Done A" in html
         assert "Done B" in html
-        assert "(Task summary" not in html
+        assert "Task summary" not in html
 
 
 def test_agent_messages_marked_as_sidechain():

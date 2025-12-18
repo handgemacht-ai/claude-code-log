@@ -499,6 +499,10 @@ def generate_template_messages(
     with log_timing("Build message hierarchy", t_start):
         _build_message_hierarchy(template_messages)
 
+    # Resolve dedup notice targets (needs message_id from hierarchy)
+    with log_timing("Resolve dedup targets", t_start):
+        _resolve_dedup_targets(template_messages)
+
     # Mark messages that have children for fold/unfold controls
     with log_timing("Mark messages with children", t_start):
         _mark_messages_with_children(template_messages)
@@ -1643,7 +1647,9 @@ def _reorder_sidechain_template_messages(
                     ):
                         # Replace with note pointing to the Task result
                         sidechain_msg.content = DedupNoticeContent(
-                            notice_text="(Task summary — already displayed in Task tool result above)"
+                            notice_text="Task summary — see result above",
+                            target_uuid=message.uuid,
+                            original_text=sidechain_text,
                         )
                         # Mark as deduplicated for potential debugging
                         sidechain_msg.raw_text_content = None
@@ -1660,6 +1666,23 @@ def _reorder_sidechain_template_messages(
             result.extend(sidechain_msgs)
 
     return result
+
+
+def _resolve_dedup_targets(messages: list[TemplateMessage]) -> None:
+    """Resolve dedup notice target UUIDs to message IDs for anchor links.
+
+    Must be called after _build_message_hierarchy assigns message_id values.
+    """
+    # Build uuid -> message_id mapping
+    uuid_to_id: dict[str, str] = {}
+    for msg in messages:
+        if msg.uuid and msg.message_id:
+            uuid_to_id[msg.uuid] = msg.message_id
+
+    # Resolve dedup notice targets
+    for msg in messages:
+        if isinstance(msg.content, DedupNoticeContent) and msg.content.target_uuid:
+            msg.content.target_message_id = uuid_to_id.get(msg.content.target_uuid)
 
 
 def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
