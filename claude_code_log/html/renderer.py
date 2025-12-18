@@ -1,7 +1,7 @@
 """HTML renderer implementation for Claude Code transcripts."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple, cast
 
 from ..cache import get_library_version
 from ..models import (
@@ -93,79 +93,97 @@ def check_html_version(html_file_path: Path) -> Optional[str]:
 class HtmlRenderer(Renderer):
     """HTML renderer for Claude Code transcripts."""
 
-    def _format_message_content(self, message: TemplateMessage) -> str:
-        """Format structured content to HTML for a single message.
+    def _build_dispatcher(self) -> dict[type, Callable[[TemplateMessage], str]]:
+        """Build content type to HTML formatter mapping.
 
-        Args:
-            message: TemplateMessage with content model to format
-
-        Returns:
-            HTML string for the message content, or empty string if no content
+        Maps MessageContent subclasses to their HTML formatting functions.
+        Simple formatters use lambdas; complex ones use instance methods.
         """
-        if message.content is None:
-            return ""
+        # Note: cast() is used because the dispatcher pattern relies on runtime
+        # type dispatch via MRO walking. The type checker can't verify that when
+        # a handler is called, m.content is the correct type - but it's guaranteed
+        # by the dispatch logic in format_content().
+        return {
+            # System content types
+            SystemContent: lambda m: format_system_content(
+                cast(SystemContent, m.content)
+            ),
+            HookSummaryContent: lambda m: format_hook_summary_content(
+                cast(HookSummaryContent, m.content)
+            ),
+            SessionHeaderContent: lambda m: format_session_header_content(
+                cast(SessionHeaderContent, m.content)
+            ),
+            DedupNoticeContent: lambda m: format_dedup_notice_content(
+                cast(DedupNoticeContent, m.content)
+            ),
+            # User content types
+            SlashCommandContent: lambda m: format_slash_command_content(
+                cast(SlashCommandContent, m.content)
+            ),
+            CommandOutputContent: lambda m: format_command_output_content(
+                cast(CommandOutputContent, m.content)
+            ),
+            BashInputContent: lambda m: format_bash_input_content(
+                cast(BashInputContent, m.content)
+            ),
+            BashOutputContent: lambda m: format_bash_output_content(
+                cast(BashOutputContent, m.content)
+            ),
+            CompactedSummaryContent: lambda m: format_compacted_summary_content(
+                cast(CompactedSummaryContent, m.content)
+            ),
+            UserMemoryContent: lambda m: format_user_memory_content(
+                cast(UserMemoryContent, m.content)
+            ),
+            UserTextContent: self._format_user_text_content,
+            # Assistant content types
+            ThinkingContentModel: lambda m: format_thinking_content(
+                cast(ThinkingContentModel, m.content), line_threshold=10
+            ),
+            AssistantTextContent: lambda m: format_assistant_text_content(
+                cast(AssistantTextContent, m.content)
+            ),
+            ImageContent: lambda m: format_image_content(cast(ImageContent, m.content)),
+            UnknownContent: lambda m: format_unknown_content(
+                cast(UnknownContent, m.content)
+            ),
+            # Tool content types
+            ToolUseContent: lambda m: format_tool_use_content(
+                cast(ToolUseContent, m.content)
+            ),
+            ToolResultContentModel: self._format_tool_result_content,
+        }
 
-        # Dispatch to appropriate formatter based on content type
-        if isinstance(message.content, SystemContent):
-            return format_system_content(message.content)
-        elif isinstance(message.content, HookSummaryContent):
-            return format_hook_summary_content(message.content)
-        elif isinstance(message.content, SessionHeaderContent):
-            return format_session_header_content(message.content)
-        elif isinstance(message.content, DedupNoticeContent):
-            return format_dedup_notice_content(message.content)
-        elif isinstance(message.content, SlashCommandContent):
-            return format_slash_command_content(message.content)
-        elif isinstance(message.content, CommandOutputContent):
-            return format_command_output_content(message.content)
-        elif isinstance(message.content, BashInputContent):
-            return format_bash_input_content(message.content)
-        elif isinstance(message.content, BashOutputContent):
-            return format_bash_output_content(message.content)
-        elif isinstance(message.content, ThinkingContentModel):
-            return format_thinking_content(message.content, line_threshold=10)
-        elif isinstance(message.content, AssistantTextContent):
-            return format_assistant_text_content(message.content)
-        elif isinstance(message.content, ImageContent):
-            return format_image_content(message.content)
-        elif isinstance(message.content, ToolUseContent):
-            return format_tool_use_content(message.content)
-        elif isinstance(message.content, ToolResultContentModel):
-            # Create ToolResultContent from the model for formatting
-            tool_result = ToolResultContent(
-                type="tool_result",
-                tool_use_id=message.content.tool_use_id,
-                content=message.content.content,
-                is_error=message.content.is_error,
-            )
-            return format_tool_result_content(
-                tool_result,
-                message.content.file_path,
-                message.content.tool_name,
-            )
-        # User message content types
-        elif isinstance(message.content, CompactedSummaryContent):
-            return format_compacted_summary_content(message.content)
-        elif isinstance(message.content, UserMemoryContent):
-            return format_user_memory_content(message.content)
-        elif isinstance(message.content, UserTextContent):
-            # Check if this is a slash command expanded prompt (via modifiers)
-            if message.modifiers and message.modifiers.is_slash_command:
-                # Slash command expanded prompts are markdown (LLM-generated)
-                from .utils import render_markdown_collapsible
+    def _format_user_text_content(self, message: TemplateMessage) -> str:
+        """Format UserTextContent, handling slash command expanded prompts."""
+        content = cast(UserTextContent, message.content)
+        if message.modifiers and message.modifiers.is_slash_command:
+            # Slash command expanded prompts are markdown (LLM-generated)
+            from .utils import render_markdown_collapsible
 
-                return render_markdown_collapsible(
-                    message.content.text,
-                    "slash-command-content",
-                    line_threshold=20,
-                    preview_line_count=5,
-                )
-            else:
-                return format_user_text_model_content(message.content)
-        elif isinstance(message.content, UnknownContent):
-            return format_unknown_content(message.content)
-        # Future content types will be added here as they are migrated
-        return ""
+            return render_markdown_collapsible(
+                content.text,
+                "slash-command-content",
+                line_threshold=20,
+                preview_line_count=5,
+            )
+        return format_user_text_model_content(content)
+
+    def _format_tool_result_content(self, message: TemplateMessage) -> str:
+        """Format ToolResultContentModel with associated tool context."""
+        content = cast(ToolResultContentModel, message.content)
+        tool_result = ToolResultContent(
+            type="tool_result",
+            tool_use_id=content.tool_use_id,
+            content=content.content,
+            is_error=content.is_error,
+        )
+        return format_tool_result_content(
+            tool_result,
+            content.file_path,
+            content.tool_name,
+        )
 
     def _flatten_preorder(
         self, roots: list[TemplateMessage]
@@ -184,7 +202,7 @@ class HtmlRenderer(Renderer):
         flat: list[Tuple[TemplateMessage, str]] = []
 
         def visit(msg: TemplateMessage) -> None:
-            html = self._format_message_content(msg)
+            html = self.format_content(msg)
             flat.append((msg, html))
             for child in msg.children:
                 visit(child)

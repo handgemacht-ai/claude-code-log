@@ -4,7 +4,7 @@
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .cache import CacheManager
@@ -2321,7 +2321,50 @@ class Renderer:
     """Base class for transcript renderers.
 
     Subclasses implement format-specific rendering (HTML, Markdown, etc.).
+
+    The dispatcher pattern enables automatic content formatting based on type:
+    - Subclasses override _build_dispatcher() to map content types to formatters
+    - format_content() walks the MRO to find the most specific handler
+    - Fallback to parent class handlers if no specific handler exists
     """
+
+    def __init__(self):
+        self._dispatcher = self._build_dispatcher()
+
+    def _build_dispatcher(
+        self,
+    ) -> dict[type, Callable[["TemplateMessage"], str]]:
+        """Build the content type to formatter mapping.
+
+        Override in subclasses to register format-specific handlers.
+        The dict maps MessageContent subclasses to formatter functions.
+        Each formatter receives the full TemplateMessage (for access to modifiers).
+
+        Returns:
+            Dict mapping content types to formatter functions.
+        """
+        return {}
+
+    def format_content(self, message: "TemplateMessage") -> str:
+        """Format message content by dispatching to type-specific handler.
+
+        Walks the content type's MRO to find the most specific registered
+        handler. This allows handlers for parent classes to serve as fallbacks.
+
+        Args:
+            message: TemplateMessage with content to format.
+
+        Returns:
+            Formatted string (e.g., HTML), or empty string if no handler found.
+        """
+        if message.content is None:
+            return ""
+        for cls in type(message.content).__mro__:
+            if cls is object:
+                break
+            if fmt := self._dispatcher.get(cls):
+                return fmt(message)
+        return ""
 
     def generate(
         self,
