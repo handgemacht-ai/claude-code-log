@@ -702,41 +702,14 @@ def render_params_table(params: dict[str, Any]) -> str:
 def format_tool_use_content(tool_use: ToolUseContent) -> str:
     """Format tool use content as HTML.
 
-    Uses parsed_input which handles lenient parsing at the model layer,
-    then dispatches to specialized formatters based on type.
+    Legacy wrapper that delegates to format_tool_use_from_input.
+    Kept for backward compatibility with tests that use ToolUseContent directly.
     """
-    parsed = tool_use.parsed_input
-
-    # Dispatch based on parsed type (lenient parsing happens in parsed_input)
-    if isinstance(parsed, TodoWriteInput):
-        return format_todowrite_content(parsed)
-
-    if isinstance(parsed, BashInput):
-        return format_bash_tool_content(parsed)
-
-    if isinstance(parsed, EditInput):
-        return format_edit_tool_content(parsed)
-
-    if isinstance(parsed, MultiEditInput):
-        return format_multiedit_tool_content(parsed)
-
-    if isinstance(parsed, WriteInput):
-        return format_write_tool_content(parsed)
-
-    if isinstance(parsed, TaskInput):
-        return format_task_tool_content(parsed)
-
-    if isinstance(parsed, ReadInput):
-        return format_read_tool_content(parsed)
-
-    if isinstance(parsed, AskUserQuestionInput):
-        return format_askuserquestion_content(parsed)
-
-    if isinstance(parsed, ExitPlanModeInput):
-        return format_exitplanmode_content(parsed)
-
-    # Default: render as key/value table using shared renderer
-    return render_params_table(tool_use.input)
+    return format_tool_use_from_input(
+        tool_use.parsed_input,
+        tool_use.name,
+        tool_use.input if isinstance(tool_use.input, dict) else None,
+    )
 
 
 def format_tool_use_from_input(

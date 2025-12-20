@@ -105,7 +105,7 @@ CSS classes are derived from the content type using `CSS_CLASS_REGISTRY` (in `ht
 | `"user command-output"` | `CommandOutputMessage` | — |
 | `"user steering"` | `UserSteeringMessage` | — |
 | `"assistant"` | `AssistantTextMessage` | — |
-| `"tool_use"` | `ToolUseContent`, `ToolUseMessage` | — |
+| `"tool_use"` | `ToolUseMessage` | — |
 | `"tool_result"` | `ToolResultMessage` | — |
 | `"tool_result error"` | `ToolResultMessage` | `is_error=True` |
 | `"thinking"` | `ThinkingMessage` | — |
@@ -719,7 +719,6 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     # Assistant message types
     AssistantTextMessage: ["assistant"],
     # Tool message types
-    ToolUseContent: ["tool_use"],
     ToolUseMessage: ["tool_use"],
     ToolResultMessage: ["tool_result"],  # error added dynamically
     # Other message types
