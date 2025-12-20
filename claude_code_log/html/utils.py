@@ -22,10 +22,77 @@ import mistune
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .renderer_code import highlight_code_with_pygments, truncate_highlighted_preview
+from ..models import (
+    AssistantTextContent,
+    BashInputContent,
+    BashOutputContent,
+    CommandOutputContent,
+    CompactedSummaryContent,
+    HookSummaryContent,
+    MessageContent,
+    SessionHeaderContent,
+    SlashCommandContent,
+    SystemContent,
+    ThinkingContentModel,
+    ToolResultContentModel,
+    ToolUseContent,
+    UnknownContent,
+    UserMemoryContent,
+    UserSlashCommandContent,
+    UserTextContent,
+)
 from ..renderer_timings import timing_stat
 
 if TYPE_CHECKING:
     from ..renderer import TemplateMessage
+
+
+# -- CSS Class Registry -------------------------------------------------------
+# Maps content types to their CSS classes.
+# The first class is typically the base type (user, assistant, system, etc.),
+# followed by any static modifiers.
+
+CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
+    # System message types
+    SystemContent: ["system"],  # level added dynamically
+    HookSummaryContent: ["system", "system-hook"],
+    # User message types
+    UserTextContent: ["user"],
+    SlashCommandContent: ["user", "slash-command"],
+    UserSlashCommandContent: ["user", "slash-command"],
+    UserMemoryContent: ["user"],
+    CompactedSummaryContent: ["user", "compacted"],
+    CommandOutputContent: ["user", "command-output"],
+    # Assistant message types
+    AssistantTextContent: ["assistant"],
+    # Tool message types
+    ToolUseContent: ["tool_use"],
+    ToolResultContentModel: ["tool_result"],  # error added dynamically
+    # Other message types
+    ThinkingContentModel: ["thinking"],
+    SessionHeaderContent: ["session_header"],
+    BashInputContent: ["bash-input"],
+    BashOutputContent: ["bash-output"],
+    UnknownContent: ["unknown"],
+}
+
+
+def _get_css_classes_from_content(content: MessageContent) -> list[str]:
+    """Get CSS classes from content type using the registry.
+
+    Walks the MRO to find a matching registry entry, then adds
+    any dynamic modifiers based on content attributes.
+    """
+    for cls in type(content).__mro__:
+        if classes := CSS_CLASS_REGISTRY.get(cls):
+            result = list(classes)
+            # Dynamic modifiers based on content attributes
+            if isinstance(content, SystemContent):
+                result.append(f"system-{content.level}")
+            elif isinstance(content, ToolResultContentModel) and content.is_error:
+                result.append("error")
+            return result
+    return []
 
 
 # -- CSS and Message Display --------------------------------------------------
@@ -34,14 +101,13 @@ if TYPE_CHECKING:
 def css_class_from_message(msg: "TemplateMessage") -> str:
     """Generate CSS class string from message type and modifiers.
 
-    This reconstructs the original css_class format for backward
-    compatibility with existing CSS and JavaScript.
+    Uses CSS_CLASS_REGISTRY to derive classes from content type,
+    with fallback to msg.type for messages without registered content.
 
     The order of classes follows the original pattern:
-    1. Message type (required)
-    2. Modifier flags in order: slash-command, command-output, compacted,
-       error, steering, sidechain
-    3. System level suffix (e.g., "system-info", "system-warning")
+    1. Message type (from content type or msg.type fallback)
+    2. Content-derived modifiers (e.g., slash-command, compacted, error)
+    3. Cross-cutting modifier flags: steering, sidechain
 
     Args:
         msg: The template message to generate CSS classes for
@@ -49,23 +115,20 @@ def css_class_from_message(msg: "TemplateMessage") -> str:
     Returns:
         Space-separated CSS class string (e.g., "user slash-command sidechain")
     """
-    parts = [msg.type]
+    # Get base classes and content-derived modifiers from content type
+    if msg.content:
+        parts = _get_css_classes_from_content(msg.content)
+        if not parts:
+            parts = [msg.type]  # Fallback if content type not in registry
+    else:
+        parts = [msg.type]
 
+    # Cross-cutting modifier flags (not derivable from content type alone)
     mods = msg.modifiers
-    if mods.is_slash_command:
-        parts.append("slash-command")
-    if mods.is_command_output:
-        parts.append("command-output")
-    if mods.is_compacted:
-        parts.append("compacted")
-    if mods.is_error:
-        parts.append("error")
     if mods.is_steering:
         parts.append("steering")
     if mods.is_sidechain:
         parts.append("sidechain")
-    if mods.system_level:
-        parts.append(f"system-{mods.system_level}")
 
     return " ".join(parts)
 
