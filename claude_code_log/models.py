@@ -47,24 +47,14 @@ class MessageType(str, Enum):
 
 @dataclass
 class MessageModifiers:
-    """Semantic modifiers that affect message display.
+    """Cross-cutting modifier for sidechain messages.
 
-    These are format-neutral flags that renderers can use to determine
-    how to display a message. HTML renderer converts these to CSS classes,
-    text renderer might use them for indentation or formatting.
-
-    The modifiers capture traits that were previously encoded in the
-    css_class string (e.g., "user sidechain slash-command").
+    Most display properties are now derived from content type (via CSS_CLASS_REGISTRY).
+    Only is_sidechain remains as it's a cross-cutting concern that can apply to
+    any message type.
     """
 
     is_sidechain: bool = False
-    is_slash_command: bool = False
-    is_command_output: bool = False
-    is_compacted: bool = False
-    is_error: bool = False
-    is_steering: bool = False
-    # System message level (mutually exclusive: info, warning, error, hook)
-    system_level: Optional[str] = None
 
 
 # =============================================================================
@@ -315,6 +305,17 @@ class UserTextContent(MessageContent):
     items: list[  # pyright: ignore[reportUnknownVariableType]
         TextContent | ImageContent | IdeNotificationContent
     ] = field(default_factory=list)
+
+
+@dataclass
+class UserSteeringContent(UserTextContent):
+    """Content for user steering prompts (queue-operation "remove").
+
+    These are user messages that steer the conversation by removing
+    items from the queue. Inherits from UserTextContent.
+    """
+
+    pass
 
 
 # =============================================================================

@@ -39,6 +39,7 @@ from ..models import (
     UnknownContent,
     UserMemoryContent,
     UserSlashCommandContent,
+    UserSteeringContent,
     UserTextContent,
 )
 from ..renderer_timings import timing_stat
@@ -58,6 +59,7 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     HookSummaryContent: ["system", "system-hook"],
     # User message types
     UserTextContent: ["user"],
+    UserSteeringContent: ["user", "steering"],
     SlashCommandContent: ["user", "slash-command"],
     UserSlashCommandContent: ["user", "slash-command"],
     UserMemoryContent: ["user"],
@@ -84,6 +86,8 @@ def _get_css_classes_from_content(content: MessageContent) -> list[str]:
     any dynamic modifiers based on content attributes.
     """
     for cls in type(content).__mro__:
+        if not issubclass(cls, MessageContent):
+            continue
         if classes := CSS_CLASS_REGISTRY.get(cls):
             result = list(classes)
             # Dynamic modifiers based on content attributes
@@ -124,10 +128,7 @@ def css_class_from_message(msg: "TemplateMessage") -> str:
         parts = [msg.type]
 
     # Cross-cutting modifier flags (not derivable from content type alone)
-    mods = msg.modifiers
-    if mods.is_steering:
-        parts.append("steering")
-    if mods.is_sidechain:
+    if msg.modifiers.is_sidechain:
         parts.append("sidechain")
 
     return " ".join(parts)
@@ -148,7 +149,7 @@ def get_message_emoji(msg: "TemplateMessage") -> str:
         return "📋"
     elif msg_type == "user":
         # Command output has no emoji (neutral - can be from built-in or user command)
-        if msg.modifiers.is_command_output:
+        if isinstance(msg.content, CommandOutputContent):
             return ""
         return "🤷"
     elif msg_type == "bash-input":
@@ -162,7 +163,7 @@ def get_message_emoji(msg: "TemplateMessage") -> str:
     elif msg_type == "tool_use":
         return "🛠️"
     elif msg_type == "tool_result":
-        if msg.modifiers.is_error:
+        if isinstance(msg.content, ToolResultContentModel) and msg.content.is_error:
             return "🚨"
         return "🧰"
     elif msg_type == "thinking":

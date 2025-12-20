@@ -102,7 +102,7 @@
     </div>
     {% else %}
     {%- set msg_css_class = css_class_from_message(message) %}
-    {% set markdown = message.type in ['assistant', 'thinking'] or message.modifiers.is_compacted %}
+    {% set markdown = message.has_markdown %}
     <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}{% for ancestor_id in message.ancestry %} {{ ancestor_id }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>
             {% set msg_emoji = get_message_emoji(message) -%}

@@ -2,7 +2,7 @@
 """Render Claude transcript data to HTML format."""
 
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Tuple, TYPE_CHECKING
 
@@ -28,15 +28,19 @@ from .models import (
     ThinkingContentModel,
     # Structured content types
     AssistantTextContent,
+    CommandOutputContent,
     CompactedSummaryContent,
     DedupNoticeContent,
     HookInfo,
     HookSummaryContent,
     SessionHeaderContent,
+    SlashCommandContent,
     SystemContent,
     UnknownContent,
     UserMemoryContent,
     UserSlashCommandContent,
+    UserSteeringContent,
+    UserTextContent,
 )
 from .parser import (
     as_assistant_entry,
@@ -645,7 +649,7 @@ def _process_command_message(
     These are user messages containing slash command invocations (e.g., /context, /model).
     The JSONL type is "user", not "system".
     """
-    modifiers = MessageModifiers(is_slash_command=True)
+    modifiers = MessageModifiers()  # Type info is in SlashCommandContent
 
     # Parse to content model (formatting happens in HtmlRenderer)
     content = parse_slash_command(text_content)
@@ -664,7 +668,7 @@ def _process_local_command_output(
     These are user messages containing the output from slash commands (e.g., /context, /model).
     The JSONL type is "user", not "system".
     """
-    modifiers = MessageModifiers(is_command_output=True)
+    modifiers = MessageModifiers()  # Type info is in CommandOutputContent
 
     # Parse to content model (formatting happens in HtmlRenderer)
     content = parse_command_output(text_content)
@@ -724,8 +728,6 @@ def _process_regular_message(
         is_meta: True for slash command expanded prompts (isMeta=True in JSONL)
     """
     message_title = message_type.title()  # Default title
-    is_compacted = False
-    is_slash_command = False
     content_model: Optional["MessageContent"] = None
 
     # Handle user-specific preprocessing
@@ -734,12 +736,10 @@ def _process_regular_message(
         # Parse user content (is_meta triggers UserSlashCommandContent creation)
         content_model = parse_user_message_content(items, is_slash_command=is_meta)
 
-        # Determine message_title and modifiers from content type
+        # Determine message_title from content type
         if isinstance(content_model, UserSlashCommandContent):
-            is_slash_command = True
             message_title = "User (slash command)"
         elif isinstance(content_model, CompactedSummaryContent):
-            is_compacted = True
             message_title = "User (compacted conversation)"
         elif isinstance(content_model, UserMemoryContent):
             message_title = "Memory"
@@ -754,14 +754,10 @@ def _process_regular_message(
 
     if is_sidechain:
         # Update message title for display (only non-user types reach here)
-        if not is_compacted:
+        if not isinstance(content_model, CompactedSummaryContent):
             message_title = "Sub-assistant"
 
-    modifiers = MessageModifiers(
-        is_sidechain=is_sidechain,
-        is_slash_command=is_slash_command,
-        is_compacted=is_compacted,
-    )
+    modifiers = MessageModifiers(is_sidechain=is_sidechain)
 
     return modifiers, content_model, message_type, message_title
 
@@ -823,7 +819,7 @@ def _process_system_message(
         ancestry=[],  # Will be assigned by _build_message_hierarchy
         uuid=message.uuid,
         parent_uuid=parent_uuid,
-        modifiers=MessageModifiers(system_level=level),
+        modifiers=MessageModifiers(),  # Level info is in SystemContent
         content=content,
     )
 
@@ -1094,7 +1090,9 @@ def _build_pairing_indices(messages: list[TemplateMessage]) -> PairingIndices:
             uuid_index[msg.uuid] = i
 
         # Index slash-command user messages by parent_uuid
-        if msg.parent_uuid and msg.modifiers.is_slash_command:
+        if msg.parent_uuid and isinstance(
+            msg.content, (SlashCommandContent, UserSlashCommandContent)
+        ):
             slash_command_by_parent[msg.parent_uuid] = i
 
     return PairingIndices(
@@ -1127,7 +1125,9 @@ def _try_pair_adjacent(
     - thinking + assistant
     """
     # Slash command + command output (both are user messages)
-    if current.modifiers.is_slash_command and next_msg.modifiers.is_command_output:
+    if isinstance(
+        current.content, (SlashCommandContent, UserSlashCommandContent)
+    ) and isinstance(next_msg.content, CommandOutputContent):
         _mark_pair(current, next_msg)
         return True
 
@@ -1251,7 +1251,7 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
             msg.is_paired
             and msg.pair_role == "pair_last"
             and msg.parent_uuid
-            and msg.modifiers.is_slash_command
+            and isinstance(msg.content, (SlashCommandContent, UserSlashCommandContent))
         ):
             slash_command_pair_index[msg.parent_uuid] = i
 
@@ -1346,7 +1346,6 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
     """
     msg_type = msg.type
     is_sidechain = msg.modifiers.is_sidechain
-    system_level = msg.modifiers.system_level
 
     # User messages at level 1 (under session)
     # Note: sidechain user messages are skipped before reaching this function
@@ -1354,6 +1353,8 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
         return 1
 
     # System info/warning at level 3 (tool-related, e.g., hook notifications)
+    # Get level from SystemContent if available
+    system_level = msg.content.level if isinstance(msg.content, SystemContent) else None
     if (
         msg_type == "system"
         and system_level in ("info", "warning")
@@ -2129,12 +2130,13 @@ def _render_messages(
                         )
                     )
 
-                    # Add 'steering' modifier for queue-operation 'remove' messages
+                    # Convert to UserSteeringContent for queue-operation 'remove' messages
                     if (
                         isinstance(message, QueueOperationTranscriptEntry)
                         and message.operation == "remove"
+                        and isinstance(content_model, UserTextContent)
                     ):
-                        modifiers = replace(modifiers, is_steering=True)
+                        content_model = UserSteeringContent(items=content_model.items)
                         message_title = "User (steering)"
 
                 # Skip empty chunks
@@ -2149,6 +2151,16 @@ def _render_messages(
                 chunk_uuid = getattr(message, "uuid", None)
                 if chunk_uuid and len(chunks) > 1:
                     chunk_uuid = f"{chunk_uuid}-chunk-{chunk_idx}"
+
+                # Markdown rendering for assistant, thinking, and compacted content
+                has_markdown = isinstance(
+                    content_model,
+                    (
+                        AssistantTextContent,
+                        ThinkingContentModel,
+                        CompactedSummaryContent,
+                    ),
+                )
 
                 template_message = TemplateMessage(
                     message_type=chunk_message_type,
@@ -2165,6 +2177,7 @@ def _render_messages(
                     parent_uuid=getattr(message, "parentUuid", None),
                     modifiers=modifiers,
                     content=content_model,
+                    has_markdown=has_markdown,
                 )
 
                 # Store raw text content for potential future use
@@ -2209,11 +2222,8 @@ def _render_messages(
                 # Preserve sidechain context for tool/thinking content
                 tool_is_sidechain = getattr(message, "isSidechain", False)
 
-                # Build modifiers directly from tool_result properties
-                tool_modifiers = MessageModifiers(
-                    is_sidechain=tool_is_sidechain,
-                    is_error=tool_result.is_error,
-                )
+                # Build modifiers (is_error is in ToolResultContentModel)
+                tool_modifiers = MessageModifiers(is_sidechain=tool_is_sidechain)
 
                 # Generate unique UUID for this tool message
                 # Use tool_use_id if available, otherwise fall back to msg UUID + index
@@ -2221,6 +2231,11 @@ def _render_messages(
                     tool_result.tool_use_id
                     if tool_result.tool_use_id
                     else f"{msg_uuid}-tool-{len(template_messages)}"
+                )
+
+                # Thinking content uses markdown
+                tool_has_markdown = isinstance(
+                    tool_result.content, ThinkingContentModel
                 )
 
                 tool_template_message = TemplateMessage(
@@ -2238,6 +2253,7 @@ def _render_messages(
                     uuid=tool_uuid,
                     modifiers=tool_modifiers,
                     content=tool_result.content,  # Structured content model
+                    has_markdown=tool_has_markdown,
                 )
 
                 # Store raw text for Task result deduplication
