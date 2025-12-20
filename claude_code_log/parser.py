@@ -65,24 +65,19 @@ def parse_meta(transcript: BaseTranscriptEntry) -> MessageMeta:
     """Extract common metadata from a transcript entry.
 
     This function extracts the shared fields that are present in all
-    BaseTranscriptEntry subclasses and formats them for rendering.
+    BaseTranscriptEntry subclasses.
+
+    Note: formatted_timestamp is computed at render time, not here.
 
     Args:
         transcript: Any transcript entry inheriting from BaseTranscriptEntry
 
     Returns:
-        MessageMeta with session_id, timestamps, uuid, and parent_uuid
+        MessageMeta with session_id, timestamp, uuid, and parent_uuid
     """
-    # Local import to avoid circular dependency (utils.py imports from parser.py)
-    from .utils import format_timestamp
-
-    timestamp = transcript.timestamp
-    formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
-
     return MessageMeta(
         session_id=transcript.sessionId,
-        timestamp=timestamp,
-        formatted_timestamp=formatted_timestamp,
+        timestamp=transcript.timestamp,
         uuid=transcript.uuid,
         parent_uuid=transcript.parentUuid,
     )

@@ -69,7 +69,7 @@
     {{ render_session_nav(sessions, "toc") }}
     {% endif %}
 
-    {% for message, html_content in messages %}
+    {% for message, html_content, formatted_timestamp in messages %}
     {% if message.is_session_header %}
     <div class="session-divider"></div>
     <div class='message session-header' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
@@ -111,7 +111,7 @@
                 elif msg_emoji and (message.type != 'tool_use' or not starts_with_emoji(message.message_title)) %}{{ msg_emoji }} {% endif %}{{ message.message_title | safe }}{% endif %}</span>
             <div class='header-info'>
                 <div class='timestamp-row'>
-                    <span class='timestamp'{% if message.raw_timestamp %} data-timestamp='{{ message.raw_timestamp }}'{% if message.pair_duration %} data-duration='{{ message.pair_duration }}'{% endif %}{% endif %}>{{ message.formatted_timestamp }}</span>
+                    <span class='timestamp'{% if message.raw_timestamp %} data-timestamp='{{ message.raw_timestamp }}'{% if message.pair_duration %} data-duration='{{ message.pair_duration }}'{% endif %}{% endif %}>{{ formatted_timestamp }}</span>
                 </div>
                 {% if message.token_usage %}
                 <span class='token-usage'>{{ message.token_usage }}</span>

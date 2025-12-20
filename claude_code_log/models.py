@@ -57,11 +57,12 @@ class MessageMeta:
 
     These fields are shared across all message types and are used to create
     the TemplateMessage wrapper for rendering.
+
+    Note: formatted_timestamp is computed at render time, not stored here.
     """
 
     session_id: str
     timestamp: str  # Raw ISO timestamp
-    formatted_timestamp: str  # Human-readable formatted timestamp
     uuid: str
     parent_uuid: Optional[str] = None
 

@@ -171,7 +171,6 @@ class TemplateMessage:
     def __init__(
         self,
         message_type: str,
-        formatted_timestamp: str,
         raw_timestamp: Optional[str] = None,
         session_summary: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -193,7 +192,6 @@ class TemplateMessage:
         self.type = message_type
         # Structured content for rendering
         self.content = content
-        self.formatted_timestamp = formatted_timestamp
         self.is_sidechain = is_sidechain
         self.raw_timestamp = raw_timestamp
         # Display title for message header (capitalized, with decorations)
@@ -777,7 +775,6 @@ def _process_system_message(
 
     return TemplateMessage(
         message_type="system",
-        formatted_timestamp=meta.formatted_timestamp,
         raw_timestamp=meta.timestamp,
         session_id=meta.session_id,
         message_title=title,
@@ -2006,7 +2003,6 @@ def _render_messages(
 
             session_header = TemplateMessage(
                 message_type="session_header",
-                formatted_timestamp="",
                 raw_timestamp=None,
                 session_summary=current_session_summary,
                 session_id=session_id,
@@ -2023,7 +2019,6 @@ def _render_messages(
 
         # Get timestamp (only for non-summary messages)
         timestamp = getattr(message, "timestamp", "")
-        formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
@@ -2143,7 +2138,6 @@ def _render_messages(
 
                 template_message = TemplateMessage(
                     message_type=chunk_message_type,
-                    formatted_timestamp=formatted_timestamp,
                     raw_timestamp=timestamp,
                     session_summary=session_summary,
                     session_id=session_id,
@@ -2168,9 +2162,6 @@ def _render_messages(
                 # Special chunk: single tool_use/tool_result/thinking item
                 tool_item = chunk
                 tool_timestamp = getattr(message, "timestamp", "")
-                tool_formatted_timestamp = (
-                    format_timestamp(tool_timestamp) if tool_timestamp else ""
-                )
 
                 # Handle both custom types and Anthropic types
                 item_type = getattr(tool_item, "type", None)
@@ -2214,7 +2205,6 @@ def _render_messages(
 
                 tool_template_message = TemplateMessage(
                     message_type=tool_result.message_type,
-                    formatted_timestamp=tool_formatted_timestamp,
                     raw_timestamp=tool_timestamp,
                     session_summary=session_summary,
                     session_id=session_id,

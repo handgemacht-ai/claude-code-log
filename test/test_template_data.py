@@ -20,12 +20,11 @@ class TestTemplateMessage:
         """Test creating a TemplateMessage with all fields."""
         msg = TemplateMessage(
             message_type="user",
-            formatted_timestamp="2025-06-14 10:00:00",
-            raw_timestamp=None,
+            raw_timestamp="2025-06-14T10:00:00Z",
         )
 
         assert msg.type == "user"
-        assert msg.formatted_timestamp == "2025-06-14 10:00:00"
+        assert msg.raw_timestamp == "2025-06-14T10:00:00Z"
         assert msg.message_title == "User"
 
     def test_template_message_title_capitalization(self):
@@ -40,7 +39,6 @@ class TestTemplateMessage:
         for msg_type, expected_display in test_cases:
             msg = TemplateMessage(
                 message_type=msg_type,
-                formatted_timestamp="time",
                 raw_timestamp=None,
             )
             assert msg.message_title == expected_display
@@ -377,8 +375,7 @@ class TestTemplateMessageTree:
         """Helper to create a minimal TemplateMessage for testing."""
         msg = TemplateMessage(
             message_type=msg_type,
-            formatted_timestamp="2025-06-14 10:00:00",
-            raw_timestamp=None,
+            raw_timestamp="2025-06-14T10:00:00Z",
         )
         if msg_id:
             msg.message_id = msg_id
@@ -529,32 +526,28 @@ class TestTreeBuildingIntegration:
         # Create a manual tree and verify flatten returns all messages
         root = TemplateMessage(
             message_type="session",
-            formatted_timestamp="2025-06-14 10:00:00",
-            raw_timestamp=None,
+            raw_timestamp="2025-06-14T10:00:00Z",
         )
         root.message_id = "session-1"
         root.ancestry = []
 
         user = TemplateMessage(
             message_type="user",
-            formatted_timestamp="2025-06-14 10:00:01",
-            raw_timestamp=None,
+            raw_timestamp="2025-06-14T10:00:01Z",
         )
         user.message_id = "d-1"
         user.ancestry = ["session-1"]
 
         assistant = TemplateMessage(
             message_type="assistant",
-            formatted_timestamp="2025-06-14 10:00:02",
-            raw_timestamp=None,
+            raw_timestamp="2025-06-14T10:00:02Z",
         )
         assistant.message_id = "d-2"
         assistant.ancestry = ["session-1", "d-1"]
 
         tool = TemplateMessage(
             message_type="tool_use",
-            formatted_timestamp="2025-06-14 10:00:03",
-            raw_timestamp=None,
+            raw_timestamp="2025-06-14T10:00:03Z",
         )
         tool.message_id = "d-3"
         tool.ancestry = ["session-1", "d-1", "d-2"]

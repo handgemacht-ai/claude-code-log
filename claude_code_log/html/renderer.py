@@ -34,6 +34,7 @@ from ..renderer import (
     title_for_projects_index,
 )
 from ..renderer_timings import log_timing
+from ..utils import format_timestamp
 from .system_formatters import (
     format_dedup_notice_content,
     format_hook_summary_content,
@@ -140,23 +141,24 @@ class HtmlRenderer(Renderer):
 
     def _flatten_preorder(
         self, roots: list[TemplateMessage]
-    ) -> list[Tuple[TemplateMessage, str]]:
+    ) -> list[Tuple[TemplateMessage, str, str]]:
         """Flatten message tree via pre-order traversal, formatting each message.
 
         Traverses the tree depth-first (pre-order), formats each message's
-        content to HTML, and builds a flat list of (message, html) pairs.
+        content to HTML, and builds a flat list of (message, html, timestamp) tuples.
 
         Args:
             roots: Root messages (typically session headers) with children populated
 
         Returns:
-            Flat list of (message, html_content) tuples in pre-order
+            Flat list of (message, html_content, formatted_timestamp) tuples in pre-order
         """
-        flat: list[Tuple[TemplateMessage, str]] = []
+        flat: list[Tuple[TemplateMessage, str, str]] = []
 
         def visit(msg: TemplateMessage) -> None:
             html = self.format_content(msg)
-            flat.append((msg, html))
+            formatted_ts = format_timestamp(msg.raw_timestamp)
+            flat.append((msg, html, formatted_ts))
             for child in msg.children:
                 visit(child)
 
