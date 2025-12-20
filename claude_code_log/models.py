@@ -45,18 +45,6 @@ class MessageType(str, Enum):
     SYSTEM_ERROR = "system-error"
 
 
-@dataclass
-class MessageModifiers:
-    """Cross-cutting modifier for sidechain messages.
-
-    Most display properties are now derived from content type (via CSS_CLASS_REGISTRY).
-    Only is_sidechain remains as it's a cross-cutting concern that can apply to
-    any message type.
-    """
-
-    is_sidechain: bool = False
-
-
 # =============================================================================
 # Message Content Models
 # =============================================================================

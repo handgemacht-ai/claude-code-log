@@ -128,7 +128,7 @@ def css_class_from_message(msg: "TemplateMessage") -> str:
         parts = [msg.type]
 
     # Cross-cutting modifier flags (not derivable from content type alone)
-    if msg.modifiers.is_sidechain:
+    if msg.is_sidechain:
         parts.append("sidechain")
 
     return " ".join(parts)
@@ -155,7 +155,7 @@ def get_message_emoji(msg: "TemplateMessage") -> str:
     elif msg_type == "bash-input":
         return "💻"
     elif msg_type == "assistant":
-        if msg.modifiers.is_sidechain:
+        if msg.is_sidechain:
             return "🔗"
         return "🤖"
     elif msg_type == "system":

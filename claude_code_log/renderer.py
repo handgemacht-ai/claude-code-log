@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 from datetime import datetime
 
 from .models import (
-    MessageModifiers,
     MessageType,
     TranscriptEntry,
     AssistantTranscriptEntry,
@@ -189,14 +188,14 @@ class TemplateMessage:
         uuid: Optional[str] = None,
         parent_uuid: Optional[str] = None,
         agent_id: Optional[str] = None,
-        modifiers: Optional[MessageModifiers] = None,
+        is_sidechain: bool = False,
         content: Optional["MessageContent"] = None,
     ):
         self.type = message_type
         # Structured content for rendering
         self.content = content
         self.formatted_timestamp = formatted_timestamp
-        self.modifiers = modifiers if modifiers is not None else MessageModifiers()
+        self.is_sidechain = is_sidechain
         self.raw_timestamp = raw_timestamp
         # Display title for message header (capitalized, with decorations)
         self.message_title = (
@@ -643,70 +642,54 @@ def prepare_session_navigation(
 
 def _process_command_message(
     text_content: str,
-) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
-    """Process a slash command message and return (modifiers, content, message_type, message_title).
+) -> tuple[Optional["MessageContent"], str, str]:
+    """Process a slash command message and return (content, message_type, message_title).
 
     These are user messages containing slash command invocations (e.g., /context, /model).
     The JSONL type is "user", not "system".
     """
-    modifiers = MessageModifiers()  # Type info is in SlashCommandContent
-
     # Parse to content model (formatting happens in HtmlRenderer)
     content = parse_slash_command(text_content)
     # If parsing fails, content will be None and caller will handle fallback
 
-    message_type = "user"
-    message_title = "Slash Command"
-    return modifiers, content, message_type, message_title
+    return content, "user", "Slash Command"
 
 
 def _process_local_command_output(
     text_content: str,
-) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
-    """Process slash command output and return (modifiers, content, message_type, message_title).
+) -> tuple[Optional["MessageContent"], str, str]:
+    """Process slash command output and return (content, message_type, message_title).
 
     These are user messages containing the output from slash commands (e.g., /context, /model).
     The JSONL type is "user", not "system".
     """
-    modifiers = MessageModifiers()  # Type info is in CommandOutputContent
-
     # Parse to content model (formatting happens in HtmlRenderer)
     content = parse_command_output(text_content)
     # If parsing fails, content will be None and caller will handle fallback
 
-    message_type = "user"
-    message_title = ""
-    return modifiers, content, message_type, message_title
+    return content, "user", ""
 
 
 def _process_bash_input(
     text_content: str,
-) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
-    """Process bash input command and return (modifiers, content, message_type, message_title)."""
-    modifiers = MessageModifiers()  # bash-input is a message type, not a modifier
-
+) -> tuple[Optional["MessageContent"], str, str]:
+    """Process bash input command and return (content, message_type, message_title)."""
     # Parse to content model (formatting happens in HtmlRenderer)
     content = parse_bash_input(text_content)
     # If parsing fails, content will be None and caller will handle fallback
 
-    message_type = "bash-input"
-    message_title = "Bash command"
-    return modifiers, content, message_type, message_title
+    return content, "bash-input", "Bash command"
 
 
 def _process_bash_output(
     text_content: str,
-) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
-    """Process bash output and return (modifiers, content, message_type, message_title)."""
-    modifiers = MessageModifiers()  # bash-output is a message type, not a modifier
-
+) -> tuple[Optional["MessageContent"], str, str]:
+    """Process bash output and return (content, message_type, message_title)."""
     # Parse to content model (formatting happens in HtmlRenderer)
     content = parse_bash_output(text_content)
     # If parsing fails, content will be None - caller/renderer handles empty output
 
-    message_type = "bash-output"
-    message_title = ""
-    return modifiers, content, message_type, message_title
+    return content, "bash-output", ""
 
 
 def _process_regular_message(
@@ -714,8 +697,8 @@ def _process_regular_message(
     message_type: str,
     is_sidechain: bool,
     is_meta: bool = False,
-) -> tuple[MessageModifiers, Optional["MessageContent"], str, str]:
-    """Process regular message and return (modifiers, content_model, message_type, message_title).
+) -> tuple[bool, Optional["MessageContent"], str, str]:
+    """Process regular message and return (is_sidechain, content_model, message_type, message_title).
 
     Returns content_model for user messages, None for non-user messages.
     Non-user messages (assistant) are handled by the legacy render_message_content path.
@@ -757,9 +740,7 @@ def _process_regular_message(
         if not isinstance(content_model, CompactedSummaryContent):
             message_title = "Sub-assistant"
 
-    modifiers = MessageModifiers(is_sidechain=is_sidechain)
-
-    return modifiers, content_model, message_type, message_title
+    return is_sidechain, content_model, message_type, message_title
 
 
 def _process_system_message(
@@ -819,8 +800,7 @@ def _process_system_message(
         ancestry=[],  # Will be assigned by _build_message_hierarchy
         uuid=message.uuid,
         parent_uuid=parent_uuid,
-        modifiers=MessageModifiers(),  # Level info is in SystemContent
-        content=content,
+        content=content,  # Level info is in SystemContent
     )
 
 
@@ -1345,7 +1325,7 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
         Integer hierarchy level (1-5, session headers are 0)
     """
     msg_type = msg.type
-    is_sidechain = msg.modifiers.is_sidechain
+    is_sidechain = msg.is_sidechain
 
     # User messages at level 1 (under session)
     # Note: sidechain user messages are skipped before reaching this function
@@ -1628,7 +1608,7 @@ def _reorder_sidechain_template_messages(
     sidechain_map: dict[str, list[TemplateMessage]] = {}
 
     for message in messages:
-        is_sidechain = message.modifiers.is_sidechain
+        is_sidechain = message.is_sidechain
         agent_id = message.agent_id
 
         if is_sidechain and agent_id:
@@ -2037,7 +2017,6 @@ def _render_messages(
                 is_session_header=True,
                 message_id=None,
                 ancestry=[],
-                modifiers=MessageModifiers(),
                 content=SessionHeaderContent(
                     title=session_title,
                     session_id=session_id,
@@ -2094,24 +2073,25 @@ def _render_messages(
                 is_bash_cmd = is_bash_input(chunk_text)
                 is_bash_result = is_bash_output(chunk_text)
 
-                # Determine modifiers and content based on message type
+                # Determine is_sidechain and content based on message type
                 content_model: Optional[MessageContent] = None
                 chunk_message_type = message_type
+                chunk_is_sidechain = getattr(message, "isSidechain", False)
 
                 if is_command:
-                    modifiers, content_model, chunk_message_type, message_title = (
+                    content_model, chunk_message_type, message_title = (
                         _process_command_message(chunk_text)
                     )
                 elif is_local_output:
-                    modifiers, content_model, chunk_message_type, message_title = (
+                    content_model, chunk_message_type, message_title = (
                         _process_local_command_output(chunk_text)
                     )
                 elif is_bash_cmd:
-                    modifiers, content_model, chunk_message_type, message_title = (
+                    content_model, chunk_message_type, message_title = (
                         _process_bash_input(chunk_text)
                     )
                 elif is_bash_result:
-                    modifiers, content_model, chunk_message_type, message_title = (
+                    content_model, chunk_message_type, message_title = (
                         _process_bash_output(chunk_text)
                     )
                 else:
@@ -2121,13 +2101,16 @@ def _render_messages(
                     else:
                         effective_type = message_type
 
-                    modifiers, content_model, chunk_message_type, message_title = (
-                        _process_regular_message(
-                            chunk,  # Pass the chunk items
-                            effective_type,
-                            getattr(message, "isSidechain", False),
-                            getattr(message, "isMeta", False),
-                        )
+                    (
+                        chunk_is_sidechain,
+                        content_model,
+                        chunk_message_type,
+                        message_title,
+                    ) = _process_regular_message(
+                        chunk,  # Pass the chunk items
+                        effective_type,
+                        chunk_is_sidechain,
+                        getattr(message, "isMeta", False),
                     )
 
                     # Convert to UserSteeringContent for queue-operation 'remove' messages
@@ -2175,7 +2158,7 @@ def _render_messages(
                     agent_id=getattr(message, "agentId", None),
                     uuid=chunk_uuid,
                     parent_uuid=getattr(message, "parentUuid", None),
-                    modifiers=modifiers,
+                    is_sidechain=chunk_is_sidechain,
                     content=content_model,
                     has_markdown=has_markdown,
                 )
@@ -2222,9 +2205,6 @@ def _render_messages(
                 # Preserve sidechain context for tool/thinking content
                 tool_is_sidechain = getattr(message, "isSidechain", False)
 
-                # Build modifiers (is_error is in ToolResultContentModel)
-                tool_modifiers = MessageModifiers(is_sidechain=tool_is_sidechain)
-
                 # Generate unique UUID for this tool message
                 # Use tool_use_id if available, otherwise fall back to msg UUID + index
                 tool_uuid = (
@@ -2251,7 +2231,7 @@ def _render_messages(
                     ancestry=[],  # Will be assigned by _build_message_hierarchy
                     agent_id=getattr(message, "agentId", None),
                     uuid=tool_uuid,
-                    modifiers=tool_modifiers,
+                    is_sidechain=tool_is_sidechain,
                     content=tool_result.content,  # Structured content model
                     has_markdown=tool_has_markdown,
                 )
