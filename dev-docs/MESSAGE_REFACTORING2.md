@@ -14,12 +14,13 @@ The goal is to achieve a cleaner, type-driven architecture where:
 - Content types now determine behavior (e.g., `UserSlashCommandContent` vs `UserTextContent`)
 - Dispatcher pattern routes formatting based on content type
 - Removed `ContentBlock` from `ContentItem` union - using our own types
-- Simplified `_process_regular_message` - content type detection drives modifiers
+- Simplified `_process_regular_message` - content type detection drives rendering
+- **CSS_CLASS_REGISTRY** derives CSS classes from content types (in `html/utils.py`)
+- **MessageModifiers removed** - only `is_sidechain` remains as a flag on `TemplateMessage`
+- **UserSteeringContent** created for queue-operation "remove" messages
 
-### Remaining issues
-- `MessageModifiers` still exists with `is_slash_command`, `is_compacted`, `is_sidechain` flags
-- These are redundant with type information (e.g., `is_slash_command` ↔ `isinstance(content, UserSlashCommandContent)`)
-- `TemplateMessage` still owns `content` rather than the reverse
+### Remaining goals
+- `TemplateMessage` still owns `content` rather than the reverse (inverted relationship)
 
 ## Cache Considerations
 
