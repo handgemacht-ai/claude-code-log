@@ -218,6 +218,18 @@ class UserMemoryContent(MessageContent):
 
 
 @dataclass
+class UserSlashCommandContent(MessageContent):
+    """Content for slash command expanded prompts (isMeta=True).
+
+    These are LLM-generated instruction text from slash commands.
+    The text is markdown formatted and rendered as such.
+    Formatted by format_user_slash_command_content() in html/user_formatters.py.
+    """
+
+    text: str
+
+
+@dataclass
 class IdeOpenedFile:
     """IDE notification for an opened file."""
 

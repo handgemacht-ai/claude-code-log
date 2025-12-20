@@ -1,7 +1,8 @@
 """HTML renderer implementation for Claude Code transcripts."""
 
+from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple
 
 from ..cache import get_library_version
 from ..models import (
@@ -12,11 +13,9 @@ from ..models import (
     CompactedSummaryContent,
     DedupNoticeContent,
     HookSummaryContent,
-    ImageContent,
     SessionHeaderContent,
     SlashCommandContent,
     SystemContent,
-    TextContent,
     ThinkingContentModel,
     ToolResultContent,
     ToolResultContentModel,
@@ -24,6 +23,7 @@ from ..models import (
     TranscriptEntry,
     UnknownContent,
     UserMemoryContent,
+    UserSlashCommandContent,
     UserTextContent,
 )
 from ..renderer import (
@@ -47,11 +47,11 @@ from .user_formatters import (
     format_compacted_summary_content,
     format_slash_command_content,
     format_user_memory_content,
+    format_user_slash_command_content,
     format_user_text_model_content,
 )
 from .assistant_formatters import (
     format_assistant_text_content,
-    format_image_content,
     format_thinking_content,
     format_unknown_content,
 )
@@ -94,95 +94,39 @@ def check_html_version(html_file_path: Path) -> Optional[str]:
 class HtmlRenderer(Renderer):
     """HTML renderer for Claude Code transcripts."""
 
-    def _build_dispatcher(self) -> dict[type, Callable[[TemplateMessage], str]]:
+    def _build_dispatcher(self) -> dict[type, Callable[..., str]]:
         """Build content type to HTML formatter mapping.
 
         Maps MessageContent subclasses to their HTML formatting functions.
-        Simple formatters use lambdas; complex ones use instance methods.
+        Handlers receive the content directly (not the full TemplateMessage).
+        The cast to the correct type happens in format_content().
         """
-        # Note: cast() is used because the dispatcher pattern relies on runtime
-        # type dispatch via MRO walking. The type checker can't verify that when
-        # a handler is called, m.content is the correct type - but it's guaranteed
-        # by the dispatch logic in format_content().
         return {
             # System content types
-            SystemContent: lambda m: format_system_content(
-                cast(SystemContent, m.content)
-            ),
-            HookSummaryContent: lambda m: format_hook_summary_content(
-                cast(HookSummaryContent, m.content)
-            ),
-            SessionHeaderContent: lambda m: format_session_header_content(
-                cast(SessionHeaderContent, m.content)
-            ),
-            DedupNoticeContent: lambda m: format_dedup_notice_content(
-                cast(DedupNoticeContent, m.content)
-            ),
+            SystemContent: format_system_content,
+            HookSummaryContent: format_hook_summary_content,
+            SessionHeaderContent: format_session_header_content,
+            DedupNoticeContent: format_dedup_notice_content,
             # User content types
-            SlashCommandContent: lambda m: format_slash_command_content(
-                cast(SlashCommandContent, m.content)
-            ),
-            CommandOutputContent: lambda m: format_command_output_content(
-                cast(CommandOutputContent, m.content)
-            ),
-            BashInputContent: lambda m: format_bash_input_content(
-                cast(BashInputContent, m.content)
-            ),
-            BashOutputContent: lambda m: format_bash_output_content(
-                cast(BashOutputContent, m.content)
-            ),
-            CompactedSummaryContent: lambda m: format_compacted_summary_content(
-                cast(CompactedSummaryContent, m.content)
-            ),
-            UserMemoryContent: lambda m: format_user_memory_content(
-                cast(UserMemoryContent, m.content)
-            ),
-            UserTextContent: self._format_user_text_content,
+            SlashCommandContent: format_slash_command_content,
+            CommandOutputContent: format_command_output_content,
+            BashInputContent: format_bash_input_content,
+            BashOutputContent: format_bash_output_content,
+            CompactedSummaryContent: format_compacted_summary_content,
+            UserMemoryContent: format_user_memory_content,
+            UserSlashCommandContent: format_user_slash_command_content,
+            UserTextContent: format_user_text_model_content,
             # Assistant content types
-            ThinkingContentModel: lambda m: format_thinking_content(
-                cast(ThinkingContentModel, m.content), line_threshold=10
-            ),
-            AssistantTextContent: lambda m: format_assistant_text_content(
-                cast(AssistantTextContent, m.content)
-            ),
-            UnknownContent: lambda m: format_unknown_content(
-                cast(UnknownContent, m.content)
-            ),
+            ThinkingContentModel: partial(format_thinking_content, line_threshold=10),
+            AssistantTextContent: format_assistant_text_content,
+            UnknownContent: format_unknown_content,
             # Tool content types
-            ToolUseContent: lambda m: format_tool_use_content(
-                cast(ToolUseContent, m.content)
-            ),
+            ToolUseContent: format_tool_use_content,
             ToolResultContentModel: self._format_tool_result_content,
         }
 
-    def _format_user_text_content(self, message: TemplateMessage) -> str:
-        """Format UserTextContent, handling slash command expanded prompts."""
-        from .utils import render_markdown_collapsible
-
-        content = cast(UserTextContent, message.content)
-        if message.modifiers and message.modifiers.is_slash_command:
-            # Slash command expanded prompts are markdown (LLM-generated)
-            # Process each item separately, render text as markdown, images as <img>
-            parts: list[str] = []
-            for item in content.items:
-                if isinstance(item, ImageContent):
-                    parts.append(format_image_content(item))
-                elif isinstance(item, TextContent):
-                    parts.append(
-                        render_markdown_collapsible(
-                            item.text,
-                            "slash-command-content",
-                            line_threshold=20,
-                            preview_line_count=5,
-                        )
-                    )
-                # IdeNotificationContent is unlikely in slash commands, skip
-            return "\n".join(parts)
-        return format_user_text_model_content(content)
-
-    def _format_tool_result_content(self, message: TemplateMessage) -> str:
+    def _format_tool_result_content(self, content: ToolResultContentModel) -> str:
         """Format ToolResultContentModel with associated tool context."""
-        content = cast(ToolResultContentModel, message.content)
         tool_result = ToolResultContent(
             type="tool_result",
             tool_use_id=content.tool_use_id,

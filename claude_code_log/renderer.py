@@ -36,6 +36,7 @@ from .models import (
     SystemContent,
     UnknownContent,
     UserMemoryContent,
+    UserSlashCommandContent,
 )
 from .parser import (
     as_assistant_entry,
@@ -730,16 +731,14 @@ def _process_regular_message(
     # Handle user-specific preprocessing
     if message_type == MessageType.USER:
         # Note: sidechain user messages are skipped before reaching this function
-        if is_meta:
-            # Slash command expanded prompts (LLM-generated markdown)
-            is_slash_command = True
-            message_title = "User (slash command)"
-
-        # Parse user content (works for both regular and slash command prompts)
-        content_model = parse_user_message_content(items)
+        # Parse user content (is_meta triggers UserSlashCommandContent creation)
+        content_model = parse_user_message_content(items, is_slash_command=is_meta)
 
         # Determine message_title and modifiers from content type
-        if isinstance(content_model, CompactedSummaryContent):
+        if isinstance(content_model, UserSlashCommandContent):
+            is_slash_command = True
+            message_title = "User (slash command)"
+        elif isinstance(content_model, CompactedSummaryContent):
             is_compacted = True
             message_title = "User (compacted conversation)"
         elif isinstance(content_model, UserMemoryContent):
@@ -2384,12 +2383,12 @@ class Renderer:
 
     def _build_dispatcher(
         self,
-    ) -> dict[type, Callable[["TemplateMessage"], str]]:
+    ) -> dict[type, Callable[..., str]]:
         """Build the content type to formatter mapping.
 
         Override in subclasses to register format-specific handlers.
         The dict maps MessageContent subclasses to formatter functions.
-        Each formatter receives the full TemplateMessage (for access to modifiers).
+        Each formatter receives the content directly (cast to the matched type).
 
         Returns:
             Dict mapping content types to formatter functions.
@@ -2414,7 +2413,7 @@ class Renderer:
             if cls is object:
                 break
             if fmt := self._dispatcher.get(cls):
-                return fmt(message)
+                return fmt(message.content)
         return ""
 
     def generate(

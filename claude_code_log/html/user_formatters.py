@@ -21,6 +21,7 @@ from ..models import (
     ImageContent,
     SlashCommandContent,
     UserMemoryContent,
+    UserSlashCommandContent,
     UserTextContent,
 )
 from .tool_formatters import render_params_table
@@ -262,6 +263,26 @@ def format_user_memory_content(content: UserMemoryContent) -> str:
     """
     escaped_text = escape_html(content.memory_text)
     return f"<pre>{escaped_text}</pre>"
+
+
+def format_user_slash_command_content(content: UserSlashCommandContent) -> str:
+    """Format slash command expanded prompt (isMeta) as HTML.
+
+    These are LLM-generated instruction text from slash commands,
+    rendered as collapsible markdown.
+
+    Args:
+        content: UserSlashCommandContent with markdown text
+
+    Returns:
+        HTML string with collapsible markdown rendering
+    """
+    return render_markdown_collapsible(
+        content.text,
+        "slash-command",
+        line_threshold=30,
+        preview_line_count=10,
+    )
 
 
 def _format_opened_file(opened_file: IdeOpenedFile) -> str:

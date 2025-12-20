@@ -25,6 +25,7 @@ from .models import (
     BashOutputContent,
     CompactedSummaryContent,
     UserMemoryContent,
+    UserSlashCommandContent,
     UserTextContent,
     IdeNotificationContent,
     IdeOpenedFile,
@@ -345,16 +346,20 @@ def parse_user_memory(text: str) -> Optional[UserMemoryContent]:
 
 
 # Type alias for content models returned by parse_user_message_content
-UserMessageContent = Union[CompactedSummaryContent, UserMemoryContent, UserTextContent]
+UserMessageContent = Union[
+    CompactedSummaryContent, UserMemoryContent, UserSlashCommandContent, UserTextContent
+]
 
 
 def parse_user_message_content(
     content_list: list[ContentItem],
+    is_slash_command: bool = False,
 ) -> Optional[UserMessageContent]:
     """Parse user message content into a structured content model.
 
     Returns a content model for HtmlRenderer to format. The caller can use
     isinstance() checks to determine the content type:
+    - UserSlashCommandContent: Slash command expanded prompts (isMeta=True)
     - CompactedSummaryContent: Session continuation summaries
     - UserMemoryContent: User memory input from CLAUDE.md
     - UserTextContent: Normal user text with optional IDE notifications and images
@@ -366,12 +371,20 @@ def parse_user_message_content(
 
     Args:
         content_list: List of ContentItem from user message
+        is_slash_command: True for slash command expanded prompts (isMeta=True)
 
     Returns:
         A content model, or None if content_list is empty.
     """
     if not content_list:
         return None
+
+    # Slash command expanded prompts - combine all text as markdown
+    if is_slash_command:
+        all_text = "\n\n".join(
+            getattr(item, "text", "") for item in content_list if hasattr(item, "text")
+        )
+        return UserSlashCommandContent(text=all_text) if all_text else None
 
     # Get first text item for special case detection
     first_text_item = next(

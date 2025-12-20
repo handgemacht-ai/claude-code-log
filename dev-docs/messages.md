@@ -21,7 +21,7 @@ JSONL Parsing (parser.py)
 │
 ├── UserTranscriptEntry
 │   ├── TextContent → User message variants:
-│   │   ├── SlashCommandContent (isMeta or <command-name> tags)
+│   │   ├── UserSlashCommandContent (isMeta) or SlashCommandContent (<command-name> tags)
 │   │   ├── CommandOutputContent (<local-command-stdout> tags)
 │   │   ├── BashInputContent (<bash-input> tags)
 │   │   ├── CompactedSummaryContent (compacted conversation)
@@ -156,7 +156,7 @@ Based on flags and tag patterns in `TextContent`, user text messages are classif
 ### Slash Command (isMeta)
 
 - **Condition**: `isMeta: true` flag
-- **Content Model**: `SlashCommandContent` (models.py)
+- **Content Model**: `UserSlashCommandContent` (models.py)
 - **CSS Class**: `user slash-command`
 - **Files**: [user_slash_command.json](messages/user/user_slash_command.json)
 
@@ -168,10 +168,14 @@ Based on flags and tag patterns in `TextContent`, user text messages are classif
 }
 ```
 
-> **Note**: These are "caveat" messages that precede slash command messages (with
-> `<command-name>` tags). They instruct the LLM to not respond to the following
-> local command output unless explicitly asked. The actual slash command details
-> appear in the subsequent message with tags.
+```python
+@dataclass
+class UserSlashCommandContent(MessageContent):
+    text: str  # LLM-generated markdown instruction text
+```
+
+> **Note**: These are LLM-generated instruction prompts from slash commands.
+> The text is markdown formatted and rendered as collapsible markdown.
 
 ### Slash Command (Tags)
 
