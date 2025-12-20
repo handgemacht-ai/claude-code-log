@@ -16,6 +16,7 @@ from ..models import (
     SessionHeaderContent,
     SlashCommandContent,
     SystemContent,
+    TextContent,
     ThinkingContentModel,
     ToolResultContent,
     ToolResultContentModel,
@@ -144,7 +145,6 @@ class HtmlRenderer(Renderer):
             AssistantTextContent: lambda m: format_assistant_text_content(
                 cast(AssistantTextContent, m.content)
             ),
-            ImageContent: lambda m: format_image_content(cast(ImageContent, m.content)),
             UnknownContent: lambda m: format_unknown_content(
                 cast(UnknownContent, m.content)
             ),
@@ -157,17 +157,27 @@ class HtmlRenderer(Renderer):
 
     def _format_user_text_content(self, message: TemplateMessage) -> str:
         """Format UserTextContent, handling slash command expanded prompts."""
+        from .utils import render_markdown_collapsible
+
         content = cast(UserTextContent, message.content)
         if message.modifiers and message.modifiers.is_slash_command:
             # Slash command expanded prompts are markdown (LLM-generated)
-            from .utils import render_markdown_collapsible
-
-            return render_markdown_collapsible(
-                content.text,
-                "slash-command-content",
-                line_threshold=20,
-                preview_line_count=5,
-            )
+            # Process each item separately, render text as markdown, images as <img>
+            parts: list[str] = []
+            for item in content.items:
+                if isinstance(item, ImageContent):
+                    parts.append(format_image_content(item))
+                elif isinstance(item, TextContent):
+                    parts.append(
+                        render_markdown_collapsible(
+                            item.text,
+                            "slash-command-content",
+                            line_threshold=20,
+                            preview_line_count=5,
+                        )
+                    )
+                # IdeNotificationContent is unlikely in slash commands, skip
+            return "\n".join(parts)
         return format_user_text_model_content(content)
 
     def _format_tool_result_content(self, message: TemplateMessage) -> str:

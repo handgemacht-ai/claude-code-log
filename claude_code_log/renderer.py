@@ -26,7 +26,6 @@ from .models import (
     ToolUseContent,
     ThinkingContent,
     ThinkingContentModel,
-    ImageContent,
     # Structured content types
     AssistantTextContent,
     CompactedSummaryContent,
@@ -37,7 +36,6 @@ from .models import (
     SystemContent,
     UnknownContent,
     UserMemoryContent,
-    UserTextContent,
 )
 from .parser import (
     as_assistant_entry,
@@ -707,7 +705,7 @@ def _process_bash_output(
 
 
 def _process_regular_message(
-    text_only_content: list[ContentItem],
+    items: list[ContentItem],
     message_type: str,
     is_sidechain: bool,
     is_meta: bool = False,
@@ -721,6 +719,7 @@ def _process_regular_message(
     in the main processing loop since they duplicate the Task tool input prompt.
 
     Args:
+        items: List of text/image content items (no tool_use, tool_result, thinking).
         is_meta: True for slash command expanded prompts (isMeta=True in JSONL)
     """
     message_title = message_type.title()  # Default title
@@ -732,35 +731,27 @@ def _process_regular_message(
     if message_type == MessageType.USER:
         # Note: sidechain user messages are skipped before reaching this function
         if is_meta:
-            # Slash command expanded prompts
-            # These contain LLM-generated instruction text (markdown formatted)
+            # Slash command expanded prompts (LLM-generated markdown)
             is_slash_command = True
             message_title = "User (slash command)"
-            # Combine all text content (items may be TextContent, dicts, or SDK objects)
-            all_text = "\n\n".join(
-                getattr(item, "text", "")
-                for item in text_only_content
-                if hasattr(item, "text")
-            )
-            # Use UserTextContent with is_slash_command flag for HtmlRenderer to format
-            content_model = UserTextContent(text=all_text)
-        else:
-            content_model = parse_user_message_content(text_only_content)
-            # Determine message_title and modifiers from content type
-            if isinstance(content_model, CompactedSummaryContent):
-                is_compacted = True
-                message_title = "User (compacted conversation)"
-            elif isinstance(content_model, UserMemoryContent):
-                message_title = "Memory"
+
+        # Parse user content (works for both regular and slash command prompts)
+        content_model = parse_user_message_content(items)
+
+        # Determine message_title and modifiers from content type
+        if isinstance(content_model, CompactedSummaryContent):
+            is_compacted = True
+            message_title = "User (compacted conversation)"
+        elif isinstance(content_model, UserMemoryContent):
+            message_title = "Memory"
+
     elif message_type == MessageType.ASSISTANT:
-        # Create AssistantTextContent for assistant messages
-        all_text = "\n\n".join(
-            getattr(item, "text", "")
-            for item in text_only_content
-            if hasattr(item, "text")
-        )
-        if all_text:
-            content_model = AssistantTextContent(text=all_text)
+        # Create AssistantTextContent directly from items
+        # (empty text already filtered by chunk_message_content)
+        if items:
+            content_model = AssistantTextContent(
+                items=items  # type: ignore[arg-type]
+            )
 
     if is_sidechain:
         # Update message title for display (only non-user types reach here)
@@ -836,6 +827,72 @@ def _process_system_message(
         modifiers=MessageModifiers(system_level=level),
         content=content,
     )
+
+
+# Type alias for chunk output: either a list of regular items or a single special item
+ContentChunk = list[ContentItem] | ContentItem
+
+
+def _is_special_item(item: ContentItem) -> bool:
+    """Check if a content item is a 'special' item that should be its own chunk.
+
+    Special items (tool_use, tool_result, thinking) become their own TemplateMessages.
+    Regular items (text, image) are accumulated together.
+    """
+    item_type = getattr(item, "type", None)
+    return isinstance(
+        item, (ToolUseContent, ToolResultContent, ThinkingContent)
+    ) or item_type in ("tool_use", "tool_result", "thinking")
+
+
+def chunk_message_content(content: list[ContentItem]) -> list[ContentChunk]:
+    """Split message content into chunks for TemplateMessage creation.
+
+    This function processes a list of content items and produces chunks where:
+    - "Special" items (tool_use, tool_result, thinking) each become their own chunk
+    - "Regular" items (text, image) are accumulated into list chunks
+
+    When a special item is encountered, any accumulated regular items are flushed
+    as a list chunk first, then the special item is added as a single-item chunk.
+
+    Args:
+        content: List of ContentItem from the message
+
+    Returns:
+        List of chunks where each chunk is either:
+        - A list[ContentItem] of accumulated text/image items
+        - A single ContentItem (tool_use, tool_result, or thinking)
+
+    Example:
+        Input: [text, image, thinking, text, text, tool_use]
+        Output: [[text, image], thinking, [text, text], tool_use]
+    """
+    if not content:
+        return []
+
+    chunks: list[ContentChunk] = []
+    accumulated: list[ContentItem] = []
+
+    for item in content:
+        if _is_special_item(item):
+            # Flush accumulated regular items as a chunk
+            if accumulated:
+                chunks.append(accumulated)
+                accumulated = []
+            # Add special item as its own chunk
+            chunks.append(item)
+        else:
+            # Accumulate regular items (text, image), skip empty text
+            if hasattr(item, "text"):
+                if not getattr(item, "text", "").strip():
+                    continue  # Skip empty text
+            accumulated.append(item)
+
+    # Flush any remaining accumulated items
+    if accumulated:
+        chunks.append(accumulated)
+
+    return chunks
 
 
 @dataclass
@@ -991,24 +1048,6 @@ def _process_thinking_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
         message_type="thinking",
         message_title="Thinking",
         content=thinking_model,
-    )
-
-
-def _process_image_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
-    """Process an image content item.
-
-    Returns:
-        ToolItemResult with image content model, or None if item should be skipped
-    """
-    # Convert Anthropic type to our format if necessary
-    if not isinstance(tool_item, ImageContent):
-        # For now, skip Anthropic image types - we'll handle when we encounter them
-        return None
-
-    return ToolItemResult(
-        message_type="image",
-        message_title="Image",
-        content=tool_item,  # ImageContent is already the model
     )
 
 
@@ -1952,48 +1991,28 @@ def _render_messages(
         else:
             message_content = message.message.content  # type: ignore
 
-        text_content = extract_text_content(message_content)  # type: ignore[arg-type]
+        # Track sidechain status for user messages
+        # (sidechain user text is skipped to avoid duplicate Task prompts)
+        is_sidechain_user = message_type == MessageType.USER and getattr(
+            message, "isSidechain", False
+        )
 
-        # Separate tool/thinking/image content from text content
-        tool_items: list[ContentItem] = []
-        text_only_content: list[ContentItem] = []
-
+        # Chunk content: regular items (text/image) accumulate, special items (tool/thinking) separate
         if isinstance(message_content, list):
-            text_only_items: list[ContentItem] = []
-            for item in message_content:  # type: ignore[union-attr]
-                item_type = getattr(item, "type", None)  # type: ignore[arg-type]
-                is_image = isinstance(item, ImageContent) or item_type == "image"
-                is_tool_item = isinstance(
-                    item,
-                    (ToolUseContent, ToolResultContent, ThinkingContent),
-                ) or item_type in ("tool_use", "tool_result", "thinking")
-
-                if is_image and (
-                    message_type == MessageType.USER
-                    or isinstance(message, QueueOperationTranscriptEntry)
-                ):
-                    text_only_items.append(item)  # type: ignore[arg-type]
-                elif is_tool_item or is_image:
-                    tool_items.append(item)  # type: ignore[arg-type]
-                else:
-                    text_only_items.append(item)  # type: ignore[arg-type]
-            text_only_content = text_only_items
+            chunks = chunk_message_content(message_content)  # type: ignore[arg-type]
         else:
-            message_content = message_content.strip()  # type: ignore[union-attr]
-            if message_content:
-                text_only_content = [TextContent(type="text", text=message_content)]  # type: ignore[arg-type]
+            # String content - wrap in list with single TextContent
+            content_str: str = message_content.strip() if message_content else ""  # type: ignore[union-attr]
+            if content_str:
+                chunks: list[ContentChunk] = [
+                    [TextContent(type="text", text=content_str)]  # pyright: ignore[reportUnknownArgumentType]
+                ]
+            else:
+                chunks = []
 
-        # For sidechain user messages with tool results, clear text content
-        # (prompts duplicate Task result; filtering already done in pass 1)
-        if message_type == MessageType.USER and getattr(message, "isSidechain", False):
-            text_only_content = []
-            text_content = ""
-
-        # Check message types for special handling
-        is_command = is_command_message(text_content)
-        is_local_output = is_local_command_output(text_content)
-        is_bash_cmd = is_bash_input(text_content)
-        is_bash_result = is_bash_output(text_content)
+        # Skip messages with no content
+        if not chunks:
+            continue
 
         # Get session info
         session_id = getattr(message, "sessionId", "unknown")
@@ -2053,149 +2072,181 @@ def _render_messages(
                     token_parts.append(f"Cache Read: {usage.cache_read_input_tokens}")
                 token_usage_str = " | ".join(token_parts)
 
-        # Determine modifiers and content based on message type
-        content_model: Optional[MessageContent] = None
+        # Track whether we've shown token usage (only show on first content chunk)
+        token_shown = False
 
-        if is_command:
-            modifiers, content_model, message_type, message_title = (
-                _process_command_message(text_content)
-            )
-        elif is_local_output:
-            modifiers, content_model, message_type, message_title = (
-                _process_local_command_output(text_content)
-            )
-        elif is_bash_cmd:
-            modifiers, content_model, message_type, message_title = _process_bash_input(
-                text_content
-            )
-        elif is_bash_result:
-            modifiers, content_model, message_type, message_title = (
-                _process_bash_output(text_content)
-            )
-        else:
-            # For queue-operation messages, treat them as user messages
-            if isinstance(message, QueueOperationTranscriptEntry):
-                effective_type = "user"
-            else:
-                effective_type = message_type
+        # Process each chunk - regular chunks (list) become text/image messages,
+        # special chunks (single item) become tool/thinking messages
+        for chunk_idx, chunk in enumerate(chunks):
+            # Regular chunk: list of text/image items
+            if isinstance(chunk, list):
+                # Skip text chunks for sidechain user messages
+                # (prompts duplicate Task result; filtering already done in pass 1)
+                if is_sidechain_user:
+                    continue
 
-            modifiers, content_model, message_type_result, message_title = (
-                _process_regular_message(
-                    text_only_content,
-                    effective_type,
-                    getattr(message, "isSidechain", False),
-                    getattr(message, "isMeta", False),
-                )
-            )
-            message_type = message_type_result  # Update message_type with result
+                # Extract text for pattern detection
+                chunk_text = extract_text_content(chunk)
 
-            # Add 'steering' modifier for queue-operation 'remove' messages
-            if (
-                isinstance(message, QueueOperationTranscriptEntry)
-                and message.operation == "remove"
-            ):
-                modifiers = replace(modifiers, is_steering=True)
-                message_title = "User (steering)"
+                # Check for special message patterns
+                is_command = is_command_message(chunk_text)
+                is_local_output = is_local_command_output(chunk_text)
+                is_bash_cmd = is_bash_input(chunk_text)
+                is_bash_result = is_bash_output(chunk_text)
 
-        # Only create main message if it has text content
-        # For assistant/thinking with only tools (no text), we don't create a container message
-        # The tools will be direct children of the current hierarchy level
-        if text_only_content:
-            template_message = TemplateMessage(
-                message_type=message_type,
-                formatted_timestamp=formatted_timestamp,
-                raw_timestamp=timestamp,
-                session_summary=session_summary,
-                session_id=session_id,
-                token_usage=token_usage_str,
-                message_title=message_title,
-                message_id=None,  # Will be assigned by _build_message_hierarchy
-                ancestry=[],  # Will be assigned by _build_message_hierarchy
-                agent_id=getattr(message, "agentId", None),
-                uuid=getattr(message, "uuid", None),
-                parent_uuid=getattr(message, "parentUuid", None),
-                modifiers=modifiers,
-                content=content_model,
-            )
+                # Determine modifiers and content based on message type
+                content_model: Optional[MessageContent] = None
+                chunk_message_type = message_type
 
-            # Store raw text content for potential future use (e.g., deduplication,
-            # alternative output formats). Stripping happens when used.
-            template_message.raw_text_content = text_content
+                if is_command:
+                    modifiers, content_model, chunk_message_type, message_title = (
+                        _process_command_message(chunk_text)
+                    )
+                elif is_local_output:
+                    modifiers, content_model, chunk_message_type, message_title = (
+                        _process_local_command_output(chunk_text)
+                    )
+                elif is_bash_cmd:
+                    modifiers, content_model, chunk_message_type, message_title = (
+                        _process_bash_input(chunk_text)
+                    )
+                elif is_bash_result:
+                    modifiers, content_model, chunk_message_type, message_title = (
+                        _process_bash_output(chunk_text)
+                    )
+                else:
+                    # For queue-operation messages, treat them as user messages
+                    if isinstance(message, QueueOperationTranscriptEntry):
+                        effective_type = "user"
+                    else:
+                        effective_type = message_type
 
-            template_messages.append(template_message)
+                    modifiers, content_model, chunk_message_type, message_title = (
+                        _process_regular_message(
+                            chunk,  # Pass the chunk items
+                            effective_type,
+                            getattr(message, "isSidechain", False),
+                            getattr(message, "isMeta", False),
+                        )
+                    )
 
-        # Create separate messages for each tool/thinking/image item
-        for tool_item in tool_items:
-            tool_timestamp = getattr(message, "timestamp", "")
-            tool_formatted_timestamp = (
-                format_timestamp(tool_timestamp) if tool_timestamp else ""
-            )
+                    # Add 'steering' modifier for queue-operation 'remove' messages
+                    if (
+                        isinstance(message, QueueOperationTranscriptEntry)
+                        and message.operation == "remove"
+                    ):
+                        modifiers = replace(modifiers, is_steering=True)
+                        message_title = "User (steering)"
 
-            # Handle both custom types and Anthropic types
-            item_type = getattr(tool_item, "type", None)
+                # Skip empty chunks
+                if not chunk:
+                    continue
 
-            # Dispatch to appropriate handler based on item type
-            tool_result: Optional[ToolItemResult] = None
-            if isinstance(tool_item, ToolUseContent) or item_type == "tool_use":
-                tool_result = _process_tool_use_item(tool_item, tool_use_context)
-            elif isinstance(tool_item, ToolResultContent) or item_type == "tool_result":
-                tool_result = _process_tool_result_item(tool_item, tool_use_context)
-            elif isinstance(tool_item, ThinkingContent) or item_type == "thinking":
-                tool_result = _process_thinking_item(tool_item)
-            elif isinstance(tool_item, ImageContent) or item_type == "image":
-                tool_result = _process_image_item(tool_item)
-            else:
-                # Handle unknown content types
-                tool_result = ToolItemResult(
-                    message_type="unknown",
-                    content=UnknownContent(type_name=str(type(tool_item))),
-                    message_title="Unknown Content",
+                # Only show token usage on first chunk
+                chunk_token_usage = token_usage_str if not token_shown else None
+                token_shown = True
+
+                # Generate UUID for this chunk (append index if multiple chunks)
+                chunk_uuid = getattr(message, "uuid", None)
+                if chunk_uuid and len(chunks) > 1:
+                    chunk_uuid = f"{chunk_uuid}-chunk-{chunk_idx}"
+
+                template_message = TemplateMessage(
+                    message_type=chunk_message_type,
+                    formatted_timestamp=formatted_timestamp,
+                    raw_timestamp=timestamp,
+                    session_summary=session_summary,
+                    session_id=session_id,
+                    token_usage=chunk_token_usage,
+                    message_title=message_title,
+                    message_id=None,  # Will be assigned by _build_message_hierarchy
+                    ancestry=[],  # Will be assigned by _build_message_hierarchy
+                    agent_id=getattr(message, "agentId", None),
+                    uuid=chunk_uuid,
+                    parent_uuid=getattr(message, "parentUuid", None),
+                    modifiers=modifiers,
+                    content=content_model,
                 )
 
-            # Skip if handler returned None (e.g., unsupported image types)
-            if tool_result is None:
-                continue
+                # Store raw text content for potential future use
+                template_message.raw_text_content = chunk_text
 
-            # Preserve sidechain context for tool/thinking/image content within sidechain messages
-            tool_is_sidechain = getattr(message, "isSidechain", False)
+                template_messages.append(template_message)
 
-            # Build modifiers directly from tool_result properties
-            tool_modifiers = MessageModifiers(
-                is_sidechain=tool_is_sidechain,
-                is_error=tool_result.is_error,
-            )
+            else:
+                # Special chunk: single tool_use/tool_result/thinking item
+                tool_item = chunk
+                tool_timestamp = getattr(message, "timestamp", "")
+                tool_formatted_timestamp = (
+                    format_timestamp(tool_timestamp) if tool_timestamp else ""
+                )
 
-            # Generate unique UUID for this tool message
-            # Use tool_use_id if available, otherwise fall back to message UUID + index
-            tool_uuid = (
-                tool_result.tool_use_id
-                if tool_result.tool_use_id
-                else f"{msg_uuid}-tool-{len(template_messages)}"
-            )
+                # Handle both custom types and Anthropic types
+                item_type = getattr(tool_item, "type", None)
 
-            tool_template_message = TemplateMessage(
-                message_type=tool_result.message_type,
-                formatted_timestamp=tool_formatted_timestamp,
-                raw_timestamp=tool_timestamp,
-                session_summary=session_summary,
-                session_id=session_id,
-                tool_use_id=tool_result.tool_use_id,
-                title_hint=tool_result.title_hint,
-                message_title=tool_result.message_title,
-                message_id=None,  # Will be assigned by _build_message_hierarchy
-                ancestry=[],  # Will be assigned by _build_message_hierarchy
-                agent_id=getattr(message, "agentId", None),
-                uuid=tool_uuid,
-                modifiers=tool_modifiers,
-                content=tool_result.content,  # Structured content model
-            )
+                # Dispatch to appropriate handler based on item type
+                tool_result: Optional[ToolItemResult] = None
+                if isinstance(tool_item, ToolUseContent) or item_type == "tool_use":
+                    tool_result = _process_tool_use_item(tool_item, tool_use_context)
+                elif (
+                    isinstance(tool_item, ToolResultContent)
+                    or item_type == "tool_result"
+                ):
+                    tool_result = _process_tool_result_item(tool_item, tool_use_context)
+                elif isinstance(tool_item, ThinkingContent) or item_type == "thinking":
+                    tool_result = _process_thinking_item(tool_item)
+                else:
+                    # Handle unknown content types
+                    tool_result = ToolItemResult(
+                        message_type="unknown",
+                        content=UnknownContent(type_name=str(type(tool_item))),
+                        message_title="Unknown Content",
+                    )
 
-            # Store raw text for Task result deduplication
-            # (handled later in _reorder_sidechain_template_messages)
-            if tool_result.pending_dedup is not None:
-                tool_template_message.raw_text_content = tool_result.pending_dedup
+                # Skip if handler returned None (e.g., unsupported image types)
+                if tool_result is None:
+                    continue
 
-            template_messages.append(tool_template_message)
+                # Preserve sidechain context for tool/thinking content
+                tool_is_sidechain = getattr(message, "isSidechain", False)
+
+                # Build modifiers directly from tool_result properties
+                tool_modifiers = MessageModifiers(
+                    is_sidechain=tool_is_sidechain,
+                    is_error=tool_result.is_error,
+                )
+
+                # Generate unique UUID for this tool message
+                # Use tool_use_id if available, otherwise fall back to msg UUID + index
+                tool_uuid = (
+                    tool_result.tool_use_id
+                    if tool_result.tool_use_id
+                    else f"{msg_uuid}-tool-{len(template_messages)}"
+                )
+
+                tool_template_message = TemplateMessage(
+                    message_type=tool_result.message_type,
+                    formatted_timestamp=tool_formatted_timestamp,
+                    raw_timestamp=tool_timestamp,
+                    session_summary=session_summary,
+                    session_id=session_id,
+                    tool_use_id=tool_result.tool_use_id,
+                    title_hint=tool_result.title_hint,
+                    message_title=tool_result.message_title,
+                    message_id=None,  # Will be assigned by _build_message_hierarchy
+                    ancestry=[],  # Will be assigned by _build_message_hierarchy
+                    agent_id=getattr(message, "agentId", None),
+                    uuid=tool_uuid,
+                    modifiers=tool_modifiers,
+                    content=tool_result.content,  # Structured content model
+                )
+
+                # Store raw text for Task result deduplication
+                # (handled later in _reorder_sidechain_template_messages)
+                if tool_result.pending_dedup is not None:
+                    tool_template_message.raw_text_content = tool_result.pending_dedup
+
+                template_messages.append(tool_template_message)
 
         # Track message timing
         if DEBUG_TIMING:

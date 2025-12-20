@@ -8,8 +8,6 @@ from datetime import datetime
 
 from anthropic.types import Message as AnthropicMessage
 from anthropic.types import Usage as AnthropicUsage
-from anthropic.types.text_block import TextBlock
-from anthropic.types.thinking_block import ThinkingBlock
 from pydantic import BaseModel
 
 from .models import (
@@ -71,12 +69,15 @@ def extract_text_content(content: Optional[list[ContentItem]]) -> str:
         return ""
     text_parts: list[str] = []
     for item in content:
-        # Handle text content (custom TextContent or Anthropic TextBlock)
-        if isinstance(item, (TextContent, TextBlock)):
-            text_parts.append(item.text)
-        # Skip thinking content (custom ThinkingContent or Anthropic ThinkingBlock)
-        elif isinstance(item, (ThinkingContent, ThinkingBlock)):
+        # Skip thinking content
+        if (
+            isinstance(item, ThinkingContent)
+            or getattr(item, "type", None) == "thinking"
+        ):
             continue
+        # Handle text content
+        if hasattr(item, "text"):
+            text_parts.append(getattr(item, "text"))  # type: ignore[arg-type]
     return "\n".join(text_parts)
 
 
@@ -356,52 +357,67 @@ def parse_user_message_content(
     isinstance() checks to determine the content type:
     - CompactedSummaryContent: Session continuation summaries
     - UserMemoryContent: User memory input from CLAUDE.md
-    - UserTextContent: Normal user text with optional IDE notifications
+    - UserTextContent: Normal user text with optional IDE notifications and images
+
+    This function processes content items preserving their original order:
+    - TextContent items have IDE notifications extracted, producing
+      [IdeNotificationContent, TextContent] pairs
+    - ImageContent items are preserved as-is
 
     Args:
         content_list: List of ContentItem from user message
 
     Returns:
-        A content model, or None if content_list is empty or has no text.
+        A content model, or None if content_list is empty.
     """
-    # Check first text item
-    if not content_list or not hasattr(content_list[0], "text"):
+    if not content_list:
         return None
+
+    # Get first text item for special case detection
+    first_text_item = next(
+        (item for item in content_list if hasattr(item, "text")),
+        None,
+    )
+    first_text = getattr(first_text_item, "text", "") if first_text_item else ""
 
     # Check for compacted session summary first (handles text combining internally)
     compacted = parse_compacted_summary(content_list)
     if compacted:
         return compacted
 
-    first_text = getattr(content_list[0], "text", "")
-
     # Check for user memory input
     user_memory = parse_user_memory(first_text)
     if user_memory:
         return user_memory
 
-    # Parse IDE notifications from first text item
-    ide_content = parse_ide_notifications(first_text)
+    # Build items list preserving order, extracting IDE notifications from text
+    items: list[TextContent | ImageContent | IdeNotificationContent] = []
 
-    # Get remaining text after IDE notifications extracted
-    if ide_content:
-        remaining_text = ide_content.remaining_text
-    else:
-        remaining_text = first_text
+    for item in content_list:
+        # Check for text content
+        if hasattr(item, "text"):
+            item_text: str = getattr(item, "text")  # type: ignore[assignment]
+            ide_content = parse_ide_notifications(item_text)
 
-    # Combine remaining text with any other text items
-    # Use hasattr check to handle both TextContent models and SDK TextBlock objects
-    other_text: list[str] = [
-        item.text  # type: ignore[union-attr]
-        for item in content_list[1:]
-        if hasattr(item, "text")
-    ]
-    all_text = remaining_text
-    if other_text:
-        all_text = "\n\n".join([remaining_text] + other_text)
+            if ide_content:
+                # Add IDE notification item first
+                items.append(ide_content)
+                remaining_text: str = ide_content.remaining_text
+            else:
+                remaining_text = item_text
 
-    # Return UserTextContent with optional IDE notifications
-    return UserTextContent(text=all_text, ide_notifications=ide_content)
+            # Add remaining text as TextContent if non-empty
+            if remaining_text.strip():
+                items.append(TextContent(type="text", text=remaining_text))
+        elif isinstance(item, ImageContent):
+            # ImageContent model - use as-is
+            items.append(item)
+        elif hasattr(item, "source") and getattr(item, "type", None) == "image":
+            # Anthropic ImageContent - convert to our model
+            items.append(ImageContent.model_validate(item.model_dump()))  # type: ignore[union-attr]
+
+    # Return UserTextContent with items list
+    return UserTextContent(items=items)
 
 
 # =============================================================================
@@ -731,14 +747,11 @@ def normalize_usage_info(usage_data: Any) -> Optional[UsageInfo]:
 
 
 def _parse_text_content(item_data: dict[str, Any]) -> ContentItem:
-    """Parse text content, trying Anthropic types first.
+    """Parse text content.
 
     Common to both user and assistant messages.
     """
-    try:
-        return TextBlock.model_validate(item_data)
-    except Exception:
-        return TextContent.model_validate(item_data)
+    return TextContent.model_validate(item_data)
 
 
 def parse_user_content_item(item_data: dict[str, Any]) -> ContentItem:
@@ -779,19 +792,9 @@ def parse_assistant_content_item(item_data: dict[str, Any]) -> ContentItem:
         if content_type == "text":
             return _parse_text_content(item_data)
         elif content_type == "tool_use":
-            try:
-                from anthropic.types.tool_use_block import ToolUseBlock
-
-                return ToolUseBlock.model_validate(item_data)
-            except Exception:
-                return ToolUseContent.model_validate(item_data)
+            return ToolUseContent.model_validate(item_data)
         elif content_type == "thinking":
-            try:
-                from anthropic.types.thinking_block import ThinkingBlock
-
-                return ThinkingBlock.model_validate(item_data)
-            except Exception:
-                return ThinkingContent.model_validate(item_data)
+            return ThinkingContent.model_validate(item_data)
         else:
             # Fallback to text content for unknown types
             return TextContent(type="text", text=str(item_data))
@@ -809,29 +812,14 @@ def parse_content_item(item_data: dict[str, Any]) -> ContentItem:
     try:
         content_type = item_data.get("type", "")
 
-        # User-specific content types
         if content_type == "tool_result":
             return ToolResultContent.model_validate(item_data)
         elif content_type == "image":
             return ImageContent.model_validate(item_data)
-
-        # Assistant-specific content types
         elif content_type == "tool_use":
-            try:
-                from anthropic.types.tool_use_block import ToolUseBlock
-
-                return ToolUseBlock.model_validate(item_data)
-            except Exception:
-                return ToolUseContent.model_validate(item_data)
+            return ToolUseContent.model_validate(item_data)
         elif content_type == "thinking":
-            try:
-                from anthropic.types.thinking_block import ThinkingBlock
-
-                return ThinkingBlock.model_validate(item_data)
-            except Exception:
-                return ThinkingContent.model_validate(item_data)
-
-        # Common content types
+            return ThinkingContent.model_validate(item_data)
         elif content_type == "text":
             return _parse_text_content(item_data)
         else:

@@ -15,6 +15,7 @@ from claude_code_log.html.user_formatters import (
 from claude_code_log.html.assistant_formatters import format_assistant_text_content
 from claude_code_log.models import (
     AssistantTextContent,
+    IdeNotificationContent,
     ImageContent,
     ImageSource,
     TextContent,
@@ -310,17 +311,23 @@ class TestParseUserMessageContent:
 
         content_model = parse_user_message_content(content_list)
 
-        # Should return UserTextContent with IDE notifications
+        # Should return UserTextContent with items
         assert isinstance(content_model, UserTextContent)
-        assert content_model.ide_notifications is not None
-        assert len(content_model.ide_notifications.opened_files) == 1
-        assert (
-            "User opened example.py"
-            in content_model.ide_notifications.opened_files[0].content
-        )
+        assert len(content_model.items) == 3  # IDE notification, text, image
 
-        # Remaining text should be preserved
-        assert "Please review this code" in content_model.text
+        # First item should be IDE notification
+        ide_notification = content_model.items[0]
+        assert isinstance(ide_notification, IdeNotificationContent)
+        assert len(ide_notification.opened_files) == 1
+        assert "User opened example.py" in ide_notification.opened_files[0].content
+
+        # Second item should be remaining text
+        text_item = content_model.items[1]
+        assert isinstance(text_item, TextContent)
+        assert "Please review this code" in text_item.text
+
+        # Third item should be image
+        assert isinstance(content_model.items[2], ImageContent)
 
 
 # =============================================================================
@@ -342,7 +349,9 @@ class TestContentFormatters:
 
     def test_format_assistant_text_content(self):
         """Test that assistant text is formatted as markdown."""
-        content = AssistantTextContent(text="**Bold** response")
+        content = AssistantTextContent(
+            items=[TextContent(type="text", text="**Bold** response")]
+        )
 
         html = format_assistant_text_content(content)
 

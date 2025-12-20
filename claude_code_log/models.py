@@ -3,14 +3,13 @@
 Enhanced to leverage official Anthropic types where beneficial.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Union, Optional, Literal
 
 from anthropic.types import Message as AnthropicMessage
 from anthropic.types import StopReason
 from anthropic.types import Usage as AnthropicUsage
-from anthropic.types.content_block import ContentBlock
 from pydantic import BaseModel, PrivateAttr
 
 
@@ -261,18 +260,55 @@ class IdeNotificationContent(MessageContent):
     remaining_text: str  # Text after notifications extracted
 
 
-@dataclass
-class UserTextContent(MessageContent):
-    """Content for plain user text with optional IDE notifications.
+# =============================================================================
+# Content Item Models (Pydantic)
+# =============================================================================
+# These are content items that appear within message content arrays.
+# Defined here before the dataclass models that reference them.
 
-    Wraps user text that may have been preprocessed to extract
-    IDE notifications, compacted summaries, or memory input markers.
+
+class TextContent(BaseModel):
+    """Text content block within a message content array."""
+
+    type: Literal["text"]
+    text: str
+
+
+class ImageSource(BaseModel):
+    """Base64-encoded image source data."""
+
+    type: Literal["base64"]
+    media_type: str
+    data: str
+
+
+class ImageContent(BaseModel):
+    """Image content from the Anthropic API.
+
+    This represents an image within a content array, not a standalone message.
+    Images are always part of UserTextContent.items or AssistantTextContent.items.
     """
 
-    text: str
-    ide_notifications: Optional[IdeNotificationContent] = None
-    is_compacted: bool = False
-    is_memory_input: bool = False
+    type: Literal["image"]
+    source: ImageSource
+
+
+@dataclass
+class UserTextContent(MessageContent):
+    """Content for user text with interleaved images and IDE notifications.
+
+    The `items` field preserves the original order of content:
+    - TextContent: Text portions of the message
+    - ImageContent: Inline images
+    - IdeNotificationContent: IDE notification tags (extracted from text)
+
+    Empty items list indicates no content.
+    """
+
+    # Interleaved content items preserving original order
+    items: list[  # pyright: ignore[reportUnknownVariableType]
+        TextContent | ImageContent | IdeNotificationContent
+    ] = field(default_factory=list)
 
 
 # =============================================================================
@@ -284,13 +320,22 @@ class UserTextContent(MessageContent):
 
 @dataclass
 class AssistantTextContent(MessageContent):
-    """Content for assistant text messages.
+    """Content for assistant text messages with interleaved images.
 
     These are the text portions of assistant messages that get
     rendered as markdown with syntax highlighting.
+
+    The `items` field preserves the original order of content:
+    - TextContent: Text portions of the message
+    - ImageContent: Inline images
+
+    Empty items list indicates no content.
     """
 
-    text: str
+    # Interleaved content items preserving original order
+    items: list[  # pyright: ignore[reportUnknownVariableType]
+        TextContent | ImageContent
+    ] = field(default_factory=list)
 
 
 @dataclass
@@ -679,11 +724,6 @@ class UsageInfo(BaseModel):
         )
 
 
-class TextContent(BaseModel):
-    type: Literal["text"]
-    text: str
-
-
 class ToolUseContent(BaseModel, MessageContent):
     type: Literal["tool_use"]
     id: str
@@ -724,25 +764,13 @@ class ThinkingContent(BaseModel):
     signature: Optional[str] = None
 
 
-class ImageSource(BaseModel):
-    type: Literal["base64"]
-    media_type: str
-    data: str
-
-
-class ImageContent(BaseModel, MessageContent):
-    type: Literal["image"]
-    source: ImageSource
-
-
-# Enhanced ContentItem to include official Anthropic ContentBlock types
+# Content item types that appear in message content arrays
 ContentItem = Union[
     TextContent,
     ToolUseContent,
     ToolResultContent,
     ThinkingContent,
     ImageContent,
-    ContentBlock,  # Official Anthropic content block types
 ]
 
 
@@ -777,9 +805,7 @@ class AssistantMessage(BaseModel):
             type=anthropic_msg.type,
             role=anthropic_msg.role,
             model=anthropic_msg.model,
-            content=list(
-                anthropic_msg.content
-            ),  # Convert to list for ContentItem compatibility
+            content=list(anthropic_msg.content),  # type: ignore[arg-type]
             stop_reason=anthropic_msg.stop_reason,
             stop_sequence=anthropic_msg.stop_sequence,
             usage=normalize_usage_info(anthropic_msg.usage),

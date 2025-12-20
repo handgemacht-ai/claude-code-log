@@ -207,8 +207,9 @@ class TestParseUserMessageContentRegular:
 
         assert content_model is not None
         assert isinstance(content_model, UserTextContent)
-        assert content_model.text == text
-        assert content_model.ide_notifications is None
+        assert len(content_model.items) == 1
+        assert isinstance(content_model.items[0], TextContent)
+        assert content_model.items[0].text == text
 
     def test_empty_content_list(self):
         """Test empty content list returns None."""
@@ -289,7 +290,9 @@ class TestFormatUserTextModelContent:
 
     def test_format_user_text_basic(self):
         """Test basic user text formatting."""
-        content = UserTextContent(text="User question here")
+        content = UserTextContent(
+            items=[TextContent(type="text", text="User question here")]
+        )
 
         html = format_user_text_model_content(content)
 
@@ -298,7 +301,9 @@ class TestFormatUserTextModelContent:
 
     def test_format_user_text_escapes_html(self):
         """Test that HTML characters are escaped."""
-        content = UserTextContent(text='Test <b>bold</b> & "quotes"')
+        content = UserTextContent(
+            items=[TextContent(type="text", text='Test <b>bold</b> & "quotes"')]
+        )
 
         html = format_user_text_model_content(content)
 

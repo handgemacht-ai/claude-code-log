@@ -370,5 +370,108 @@ class TestWriteAndEditToolRendering:
             test_file_path.unlink()
 
 
+class TestChunkMessageContent:
+    """Tests for chunk_message_content function."""
+
+    def test_chunk_text_only(self):
+        """Test chunking with only text content."""
+        from claude_code_log.models import TextContent
+        from claude_code_log.renderer import chunk_message_content
+
+        content = [
+            TextContent(type="text", text="Hello"),
+            TextContent(type="text", text="World"),
+        ]
+        chunks = chunk_message_content(content)
+
+        # Should produce one list chunk with both text items
+        assert len(chunks) == 1
+        assert isinstance(chunks[0], list)
+        assert len(chunks[0]) == 2
+
+    def test_chunk_with_tool_use(self):
+        """Test chunking separates tool_use into its own chunk."""
+        from claude_code_log.models import TextContent, ToolUseContent
+        from claude_code_log.renderer import chunk_message_content
+
+        content = [
+            TextContent(type="text", text="Before"),
+            ToolUseContent(type="tool_use", id="t1", name="Read", input={}),
+            TextContent(type="text", text="After"),
+        ]
+        chunks = chunk_message_content(content)
+
+        # Should produce: [text], tool_use, [text]
+        assert len(chunks) == 3
+        assert isinstance(chunks[0], list)  # [text]
+        assert not isinstance(chunks[1], list)  # tool_use
+        assert isinstance(chunks[2], list)  # [text]
+
+    def test_chunk_with_thinking(self):
+        """Test chunking separates thinking into its own chunk."""
+        from claude_code_log.models import TextContent, ThinkingContent
+        from claude_code_log.renderer import chunk_message_content
+
+        content = [
+            ThinkingContent(type="thinking", thinking="Let me think..."),
+            TextContent(type="text", text="Here's my answer"),
+        ]
+        chunks = chunk_message_content(content)
+
+        # Should produce: thinking, [text]
+        assert len(chunks) == 2
+        assert not isinstance(chunks[0], list)  # thinking
+        assert isinstance(chunks[1], list)  # [text]
+
+    def test_chunk_interleaved(self):
+        """Test chunking with interleaved content."""
+        from claude_code_log.models import TextContent, ThinkingContent, ToolUseContent
+        from claude_code_log.renderer import chunk_message_content
+
+        content = [
+            TextContent(type="text", text="Initial"),
+            ThinkingContent(type="thinking", thinking="Thinking 1"),
+            TextContent(type="text", text="Middle"),
+            ToolUseContent(type="tool_use", id="t1", name="Bash", input={}),
+        ]
+        chunks = chunk_message_content(content)
+
+        # Should produce: [text], thinking, [text], tool_use
+        assert len(chunks) == 4
+        assert isinstance(chunks[0], list)
+        assert not isinstance(chunks[1], list)
+        assert isinstance(chunks[2], list)
+        assert not isinstance(chunks[3], list)
+
+    def test_chunk_user_images(self):
+        """Test chunking keeps images with text in same chunk."""
+        from claude_code_log.models import ImageContent, ImageSource, TextContent
+        from claude_code_log.renderer import chunk_message_content
+
+        content = [
+            TextContent(type="text", text="Look at this:"),
+            ImageContent(
+                type="image",
+                source=ImageSource(
+                    type="base64", media_type="image/png", data="abc123"
+                ),
+            ),
+            TextContent(type="text", text="What do you see?"),
+        ]
+        chunks = chunk_message_content(content)
+
+        # Images are regular items, so all should be in one chunk
+        assert len(chunks) == 1
+        assert isinstance(chunks[0], list)
+        assert len(chunks[0]) == 3
+
+    def test_chunk_empty(self):
+        """Test chunking with empty content."""
+        from claude_code_log.renderer import chunk_message_content
+
+        chunks = chunk_message_content([])
+        assert chunks == []
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

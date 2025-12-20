@@ -31,20 +31,34 @@ def format_assistant_text_content(
 ) -> str:
     """Format assistant text content as HTML.
 
+    When `items` is set, iterates through the content items preserving order:
+    - TextContent: Rendered as markdown with collapsible support
+    - ImageContent: Rendered as inline <img> tag with base64 data URL
+
+    Falls back to legacy text-only behavior when `items` is None.
+
     Args:
-        content: AssistantTextContent with the text to render
+        content: AssistantTextContent with text/items to render
         line_threshold: Number of lines before content becomes collapsible
         preview_line_count: Number of preview lines to show when collapsed
 
     Returns:
         HTML string with markdown-rendered, optionally collapsible content
     """
-    return render_markdown_collapsible(
-        content.text,
-        "assistant-text",
-        line_threshold=line_threshold,
-        preview_line_count=preview_line_count,
-    )
+    parts: list[str] = []
+    for item in content.items:
+        if isinstance(item, ImageContent):
+            parts.append(format_image_content(item))
+        else:  # TextContent
+            if item.text.strip():
+                text_html = render_markdown_collapsible(
+                    item.text,
+                    "assistant-text",
+                    line_threshold=line_threshold,
+                    preview_line_count=preview_line_count,
+                )
+                parts.append(text_html)
+    return "\n".join(parts)
 
 
 def format_thinking_content(
