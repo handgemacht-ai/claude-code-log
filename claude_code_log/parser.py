@@ -6,8 +6,6 @@ import re
 from typing import Any, Callable, Optional, Union, cast
 from datetime import datetime
 
-from anthropic.types import Message as AnthropicMessage
-from anthropic.types import Usage as AnthropicUsage
 from pydantic import BaseModel
 
 from .models import (
@@ -712,7 +710,7 @@ def parse_tool_input(tool_name: str, input_data: dict[str, Any]) -> ToolInput:
 
 
 def normalize_usage_info(usage_data: Any) -> Optional[UsageInfo]:
-    """Normalize usage data to be compatible with both custom and Anthropic formats."""
+    """Normalize usage data from various formats to UsageInfo."""
     if usage_data is None:
         return None
 
@@ -720,34 +718,27 @@ def normalize_usage_info(usage_data: Any) -> Optional[UsageInfo]:
     if isinstance(usage_data, UsageInfo):
         return usage_data
 
-    # If it's an Anthropic Usage instance, convert using our method
-    if isinstance(usage_data, AnthropicUsage):
-        return UsageInfo.from_anthropic_usage(usage_data)
-
-    # If it has the shape of an Anthropic Usage, try to construct it first
-    if hasattr(usage_data, "input_tokens") and hasattr(usage_data, "output_tokens"):
-        try:
-            # Try to create an Anthropic Usage first
-            anthropic_usage = AnthropicUsage.model_validate(usage_data)
-            return UsageInfo.from_anthropic_usage(anthropic_usage)
-        except Exception:
-            # Fall back to direct conversion
-            return UsageInfo(
-                input_tokens=getattr(usage_data, "input_tokens", None),
-                cache_creation_input_tokens=getattr(
-                    usage_data, "cache_creation_input_tokens", None
-                ),
-                cache_read_input_tokens=getattr(
-                    usage_data, "cache_read_input_tokens", None
-                ),
-                output_tokens=getattr(usage_data, "output_tokens", None),
-                service_tier=getattr(usage_data, "service_tier", None),
-                server_tool_use=getattr(usage_data, "server_tool_use", None),
-            )
-
-    # If it's a dict, validate and convert to our format
+    # If it's a dict, validate and convert
     if isinstance(usage_data, dict):
         return UsageInfo.model_validate(usage_data)
+
+    # Handle object-like access (e.g., from SDK types)
+    if hasattr(usage_data, "input_tokens"):
+        server_tool_use = getattr(usage_data, "server_tool_use", None)
+        if server_tool_use is not None and hasattr(server_tool_use, "model_dump"):
+            server_tool_use = server_tool_use.model_dump()
+        return UsageInfo(
+            input_tokens=getattr(usage_data, "input_tokens", None),
+            output_tokens=getattr(usage_data, "output_tokens", None),
+            cache_creation_input_tokens=getattr(
+                usage_data, "cache_creation_input_tokens", None
+            ),
+            cache_read_input_tokens=getattr(
+                usage_data, "cache_read_input_tokens", None
+            ),
+            service_tier=getattr(usage_data, "service_tier", None),
+            server_tool_use=server_tool_use,
+        )
 
     return None
 
@@ -923,20 +914,9 @@ def parse_transcript_entry(data: dict[str, Any]) -> TranscriptEntry:
         return UserTranscriptEntry.model_validate(data_copy)
 
     elif entry_type == "assistant":
-        # Enhanced assistant message parsing with optional Anthropic types
         data_copy = data.copy()
 
-        # Validate compatibility with official Anthropic Message type
-        if "message" in data_copy:
-            try:
-                message_data = data_copy["message"]
-                AnthropicMessage.model_validate(message_data)
-                # Successfully validated - our data is compatible with official Anthropic types
-            except Exception:
-                # Validation failed - continue with standard parsing
-                pass
-
-        # Standard parsing path using assistant-specific parser
+        # Parse assistant message content
         if "message" in data_copy and "content" in data_copy["message"]:
             message_copy = data_copy["message"].copy()
             message_copy["content"] = parse_message_content(
