@@ -918,11 +918,12 @@ def _process_tool_use_item(
     tool_use_context[item_tool_use_id] = tool_use
 
     # Create ToolUseMessage wrapper with parsed input for specialized formatting
+    # Use ToolUseContent as fallback when no specialized parser (parsed_input returns dict)
+    parsed = tool_use.parsed_input
     tool_use_message = ToolUseMessage(
-        input=tool_use.parsed_input,
+        input=parsed if not isinstance(parsed, dict) else tool_use,
         tool_use_id=tool_use.id,
         tool_name=tool_use.name,
-        raw_input=tool_use.input if isinstance(tool_use.input, dict) else None,
     )
 
     return ToolItemResult(

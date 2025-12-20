@@ -495,17 +495,16 @@ Tool invocations are parsed from `ToolUseContent` (JSONL) and wrapped in `ToolUs
 ```python
 @dataclass
 class ToolUseMessage(MessageContent):
-    input: ToolInput  # Specialized (BashInput, etc.) or raw dict
+    input: ToolInput  # Specialized (BashInput, etc.) or ToolUseContent fallback
     tool_use_id: str  # From ToolUseContent.id
     tool_name: str    # From ToolUseContent.name
-    raw_input: Optional[dict[str, Any]] = None  # Fallback for generic rendering
 
 # ToolInput is a union of typed input models
 ToolInput = Union[
     BashInput, ReadInput, WriteInput, EditInput, MultiEditInput,
     GlobInput, GrepInput, TaskInput, TodoWriteInput,
     AskUserQuestionInput, ExitPlanModeInput,
-    dict[str, Any],  # Fallback for unknown tools
+    ToolUseContent,  # Generic fallback when no specialized parser
 ]
 ```
 

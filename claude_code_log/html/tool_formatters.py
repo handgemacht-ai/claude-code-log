@@ -37,9 +37,9 @@ from ..models import (
     ReadOutput,
     TaskInput,
     TodoWriteInput,
-    ToolInput,
     ToolResultContent,
     ToolUseContent,
+    ToolUseMessage,
     WriteInput,
 )
 from .ansi_colors import convert_ansi_to_html
@@ -699,37 +699,20 @@ def render_params_table(params: dict[str, Any]) -> str:
 # -- Tool Use Dispatcher ------------------------------------------------------
 
 
-def format_tool_use_content(tool_use: ToolUseContent) -> str:
-    """Format tool use content as HTML.
+def format_tool_use_content(content: ToolUseMessage) -> str:
+    """Format ToolUseMessage as HTML.
 
-    Legacy wrapper that delegates to format_tool_use_from_input.
-    Kept for backward compatibility with tests that use ToolUseContent directly.
-    """
-    return format_tool_use_from_input(
-        tool_use.parsed_input,
-        tool_use.name,
-        tool_use.input if isinstance(tool_use.input, dict) else None,
-    )
-
-
-def format_tool_use_from_input(
-    parsed_input: "ToolInput",
-    tool_name: str,
-    raw_input: Optional[dict[str, Any]] = None,
-) -> str:
-    """Format tool use from pre-parsed input.
-
-    This is the dispatcher for ToolUseMessage which already has parsed input.
+    Dispatches to specialized formatters based on the parsed input type.
     Falls back to rendering the raw input dict if parsing was incomplete.
 
     Args:
-        parsed_input: The parsed ToolInput (specialized type or dict fallback)
-        tool_name: Name of the tool for context
-        raw_input: Original input dict for fallback rendering
+        content: ToolUseMessage with parsed input and metadata
 
     Returns:
         HTML string for the tool use content
     """
+    parsed_input = content.input
+
     # Dispatch based on parsed type
     if isinstance(parsed_input, TodoWriteInput):
         return format_todowrite_content(parsed_input)
@@ -758,12 +741,11 @@ def format_tool_use_from_input(
     if isinstance(parsed_input, ExitPlanModeInput):
         return format_exitplanmode_content(parsed_input)
 
-    # Default: render as key/value table
-    if isinstance(parsed_input, dict):
-        return render_params_table(parsed_input)
-    if raw_input is not None:
-        return render_params_table(raw_input)
-    # Last resort: string representation
+    # Fallback: ToolUseContent - render its input dict as params table
+    if isinstance(parsed_input, ToolUseContent):
+        return render_params_table(parsed_input.input)
+
+    # Last resort: string representation (shouldn't happen with ToolInput union)
     return f"<pre>{parsed_input}</pre>"
 
 
@@ -995,7 +977,6 @@ __all__ = [
     "render_params_table",
     # Dispatcher
     "format_tool_use_content",
-    "format_tool_use_from_input",
     # Tool result
     "format_tool_result_content",
 ]

@@ -55,7 +55,7 @@ from .assistant_formatters import (
     format_thinking_content,
     format_unknown_content,
 )
-from .tool_formatters import format_tool_result_content
+from .tool_formatters import format_tool_result_content, format_tool_use_content
 from .utils import css_class_from_message, get_message_emoji, get_template_environment
 
 if TYPE_CHECKING:
@@ -121,7 +121,7 @@ class HtmlRenderer(Renderer):
             AssistantTextMessage: format_assistant_text_content,
             UnknownMessage: format_unknown_content,
             # Tool content types
-            ToolUseMessage: self._format_tool_use_message,
+            ToolUseMessage: format_tool_use_content,
             ToolResultMessage: self._format_tool_result_content,
         }
 
@@ -137,20 +137,6 @@ class HtmlRenderer(Renderer):
         # TODO: Handle specialized output types (ReadOutput, EditOutput)
         # For now, fallback to string representation
         return f"<pre>{content.output}</pre>"
-
-    def _format_tool_use_message(self, content: ToolUseMessage) -> str:
-        """Format ToolUseMessage with parsed input.
-
-        ToolUseMessage wraps the parsed input for specialized formatting.
-        Falls back to generic formatting using ToolUseContent if needed.
-        """
-        from .tool_formatters import format_tool_use_from_input
-
-        return format_tool_use_from_input(
-            content.input,
-            content.tool_name,
-            content.raw_input,
-        )
 
     def _flatten_preorder(
         self, roots: list[TemplateMessage]

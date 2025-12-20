@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 from claude_code_log.converter import convert_jsonl_to_html
 from claude_code_log.html import format_todowrite_content, format_tool_use_content
-from claude_code_log.models import TodoWriteInput, TodoWriteItem, ToolUseContent
+from claude_code_log.models import (
+    EditInput,
+    TodoWriteInput,
+    TodoWriteItem,
+    ToolUseMessage,
+)
 
 
 class TestTodoWriteRendering:
@@ -194,28 +199,29 @@ class TestTodoWriteRendering:
             "This is a very long content that should definitely exceed 200 characters so that we can test the collapsible details functionality properly. "
             * 3
         )
-        regular_tool = ToolUseContent(
-            type="tool_use",
-            id="toolu_regular",
-            name="Edit",
-            input={"file_path": "/tmp/test.py", "content": long_content},
+        regular_tool = ToolUseMessage(
+            input=EditInput(
+                file_path="/tmp/test.py",
+                old_string="",
+                new_string=long_content,
+            ),
+            tool_use_id="toolu_regular",
+            tool_name="Edit",
         )
 
         # Create TodoWrite tool use
-        todowrite_tool = ToolUseContent(
-            type="tool_use",
-            id="toolu_todowrite",
-            name="TodoWrite",
-            input={
-                "todos": [
-                    {
-                        "id": "1",
-                        "content": "Test todo",
-                        "status": "pending",
-                        "priority": "medium",
-                    }
+        todowrite_tool = ToolUseMessage(
+            input=TodoWriteInput(
+                todos=[
+                    TodoWriteItem(
+                        content="Test todo",
+                        status="pending",
+                        activeForm="Testing todo",
+                    )
                 ]
-            },
+            ),
+            tool_use_id="toolu_todowrite",
+            tool_name="TodoWrite",
         )
 
         # Test both through the main format function

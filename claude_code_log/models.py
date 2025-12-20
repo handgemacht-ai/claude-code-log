@@ -171,12 +171,12 @@ class ToolUseMessage(MessageContent):
     """Message for tool invocations.
 
     Wraps ToolUseContent with the parsed input for specialized formatting.
+    Falls back to the original ToolUseContent when no specialized parser exists.
     """
 
-    input: "ToolInput"  # Specialized (BashInput, etc.) or raw dict
+    input: "ToolInput"  # Specialized (BashInput, etc.) or ToolUseContent fallback
     tool_use_id: str  # From ToolUseContent.id
     tool_name: str  # From ToolUseContent.name
-    raw_input: Optional[dict[str, Any]] = None  # Original input dict for fallback
 
 
 @dataclass
@@ -703,7 +703,7 @@ ToolInput = Union[
     TodoWriteInput,
     AskUserQuestionInput,
     ExitPlanModeInput,
-    dict[str, Any],  # Fallback for unknown tools
+    "ToolUseContent",  # Generic fallback when no specialized parser
 ]
 
 
