@@ -704,7 +704,7 @@ TOOL_LENIENT_PARSERS: dict[str, Any] = {
 }
 
 
-def parse_tool_input(tool_name: str, input_data: dict[str, Any]) -> ToolInput:
+def parse_tool_input(tool_name: str, input_data: dict[str, Any]) -> Optional[ToolInput]:
     """Parse tool input dictionary into a typed model.
 
     Uses strict validation first, then lenient parsing if available.
@@ -714,7 +714,9 @@ def parse_tool_input(tool_name: str, input_data: dict[str, Any]) -> ToolInput:
         input_data: The raw input dictionary from the tool_use content
 
     Returns:
-        A typed input model if available, otherwise the original dictionary
+        A typed input model if parsing succeeds, None otherwise.
+        When None is returned, the caller should use ToolUseContent itself
+        as the fallback (it's part of the ToolInput union).
     """
     model_class = TOOL_INPUT_MODELS.get(tool_name)
     if model_class is not None:
@@ -725,8 +727,8 @@ def parse_tool_input(tool_name: str, input_data: dict[str, Any]) -> ToolInput:
             lenient_parser = TOOL_LENIENT_PARSERS.get(tool_name)
             if lenient_parser is not None:
                 return cast(ToolInput, lenient_parser(input_data))
-            return input_data
-    return input_data
+            return None
+    return None
 
 
 # =============================================================================

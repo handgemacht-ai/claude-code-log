@@ -765,25 +765,29 @@ class ToolUseContent(BaseModel):
     id: str
     name: str
     input: dict[str, Any]
-    _parsed_input: Optional["ToolInput"] = PrivateAttr(
-        default=None
-    )  # Cached parsed input
+    _parsed_input_cached: bool = PrivateAttr(default=False)
+    _parsed_input: Optional["ToolInput"] = PrivateAttr(default=None)
 
     @property
-    def parsed_input(self) -> "ToolInput":
-        """Get typed input model if available, otherwise return raw dict.
+    def parsed_input(self) -> Optional["ToolInput"]:
+        """Get typed input model if available, None if no specialized parser.
 
         Lazily parses the input dict into a typed model.
         Uses strict validation first, then lenient parsing if available.
         Result is cached for subsequent accesses.
+
+        Returns None when no specialized parser exists for this tool.
+        In that case, use this ToolUseContent itself as the fallback
+        (it's part of the ToolInput union).
         """
-        if self._parsed_input is None:
+        if not self._parsed_input_cached:
             from .parser import parse_tool_input
 
             object.__setattr__(
                 self, "_parsed_input", parse_tool_input(self.name, self.input)
             )
-        return self._parsed_input  # type: ignore[return-value]
+            object.__setattr__(self, "_parsed_input_cached", True)
+        return self._parsed_input
 
 
 class ToolResultContent(BaseModel):
