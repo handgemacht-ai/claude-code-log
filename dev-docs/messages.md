@@ -25,6 +25,7 @@ JSONL Parsing (parser.py)
 │   │   ├── CommandOutputContent (<local-command-stdout> tags)
 │   │   ├── BashInputContent (<bash-input> tags)
 │   │   ├── CompactedSummaryContent (compacted conversation)
+│   │   ├── UserSteeringContent (queue-operation "remove")
 │   │   └── Plain user text
 │   ├── ToolResultContent → Tool result messages:
 │   │   ├── ReadOutput (cat-n formatted file content)
@@ -48,7 +49,7 @@ JSONL Parsing (parser.py)
 ├── SummaryTranscriptEntry → Session metadata (not rendered)
 │
 └── QueueOperationTranscriptEntry
-    └── "remove" operation → Steering message (rendered as user)
+    └── "remove" operation → UserSteeringContent (rendered as user)
 ```
 
 ---
@@ -72,8 +73,9 @@ class TemplateMessage:
 
     # Display
     message_title: str         # Display title (e.g., "User", "Assistant")
-    css_class: str             # CSS classes (derived from type + modifiers)
-    modifiers: MessageModifiers  # Format-neutral display traits
+    is_sidechain: bool         # Sub-agent message flag
+    has_markdown: bool         # Content should be rendered as markdown
+    # Note: CSS classes are derived from content type via CSS_CLASS_REGISTRY
 
     # Metadata
     raw_timestamp: str         # ISO 8601 timestamp
@@ -91,30 +93,30 @@ class TemplateMessage:
     tool_use_id: Optional[str]  # ID linking tool_use to tool_result
 ```
 
-### MessageModifiers → CSS Classes
+### Content Type → CSS Classes
 
-Display traits are stored in `MessageModifiers` (see [Part 6](#part-6-infrastructure-models)) and converted to CSS classes for HTML rendering:
+CSS classes are derived from the content type using `CSS_CLASS_REGISTRY` (in `html/utils.py`). This ensures the content type is the single source of truth for display styling.
 
-| css_class | Base Type | MessageModifiers Field |
-|-----------|-----------|------------------------|
-| `"user"` | user | (none) |
-| `"user compacted"` | user | `is_compacted=True` |
-| `"user slash-command"` | user | `is_slash_command=True` |
-| `"user command-output"` | user | `is_command_output=True` |
-| `"user sidechain"` | user | `is_sidechain=True` |
-| `"user steering"` | user | `is_steering=True` |
-| `"assistant"` | assistant | (none) |
-| `"assistant sidechain"` | assistant | `is_sidechain=True` |
-| `"tool_use"` | tool_use | (none) |
-| `"tool_use sidechain"` | tool_use | `is_sidechain=True` |
-| `"tool_result"` | tool_result | (none) |
-| `"tool_result error"` | tool_result | `is_error=True` |
-| `"tool_result sidechain"` | tool_result | `is_sidechain=True` |
-| `"thinking"` | thinking | (none) |
-| `"system system-info"` | system | `system_level="info"` |
-| `"system system-warning"` | system | `system_level="warning"` |
-| `"system system-error"` | system | `system_level="error"` |
-| `"system system-hook"` | system | `system_level="hook"` |
+| css_class | Content Type | Dynamic Modifier |
+|-----------|--------------|------------------|
+| `"user"` | `UserTextContent` | — |
+| `"user compacted"` | `CompactedSummaryContent` | — |
+| `"user slash-command"` | `SlashCommandContent`, `UserSlashCommandContent` | — |
+| `"user command-output"` | `CommandOutputContent` | — |
+| `"user steering"` | `UserSteeringContent` | — |
+| `"assistant"` | `AssistantTextContent` | — |
+| `"tool_use"` | `ToolUseContent` | — |
+| `"tool_result"` | `ToolResultContentModel` | — |
+| `"tool_result error"` | `ToolResultContentModel` | `is_error=True` |
+| `"thinking"` | `ThinkingContentModel` | — |
+| `"bash-input"` | `BashInputContent` | — |
+| `"bash-output"` | `BashOutputContent` | — |
+| `"system system-info"` | `SystemContent` | `level="info"` |
+| `"system system-warning"` | `SystemContent` | `level="warning"` |
+| `"system system-error"` | `SystemContent` | `level="error"` |
+| `"system system-hook"` | `HookSummaryContent` | — |
+
+The `sidechain` modifier is added when `msg.is_sidechain=True` (a cross-cutting concern that applies to any message type).
 
 **Note**: See [css-classes.md](css-classes.md) for complete CSS support status.
 
@@ -244,6 +246,22 @@ The corresponding output uses `<bash-stdout>` and optionally `<bash-stderr>` tag
 class CompactedSummaryContent(MessageContent):
     summary_text: str  # The compacted conversation summary
 ```
+
+### User Steering (Queue Remove)
+
+- **Condition**: `QueueOperationTranscriptEntry` with `operation: "remove"`
+- **Content Model**: `UserSteeringContent` (extends `UserTextContent`)
+- **CSS Class**: `user steering`
+- **Title**: "User (steering)"
+
+```python
+@dataclass
+class UserSteeringContent(UserTextContent):
+    """Content for user steering prompts (queue-operation 'remove')."""
+    pass  # Inherits items from UserTextContent
+```
+
+Steering messages represent user interrupts that cancel queued operations.
 
 ### Sidechain User (Sub-agent)
 
@@ -612,7 +630,8 @@ The `leafUuid` links the summary to the last message of the session.
 ## 4.2 Queue Operation (QueueOperationTranscriptEntry)
 
 - **Purpose**: User interrupts and steering during assistant responses
-- **Rendered**: Only `remove` operations (as `user steering`)
+- **Rendered**: Only `remove` operations (as `UserSteeringContent`)
+- **CSS Class**: `user steering`
 - **Files**: [queue_operation.json](messages/system/queue_operation.json)
 
 ## 4.3 File History Snapshot
@@ -653,21 +672,24 @@ class DedupNoticeContent(MessageContent):
 
 # Part 6: Infrastructure Models
 
-## 6.1 MessageModifiers
+## 6.1 CSS Class Registry
 
-Semantic modifiers that affect message display. These are format-neutral flags that renderers use to determine how to display a message:
+Display styling is derived from content types using `CSS_CLASS_REGISTRY` in `html/utils.py`. This registry maps `MessageContent` subclasses to their CSS classes:
 
 ```python
-@dataclass
-class MessageModifiers:
-    is_sidechain: bool = False      # Sub-agent message
-    is_slash_command: bool = False  # Slash command invocation
-    is_command_output: bool = False # Command output
-    is_compacted: bool = False      # Compacted conversation
-    is_error: bool = False          # Error message
-    is_steering: bool = False       # Queue remove (steering)
-    system_level: Optional[str] = None  # "info", "warning", "error", "hook"
+CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
+    # User message types
+    UserTextContent: ["user"],
+    UserSteeringContent: ["user", "steering"],
+    SlashCommandContent: ["user", "slash-command"],
+    CompactedSummaryContent: ["user", "compacted"],
+    # ... more content types
+}
 ```
+
+The `_get_css_classes_from_content()` function walks the content type's MRO to find the matching registry entry, then adds dynamic modifiers (e.g., `system-{level}` for `SystemContent`).
+
+The only cross-cutting modifier is `is_sidechain`, which is stored directly on `TemplateMessage` and appended to CSS classes when true.
 
 ## 6.2 UsageInfo
 
