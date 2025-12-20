@@ -31,8 +31,6 @@ from .models import (
     CommandOutputMessage,
     CompactedSummaryMessage,
     DedupNoticeMessage,
-    HookInfo,
-    HookSummaryMessage,
     SessionHeaderMessage,
     SlashCommandMessage,
     SystemMessage,
@@ -745,63 +743,49 @@ def _process_regular_message(
 
 
 def _process_system_message(
-    message: SystemTranscriptEntry,
+    transcript: SystemTranscriptEntry,
 ) -> Optional[TemplateMessage]:
-    """Process a system message and return a TemplateMessage, or None if it should be skipped.
+    """Process a system transcript entry into a TemplateMessage.
 
     Handles:
     - Hook summaries (subtype="stop_hook_summary")
     - Other system messages with level-specific styling (info, warning, error)
 
+    Args:
+        transcript: The system transcript entry to process
+
+    Returns:
+        TemplateMessage, or None if the message should be skipped
+
     Note: Slash command messages (<command-name>, <local-command-stdout>) are user messages,
     not system messages. They are handled by _process_command_message and
     _process_local_command_output in the main processing loop.
     """
-    from .models import MessageContent  # Local import to avoid circular dependency
+    from .system_parser import parse_system_transcript
 
-    session_id = getattr(message, "sessionId", "unknown")
-    timestamp = getattr(message, "timestamp", "")
-    formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
-
-    # Build structured content based on message subtype
-    content: MessageContent
-    if message.subtype == "stop_hook_summary":
-        # Skip silent hook successes (no output, no errors)
-        if not message.hasOutput and not message.hookErrors:
-            return None
-        # Create structured hook summary content
-        hook_infos = [
-            HookInfo(command=info.get("command", "unknown"))
-            for info in (message.hookInfos or [])
-        ]
-        content = HookSummaryMessage(
-            has_output=bool(message.hasOutput),
-            hook_errors=message.hookErrors or [],
-            hook_infos=hook_infos,
-        )
-        level = "hook"
-    elif not message.content:
-        # Skip system messages without content (shouldn't happen normally)
+    # Parse the transcript entry into structured message (with meta attached)
+    message = parse_system_transcript(transcript)
+    if message is None:
         return None
-    else:
-        # Create structured system content
-        level = getattr(message, "level", "info")
-        content = SystemMessage(level=level, text=message.content)
 
-    # Store parent UUID for hierarchy rebuild (handled by _build_message_hierarchy)
-    parent_uuid = getattr(message, "parentUuid", None)
+    # Get metadata from the message content
+    meta = message.meta
+    assert meta is not None, "parse_system_transcript should always set meta"
+
+    # Get title from message (uses message_title() method)
+    title = message.message_title() or "System"
 
     return TemplateMessage(
         message_type="system",
-        formatted_timestamp=formatted_timestamp,
-        raw_timestamp=timestamp,
-        session_id=session_id,
-        message_title=f"System {level.title()}",
+        formatted_timestamp=meta.formatted_timestamp,
+        raw_timestamp=meta.timestamp,
+        session_id=meta.session_id,
+        message_title=title,
         message_id=None,  # Will be assigned by _build_message_hierarchy
         ancestry=[],  # Will be assigned by _build_message_hierarchy
-        uuid=message.uuid,
-        parent_uuid=parent_uuid,
-        content=content,  # Level info is in SystemMessage
+        uuid=meta.uuid,
+        parent_uuid=meta.parent_uuid,
+        content=message,
     )
 
 

@@ -46,6 +46,27 @@ class MessageType(str, Enum):
 
 
 # =============================================================================
+# Message Metadata
+# =============================================================================
+# Common metadata fields extracted from transcript entries.
+
+
+@dataclass
+class MessageMeta:
+    """Common metadata extracted from transcript entries.
+
+    These fields are shared across all message types and are used to create
+    the TemplateMessage wrapper for rendering.
+    """
+
+    session_id: str
+    timestamp: str  # Raw ISO timestamp
+    formatted_timestamp: str  # Human-readable formatted timestamp
+    uuid: str
+    parent_uuid: Optional[str] = None
+
+
+# =============================================================================
 # Message Content Models
 # =============================================================================
 # Structured content models for format-neutral message representation.
@@ -53,17 +74,29 @@ class MessageType(str, Enum):
 # renderers (HTML, text, etc.) to format the content appropriately.
 
 
+@dataclass
 class MessageContent:
     """Base class for structured message content.
 
     Subclasses represent specific content types that renderers can format
     appropriately for their output format.
 
-    Note: This is a plain class (not dataclass) to allow Pydantic BaseModel
-    subclasses like ToolUseContent and ImageContent to inherit from it.
+    The `meta` field is keyword-only with a default of None, allowing:
+    - Subclasses to have positional fields before it
+    - Progressive migration: call sites can pass meta=... when available
+    - Backward compatibility: parsing functions that don't have transcript access
+      can omit meta (the renderer can set it later if needed)
     """
 
-    pass
+    meta: Optional[MessageMeta] = field(default=None, kw_only=True)
+
+    def message_title(self) -> Optional[str]:
+        """Return a title for this message content, or None for default behavior.
+
+        Subclasses can override this to provide a specific title that will be
+        used in the TemplateMessage wrapper.
+        """
+        return None
 
 
 @dataclass
@@ -75,6 +108,10 @@ class SystemMessage(MessageContent):
 
     level: str  # "info", "warning", "error"
     text: str  # Raw text content (may contain ANSI codes)
+
+    def message_title(self) -> Optional[str]:
+        """Return 'System Info', 'System Warning', or 'System Error'."""
+        return f"System {self.level.title()}"
 
 
 @dataclass
@@ -95,6 +132,10 @@ class HookSummaryMessage(MessageContent):
     has_output: bool
     hook_errors: list[str]  # Error messages from hooks
     hook_infos: list[HookInfo]  # Info about each hook executed
+
+    def message_title(self) -> Optional[str]:
+        """Return 'System Hook' for hook summary messages."""
+        return "System Hook"
 
 
 # =============================================================================
@@ -718,7 +759,7 @@ class UsageInfo(BaseModel):
     server_tool_use: Optional[dict[str, Any]] = None
 
 
-class ToolUseContent(BaseModel, MessageContent):
+class ToolUseContent(BaseModel):
     type: Literal["tool_use"]
     id: str
     name: str

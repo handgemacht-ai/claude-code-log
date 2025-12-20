@@ -9,6 +9,9 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from .models import (
+    # Common metadata
+    MessageMeta,
+    BaseTranscriptEntry,
     # Content types
     ContentItem,
     TextContent,
@@ -56,6 +59,33 @@ from .models import (
     SystemTranscriptEntry,
     QueueOperationTranscriptEntry,
 )
+
+
+def parse_meta(transcript: BaseTranscriptEntry) -> MessageMeta:
+    """Extract common metadata from a transcript entry.
+
+    This function extracts the shared fields that are present in all
+    BaseTranscriptEntry subclasses and formats them for rendering.
+
+    Args:
+        transcript: Any transcript entry inheriting from BaseTranscriptEntry
+
+    Returns:
+        MessageMeta with session_id, timestamps, uuid, and parent_uuid
+    """
+    # Local import to avoid circular dependency (utils.py imports from parser.py)
+    from .utils import format_timestamp
+
+    timestamp = transcript.timestamp
+    formatted_timestamp = format_timestamp(timestamp) if timestamp else ""
+
+    return MessageMeta(
+        session_id=transcript.sessionId,
+        timestamp=timestamp,
+        formatted_timestamp=formatted_timestamp,
+        uuid=transcript.uuid,
+        parent_uuid=transcript.parentUuid,
+    )
 
 
 def extract_text_content(content: Optional[list[ContentItem]]) -> str:
