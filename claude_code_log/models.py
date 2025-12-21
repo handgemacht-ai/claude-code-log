@@ -61,10 +61,17 @@ class MessageMeta:
     Note: formatted_timestamp is computed at render time, not stored here.
     """
 
+    # Identity fields
     session_id: str
     timestamp: str  # Raw ISO timestamp
     uuid: str
     parent_uuid: Optional[str] = None
+
+    # Context fields
+    is_sidechain: bool = False
+    agent_id: Optional[str] = None
+    cwd: str = ""
+    git_branch: Optional[str] = None
 
 
 # =============================================================================
@@ -904,6 +911,7 @@ class BaseTranscriptEntry(BaseModel):
     timestamp: str
     isMeta: Optional[bool] = None
     agentId: Optional[str] = None  # Agent ID for sidechain messages
+    gitBranch: Optional[str] = None  # Git branch name when available
 
 
 class UserTranscriptEntry(BaseTranscriptEntry):

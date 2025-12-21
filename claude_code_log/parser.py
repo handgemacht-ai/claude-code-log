@@ -2,46 +2,16 @@
 """Parse and extract data from Claude transcript JSONL files.
 
 This module provides utility functions for parsing transcript data:
-- parse_meta: Extract common metadata from transcript entries
 - extract_text_content: Extract text from content items
 - parse_timestamp: Parse ISO timestamps
 
-For transcript entry and content item parsing, see transcript_parser.py.
+For transcript entry and content item creation, see factories/.
 """
 
 from datetime import datetime
 from typing import Optional
 
-from .models import (
-    # Common metadata
-    BaseTranscriptEntry,
-    MessageMeta,
-    # Content types
-    ContentItem,
-    ThinkingContent,
-)
-
-
-def parse_meta(transcript: BaseTranscriptEntry) -> MessageMeta:
-    """Extract common metadata from a transcript entry.
-
-    This function extracts the shared fields that are present in all
-    BaseTranscriptEntry subclasses.
-
-    Note: formatted_timestamp is computed at render time, not here.
-
-    Args:
-        transcript: Any transcript entry inheriting from BaseTranscriptEntry
-
-    Returns:
-        MessageMeta with session_id, timestamp, uuid, and parent_uuid
-    """
-    return MessageMeta(
-        session_id=transcript.sessionId,
-        timestamp=transcript.timestamp,
-        uuid=transcript.uuid,
-        parent_uuid=transcript.parentUuid,
-    )
+from .models import ContentItem, ThinkingContent
 
 
 def extract_text_content(content: Optional[list[ContentItem]]) -> str:

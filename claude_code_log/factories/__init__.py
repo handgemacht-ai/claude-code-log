@@ -1,5 +1,9 @@
 """Factory modules for creating typed objects from raw data."""
 
+from .meta_factory import (
+    # Metadata creation
+    create_meta,
+)
 from .system_factory import (
     # System message detection
     is_system_message,
@@ -23,6 +27,8 @@ from .transcript_factory import (
 )
 
 __all__ = [
+    # Metadata creation
+    "create_meta",
     # Content type constants
     "USER_CONTENT_TYPES",
     "ASSISTANT_CONTENT_TYPES",

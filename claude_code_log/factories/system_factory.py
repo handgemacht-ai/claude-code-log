@@ -16,7 +16,7 @@ from ..models import (
     SystemMessage,
     SystemTranscriptEntry,
 )
-from ..parser import parse_meta
+from .meta_factory import create_meta
 
 
 # =============================================================================
@@ -65,7 +65,7 @@ def create_system_message(
         if not transcript.hasOutput and not transcript.hookErrors:
             return None
         # Create structured hook summary content
-        meta = parse_meta(transcript)
+        meta = create_meta(transcript)
         hook_infos = [
             HookInfo(command=info.get("command", "unknown"))
             for info in (transcript.hookInfos or [])
@@ -82,6 +82,6 @@ def create_system_message(
         return None
 
     # Create structured system content
-    meta = parse_meta(transcript)
+    meta = create_meta(transcript)
     level = getattr(transcript, "level", "info")
     return SystemMessage(level=level, text=transcript.content, meta=meta)
