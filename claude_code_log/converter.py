@@ -22,7 +22,7 @@ from .utils import (
 )
 from .cache import CacheManager, SessionCacheData, get_library_version
 from .parser import parse_timestamp
-from .transcript_parser import parse_transcript_entry
+from .factories import create_transcript_entry
 from .models import (
     TranscriptEntry,
     AssistantTranscriptEntry,
@@ -184,7 +184,7 @@ def load_transcript(
                         "queue-operation",
                     ]:
                         # Parse using Pydantic models
-                        entry = parse_transcript_entry(entry_dict)
+                        entry = create_transcript_entry(entry_dict)
                         messages.append(entry)
                     elif (
                         entry_type

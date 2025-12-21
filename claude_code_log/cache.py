@@ -172,10 +172,10 @@ class CacheManager:
                     entries_data.extend(cast(list[dict[str, Any]], timestamp_entries))
 
             # Deserialize back to TranscriptEntry objects
-            from .transcript_parser import parse_transcript_entry
+            from .factories import create_transcript_entry
 
             entries = [
-                parse_transcript_entry(entry_dict) for entry_dict in entries_data
+                create_transcript_entry(entry_dict) for entry_dict in entries_data
             ]
             return entries
         except Exception as e:
@@ -257,10 +257,10 @@ class CacheManager:
                         )
 
             # Deserialize filtered entries
-            from .transcript_parser import parse_transcript_entry
+            from .factories import create_transcript_entry
 
             entries = [
-                parse_transcript_entry(entry_dict)
+                create_transcript_entry(entry_dict)
                 for entry_dict in filtered_entries_data
             ]
             return entries

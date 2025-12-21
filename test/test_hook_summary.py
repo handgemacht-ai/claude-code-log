@@ -1,7 +1,7 @@
 """Tests for hook summary (stop_hook_summary) parsing and rendering."""
 
+from claude_code_log.factories import create_transcript_entry
 from claude_code_log.models import SystemTranscriptEntry
-from claude_code_log.transcript_parser import parse_transcript_entry
 from claude_code_log.html.renderer import generate_html
 
 
@@ -30,7 +30,7 @@ class TestHookSummaryParsing:
             "uuid": "test-uuid",
         }
 
-        entry = parse_transcript_entry(data)
+        entry = create_transcript_entry(data)
 
         assert isinstance(entry, SystemTranscriptEntry)
         assert entry.subtype == "stop_hook_summary"
@@ -66,7 +66,7 @@ class TestHookSummaryParsing:
             "uuid": "test-uuid",
         }
 
-        entry = parse_transcript_entry(data)
+        entry = create_transcript_entry(data)
 
         assert isinstance(entry, SystemTranscriptEntry)
         assert entry.subtype == "stop_hook_summary"
@@ -91,7 +91,7 @@ class TestHookSummaryParsing:
             "uuid": "test-uuid",
         }
 
-        entry = parse_transcript_entry(data)
+        entry = create_transcript_entry(data)
 
         assert isinstance(entry, SystemTranscriptEntry)
         assert entry.content == "<command-name>init</command-name>"
@@ -124,7 +124,7 @@ class TestHookSummaryRendering:
             }
         ]
 
-        parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+        parsed_messages = [create_transcript_entry(msg) for msg in messages]
         html = generate_html(parsed_messages)
 
         # Should not contain actual hook content (skipped)
@@ -156,7 +156,7 @@ class TestHookSummaryRendering:
             }
         ]
 
-        parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+        parsed_messages = [create_transcript_entry(msg) for msg in messages]
         html = generate_html(parsed_messages)
 
         # Should contain hook summary elements
@@ -188,7 +188,7 @@ class TestHookSummaryRendering:
             }
         ]
 
-        parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+        parsed_messages = [create_transcript_entry(msg) for msg in messages]
         html = generate_html(parsed_messages)
 
         # Should contain hook summary elements
@@ -218,7 +218,7 @@ class TestHookSummaryRendering:
             }
         ]
 
-        parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+        parsed_messages = [create_transcript_entry(msg) for msg in messages]
         html = generate_html(parsed_messages)
 
         # ANSI codes should be converted, not present raw
@@ -243,7 +243,7 @@ class TestHookSummaryRendering:
             }
         ]
 
-        parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+        parsed_messages = [create_transcript_entry(msg) for msg in messages]
         html = generate_html(parsed_messages)
 
         # Should render the command name

@@ -1,12 +1,12 @@
 """Tests for the collapsible details toggle functionality."""
 
 from typing import Any, Dict, List
+from claude_code_log.factories import create_content_item
 from claude_code_log.models import (
     AssistantTranscriptEntry,
     AssistantMessageModel,
     UsageInfo,
 )
-from claude_code_log.transcript_parser import parse_content_item
 from claude_code_log.html.renderer import generate_html
 
 
@@ -17,8 +17,8 @@ class TestToggleFunctionality:
         self, content_items: List[Dict[str, Any]]
     ) -> AssistantTranscriptEntry:
         """Helper to create a properly structured AssistantTranscriptEntry."""
-        # Convert raw content items to proper ContentItem objects
-        parsed_content = [parse_content_item(item) for item in content_items]
+        # Convert raw content items to proper ContentItem objects (no filter = all types)
+        parsed_content = [create_content_item(item) for item in content_items]
 
         # Create AssistantMessageModel with proper types
         message = AssistantMessageModel(

@@ -38,7 +38,7 @@ from .models import (
     UserTextMessage,
 )
 from .parser import extract_text_content
-from .transcript_parser import (
+from .factories import (
     as_assistant_entry,
     as_user_entry,
 )

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from claude_code_log.converter import convert_jsonl_to_html
 from claude_code_log.converter import filter_messages_by_date
-from claude_code_log.transcript_parser import parse_transcript_entry
+from claude_code_log.factories import create_transcript_entry
 
 
 def create_test_message(timestamp_str: str, text: str) -> dict:
@@ -47,7 +47,7 @@ def test_date_filtering():
     ]
 
     # Parse dictionaries into TranscriptEntry objects
-    messages = [parse_transcript_entry(msg_dict) for msg_dict in message_dicts]
+    messages = [create_transcript_entry(msg_dict) for msg_dict in message_dicts]
 
     # Test filtering from yesterday onwards
     filtered = filter_messages_by_date(messages, "yesterday", None)
@@ -78,7 +78,7 @@ def test_date_filtering():
 def test_invalid_date_handling():
     """Test handling of invalid date strings."""
     messages = [
-        parse_transcript_entry(
+        create_transcript_entry(
             create_test_message("2025-06-08T12:00:00Z", "Test message")
         )
     ]
@@ -163,7 +163,7 @@ def test_natural_language_dates():
     """Test various natural language date formats."""
 
     message_dict = create_test_message("2025-06-08T12:00:00Z", "Test message")
-    messages = [parse_transcript_entry(message_dict)]
+    messages = [create_transcript_entry(message_dict)]
 
     # Test various natural language formats
     date_formats = ["today", "yesterday", "last week", "3 days ago", "1 week ago"]

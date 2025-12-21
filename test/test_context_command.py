@@ -1,7 +1,7 @@
 """Tests for /context command output rendering."""
 
+from claude_code_log.factories import create_transcript_entry
 from claude_code_log.html.renderer import generate_html
-from claude_code_log.transcript_parser import parse_transcript_entry
 
 
 def test_context_command_rendering():
@@ -33,7 +33,7 @@ def test_context_command_rendering():
     ]
 
     # Parse the raw messages into TranscriptEntry objects
-    parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+    parsed_messages = [create_transcript_entry(msg) for msg in messages]
     html = generate_html(parsed_messages)
 
     # Check that ANSI codes were converted to HTML spans with proper classes
@@ -91,7 +91,7 @@ def test_context_command_without_ansi():
     ]
 
     # Parse the raw messages into TranscriptEntry objects
-    parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+    parsed_messages = [create_transcript_entry(msg) for msg in messages]
     html = generate_html(parsed_messages)
 
     # Check that text is properly rendered even without ANSI codes
@@ -130,7 +130,7 @@ def test_mixed_ansi_and_plain_text():
     ]
 
     # Parse the raw messages into TranscriptEntry objects
-    parsed_messages = [parse_transcript_entry(msg) for msg in messages]
+    parsed_messages = [create_transcript_entry(msg) for msg in messages]
     html = generate_html(parsed_messages)
 
     # Check that both plain and colored text are present
