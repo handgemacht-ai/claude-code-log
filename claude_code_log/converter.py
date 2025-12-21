@@ -21,7 +21,8 @@ from .utils import (
     get_warmup_session_ids,
 )
 from .cache import CacheManager, SessionCacheData, get_library_version
-from .parser import parse_timestamp, parse_transcript_entry
+from .parser import parse_timestamp
+from .transcript_parser import parse_transcript_entry
 from .models import (
     TranscriptEntry,
     AssistantTranscriptEntry,

@@ -6,7 +6,7 @@ from claude_code_log.models import (
     AssistantMessageModel,
     UsageInfo,
 )
-from claude_code_log.parser import parse_content_item
+from claude_code_log.transcript_parser import parse_content_item
 from claude_code_log.html.renderer import generate_html
 
 

@@ -37,10 +37,10 @@ from .models import (
     UserSteeringMessage,
     UserTextMessage,
 )
-from .parser import (
+from .parser import extract_text_content
+from .transcript_parser import (
     as_assistant_entry,
     as_user_entry,
-    extract_text_content,
 )
 from .user_parser import (
     is_bash_input,

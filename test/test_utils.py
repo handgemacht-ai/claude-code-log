@@ -2,10 +2,7 @@
 """Test cases for the utils module functions."""
 
 import pytest
-from claude_code_log.parser import (
-    is_system_message,
-    is_warmup_only_session,
-)
+from claude_code_log.system_parser import is_system_message
 from claude_code_log.user_parser import (
     is_bash_input,
     is_bash_output,
@@ -26,8 +23,6 @@ from claude_code_log.models import (
     ToolUseContent,
     UserTranscriptEntry,
     UserMessageModel,
-    AssistantTranscriptEntry,
-    AssistantMessageModel,
 )
 
 
@@ -606,139 +601,6 @@ class TestCreateSessionPreview:
         assert "📎 /src/test.py" in preview
         assert "✂️" in preview
         assert "Please review this code for bugs" in preview
-
-
-class TestWarmupOnlySessionDetection:
-    """Test detection of warmup-only sessions."""
-
-    def _create_user_entry(
-        self, session_id: str, content: str, uuid: str, timestamp: str
-    ) -> UserTranscriptEntry:
-        """Helper to create a UserTranscriptEntry with all required fields."""
-        return UserTranscriptEntry(
-            type="user",
-            sessionId=session_id,
-            parentUuid=None,
-            isSidechain=False,
-            userType="external",
-            cwd="/test",
-            version="1.0.0",
-            message=UserMessageModel(
-                role="user", content=[TextContent(type="text", text=content)]
-            ),
-            uuid=uuid,
-            timestamp=timestamp,
-        )
-
-    def _create_assistant_entry(
-        self,
-        session_id: str,
-        content: str,
-        uuid: str,
-        timestamp: str,
-        parent_uuid: str,
-    ) -> AssistantTranscriptEntry:
-        """Helper to create an AssistantTranscriptEntry with all required fields."""
-        return AssistantTranscriptEntry(
-            type="assistant",
-            sessionId=session_id,
-            parentUuid=parent_uuid,
-            isSidechain=False,
-            userType="external",
-            cwd="/test",
-            version="1.0.0",
-            message=AssistantMessageModel(
-                id="msg-id",
-                type="message",
-                role="assistant",
-                model="claude-3-5-sonnet",
-                content=[TextContent(type="text", text=content)],
-            ),
-            uuid=uuid,
-            timestamp=timestamp,
-        )
-
-    def test_session_with_only_warmup_messages(self):
-        """Test that a session with only warmup messages is detected."""
-        session_id = "test-session-1"
-        messages = [
-            self._create_user_entry(
-                session_id, "Warmup", "msg-1", "2025-01-01T10:00:00Z"
-            ),
-            self._create_assistant_entry(
-                session_id,
-                "I'm ready to help!",
-                "msg-2",
-                "2025-01-01T10:00:01Z",
-                "msg-1",
-            ),
-        ]
-
-        assert is_warmup_only_session(messages, session_id) is True
-
-    def test_session_with_real_messages(self):
-        """Test that a session with real messages is not detected as warmup-only."""
-        session_id = "test-session-2"
-        messages = [
-            self._create_user_entry(
-                session_id, "Hello, can you help me?", "msg-1", "2025-01-01T10:00:00Z"
-            ),
-            self._create_assistant_entry(
-                session_id, "Sure!", "msg-2", "2025-01-01T10:00:01Z", "msg-1"
-            ),
-        ]
-
-        assert is_warmup_only_session(messages, session_id) is False
-
-    def test_session_with_warmup_and_real_messages(self):
-        """Test that a session with both warmup and real messages is not warmup-only."""
-        session_id = "test-session-3"
-        messages = [
-            self._create_user_entry(
-                session_id, "Warmup", "msg-1", "2025-01-01T10:00:00Z"
-            ),
-            self._create_assistant_entry(
-                session_id, "Ready!", "msg-2", "2025-01-01T10:00:01Z", "msg-1"
-            ),
-            self._create_user_entry(
-                session_id,
-                "Now help me debug this code",
-                "msg-3",
-                "2025-01-01T10:00:02Z",
-            ),
-        ]
-
-        assert is_warmup_only_session(messages, session_id) is False
-
-    def test_session_with_multiple_warmup_messages(self):
-        """Test session with multiple warmup messages."""
-        session_id = "test-session-4"
-        messages = [
-            self._create_user_entry(
-                session_id, "  Warmup  ", "msg-1", "2025-01-01T10:00:00Z"
-            ),
-            self._create_user_entry(
-                session_id, "Warmup", "msg-2", "2025-01-01T10:00:01Z"
-            ),
-        ]
-
-        assert is_warmup_only_session(messages, session_id) is True
-
-    def test_nonexistent_session(self):
-        """Test checking a session ID that doesn't exist."""
-        messages = [
-            self._create_user_entry(
-                "different-session", "Hello", "msg-1", "2025-01-01T10:00:00Z"
-            ),
-        ]
-
-        # Should return False (no user messages may mean system messages exist)
-        assert is_warmup_only_session(messages, "nonexistent-session") is False
-
-    def test_empty_messages_list(self):
-        """Test with empty messages list."""
-        # Should return False (no user messages may mean system messages exist)
-        assert is_warmup_only_session([], "any-session") is False
 
 
 class TestGetWarmupSessionIds:
