@@ -158,6 +158,13 @@ class SlashCommandMessage(MessageContent):
     command_args: str
     command_contents: str
 
+    @property
+    def message_type(self) -> str:
+        return "user"
+
+    def message_title(self) -> Optional[str]:
+        return "Slash Command"
+
 
 @dataclass
 class CommandOutputMessage(MessageContent):
@@ -169,6 +176,13 @@ class CommandOutputMessage(MessageContent):
     stdout: str
     is_markdown: bool  # True if content appears to be markdown
 
+    @property
+    def message_type(self) -> str:
+        return "user"
+
+    def message_title(self) -> Optional[str]:
+        return ""  # Empty title for command output
+
 
 @dataclass
 class BashInputMessage(MessageContent):
@@ -178,6 +192,13 @@ class BashInputMessage(MessageContent):
     """
 
     command: str
+
+    @property
+    def message_type(self) -> str:
+        return "bash-input"
+
+    def message_title(self) -> Optional[str]:
+        return "Bash command"
 
 
 @dataclass
@@ -189,6 +210,13 @@ class BashOutputMessage(MessageContent):
 
     stdout: Optional[str] = None  # Raw stdout content (may contain ANSI codes)
     stderr: Optional[str] = None  # Raw stderr content (may contain ANSI codes)
+
+    @property
+    def message_type(self) -> str:
+        return "bash-output"
+
+    def message_title(self) -> Optional[str]:
+        return ""  # Empty title for bash output
 
 
 @dataclass
@@ -233,6 +261,13 @@ class CompactedSummaryMessage(MessageContent):
 
     summary_text: str
 
+    @property
+    def message_type(self) -> str:
+        return "user"
+
+    def message_title(self) -> Optional[str]:
+        return "User (compacted conversation)"
+
 
 @dataclass
 class UserMemoryMessage(MessageContent):
@@ -245,6 +280,13 @@ class UserMemoryMessage(MessageContent):
 
     memory_text: str
 
+    @property
+    def message_type(self) -> str:
+        return "user"
+
+    def message_title(self) -> Optional[str]:
+        return "Memory"
+
 
 @dataclass
 class UserSlashCommandMessage(MessageContent):
@@ -256,6 +298,13 @@ class UserSlashCommandMessage(MessageContent):
     """
 
     text: str
+
+    @property
+    def message_type(self) -> str:
+        return "user"
+
+    def message_title(self) -> Optional[str]:
+        return "User (slash command)"
 
 
 @dataclass
@@ -351,6 +400,13 @@ class UserTextMessage(MessageContent):
         TextContent | ImageContent | IdeNotificationContent
     ] = field(default_factory=list)
 
+    @property
+    def message_type(self) -> str:
+        return "user"
+
+    def message_title(self) -> Optional[str]:
+        return "User"
+
 
 @dataclass
 class UserSteeringMessage(UserTextMessage):
@@ -360,7 +416,8 @@ class UserSteeringMessage(UserTextMessage):
     items from the queue. Inherits from UserTextMessage.
     """
 
-    pass
+    def message_title(self) -> Optional[str]:
+        return "User (steering)"
 
 
 # =============================================================================
@@ -389,6 +446,13 @@ class AssistantTextMessage(MessageContent):
         TextContent | ImageContent
     ] = field(default_factory=list)
 
+    @property
+    def message_type(self) -> str:
+        return "assistant"
+
+    def message_title(self) -> Optional[str]:
+        return "Assistant"
+
 
 @dataclass
 class ThinkingMessage(MessageContent):
@@ -403,6 +467,13 @@ class ThinkingMessage(MessageContent):
 
     thinking: str
     signature: Optional[str] = None
+
+    @property
+    def message_type(self) -> str:
+        return "thinking"
+
+    def message_title(self) -> Optional[str]:
+        return "Thinking"
 
 
 @dataclass

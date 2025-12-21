@@ -3,12 +3,14 @@
 
 import pytest
 from claude_code_log.parser import (
+    is_system_message,
+    is_warmup_only_session,
+)
+from claude_code_log.user_parser import (
     is_bash_input,
     is_bash_output,
     is_command_message,
     is_local_command_output,
-    is_system_message,
-    is_warmup_only_session,
 )
 from claude_code_log.utils import (
     should_skip_message,

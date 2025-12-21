@@ -1,13 +1,16 @@
 """Tests for IDE tag parsing and formatting in user messages.
 
 Split into:
-- Parsing tests: test parse_ide_notifications() from parser.py
+- Parsing tests: test parse_ide_notifications() from user_parser.py
 - Formatting tests: test format_ide_notification_content() from user_formatters.py
 - User message tests: test parse_user_message_content() and formatters
 - Assistant text tests: test format_assistant_text_content()
 """
 
-from claude_code_log.parser import parse_ide_notifications, parse_user_message_content
+from claude_code_log.user_parser import (
+    parse_ide_notifications,
+    parse_user_message_content,
+)
 from claude_code_log.html.user_formatters import (
     format_ide_notification_content,
     format_user_text_content,

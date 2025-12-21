@@ -49,15 +49,15 @@ from .user_parser import (
     is_bash_output,
     is_command_message,
     is_local_command_output,
-    process_bash_input,
-    process_bash_output,
-    process_command_message,
-    process_local_command_output,
-    process_user_message,
+    parse_bash_input,
+    parse_bash_output,
+    parse_command_output,
+    parse_slash_command,
+    parse_user_message_content,
 )
 from .assistant_parser import (
-    process_assistant_message,
-    process_thinking_item,
+    parse_assistant_message_content,
+    parse_thinking_item,
 )
 from .utils import (
     format_timestamp,
@@ -632,8 +632,8 @@ def prepare_session_navigation(
 
 # -- Message Processing Functions ---------------------------------------------
 # Note: Message parsing functions have been moved to dedicated parser modules:
-#   - user_parser.py: process_user_message, process_command_message, etc.
-#   - assistant_parser.py: process_assistant_message, process_thinking_item
+#   - user_parser.py: parse_user_message_content, parse_slash_command, etc.
+#   - assistant_parser.py: parse_assistant_message_content, parse_thinking_item
 #   - system_parser.py: parse_system_transcript
 
 
@@ -1945,21 +1945,13 @@ def _render_messages(
                 chunk_is_sidechain = getattr(message, "isSidechain", False)
 
                 if is_command:
-                    content_model, chunk_message_type, message_title = (
-                        process_command_message(chunk_text)
-                    )
+                    content_model = parse_slash_command(chunk_text)
                 elif is_local_output:
-                    content_model, chunk_message_type, message_title = (
-                        process_local_command_output(chunk_text)
-                    )
+                    content_model = parse_command_output(chunk_text)
                 elif is_bash_cmd:
-                    content_model, chunk_message_type, message_title = (
-                        process_bash_input(chunk_text)
-                    )
+                    content_model = parse_bash_input(chunk_text)
                 elif is_bash_result:
-                    content_model, chunk_message_type, message_title = (
-                        process_bash_output(chunk_text)
-                    )
+                    content_model = parse_bash_output(chunk_text)
                 else:
                     # For queue-operation messages, treat them as user messages
                     if isinstance(message, QueueOperationTranscriptEntry):
@@ -1969,30 +1961,12 @@ def _render_messages(
 
                     # Dispatch to user or assistant parser based on message type
                     if effective_type == MessageType.USER:
-                        (
-                            chunk_is_sidechain,
-                            content_model,
-                            chunk_message_type,
-                            message_title,
-                        ) = process_user_message(
+                        content_model = parse_user_message_content(
                             chunk,  # Pass the chunk items
-                            chunk_is_sidechain,
-                            getattr(message, "isMeta", False),
+                            is_slash_command=getattr(message, "isMeta", False),
                         )
                     elif effective_type == MessageType.ASSISTANT:
-                        (
-                            chunk_is_sidechain,
-                            content_model,
-                            chunk_message_type,
-                            message_title,
-                        ) = process_assistant_message(
-                            chunk,  # Pass the chunk items
-                            chunk_is_sidechain,
-                        )
-                    else:
-                        # Fallback for unknown types
-                        message_title = effective_type.title()
-                        chunk_message_type = effective_type
+                        content_model = parse_assistant_message_content(chunk)
 
                     # Convert to UserSteeringMessage for queue-operation 'remove' messages
                     if (
@@ -2001,7 +1975,21 @@ def _render_messages(
                         and isinstance(content_model, UserTextMessage)
                     ):
                         content_model = UserSteeringMessage(items=content_model.items)
-                        message_title = "User (steering)"
+
+                # Get message_type and message_title from content_model
+                if content_model is not None:
+                    chunk_message_type = content_model.message_type
+                    message_title = content_model.message_title()
+                    # Override for sidechain assistant messages
+                    if chunk_is_sidechain and isinstance(
+                        content_model, AssistantTextMessage
+                    ):
+                        message_title = "Sub-assistant"
+                else:
+                    # Fallback for unknown/empty content
+                    # MessageType inherits from str, so we can use it directly
+                    chunk_message_type = str(message_type)
+                    message_title = chunk_message_type.title()
 
                 # Skip empty chunks
                 if not chunk:
@@ -2066,10 +2054,10 @@ def _render_messages(
                 ):
                     tool_result = _process_tool_result_item(tool_item, tool_use_context)
                 elif isinstance(tool_item, ThinkingContent) or item_type == "thinking":
-                    msg_type, msg_title, content = process_thinking_item(tool_item)
+                    content = parse_thinking_item(tool_item)
                     tool_result = ToolItemResult(
-                        message_type=msg_type,
-                        message_title=msg_title,
+                        message_type=content.message_type,
+                        message_title=content.message_title() or "Thinking",
                         content=content,
                     )
                 else:

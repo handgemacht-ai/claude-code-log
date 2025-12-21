@@ -24,7 +24,7 @@ from claude_code_log.models import (
     UserMemoryMessage,
     UserTextMessage,
 )
-from claude_code_log.parser import (
+from claude_code_log.user_parser import (
     COMPACTED_SUMMARY_PREFIX,
     parse_compacted_summary,
     parse_user_memory,

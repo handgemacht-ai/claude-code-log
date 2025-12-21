@@ -10,59 +10,48 @@ from typing import Optional
 from .models import (
     AssistantTextMessage,
     ContentItem,
-    MessageContent,
     ThinkingContent,
     ThinkingMessage,
 )
 
 
 # =============================================================================
-# Message Processing Functions
+# Message Parsing Functions
 # =============================================================================
 
 
-def process_assistant_message(
+def parse_assistant_message_content(
     items: list[ContentItem],
-    is_sidechain: bool,
-) -> tuple[bool, Optional[MessageContent], str, str]:
-    """Process assistant message and return (is_sidechain, content_model, message_type, message_title).
+) -> Optional[AssistantTextMessage]:
+    """Parse assistant message content into AssistantTextMessage.
 
     Creates AssistantTextMessage from text/image content items.
 
     Args:
         items: List of text/image content items (no tool_use, tool_result, thinking).
-        is_sidechain: Whether this is a sidechain message.
 
     Returns:
-        Tuple of (is_sidechain, content_model, message_type, message_title)
+        AssistantTextMessage if items is non-empty, None otherwise.
     """
-    message_title = "Assistant"
-    message_type = "assistant"
-    content_model: Optional[MessageContent] = None
-
     # Create AssistantTextMessage directly from items
     # (empty text already filtered by chunk_message_content)
     if items:
-        content_model = AssistantTextMessage(
+        return AssistantTextMessage(
             items=items  # type: ignore[arg-type]
         )
-
-    if is_sidechain:
-        message_title = "Sub-assistant"
-
-    return is_sidechain, content_model, message_type, message_title
+    return None
 
 
-def process_thinking_item(
+def parse_thinking_item(
     tool_item: ContentItem,
-) -> tuple[str, str, Optional[MessageContent]]:
-    """Process a thinking content item.
+) -> ThinkingMessage:
+    """Parse a thinking content item into ThinkingMessage.
 
     Args:
         tool_item: ThinkingContent or compatible object with 'thinking' attribute
 
     Returns:
-        Tuple of (message_type, message_title, content_model)
+        ThinkingMessage containing the thinking text and optional signature.
     """
     # Extract thinking text from the content item
     if isinstance(tool_item, ThinkingContent):
@@ -73,6 +62,4 @@ def process_thinking_item(
         signature = None
 
     # Create the content model (formatting happens in HtmlRenderer)
-    thinking_model = ThinkingMessage(thinking=thinking_text, signature=signature)
-
-    return "thinking", "Thinking", thinking_model
+    return ThinkingMessage(thinking=thinking_text, signature=signature)

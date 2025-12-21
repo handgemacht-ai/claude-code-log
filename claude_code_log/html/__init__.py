@@ -59,7 +59,7 @@ from ..models import (
     UserMemoryMessage,
     UserTextMessage,
 )
-from ..parser import (
+from ..user_parser import (
     parse_bash_input,
     parse_bash_output,
     parse_command_output,
