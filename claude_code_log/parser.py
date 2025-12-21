@@ -460,6 +460,12 @@ def parse_user_message_content(
 # Message Type Detection
 # =============================================================================
 
+# Re-export from user_parser for backward compatibility
+from .user_parser import is_bash_input as is_bash_input
+from .user_parser import is_bash_output as is_bash_output
+from .user_parser import is_command_message as is_command_message
+from .user_parser import is_local_command_output as is_local_command_output
+
 
 def is_system_message(text_content: str) -> bool:
     """Check if a message is a system message that should be filtered out."""
@@ -470,26 +476,6 @@ def is_system_message(text_content: str) -> bool:
     ]
 
     return any(text_content.startswith(pattern) for pattern in system_message_patterns)
-
-
-def is_command_message(text_content: str) -> bool:
-    """Check if a message contains command information that should be displayed."""
-    return "<command-name>" in text_content and "<command-message>" in text_content
-
-
-def is_local_command_output(text_content: str) -> bool:
-    """Check if a message contains local command output."""
-    return "<local-command-stdout>" in text_content
-
-
-def is_bash_input(text_content: str) -> bool:
-    """Check if a message contains bash input command."""
-    return "<bash-input>" in text_content and "</bash-input>" in text_content
-
-
-def is_bash_output(text_content: str) -> bool:
-    """Check if a message contains bash command output."""
-    return "<bash-stdout>" in text_content or "<bash-stderr>" in text_content
 
 
 def is_warmup_only_session(messages: list[TranscriptEntry], session_id: str) -> bool:

@@ -35,7 +35,6 @@ from .models import (
     SlashCommandMessage,
     SystemMessage,
     UnknownMessage,
-    UserMemoryMessage,
     UserSlashCommandMessage,
     UserSteeringMessage,
     UserTextMessage,
@@ -44,10 +43,21 @@ from .parser import (
     as_assistant_entry,
     as_user_entry,
     extract_text_content,
+)
+from .user_parser import (
     is_bash_input,
     is_bash_output,
     is_command_message,
     is_local_command_output,
+    process_bash_input,
+    process_bash_output,
+    process_command_message,
+    process_local_command_output,
+    process_user_message,
+)
+from .assistant_parser import (
+    process_assistant_message,
+    process_thinking_item,
 )
 from .utils import (
     format_timestamp,
@@ -67,12 +77,8 @@ from .renderer_timings import (
 from .html import (
     escape_html,
     format_tool_use_title,
-    parse_bash_input,
-    parse_bash_output,
-    parse_command_output,
-    parse_slash_command,
 )
-from .parser import parse_tool_input, parse_user_message_content
+from .parser import parse_tool_input
 
 
 # -- Content Formatters -------------------------------------------------------
@@ -625,119 +631,10 @@ def prepare_session_navigation(
 
 
 # -- Message Processing Functions ---------------------------------------------
-# Note: HTML formatting logic has been moved to html/content_formatters.py
-# as part of the refactoring to support format-neutral content models.
-
-
-# def _process_summary_message(message: SummaryTranscriptEntry) -> tuple[str, str, str]:
-#     """Process a summary message and return (css_class, content_html, message_type)."""
-#     css_class = "summary"
-#     content_html = f"<strong>Summary:</strong> {escape_html(str(message.summary))}"
-#     message_type = "summary"
-#     return css_class, content_html, message_type
-
-
-def _process_command_message(
-    text_content: str,
-) -> tuple[Optional["MessageContent"], str, str]:
-    """Process a slash command message and return (content, message_type, message_title).
-
-    These are user messages containing slash command invocations (e.g., /context, /model).
-    The JSONL type is "user", not "system".
-    """
-    # Parse to content model (formatting happens in HtmlRenderer)
-    content = parse_slash_command(text_content)
-    # If parsing fails, content will be None and caller will handle fallback
-
-    return content, "user", "Slash Command"
-
-
-def _process_local_command_output(
-    text_content: str,
-) -> tuple[Optional["MessageContent"], str, str]:
-    """Process slash command output and return (content, message_type, message_title).
-
-    These are user messages containing the output from slash commands (e.g., /context, /model).
-    The JSONL type is "user", not "system".
-    """
-    # Parse to content model (formatting happens in HtmlRenderer)
-    content = parse_command_output(text_content)
-    # If parsing fails, content will be None and caller will handle fallback
-
-    return content, "user", ""
-
-
-def _process_bash_input(
-    text_content: str,
-) -> tuple[Optional["MessageContent"], str, str]:
-    """Process bash input command and return (content, message_type, message_title)."""
-    # Parse to content model (formatting happens in HtmlRenderer)
-    content = parse_bash_input(text_content)
-    # If parsing fails, content will be None and caller will handle fallback
-
-    return content, "bash-input", "Bash command"
-
-
-def _process_bash_output(
-    text_content: str,
-) -> tuple[Optional["MessageContent"], str, str]:
-    """Process bash output and return (content, message_type, message_title)."""
-    # Parse to content model (formatting happens in HtmlRenderer)
-    content = parse_bash_output(text_content)
-    # If parsing fails, content will be None - caller/renderer handles empty output
-
-    return content, "bash-output", ""
-
-
-def _process_regular_message(
-    items: list[ContentItem],
-    message_type: str,
-    is_sidechain: bool,
-    is_meta: bool = False,
-) -> tuple[bool, Optional["MessageContent"], str, str]:
-    """Process regular message and return (is_sidechain, content_model, message_type, message_title).
-
-    Returns content_model for user messages, None for non-user messages.
-    Non-user messages (assistant) are handled by the legacy render_message_content path.
-
-    Note: Sidechain user messages (Sub-assistant prompts) are now skipped entirely
-    in the main processing loop since they duplicate the Task tool input prompt.
-
-    Args:
-        items: List of text/image content items (no tool_use, tool_result, thinking).
-        is_meta: True for slash command expanded prompts (isMeta=True in JSONL)
-    """
-    message_title = message_type.title()  # Default title
-    content_model: Optional["MessageContent"] = None
-
-    # Handle user-specific preprocessing
-    if message_type == MessageType.USER:
-        # Note: sidechain user messages are skipped before reaching this function
-        # Parse user content (is_meta triggers UserSlashCommandMessage creation)
-        content_model = parse_user_message_content(items, is_slash_command=is_meta)
-
-        # Determine message_title from content type
-        if isinstance(content_model, UserSlashCommandMessage):
-            message_title = "User (slash command)"
-        elif isinstance(content_model, CompactedSummaryMessage):
-            message_title = "User (compacted conversation)"
-        elif isinstance(content_model, UserMemoryMessage):
-            message_title = "Memory"
-
-    elif message_type == MessageType.ASSISTANT:
-        # Create AssistantTextMessage directly from items
-        # (empty text already filtered by chunk_message_content)
-        if items:
-            content_model = AssistantTextMessage(
-                items=items  # type: ignore[arg-type]
-            )
-
-    if is_sidechain:
-        # Update message title for display (only non-user types reach here)
-        if not isinstance(content_model, CompactedSummaryMessage):
-            message_title = "Sub-assistant"
-
-    return is_sidechain, content_model, message_type, message_title
+# Note: Message parsing functions have been moved to dedicated parser modules:
+#   - user_parser.py: process_user_message, process_command_message, etc.
+#   - assistant_parser.py: process_assistant_message, process_thinking_item
+#   - system_parser.py: parse_system_transcript
 
 
 def _process_system_message(
@@ -994,30 +891,6 @@ def _process_tool_result_item(
         title_hint=tool_title_hint,
         pending_dedup=pending_dedup,
         is_error=tool_result.is_error or False,
-    )
-
-
-def _process_thinking_item(tool_item: ContentItem) -> Optional[ToolItemResult]:
-    """Process a thinking content item.
-
-    Returns:
-        ToolItemResult with thinking content model
-    """
-    # Extract thinking text from the content item
-    if isinstance(tool_item, ThinkingContent):
-        thinking_text = tool_item.thinking.strip()
-        signature = getattr(tool_item, "signature", None)
-    else:
-        thinking_text = getattr(tool_item, "thinking", str(tool_item)).strip()
-        signature = None
-
-    # Create the content model (formatting happens in HtmlRenderer)
-    thinking_model = ThinkingMessage(thinking=thinking_text, signature=signature)
-
-    return ToolItemResult(
-        message_type="thinking",
-        message_title="Thinking",
-        content=thinking_model,
     )
 
 
@@ -2073,19 +1946,19 @@ def _render_messages(
 
                 if is_command:
                     content_model, chunk_message_type, message_title = (
-                        _process_command_message(chunk_text)
+                        process_command_message(chunk_text)
                     )
                 elif is_local_output:
                     content_model, chunk_message_type, message_title = (
-                        _process_local_command_output(chunk_text)
+                        process_local_command_output(chunk_text)
                     )
                 elif is_bash_cmd:
                     content_model, chunk_message_type, message_title = (
-                        _process_bash_input(chunk_text)
+                        process_bash_input(chunk_text)
                     )
                 elif is_bash_result:
                     content_model, chunk_message_type, message_title = (
-                        _process_bash_output(chunk_text)
+                        process_bash_output(chunk_text)
                     )
                 else:
                     # For queue-operation messages, treat them as user messages
@@ -2094,17 +1967,32 @@ def _render_messages(
                     else:
                         effective_type = message_type
 
-                    (
-                        chunk_is_sidechain,
-                        content_model,
-                        chunk_message_type,
-                        message_title,
-                    ) = _process_regular_message(
-                        chunk,  # Pass the chunk items
-                        effective_type,
-                        chunk_is_sidechain,
-                        getattr(message, "isMeta", False),
-                    )
+                    # Dispatch to user or assistant parser based on message type
+                    if effective_type == MessageType.USER:
+                        (
+                            chunk_is_sidechain,
+                            content_model,
+                            chunk_message_type,
+                            message_title,
+                        ) = process_user_message(
+                            chunk,  # Pass the chunk items
+                            chunk_is_sidechain,
+                            getattr(message, "isMeta", False),
+                        )
+                    elif effective_type == MessageType.ASSISTANT:
+                        (
+                            chunk_is_sidechain,
+                            content_model,
+                            chunk_message_type,
+                            message_title,
+                        ) = process_assistant_message(
+                            chunk,  # Pass the chunk items
+                            chunk_is_sidechain,
+                        )
+                    else:
+                        # Fallback for unknown types
+                        message_title = effective_type.title()
+                        chunk_message_type = effective_type
 
                     # Convert to UserSteeringMessage for queue-operation 'remove' messages
                     if (
@@ -2178,7 +2066,12 @@ def _render_messages(
                 ):
                     tool_result = _process_tool_result_item(tool_item, tool_use_context)
                 elif isinstance(tool_item, ThinkingContent) or item_type == "thinking":
-                    tool_result = _process_thinking_item(tool_item)
+                    msg_type, msg_title, content = process_thinking_item(tool_item)
+                    tool_result = ToolItemResult(
+                        message_type=msg_type,
+                        message_title=msg_title,
+                        content=content,
+                    )
                 else:
                     # Handle unknown content types
                     tool_result = ToolItemResult(
