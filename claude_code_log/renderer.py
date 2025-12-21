@@ -42,12 +42,13 @@ from .parser import extract_text_content
 from .factories import (
     as_assistant_entry,
     as_user_entry,
+    create_assistant_message,
     create_meta,
+    create_thinking_message,
+    create_tool_result_message,
+    create_tool_use_message,
     create_user_message,
-)
-from .assistant_parser import (
-    parse_assistant_message_content,
-    parse_thinking_item,
+    ToolItemResult,
 )
 from .utils import (
     format_timestamp,
@@ -59,12 +60,6 @@ from .utils import (
 )
 from .renderer_timings import (
     log_timing,
-)
-
-from .tool_parser import (
-    ToolItemResult,
-    parse_tool_use_item,
-    parse_tool_result_item,
 )
 
 
@@ -618,9 +613,9 @@ def prepare_session_navigation(
 
 
 # -- Message Processing Functions ---------------------------------------------
-# Note: Message parsing functions have been moved to dedicated modules:
-#   - user_parser.py: parse_user_message_content, parse_slash_command, etc.
-#   - assistant_parser.py: parse_assistant_message_content, parse_thinking_item
+# Note: Message creation functions have been moved to the factories package:
+#   - factories/user_factory.py: create_user_message, create_slash_command_message, etc.
+#   - factories/assistant_factory.py: create_assistant_message, create_thinking_message
 #   - factories/system_factory.py: create_system_message
 
 
@@ -1785,7 +1780,7 @@ def _render_messages(
                         meta=meta,
                     )
                 elif effective_type == "assistant":
-                    content_model = parse_assistant_message_content(chunk)
+                    content_model = create_assistant_message(chunk, meta=meta)
 
                 # Convert to UserSteeringMessage for queue-operation 'remove' messages
                 if (
@@ -1868,14 +1863,18 @@ def _render_messages(
                 # Dispatch to appropriate handler based on item type
                 tool_result: Optional[ToolItemResult] = None
                 if isinstance(tool_item, ToolUseContent) or item_type == "tool_use":
-                    tool_result = parse_tool_use_item(tool_item, tool_use_context)
+                    tool_result = create_tool_use_message(
+                        tool_item, tool_use_context, meta=meta
+                    )
                 elif (
                     isinstance(tool_item, ToolResultContent)
                     or item_type == "tool_result"
                 ):
-                    tool_result = parse_tool_result_item(tool_item, tool_use_context)
+                    tool_result = create_tool_result_message(
+                        tool_item, tool_use_context, meta=meta
+                    )
                 elif isinstance(tool_item, ThinkingContent) or item_type == "thinking":
-                    content = parse_thinking_item(tool_item)
+                    content = create_thinking_message(tool_item, meta=meta)
                     tool_result = ToolItemResult(
                         message_type=content.message_type,
                         message_title=content.message_title() or "Thinking",

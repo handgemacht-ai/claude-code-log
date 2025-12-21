@@ -1,13 +1,13 @@
-"""Parser for tool use and tool result content.
+"""Factory for tool use and tool result content.
 
-This module handles parsing of tool-related content into MessageContent subclasses:
+This module handles creation of tool-related content into MessageContent subclasses:
 - ToolUseMessage: Tool invocations with typed inputs (BashInput, ReadInput, etc.)
 - ToolResultMessage: Tool results with output and context
 
-Also provides parsing of tool inputs into typed models:
-- parse_tool_input(): Parse raw tool input dict into typed model
-- parse_tool_use_item(): Process ToolUseContent into ToolUseMessage
-- parse_tool_result_item(): Process ToolResultContent into ToolResultMessage
+Also provides creation of tool inputs into typed models:
+- create_tool_input(): Create typed tool input from raw dict
+- create_tool_use_message(): Process ToolUseContent into ToolItemResult
+- create_tool_result_message(): Process ToolResultContent into ToolItemResult
 """
 
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ from typing import Any, Optional, cast
 
 from pydantic import BaseModel
 
-from .models import (
+from ..models import (
     # Tool input models
     AskUserQuestionInput,
     AskUserQuestionItem,
@@ -28,6 +28,7 @@ from .models import (
     GlobInput,
     GrepInput,
     MessageContent,
+    MessageMeta,
     MultiEditInput,
     ReadInput,
     TaskInput,
@@ -40,7 +41,7 @@ from .models import (
     ToolUseMessage,
     WriteInput,
 )
-from .html import escape_html, format_tool_use_title
+from ..html import escape_html, format_tool_use_title
 
 
 # =============================================================================
@@ -207,12 +208,14 @@ TOOL_LENIENT_PARSERS: dict[str, Any] = {
 
 
 # =============================================================================
-# Tool Input Parsing
+# Tool Input Creation
 # =============================================================================
 
 
-def parse_tool_input(tool_name: str, input_data: dict[str, Any]) -> Optional[ToolInput]:
-    """Parse tool input dictionary into a typed model.
+def create_tool_input(
+    tool_name: str, input_data: dict[str, Any]
+) -> Optional[ToolInput]:
+    """Create typed tool input from raw dictionary.
 
     Uses strict validation first, then lenient parsing if available.
 
@@ -256,15 +259,17 @@ class ToolItemResult:
     is_error: bool = False  # For tool_result error state
 
 
-def parse_tool_use_item(
+def create_tool_use_message(
     tool_item: ContentItem,
     tool_use_context: dict[str, ToolUseContent],
+    meta: Optional[MessageMeta] = None,
 ) -> Optional[ToolItemResult]:
-    """Process a tool_use content item.
+    """Create ToolItemResult from a tool_use content item.
 
     Args:
         tool_item: The tool use content item
         tool_use_context: Dict to populate with tool_use_id -> ToolUseContent mapping
+        meta: Optional message metadata
 
     Returns:
         ToolItemResult with tool_use content model, or None if item should be skipped
@@ -281,7 +286,7 @@ def parse_tool_use_item(
         tool_use = tool_item
 
     # Parse tool input once, use for both title and message content
-    parsed = parse_tool_input(tool_use.name, tool_use.input)
+    parsed = create_tool_input(tool_use.name, tool_use.input)
 
     # Title is computed here but content formatting happens in HtmlRenderer
     tool_message_title = format_tool_use_title(tool_use.name, parsed)
@@ -298,6 +303,7 @@ def parse_tool_use_item(
         input=parsed if parsed is not None else tool_use,
         tool_use_id=tool_use.id,
         tool_name=tool_use.name,
+        meta=meta,
     )
 
     return ToolItemResult(
@@ -309,15 +315,17 @@ def parse_tool_use_item(
     )
 
 
-def parse_tool_result_item(
+def create_tool_result_message(
     tool_item: ContentItem,
     tool_use_context: dict[str, ToolUseContent],
+    meta: Optional[MessageMeta] = None,
 ) -> Optional[ToolItemResult]:
-    """Process a tool_result content item.
+    """Create ToolItemResult from a tool_result content item.
 
     Args:
         tool_item: The tool result content item
         tool_use_context: Dict with tool_use_id -> ToolUseContent mapping
+        meta: Optional message metadata
 
     Returns:
         ToolItemResult with tool_result content model, or None if item should be skipped
@@ -354,6 +362,7 @@ def parse_tool_result_item(
         is_error=tool_result.is_error or False,
         tool_name=result_tool_name,
         file_path=result_file_path,
+        meta=meta,
     )
 
     # Retroactive deduplication: if Task result, extract content for later matching

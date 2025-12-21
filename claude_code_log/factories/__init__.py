@@ -31,6 +31,21 @@ from .user_factory import (
     IDE_OPENED_FILE_PATTERN,
     IDE_SELECTION_PATTERN,
 )
+from .assistant_factory import (
+    # Assistant message creation
+    create_assistant_message,
+    create_thinking_message,
+)
+from .tool_factory import (
+    # Tool message creation
+    create_tool_input,
+    create_tool_use_message,
+    create_tool_result_message,
+    # Tool processing result
+    ToolItemResult,
+    # Tool input models mapping
+    TOOL_INPUT_MODELS,
+)
 from .transcript_factory import (
     # Content type constants
     ASSISTANT_CONTENT_TYPES,
@@ -86,4 +101,15 @@ __all__ = [
     "IDE_DIAGNOSTICS_PATTERN",
     "IDE_OPENED_FILE_PATTERN",
     "IDE_SELECTION_PATTERN",
+    # Assistant message creation
+    "create_assistant_message",
+    "create_thinking_message",
+    # Tool message creation
+    "create_tool_input",
+    "create_tool_use_message",
+    "create_tool_result_message",
+    # Tool processing result
+    "ToolItemResult",
+    # Tool input models mapping
+    "TOOL_INPUT_MODELS",
 ]

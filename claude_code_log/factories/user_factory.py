@@ -436,13 +436,11 @@ def create_user_message(
     first_text = getattr(first_text_item, "text", "") if first_text_item else ""
 
     # Check for compacted session summary first (handles text combining internally)
-    compacted = create_compacted_summary_message(content_list, meta=meta)
-    if compacted:
+    if compacted := create_compacted_summary_message(content_list, meta=meta):
         return compacted
 
     # Check for user memory input
-    user_memory = create_user_memory_message(first_text, meta=meta)
-    if user_memory:
+    if user_memory := create_user_memory_message(first_text, meta=meta):
         return user_memory
 
     # Build items list preserving order, extracting IDE notifications from text
@@ -452,9 +450,8 @@ def create_user_message(
         # Check for text content
         if hasattr(item, "text"):
             item_text: str = getattr(item, "text")  # type: ignore[assignment]
-            ide_content = create_ide_notification_content(item_text)
 
-            if ide_content:
+            if ide_content := create_ide_notification_content(item_text):
                 # Add IDE notification item first
                 items.append(ide_content)
                 remaining_text: str = ide_content.remaining_text

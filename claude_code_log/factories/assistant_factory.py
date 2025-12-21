@@ -1,34 +1,38 @@
-"""Parser for assistant transcript entries.
+"""Factory for assistant transcript entries.
 
-This module handles parsing of AssistantTranscriptEntry content into MessageContent subclasses:
+This module handles creation of AssistantTranscriptEntry content into MessageContent
+subclasses:
 - AssistantTextMessage: Claude's text responses
 - ThinkingMessage: Extended thinking blocks
 """
 
 from typing import Optional
 
-from .models import (
+from ..models import (
     AssistantTextMessage,
     ContentItem,
+    MessageMeta,
     ThinkingContent,
     ThinkingMessage,
 )
 
 
 # =============================================================================
-# Message Parsing Functions
+# Message Creation Functions
 # =============================================================================
 
 
-def parse_assistant_message_content(
+def create_assistant_message(
     items: list[ContentItem],
+    meta: Optional[MessageMeta] = None,
 ) -> Optional[AssistantTextMessage]:
-    """Parse assistant message content into AssistantTextMessage.
+    """Create AssistantTextMessage from content items.
 
     Creates AssistantTextMessage from text/image content items.
 
     Args:
         items: List of text/image content items (no tool_use, tool_result, thinking).
+        meta: Optional message metadata.
 
     Returns:
         AssistantTextMessage if items is non-empty, None otherwise.
@@ -37,18 +41,21 @@ def parse_assistant_message_content(
     # (empty text already filtered by chunk_message_content)
     if items:
         return AssistantTextMessage(
-            items=items  # type: ignore[arg-type]
+            items=items,  # type: ignore[arg-type]
+            meta=meta,
         )
     return None
 
 
-def parse_thinking_item(
+def create_thinking_message(
     tool_item: ContentItem,
+    meta: Optional[MessageMeta] = None,
 ) -> ThinkingMessage:
-    """Parse a thinking content item into ThinkingMessage.
+    """Create ThinkingMessage from a thinking content item.
 
     Args:
         tool_item: ThinkingContent or compatible object with 'thinking' attribute
+        meta: Optional message metadata.
 
     Returns:
         ThinkingMessage containing the thinking text and optional signature.
@@ -62,4 +69,4 @@ def parse_thinking_item(
         signature = None
 
     # Create the content model (formatting happens in HtmlRenderer)
-    return ThinkingMessage(thinking=thinking_text, signature=signature)
+    return ThinkingMessage(thinking=thinking_text, signature=signature, meta=meta)
