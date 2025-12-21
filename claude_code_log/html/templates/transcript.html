@@ -70,14 +70,10 @@
     {% endif %}
 
     {% for message, html_content, formatted_timestamp in messages %}
-    {% if message.is_session_header %}
+    {% if is_session_header(message) %}
     <div class="session-divider"></div>
     <div class='message session-header' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>Session: {{ html_content }}</div>
-        {% if message.session_subtitle %}
-        <div class='session-subtitle'>{{
-            message.session_subtitle }} ({{message.session_id}})</div>
-        {% endif %}
         {% if message.has_children %}
         <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='session-header'>
             {% if message.immediate_children_count == message.total_descendants_count %}
@@ -102,7 +98,7 @@
     </div>
     {% else %}
     {%- set msg_css_class = css_class_from_message(message) %}
-    {% set markdown = message.has_markdown %}
+    {% set markdown = message.content.has_markdown if message.content else false %}
     <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}{% for ancestor_id in message.ancestry %} {{ ancestor_id }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>
             {% set msg_emoji = get_message_emoji(message) -%}

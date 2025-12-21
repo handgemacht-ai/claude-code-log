@@ -23,16 +23,16 @@ from ..models import (
 
 
 def create_assistant_message(
+    meta: MessageMeta,
     items: list[ContentItem],
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[AssistantTextMessage]:
     """Create AssistantTextMessage from content items.
 
     Creates AssistantTextMessage from text/image content items.
 
     Args:
+        meta: Message metadata.
         items: List of text/image content items (no tool_use, tool_result, thinking).
-        meta: Optional message metadata.
 
     Returns:
         AssistantTextMessage if items is non-empty, None otherwise.
@@ -41,21 +41,21 @@ def create_assistant_message(
     # (empty text already filtered by chunk_message_content)
     if items:
         return AssistantTextMessage(
+            meta,
             items=items,  # type: ignore[arg-type]
-            meta=meta,
         )
     return None
 
 
 def create_thinking_message(
+    meta: MessageMeta,
     tool_item: ContentItem,
-    meta: Optional[MessageMeta] = None,
 ) -> ThinkingMessage:
     """Create ThinkingMessage from a thinking content item.
 
     Args:
+        meta: Message metadata.
         tool_item: ThinkingContent or compatible object with 'thinking' attribute
-        meta: Optional message metadata.
 
     Returns:
         ThinkingMessage containing the thinking text and optional signature.
@@ -69,4 +69,4 @@ def create_thinking_message(
         signature = None
 
     # Create the content model (formatting happens in HtmlRenderer)
-    return ThinkingMessage(thinking=thinking_text, signature=signature, meta=meta)
+    return ThinkingMessage(meta, thinking=thinking_text, signature=signature)

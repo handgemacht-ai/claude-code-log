@@ -20,6 +20,7 @@ from claude_code_log.html.user_formatters import (
 )
 from claude_code_log.models import (
     CompactedSummaryMessage,
+    ContentItem,
     MessageMeta,
     TextContent,
     UserMemoryMessage,
@@ -50,7 +51,7 @@ class TestCreateCompactedSummaryMessage:
         )
         content_list = [TextContent(type="text", text=text)]
 
-        result = create_compacted_summary_message(content_list)
+        result = create_compacted_summary_message(MessageMeta.empty(), content_list)
 
         assert result is not None
         assert isinstance(result, CompactedSummaryMessage)
@@ -61,13 +62,13 @@ class TestCreateCompactedSummaryMessage:
         text = "This is a regular user message."
         content_list = [TextContent(type="text", text=text)]
 
-        result = create_compacted_summary_message(content_list)
+        result = create_compacted_summary_message(MessageMeta.empty(), content_list)
 
         assert result is None
 
     def test_create_compacted_summary_message_empty_list(self):
         """Test that empty content list returns None."""
-        result = create_compacted_summary_message([])
+        result = create_compacted_summary_message(MessageMeta.empty(), [])
         assert result is None
 
     def test_create_compacted_summary_message_combines_multiple_texts(self):
@@ -81,7 +82,7 @@ class TestCreateCompactedSummaryMessage:
             TextContent(type="text", text=third_text),
         ]
 
-        result = create_compacted_summary_message(content_list)
+        result = create_compacted_summary_message(MessageMeta.empty(), content_list)
 
         assert result is not None
         expected = "\n\n".join([first_text, second_text, third_text])
@@ -100,7 +101,7 @@ class TestParseUserMemory:
         """Test that user memory input tag is detected correctly."""
         text = "<user-memory-input>Memory content from CLAUDE.md</user-memory-input>"
 
-        result = create_user_memory_message(text)
+        result = create_user_memory_message(MessageMeta.empty(), text)
 
         assert result is not None
         assert isinstance(result, UserMemoryMessage)
@@ -110,7 +111,7 @@ class TestParseUserMemory:
         """Test memory tag extraction from mixed content."""
         text = "Some prefix <user-memory-input>The actual memory</user-memory-input> suffix"
 
-        result = create_user_memory_message(text)
+        result = create_user_memory_message(MessageMeta.empty(), text)
 
         assert result is not None
         assert result.memory_text == "The actual memory"
@@ -120,7 +121,7 @@ class TestParseUserMemory:
         memory_content = "Line 1\nLine 2\nLine 3"
         text = f"<user-memory-input>{memory_content}</user-memory-input>"
 
-        result = create_user_memory_message(text)
+        result = create_user_memory_message(MessageMeta.empty(), text)
 
         assert result is not None
         assert result.memory_text == memory_content
@@ -129,7 +130,7 @@ class TestParseUserMemory:
         """Test that regular text without tag returns None."""
         text = "Regular text without memory tag."
 
-        result = create_user_memory_message(text)
+        result = create_user_memory_message(MessageMeta.empty(), text)
 
         assert result is None
 
@@ -137,7 +138,7 @@ class TestParseUserMemory:
         """Test that memory content whitespace is stripped."""
         text = "<user-memory-input>  \n  Content with spaces  \n  </user-memory-input>"
 
-        result = create_user_memory_message(text)
+        result = create_user_memory_message(MessageMeta.empty(), text)
 
         assert result is not None
         assert result.memory_text == "Content with spaces"
@@ -157,7 +158,7 @@ class TestParseUserMessageContentCompacted:
         content_list = [TextContent(type="text", text=text)]
 
         content_model = create_user_message(
-            content_list, extract_text_content(content_list)
+            MessageMeta.empty(), content_list, extract_text_content(content_list)
         )
 
         assert content_model is not None
@@ -176,7 +177,7 @@ class TestParseUserMessageContentCompacted:
         ]
 
         content_model = create_user_message(
-            content_list, extract_text_content(content_list)
+            MessageMeta.empty(), content_list, extract_text_content(content_list)
         )
 
         assert content_model is not None
@@ -195,7 +196,7 @@ class TestParseUserMessageContentMemory:
         content_list = [TextContent(type="text", text=text)]
 
         content_model = create_user_message(
-            content_list, extract_text_content(content_list)
+            MessageMeta.empty(), content_list, extract_text_content(content_list)
         )
 
         assert content_model is not None
@@ -212,7 +213,7 @@ class TestParseUserMessageContentRegular:
         content_list = [TextContent(type="text", text=text)]
 
         content_model = create_user_message(
-            content_list, extract_text_content(content_list)
+            MessageMeta.empty(), content_list, extract_text_content(content_list)
         )
 
         assert content_model is not None
@@ -223,10 +224,10 @@ class TestParseUserMessageContentRegular:
 
     def test_empty_content_list(self):
         """Test empty content list returns None."""
-        content_list = []
+        content_list: list[ContentItem] = []
 
         content_model = create_user_message(
-            content_list, extract_text_content(content_list)
+            MessageMeta.empty(), content_list, extract_text_content(content_list)
         )
 
         assert content_model is None

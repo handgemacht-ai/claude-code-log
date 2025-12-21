@@ -4855,7 +4855,6 @@
       <div class='message session-header' data-message-id='session-test_session' id='msg-session-test_session'>
           <div class='header'>Session: test_ses</div>
           
-          
           <div class='fold-bar' data-message-id='session-test_session' data-border-color='session-header'>
               
               
@@ -9656,7 +9655,6 @@
       <div class='message session-header' data-message-id='session-edge_cases' id='msg-session-edge_cases'>
           <div class='header'>Session: Tested various edge cases including markdown formatting, long text, tool errors, system messages, command outputs, special characters and emojis. All message types render correctly in the transcript viewer. • edge_cas</div>
           
-          
           <div class='fold-bar' data-message-id='session-edge_cases' data-border-color='session-header'>
               
               
@@ -9965,7 +9963,6 @@
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='session-todowrite_session' id='msg-session-todowrite_session'>
           <div class='header'>Session: todowrit</div>
-          
           
           <div class='fold-bar' data-message-id='session-todowrite_session' data-border-color='session-header'>
               
@@ -14598,7 +14595,6 @@
       <div class='message session-header' data-message-id='session-session_b' id='msg-session-session_b'>
           <div class='header'>Session: session_</div>
           
-          
           <div class='fold-bar' data-message-id='session-session_b' data-border-color='session-header'>
               
               
@@ -14684,7 +14680,6 @@
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='session-test_session' id='msg-session-test_session'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
-          
           
           <div class='fold-bar' data-message-id='session-test_session' data-border-color='session-header'>
               
@@ -19485,7 +19480,6 @@
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='session-test_session' id='msg-session-test_session'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
-          
           
           <div class='fold-bar' data-message-id='session-test_session' data-border-color='session-header'>
               

@@ -260,9 +260,9 @@ class ToolItemResult:
 
 
 def create_tool_use_message(
+    meta: MessageMeta,
     tool_item: ContentItem,
     tool_use_context: dict[str, ToolUseContent],
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[ToolItemResult]:
     """Create ToolItemResult from a tool_use content item.
 
@@ -300,10 +300,10 @@ def create_tool_use_message(
     # Create ToolUseMessage wrapper with parsed input for specialized formatting
     # Use ToolUseContent as fallback when no specialized parser exists
     tool_use_message = ToolUseMessage(
+        meta,
         input=parsed if parsed is not None else tool_use,
         tool_use_id=tool_use.id,
         tool_name=tool_use.name,
-        meta=meta,
     )
 
     return ToolItemResult(
@@ -316,9 +316,9 @@ def create_tool_use_message(
 
 
 def create_tool_result_message(
+    meta: MessageMeta,
     tool_item: ContentItem,
     tool_use_context: dict[str, ToolUseContent],
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[ToolItemResult]:
     """Create ToolItemResult from a tool_result content item.
 
@@ -357,12 +357,12 @@ def create_tool_result_message(
     # Pass the whole ToolResultContent as output (generic fallback)
     # TODO: Parse into specialized output types (ReadOutput, EditOutput) when appropriate
     content_model = ToolResultMessage(
+        meta,
         tool_use_id=tool_result.tool_use_id,
         output=tool_result,  # ToolResultContent as ToolOutput
         is_error=tool_result.is_error or False,
         tool_name=result_tool_name,
         file_path=result_file_path,
-        meta=meta,
     )
 
     # Retroactive deduplication: if Task result, extract content for later matching

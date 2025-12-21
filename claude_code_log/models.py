@@ -113,6 +113,14 @@ class MessageContent:
         """
         return None
 
+    @property
+    def has_markdown(self) -> bool:
+        """Whether this content should be rendered as markdown.
+
+        Subclasses that contain markdown content should override to return True.
+        """
+        return False
+
 
 @dataclass
 class SystemMessage(MessageContent):
@@ -123,6 +131,10 @@ class SystemMessage(MessageContent):
 
     level: str  # "info", "warning", "error"
     text: str  # Raw text content (may contain ANSI codes)
+
+    @property
+    def message_type(self) -> str:
+        return "system"
 
     def message_title(self) -> Optional[str]:
         """Return 'System Info', 'System Warning', or 'System Error'."""
@@ -147,6 +159,10 @@ class HookSummaryMessage(MessageContent):
     has_output: bool
     hook_errors: list[str]  # Error messages from hooks
     hook_infos: list[HookInfo]  # Info about each hook executed
+
+    @property
+    def message_type(self) -> str:
+        return "system"
 
     def message_title(self) -> Optional[str]:
         """Return 'System Hook' for hook summary messages."""
@@ -249,6 +265,10 @@ class ToolResultMessage(MessageContent):
     tool_name: Optional[str] = None  # Name of the tool that produced this result
     file_path: Optional[str] = None  # File path for Read/Edit/Write tools
 
+    @property
+    def message_type(self) -> str:
+        return "tool_result"
+
 
 @dataclass
 class ToolUseMessage(MessageContent):
@@ -261,6 +281,10 @@ class ToolUseMessage(MessageContent):
     input: "ToolInput"  # Specialized (BashInput, etc.) or ToolUseContent fallback
     tool_use_id: str  # From ToolUseContent.id
     tool_name: str  # From ToolUseContent.name
+
+    @property
+    def message_type(self) -> str:
+        return "tool_use"
 
 
 @dataclass
@@ -278,6 +302,10 @@ class CompactedSummaryMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "user"
+
+    @property
+    def has_markdown(self) -> bool:
+        return True
 
     def message_title(self) -> Optional[str]:
         return "User (compacted conversation)"
@@ -467,6 +495,10 @@ class AssistantTextMessage(MessageContent):
     def message_type(self) -> str:
         return "assistant"
 
+    @property
+    def has_markdown(self) -> bool:
+        return True
+
     def message_title(self) -> Optional[str]:
         return "Assistant"
 
@@ -489,6 +521,10 @@ class ThinkingMessage(MessageContent):
     def message_type(self) -> str:
         return "thinking"
 
+    @property
+    def has_markdown(self) -> bool:
+        return True
+
     def message_title(self) -> Optional[str]:
         return "Thinking"
 
@@ -502,6 +538,10 @@ class UnknownMessage(MessageContent):
     """
 
     type_name: str  # The name/description of the unknown type
+
+    @property
+    def message_type(self) -> str:
+        return "unknown"
 
 
 # =============================================================================
@@ -655,6 +695,10 @@ class SessionHeaderMessage(MessageContent):
     session_id: str
     summary: Optional[str] = None
 
+    @property
+    def message_type(self) -> str:
+        return "session_header"
+
 
 @dataclass
 class DedupNoticeMessage(MessageContent):
@@ -668,6 +712,10 @@ class DedupNoticeMessage(MessageContent):
     target_uuid: Optional[str] = None  # UUID of target message (for resolving link)
     target_message_id: Optional[str] = None  # Resolved message ID for anchor link
     original_text: Optional[str] = None  # Original duplicated content (for debugging)
+
+    @property
+    def message_type(self) -> str:
+        return "dedup_notice"
 
 
 # =============================================================================

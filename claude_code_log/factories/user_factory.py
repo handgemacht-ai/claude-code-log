@@ -73,8 +73,8 @@ def is_bash_output(text_content: str) -> bool:
 
 
 def create_slash_command_message(
+    meta: MessageMeta,
     text: str,
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[SlashCommandMessage]:
     """Create SlashCommandMessage from text containing command tags.
 
@@ -122,8 +122,8 @@ def create_slash_command_message(
 
 
 def create_command_output_message(
+    meta: MessageMeta,
     text: str,
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[CommandOutputMessage]:
     """Create CommandOutputMessage from text containing local-command-stdout tags.
 
@@ -157,8 +157,8 @@ def create_command_output_message(
 
 
 def create_bash_input_message(
+    meta: MessageMeta,
     text: str,
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[BashInputMessage]:
     """Create BashInputMessage from text containing bash-input tags.
 
@@ -177,8 +177,8 @@ def create_bash_input_message(
 
 
 def create_bash_output_message(
+    meta: MessageMeta,
     text: str,
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[BashOutputMessage]:
     """Create BashOutputMessage from text containing bash-stdout/bash-stderr tags.
 
@@ -296,8 +296,8 @@ COMPACTED_SUMMARY_PREFIX = "This session is being continued from a previous conv
 
 
 def create_compacted_summary_message(
+    meta: MessageMeta,
     content_list: list[ContentItem],
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[CompactedSummaryMessage]:
     """Create CompactedSummaryMessage from content list.
 
@@ -338,8 +338,8 @@ USER_MEMORY_PATTERN = re.compile(
 
 
 def create_user_memory_message(
+    meta: MessageMeta,
     text: str,
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[UserMemoryMessage]:
     """Create UserMemoryMessage from text containing user-memory-input tag.
 
@@ -378,10 +378,10 @@ UserMessageContent = Union[
 
 
 def create_user_message(
+    meta: MessageMeta,
     content_list: list[ContentItem],
     text_content: str,
     is_slash_command: bool = False,
-    meta: Optional[MessageMeta] = None,
 ) -> Optional[UserMessageContent]:
     """Create a user message content model from content items.
 
@@ -410,16 +410,16 @@ def create_user_message(
 
     # Check for special message patterns first (before generic parsing)
     if is_command_message(text_content):
-        return create_slash_command_message(text_content, meta=meta)
+        return create_slash_command_message(meta, text_content)
 
     if is_local_command_output(text_content):
-        return create_command_output_message(text_content, meta=meta)
+        return create_command_output_message(meta, text_content)
 
     if is_bash_input(text_content):
-        return create_bash_input_message(text_content, meta=meta)
+        return create_bash_input_message(meta, text_content)
 
     if is_bash_output(text_content):
-        return create_bash_output_message(text_content, meta=meta)
+        return create_bash_output_message(meta, text_content)
 
     # Slash command expanded prompts - combine all text as markdown
     if is_slash_command:
@@ -436,11 +436,11 @@ def create_user_message(
     first_text = getattr(first_text_item, "text", "") if first_text_item else ""
 
     # Check for compacted session summary first (handles text combining internally)
-    if compacted := create_compacted_summary_message(content_list, meta=meta):
+    if compacted := create_compacted_summary_message(meta, content_list):
         return compacted
 
     # Check for user memory input
-    if user_memory := create_user_memory_message(first_text, meta=meta):
+    if user_memory := create_user_memory_message(meta, first_text):
         return user_memory
 
     # Build items list preserving order, extracting IDE notifications from text

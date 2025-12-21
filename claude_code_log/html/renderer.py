@@ -62,7 +62,12 @@ from .assistant_formatters import (
     format_unknown_content,
 )
 from .tool_formatters import format_tool_result_content, format_tool_use_content
-from .utils import css_class_from_message, get_message_emoji, get_template_environment
+from .utils import (
+    css_class_from_message,
+    get_message_emoji,
+    get_template_environment,
+    is_session_header,
+)
 
 if TYPE_CHECKING:
     from ..cache import CacheManager
@@ -236,6 +241,7 @@ class HtmlRenderer(Renderer):
                     library_version=get_library_version(),
                     css_class_from_message=css_class_from_message,
                     get_message_emoji=get_message_emoji,
+                    is_session_header=is_session_header,
                 )
             )
 

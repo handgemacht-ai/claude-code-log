@@ -315,7 +315,7 @@ class TestParseUserMessageContent:
         ]
 
         content_model = create_user_message(
-            content_list, extract_text_content(content_list)
+            MessageMeta.empty(), content_list, extract_text_content(content_list)
         )
 
         # Should return UserTextMessage with items

@@ -134,6 +134,18 @@ def css_class_from_message(msg: "TemplateMessage") -> str:
     return " ".join(parts)
 
 
+def is_session_header(msg: "TemplateMessage") -> bool:
+    """Check if message is a session header.
+
+    Args:
+        msg: The template message to check
+
+    Returns:
+        True if message content is a SessionHeaderMessage
+    """
+    return isinstance(msg.content, SessionHeaderMessage)
+
+
 def get_message_emoji(msg: "TemplateMessage") -> str:
     """Return appropriate emoji for message type.
 

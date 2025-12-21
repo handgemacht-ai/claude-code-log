@@ -296,7 +296,8 @@ class IdeDiagnostic:
     raw_content: Optional[str]  # Fallback if parsing failed
 
 @dataclass
-class IdeNotificationContent(MessageContent):
+class IdeNotificationContent:  # NOT a MessageContent subclass
+    """Embedded within UserTextMessage.items alongside TextContent/ImageContent."""
     opened_files: List[IdeOpenedFile]
     selections: List[IdeSelection]
     diagnostics: List[IdeDiagnostic]
@@ -866,6 +867,13 @@ Sub-agent messages (from `Task` tool):
   - [user_formatters.py](../claude_code_log/html/user_formatters.py) - User message formatting
   - [assistant_formatters.py](../claude_code_log/html/assistant_formatters.py) - AssistantTextMessage, ThinkingMessage, ImageContent formatting
   - [tool_formatters.py](../claude_code_log/html/tool_formatters.py) - Tool use/result formatting
-- [parser.py](../claude_code_log/parser.py) - JSONL parsing module
+- [parser.py](../claude_code_log/parser.py) - JSONL parsing and text extraction
+- [factories/](../claude_code_log/factories/) - Content creation from parsed data
+  - [user_factory.py](../claude_code_log/factories/user_factory.py) - `create_user_message()`, `create_*_message()` functions
+  - [assistant_factory.py](../claude_code_log/factories/assistant_factory.py) - `create_assistant_message()`, `create_thinking_message()`
+  - [tool_factory.py](../claude_code_log/factories/tool_factory.py) - `create_tool_use_message()`, `create_tool_result_message()`
+  - [system_factory.py](../claude_code_log/factories/system_factory.py) - `create_system_message()`
+  - [meta_factory.py](../claude_code_log/factories/meta_factory.py) - `create_meta()`
 - [TEMPLATE_MESSAGE_CHILDREN.md](TEMPLATE_MESSAGE_CHILDREN.md) - Tree architecture exploration
-- [MESSAGE_REFACTORING.md](MESSAGE_REFACTORING.md) - Refactoring plan
+- [MESSAGE_REFACTORING.md](MESSAGE_REFACTORING.md) - Refactoring plan (Phase 1)
+- [MESSAGE_REFACTORING2.md](MESSAGE_REFACTORING2.md) - Refactoring plan (Phase 2)

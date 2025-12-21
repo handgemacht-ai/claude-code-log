@@ -25,11 +25,9 @@ from .models import (
     ToolResultContent,
     ToolUseContent,
     ThinkingContent,
-    ThinkingMessage,
     # Structured content types
     AssistantTextMessage,
     CommandOutputMessage,
-    CompactedSummaryMessage,
     DedupNoticeMessage,
     SessionHeaderMessage,
     SlashCommandMessage,
@@ -163,11 +161,9 @@ class TemplateMessage:
         raw_timestamp: Optional[str] = None,
         session_summary: Optional[str] = None,
         session_id: Optional[str] = None,
-        is_session_header: bool = False,
         token_usage: Optional[str] = None,
         tool_use_id: Optional[str] = None,
         title_hint: Optional[str] = None,
-        has_markdown: bool = False,
         message_title: Optional[str] = None,
         message_id: Optional[str] = None,
         ancestry: Optional[list[str]] = None,
@@ -181,6 +177,8 @@ class TemplateMessage:
         self.type = message_type
         # Structured content for rendering
         self.content = content
+        # Shortcut to content.meta for transition period
+        self.meta = content.meta if content else None
         self.is_sidechain = is_sidechain
         self.raw_timestamp = raw_timestamp
         # Display title for message header (capitalized, with decorations)
@@ -189,15 +187,12 @@ class TemplateMessage:
         )
         self.session_summary = session_summary
         self.session_id = session_id
-        self.is_session_header = is_session_header
-        self.session_subtitle: Optional[str] = None
         self.token_usage = token_usage
         self.tool_use_id = tool_use_id
         self.title_hint = title_hint
         self.message_id = message_id
         self.ancestry = ancestry or []
         self.has_children = has_children
-        self.has_markdown = has_markdown
         self.uuid = uuid
         self.parent_uuid = parent_uuid
         self.agent_id = agent_id  # Agent ID for sidechain messages and Task results
@@ -217,6 +212,16 @@ class TemplateMessage:
         self.pair_duration: Optional[str] = None  # Duration for pair_last messages
         # Children for tree-based rendering (future use)
         self.children: list["TemplateMessage"] = []
+
+    @property
+    def is_session_header(self) -> bool:
+        """Check if this message is a session header (derived from content type)."""
+        return isinstance(self.content, SessionHeaderMessage)
+
+    @property
+    def has_markdown(self) -> bool:
+        """Check if this message has markdown content (derived from content type)."""
+        return self.content.has_markdown if self.content else False
 
     def get_immediate_children_label(self) -> str:
         """Generate human-readable label for immediate children."""
@@ -1683,11 +1688,15 @@ def _render_messages(
             continue
 
         # Create meta once for all chunks from this message
-        # (QueueOperationTranscriptEntry doesn't have BaseTranscriptEntry fields)
         if isinstance(message, BaseTranscriptEntry):
             meta = create_meta(message)
         else:
-            meta = None
+            # QueueOperationTranscriptEntry has limited fields
+            meta = MessageMeta(
+                session_id=getattr(message, "sessionId", ""),
+                timestamp=getattr(message, "timestamp", ""),
+                uuid="",  # QueueOperationTranscriptEntry has no uuid
+            )
 
         # Determine effective_type for dispatching to user/assistant parsers
         # (queue-operation 'remove' messages are treated as user messages)
@@ -1715,7 +1724,6 @@ def _render_messages(
                 raw_timestamp=None,
                 session_summary=current_session_summary,
                 session_id=session_id,
-                is_session_header=True,
                 message_id=None,
                 ancestry=[],
                 content=SessionHeaderMessage(
@@ -1777,13 +1785,13 @@ def _render_messages(
                 # (user message parsing handles all type detection internally)
                 if effective_type == "user":
                     content_model = create_user_message(
+                        meta,
                         chunk,  # Pass the chunk items
                         chunk_text,  # Pre-extracted text for pattern detection
                         is_slash_command=getattr(message, "isMeta", False),
-                        meta=meta,
                     )
                 elif effective_type == "assistant":
-                    content_model = create_assistant_message(chunk, meta=meta)
+                    content_model = create_assistant_message(meta, chunk)
 
                 # Convert to UserSteeringMessage for queue-operation 'remove' messages
                 if (
@@ -1823,16 +1831,6 @@ def _render_messages(
                 if chunk_uuid and len(chunks) > 1:
                     chunk_uuid = f"{chunk_uuid}-chunk-{chunk_idx}"
 
-                # Markdown rendering for assistant, thinking, and compacted content
-                has_markdown = isinstance(
-                    content_model,
-                    (
-                        AssistantTextMessage,
-                        ThinkingMessage,
-                        CompactedSummaryMessage,
-                    ),
-                )
-
                 template_message = TemplateMessage(
                     message_type=chunk_message_type,
                     raw_timestamp=timestamp,
@@ -1847,7 +1845,6 @@ def _render_messages(
                     parent_uuid=getattr(message, "parentUuid", None),
                     is_sidechain=chunk_is_sidechain,
                     content=content_model,
-                    has_markdown=has_markdown,
                 )
 
                 # Store raw text content for potential future use
@@ -1867,17 +1864,17 @@ def _render_messages(
                 tool_result: Optional[ToolItemResult] = None
                 if isinstance(tool_item, ToolUseContent) or item_type == "tool_use":
                     tool_result = create_tool_use_message(
-                        tool_item, tool_use_context, meta=meta
+                        meta, tool_item, tool_use_context
                     )
                 elif (
                     isinstance(tool_item, ToolResultContent)
                     or item_type == "tool_result"
                 ):
                     tool_result = create_tool_result_message(
-                        tool_item, tool_use_context, meta=meta
+                        meta, tool_item, tool_use_context
                     )
                 elif isinstance(tool_item, ThinkingContent) or item_type == "thinking":
-                    content = create_thinking_message(tool_item, meta=meta)
+                    content = create_thinking_message(meta, tool_item)
                     tool_result = ToolItemResult(
                         message_type=content.message_type,
                         message_title=content.message_title() or "Thinking",
@@ -1887,9 +1884,7 @@ def _render_messages(
                     # Handle unknown content types
                     tool_result = ToolItemResult(
                         message_type="unknown",
-                        content=UnknownMessage(
-                            meta or MessageMeta.empty(), type_name=str(type(tool_item))
-                        ),
+                        content=UnknownMessage(meta, type_name=str(type(tool_item))),
                         message_title="Unknown Content",
                     )
 
@@ -1909,9 +1904,6 @@ def _render_messages(
                     else f"{message_uuid}-tool-{len(template_messages)}"
                 )
 
-                # Thinking content uses markdown
-                tool_has_markdown = isinstance(tool_result.content, ThinkingMessage)
-
                 tool_template_message = TemplateMessage(
                     message_type=tool_result.message_type,
                     raw_timestamp=tool_timestamp,
@@ -1926,7 +1918,6 @@ def _render_messages(
                     uuid=tool_uuid,
                     is_sidechain=tool_is_sidechain,
                     content=tool_result.content,  # Structured content model
-                    has_markdown=tool_has_markdown,
                 )
 
                 # Store raw text for Task result deduplication
