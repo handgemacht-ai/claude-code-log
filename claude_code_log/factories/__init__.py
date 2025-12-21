@@ -1,5 +1,11 @@
 """Factory modules for creating typed objects from raw data."""
 
+from .system_factory import (
+    # System message detection
+    is_system_message,
+    # System message creation
+    create_system_message,
+)
 from .transcript_factory import (
     # Content type constants
     ASSISTANT_CONTENT_TYPES,
@@ -30,4 +36,8 @@ __all__ = [
     "create_message_content",
     # Transcript entry creation
     "create_transcript_entry",
+    # System message detection
+    "is_system_message",
+    # System message creation
+    "create_system_message",
 ]

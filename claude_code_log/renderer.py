@@ -626,10 +626,10 @@ def prepare_session_navigation(
 
 
 # -- Message Processing Functions ---------------------------------------------
-# Note: Message parsing functions have been moved to dedicated parser modules:
+# Note: Message parsing functions have been moved to dedicated modules:
 #   - user_parser.py: parse_user_message_content, parse_slash_command, etc.
 #   - assistant_parser.py: parse_assistant_message_content, parse_thinking_item
-#   - system_parser.py: parse_system_transcript
+#   - factories/system_factory.py: create_system_message
 
 
 def _process_system_message(
@@ -651,16 +651,16 @@ def _process_system_message(
     not system messages. They are handled by _process_command_message and
     _process_local_command_output in the main processing loop.
     """
-    from .system_parser import parse_system_transcript
+    from .factories import create_system_message
 
-    # Parse the transcript entry into structured message (with meta attached)
-    message = parse_system_transcript(transcript)
+    # Create structured message content (with meta attached)
+    message = create_system_message(transcript)
     if message is None:
         return None
 
     # Get metadata from the message content
     meta = message.meta
-    assert meta is not None, "parse_system_transcript should always set meta"
+    assert meta is not None, "create_system_message should always set meta"
 
     # Get title from message (uses message_title() method)
     title = message.message_title() or "System"

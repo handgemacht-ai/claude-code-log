@@ -1,6 +1,6 @@
-"""Parser for system transcript entries.
+"""Factory for system transcript entries.
 
-This module handles parsing of SystemTranscriptEntry into MessageContent subclasses:
+This module handles creation of MessageContent from SystemTranscriptEntry:
 - SystemMessage: Regular system messages with level (info, warning, error)
 - HookSummaryMessage: Hook execution summaries
 
@@ -10,13 +10,13 @@ Also provides:
 
 from typing import Optional, Union
 
-from .models import (
+from ..models import (
     HookInfo,
     HookSummaryMessage,
     SystemMessage,
     SystemTranscriptEntry,
 )
-from .parser import parse_meta
+from ..parser import parse_meta
 
 
 # =============================================================================
@@ -36,21 +36,21 @@ def is_system_message(text_content: str) -> bool:
 
 
 # =============================================================================
-# System Transcript Parsing
+# System Message Creation
 # =============================================================================
 
 
-def parse_system_transcript(
+def create_system_message(
     transcript: SystemTranscriptEntry,
 ) -> Optional[Union[SystemMessage, HookSummaryMessage]]:
-    """Parse a system transcript entry into a MessageContent.
+    """Create a MessageContent from a system transcript entry.
 
     Handles:
     - Hook summaries (subtype="stop_hook_summary")
     - Regular system messages with level-specific styling (info, warning, error)
 
     Args:
-        transcript: The system transcript entry to parse
+        transcript: The system transcript entry to process
 
     Returns:
         SystemMessage or HookSummaryMessage (with meta attached),
