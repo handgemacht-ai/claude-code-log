@@ -9,6 +9,7 @@ from claude_code_log.converter import convert_jsonl_to_html
 from claude_code_log.html import format_todowrite_content, format_tool_use_content
 from claude_code_log.models import (
     EditInput,
+    MessageMeta,
     TodoWriteInput,
     TodoWriteItem,
     ToolUseMessage,
@@ -200,6 +201,7 @@ class TestTodoWriteRendering:
             * 3
         )
         regular_tool = ToolUseMessage(
+            MessageMeta.empty(),
             input=EditInput(
                 file_path="/tmp/test.py",
                 old_string="",
@@ -211,6 +213,7 @@ class TestTodoWriteRendering:
 
         # Create TodoWrite tool use
         todowrite_tool = ToolUseMessage(
+            MessageMeta.empty(),
             input=TodoWriteInput(
                 todos=[
                     TodoWriteItem(

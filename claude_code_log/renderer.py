@@ -13,6 +13,7 @@ from datetime import datetime
 
 from .models import (
     BaseTranscriptEntry,
+    MessageMeta,
     MessageType,
     TranscriptEntry,
     AssistantTranscriptEntry,
@@ -1371,6 +1372,7 @@ def _reorder_sidechain_template_messages(
                     ):
                         # Replace with note pointing to the Task result
                         sidechain_msg.content = DedupNoticeMessage(
+                            MessageMeta.empty(),
                             notice_text="Task summary — see result above",
                             target_uuid=message.uuid,
                             original_text=sidechain_text,
@@ -1717,6 +1719,7 @@ def _render_messages(
                 message_id=None,
                 ancestry=[],
                 content=SessionHeaderMessage(
+                    MessageMeta.empty(),
                     title=session_title,
                     session_id=session_id,
                     summary=current_session_summary,
@@ -1884,7 +1887,9 @@ def _render_messages(
                     # Handle unknown content types
                     tool_result = ToolItemResult(
                         message_type="unknown",
-                        content=UnknownMessage(type_name=str(type(tool_item))),
+                        content=UnknownMessage(
+                            meta or MessageMeta.empty(), type_name=str(type(tool_item))
+                        ),
                         message_title="Unknown Content",
                     )
 

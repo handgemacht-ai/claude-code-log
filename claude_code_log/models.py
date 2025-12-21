@@ -73,6 +73,15 @@ class MessageMeta:
     cwd: str = ""
     git_branch: Optional[str] = None
 
+    @classmethod
+    def empty(cls, uuid: str = "") -> "MessageMeta":
+        """Create a placeholder MessageMeta with empty/default values.
+
+        Useful for cases where full metadata isn't available at creation time
+        (e.g., SummaryTranscriptEntry where session_id is matched later).
+        """
+        return cls(session_id="", timestamp="", uuid=uuid)
+
 
 # =============================================================================
 # Message Content Models
@@ -89,14 +98,12 @@ class MessageContent:
     Subclasses represent specific content types that renderers can format
     appropriately for their output format.
 
-    The `meta` field is keyword-only with a default of None, allowing:
-    - Subclasses to have positional fields before it
-    - Progressive migration: call sites can pass meta=... when available
-    - Backward compatibility: parsing functions that don't have transcript access
-      can omit meta (the renderer can set it later if needed)
+    The `meta` field is required and first positional, ensuring all message
+    content always has associated metadata. Use MessageMeta.empty() when
+    full metadata isn't available at creation time.
     """
 
-    meta: Optional[MessageMeta] = field(default=None, kw_only=True)
+    meta: MessageMeta
 
     def message_title(self) -> Optional[str]:
         """Return a title for this message content, or None for default behavior.
@@ -340,10 +347,13 @@ class IdeDiagnostic:
 
 
 @dataclass
-class IdeNotificationContent(MessageContent):
-    """Content for IDE notification tags.
+class IdeNotificationContent:
+    """Content for IDE notification tags (embedded within user messages).
 
-    These are user messages containing IDE notification tags like:
+    This is NOT a MessageContent subclass - it's used as an item within
+    UserTextMessage.items alongside TextContent and ImageContent.
+
+    Represents IDE notification tags like:
     - <ide_opened_file>: File open notifications
     - <ide_selection>: Code selection notifications
     - <post-tool-use-hook><ide_diagnostics>: Diagnostic JSON arrays

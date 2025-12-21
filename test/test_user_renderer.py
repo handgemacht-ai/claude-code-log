@@ -20,6 +20,7 @@ from claude_code_log.html.user_formatters import (
 )
 from claude_code_log.models import (
     CompactedSummaryMessage,
+    MessageMeta,
     TextContent,
     UserMemoryMessage,
     UserTextMessage,
@@ -241,7 +242,9 @@ class TestFormatCompactedSummaryMessage:
 
     def test_format_compacted_summary_basic(self):
         """Test basic compacted summary formatting."""
-        content = CompactedSummaryMessage(summary_text="Summary:\n- Point 1\n- Point 2")
+        content = CompactedSummaryMessage(
+            MessageMeta.empty(), summary_text="Summary:\n- Point 1\n- Point 2"
+        )
 
         html = format_compacted_summary_content(content)
 
@@ -254,7 +257,9 @@ class TestFormatCompactedSummaryMessage:
         """Test that long compacted summaries are collapsible."""
         # Create long content that exceeds threshold
         long_summary = "Summary:\n" + "\n".join([f"- Point {i}" for i in range(50)])
-        content = CompactedSummaryMessage(summary_text=long_summary)
+        content = CompactedSummaryMessage(
+            MessageMeta.empty(), summary_text=long_summary
+        )
 
         html = format_compacted_summary_content(content)
 
@@ -273,7 +278,9 @@ class TestFormatUserMemoryMessage:
 
     def test_format_user_memory_basic(self):
         """Test basic user memory formatting."""
-        content = UserMemoryMessage(memory_text="CLAUDE.md content")
+        content = UserMemoryMessage(
+            MessageMeta.empty(), memory_text="CLAUDE.md content"
+        )
 
         html = format_user_memory_content(content)
 
@@ -283,7 +290,9 @@ class TestFormatUserMemoryMessage:
 
     def test_format_user_memory_escapes_html(self):
         """Test that HTML characters are escaped."""
-        content = UserMemoryMessage(memory_text="<script>alert('xss')</script>")
+        content = UserMemoryMessage(
+            MessageMeta.empty(), memory_text="<script>alert('xss')</script>"
+        )
 
         html = format_user_memory_content(content)
 
@@ -302,7 +311,8 @@ class TestFormatUserTextModelContent:
     def test_format_user_text_basic(self):
         """Test basic user text formatting."""
         content = UserTextMessage(
-            items=[TextContent(type="text", text="User question here")]
+            MessageMeta.empty(),
+            items=[TextContent(type="text", text="User question here")],
         )
 
         html = format_user_text_model_content(content)
@@ -313,7 +323,8 @@ class TestFormatUserTextModelContent:
     def test_format_user_text_escapes_html(self):
         """Test that HTML characters are escaped."""
         content = UserTextMessage(
-            items=[TextContent(type="text", text='Test <b>bold</b> & "quotes"')]
+            MessageMeta.empty(),
+            items=[TextContent(type="text", text='Test <b>bold</b> & "quotes"')],
         )
 
         html = format_user_text_model_content(content)

@@ -22,6 +22,7 @@ from claude_code_log.models import (
     IdeNotificationContent,
     ImageContent,
     ImageSource,
+    MessageMeta,
     TextContent,
     UserTextMessage,
 )
@@ -356,7 +357,8 @@ class TestContentFormatters:
     def test_format_assistant_text_content(self):
         """Test that assistant text is formatted as markdown."""
         content = AssistantTextMessage(
-            items=[TextContent(type="text", text="**Bold** response")]
+            MessageMeta.empty(),
+            items=[TextContent(type="text", text="**Bold** response")],
         )
 
         html = format_assistant_text_content(content)
