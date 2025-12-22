@@ -274,7 +274,7 @@ def create_tool_use_message(
     Returns:
         ToolItemResult with tool_use content model, or None if item should be skipped
     """
-    # Convert Anthropic type to our format if necessary
+    # Convert to Pydantic model if necessary (handles duck-typed objects)
     if not isinstance(tool_item, ToolUseContent):
         tool_use = ToolUseContent(
             type="tool_use",
@@ -330,7 +330,7 @@ def create_tool_result_message(
     Returns:
         ToolItemResult with tool_result content model, or None if item should be skipped
     """
-    # Convert Anthropic type to our format if necessary
+    # Convert to Pydantic model if necessary (handles duck-typed objects)
     if not isinstance(tool_item, ToolResultContent):
         tool_result = ToolResultContent(
             type="tool_result",

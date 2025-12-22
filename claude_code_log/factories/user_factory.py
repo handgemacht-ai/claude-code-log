@@ -322,7 +322,7 @@ def create_compacted_summary_message(
         return None
 
     # Combine all text content for compacted summaries
-    # Use hasattr check to handle both TextContent models and SDK TextBlock objects
+    # Use hasattr check to handle duck-typed objects
     texts = cast(
         list[str],
         [item.text for item in content_list if hasattr(item, "text")],  # type: ignore[union-attr]
@@ -465,7 +465,7 @@ def create_user_message(
             # ImageContent model - use as-is
             items.append(item)
         elif hasattr(item, "source") and getattr(item, "type", None) == "image":
-            # Anthropic ImageContent - convert to our model
+            # Duck-typed image content - convert to our Pydantic model
             items.append(ImageContent.model_validate(item.model_dump()))  # type: ignore[union-attr]
 
     # Return UserTextMessage with items list

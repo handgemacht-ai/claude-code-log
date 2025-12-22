@@ -62,15 +62,7 @@ from .renderer_timings import (
 )
 
 
-# -- Content Formatters -------------------------------------------------------
-# NOTE: Content formatters have been moved to html/ submodules:
-#   - format_thinking_content -> html/assistant_formatters.py
-#   - format_assistant_text_content -> html/assistant_formatters.py
-#   - format_tool_result_content -> html/tool_formatters.py
-#   - format_tool_use_content -> html/tool_formatters.py
-#   - format_image_content -> html/assistant_formatters.py
-#   - format_user_text_model_content -> html/user_formatters.py
-#   - parse_user_message_content -> parser.py
+# -- Helper Functions ---------------------------------------------------------
 
 
 def _format_type_counts(type_counts: dict[str, int]) -> str:
@@ -660,10 +652,6 @@ def prepare_session_navigation(
 
 
 # -- Message Processing Functions ---------------------------------------------
-# Note: Message creation functions have been moved to the factories package:
-#   - factories/user_factory.py: create_user_message, create_slash_command_message, etc.
-#   - factories/assistant_factory.py: create_assistant_message, create_thinking_message
-#   - factories/system_factory.py: create_system_message
 
 
 def _process_system_message(
@@ -1874,8 +1862,6 @@ def _render_messages(
             else:
                 # Special chunk: single tool_use/tool_result/thinking item
                 tool_item = chunk
-
-                # Handle both custom types and Anthropic types
                 item_type = getattr(tool_item, "type", None)
 
                 # Dispatch to appropriate handler based on item type

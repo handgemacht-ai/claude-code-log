@@ -17,8 +17,7 @@ from .models import ContentItem, ThinkingContent
 def extract_text_content(content: Optional[list[ContentItem]]) -> str:
     """Extract text content from Claude message content structure.
 
-    Supports both custom models (TextContent, ThinkingContent) and official
-    Anthropic SDK types (TextBlock, ThinkingBlock).
+    Supports both Pydantic models and duck-typed objects with 'text' attribute.
     """
     if not content:
         return ""
