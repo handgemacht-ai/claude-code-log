@@ -1862,22 +1862,18 @@ def _render_messages(
             else:
                 # Special chunk: single tool_use/tool_result/thinking item
                 tool_item = chunk
-                item_type = getattr(tool_item, "type", None)
 
                 # Dispatch to appropriate handler based on item type
-                tool_result: Optional[ToolItemResult] = None
-                if isinstance(tool_item, ToolUseContent) or item_type == "tool_use":
+                tool_result: ToolItemResult
+                if isinstance(tool_item, ToolUseContent):
                     tool_result = create_tool_use_message(
                         meta, tool_item, tool_use_context
                     )
-                elif (
-                    isinstance(tool_item, ToolResultContent)
-                    or item_type == "tool_result"
-                ):
+                elif isinstance(tool_item, ToolResultContent):
                     tool_result = create_tool_result_message(
                         meta, tool_item, tool_use_context
                     )
-                elif isinstance(tool_item, ThinkingContent) or item_type == "thinking":
+                elif isinstance(tool_item, ThinkingContent):
                     content = create_thinking_message(meta, tool_item)
                     tool_result = ToolItemResult(
                         message_type=content.message_type,
@@ -1891,10 +1887,6 @@ def _render_messages(
                         content=UnknownMessage(meta, type_name=str(type(tool_item))),
                         message_title="Unknown Content",
                     )
-
-                # Skip if handler returned None (e.g., unsupported image types)
-                if tool_result is None:
-                    continue
 
                 # Generate unique UUID for this tool message
                 # Use tool_use_id if available, otherwise fall back to msg UUID + index

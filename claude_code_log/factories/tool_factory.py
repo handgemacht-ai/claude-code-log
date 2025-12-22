@@ -21,7 +21,6 @@ from ..models import (
     AskUserQuestionItem,
     AskUserQuestionOption,
     BashInput,
-    ContentItem,
     EditInput,
     EditItem,
     ExitPlanModeInput,
@@ -261,29 +260,19 @@ class ToolItemResult:
 
 def create_tool_use_message(
     meta: MessageMeta,
-    tool_item: ContentItem,
+    tool_use: ToolUseContent,
     tool_use_context: dict[str, ToolUseContent],
-) -> Optional[ToolItemResult]:
+) -> ToolItemResult:
     """Create ToolItemResult from a tool_use content item.
 
     Args:
-        tool_item: The tool use content item
+        tool_use: The tool use content item
         tool_use_context: Dict to populate with tool_use_id -> ToolUseContent mapping
-        meta: Optional message metadata
+        meta: Message metadata
 
     Returns:
-        ToolItemResult with tool_use content model, or None if item should be skipped
+        ToolItemResult with tool_use content model
     """
-    # Convert to Pydantic model if necessary (handles duck-typed objects)
-    if not isinstance(tool_item, ToolUseContent):
-        tool_use = ToolUseContent(
-            type="tool_use",
-            id=getattr(tool_item, "id", ""),
-            name=getattr(tool_item, "name", ""),
-            input=getattr(tool_item, "input", {}),
-        )
-    else:
-        tool_use = tool_item
 
     # Parse tool input once, use for both title and message content
     parsed = create_tool_input(tool_use.name, tool_use.input)
@@ -317,29 +306,19 @@ def create_tool_use_message(
 
 def create_tool_result_message(
     meta: MessageMeta,
-    tool_item: ContentItem,
+    tool_result: ToolResultContent,
     tool_use_context: dict[str, ToolUseContent],
-) -> Optional[ToolItemResult]:
+) -> ToolItemResult:
     """Create ToolItemResult from a tool_result content item.
 
     Args:
-        tool_item: The tool result content item
+        tool_result: The tool result content item
         tool_use_context: Dict with tool_use_id -> ToolUseContent mapping
-        meta: Optional message metadata
+        meta: Message metadata
 
     Returns:
-        ToolItemResult with tool_result content model, or None if item should be skipped
+        ToolItemResult with tool_result content model
     """
-    # Convert to Pydantic model if necessary (handles duck-typed objects)
-    if not isinstance(tool_item, ToolResultContent):
-        tool_result = ToolResultContent(
-            type="tool_result",
-            tool_use_id=getattr(tool_item, "tool_use_id", ""),
-            content=getattr(tool_item, "content", ""),
-            is_error=getattr(tool_item, "is_error", False),
-        )
-    else:
-        tool_result = tool_item
 
     # Get file_path and tool_name from tool_use context for specialized rendering
     result_file_path: Optional[str] = None

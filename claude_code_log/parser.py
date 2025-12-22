@@ -11,28 +11,14 @@ For transcript entry and content item creation, see factories/.
 from datetime import datetime
 from typing import Optional
 
-from .models import ContentItem, ThinkingContent
+from .models import ContentItem, TextContent
 
 
 def extract_text_content(content: Optional[list[ContentItem]]) -> str:
-    """Extract text content from Claude message content structure.
-
-    Supports both Pydantic models and duck-typed objects with 'text' attribute.
-    """
+    """Extract text content from Claude message content structure."""
     if not content:
         return ""
-    text_parts: list[str] = []
-    for item in content:
-        # Skip thinking content
-        if (
-            isinstance(item, ThinkingContent)
-            or getattr(item, "type", None) == "thinking"
-        ):
-            continue
-        # Handle text content
-        if hasattr(item, "text"):
-            text_parts.append(getattr(item, "text"))  # type: ignore[arg-type]
-    return "\n".join(text_parts)
+    return "\n".join(item.text for item in content if isinstance(item, TextContent))
 
 
 def parse_timestamp(timestamp_str: str) -> Optional[datetime]:

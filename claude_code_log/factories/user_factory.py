@@ -314,19 +314,15 @@ def create_compacted_summary_message(
     Returns:
         CompactedSummaryMessage if first text is a compacted summary, None otherwise
     """
-    if not content_list or not hasattr(content_list[0], "text"):
+    if not content_list or not isinstance(content_list[0], TextContent):
         return None
 
-    first_text = getattr(content_list[0], "text", "")
+    first_text = content_list[0].text
     if not first_text.startswith(COMPACTED_SUMMARY_PREFIX):
         return None
 
     # Combine all text content for compacted summaries
-    # Use hasattr check to handle duck-typed objects
-    texts = cast(
-        list[str],
-        [item.text for item in content_list if hasattr(item, "text")],  # type: ignore[union-attr]
-    )
+    texts = [item.text for item in content_list if isinstance(item, TextContent)]
     all_text = "\n\n".join(texts)
     return CompactedSummaryMessage(summary_text=all_text, meta=meta)
 
