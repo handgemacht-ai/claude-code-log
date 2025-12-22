@@ -153,51 +153,54 @@ def _format_type_counts(type_counts: dict[str, int]) -> str:
 
 
 class TemplateMessage:
-    """Structured message data for template rendering."""
+    """Structured message data for template rendering.
+
+    This is a lightweight wrapper around MessageContent that adds:
+    - Rendering metadata (message_id, ancestry, token_usage)
+    - Tree structure (children, fold/unfold counts)
+    - Pairing metadata (is_paired, pair_role, pair_duration)
+
+    All identity/context fields come from meta (timestamp, session_id, etc.)
+    and content (tool_use_id, has_markdown, etc.).
+    """
 
     def __init__(
         self,
-        message_type: str,
-        raw_timestamp: Optional[str] = None,
-        session_summary: Optional[str] = None,
-        session_id: Optional[str] = None,
-        token_usage: Optional[str] = None,
-        tool_use_id: Optional[str] = None,
-        title_hint: Optional[str] = None,
+        content: "MessageContent",
+        meta: "MessageMeta",
+        *,  # Force keyword arguments after this
         message_title: Optional[str] = None,
+        token_usage: Optional[str] = None,
         message_id: Optional[str] = None,
         ancestry: Optional[list[str]] = None,
         has_children: bool = False,
         uuid: Optional[str] = None,
-        parent_uuid: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        is_sidechain: bool = False,
-        content: Optional["MessageContent"] = None,
+        session_summary: Optional[str] = None,
     ):
-        self.type = message_type
-        # Structured content for rendering
+        # Required: content and meta
         self.content = content
-        # Shortcut to content.meta for transition period
-        self.meta = content.meta if content else None
-        self.is_sidechain = is_sidechain
-        self.raw_timestamp = raw_timestamp
+        self.meta = meta
+
         # Display title for message header (capitalized, with decorations)
+        # Falls back to content.message_type if not provided
         self.message_title = (
-            message_title if message_title is not None else message_type.title()
+            message_title
+            if message_title is not None
+            else content.message_type.replace("_", " ").replace("-", " ").title()
         )
-        self.session_summary = session_summary
-        self.session_id = session_id
+
+        # Rendering metadata
         self.token_usage = token_usage
-        self.tool_use_id = tool_use_id
-        self.title_hint = title_hint
         self.message_id = message_id
         self.ancestry = ancestry or []
         self.has_children = has_children
-        self.uuid = uuid
-        self.parent_uuid = parent_uuid
-        self.agent_id = agent_id  # Agent ID for sidechain messages and Task results
+        # uuid can differ from meta.uuid (e.g., for chunks: "{uuid}-chunk-{idx}")
+        self.uuid = uuid if uuid is not None else meta.uuid
+        self.session_summary = session_summary
+
         # Raw text content for deduplication (sidechain assistants vs Task results)
         self.raw_text_content: Optional[str] = None
+
         # Fold/unfold counts
         self.immediate_children_count = 0  # Direct children only
         self.total_descendants_count = 0  # All descendants recursively
@@ -206,22 +209,66 @@ class TemplateMessage:
             str, int
         ] = {}  # {"assistant": 2, "tool_use": 3}
         self.total_descendants_by_type: dict[str, int] = {}  # All descendants by type
+
         # Pairing metadata
         self.is_paired = False
         self.pair_role: Optional[str] = None  # "pair_first", "pair_last", "pair_middle"
         self.pair_duration: Optional[str] = None  # Duration for pair_last messages
-        # Children for tree-based rendering (future use)
+
+        # Children for tree-based rendering
         self.children: list["TemplateMessage"] = []
+
+    # -- Properties derived from content/meta --
+
+    @property
+    def type(self) -> str:
+        """Get message type from content."""
+        return self.content.message_type
 
     @property
     def is_session_header(self) -> bool:
-        """Check if this message is a session header (derived from content type)."""
+        """Check if this message is a session header."""
         return isinstance(self.content, SessionHeaderMessage)
 
     @property
     def has_markdown(self) -> bool:
-        """Check if this message has markdown content (derived from content type)."""
-        return self.content.has_markdown if self.content else False
+        """Check if this message has markdown content."""
+        return self.content.has_markdown
+
+    @property
+    def session_id(self) -> str:
+        """Get session_id from meta."""
+        return self.meta.session_id
+
+    @property
+    def parent_uuid(self) -> Optional[str]:
+        """Get parent_uuid from meta."""
+        return self.meta.parent_uuid
+
+    @property
+    def agent_id(self) -> Optional[str]:
+        """Get agent_id from meta."""
+        return self.meta.agent_id
+
+    @property
+    def is_sidechain(self) -> bool:
+        """Check if this is a sidechain message."""
+        return self.meta.is_sidechain
+
+    @property
+    def tool_use_id(self) -> Optional[str]:
+        """Get tool_use_id from content (if ToolUseMessage or ToolResultMessage)."""
+        return getattr(self.content, "tool_use_id", None)
+
+    @property
+    def title_hint(self) -> Optional[str]:
+        """Generate title hint from tool_use_id."""
+        tool_id = self.tool_use_id
+        if tool_id:
+            # Escape for HTML attribute
+            escaped = tool_id.replace("&", "&amp;").replace('"', "&quot;")
+            return f"ID: {escaped}"
+        return None
 
     def get_immediate_children_label(self) -> str:
         """Generate human-readable label for immediate children."""
@@ -441,9 +488,9 @@ def generate_template_messages(
                 if getattr(msg, "sessionId", None) not in warmup_session_ids
             ]
 
-    # Pre-process to find and attach session summaries
+    # Pre-process to find session summaries
     with log_timing("Session summary processing", t_start):
-        prepare_session_summaries(messages)
+        session_summaries = prepare_session_summaries(messages)
 
     # Filter messages (removes summaries, warmup, empty, etc.)
     with log_timing("Filter messages", t_start):
@@ -452,7 +499,7 @@ def generate_template_messages(
     # Pass 1: Collect session metadata and token tracking
     with log_timing("Collect session info", t_start):
         sessions, session_order, show_tokens_for_message = _collect_session_info(
-            filtered_messages
+            filtered_messages, session_summaries
         )
 
     # Pass 2: Render messages to TemplateMessage objects
@@ -512,10 +559,11 @@ def generate_template_messages(
 # -- Session Utilities --------------------------------------------------------
 
 
-def prepare_session_summaries(messages: list[TranscriptEntry]) -> None:
-    """Pre-process messages to find and attach session summaries.
+def prepare_session_summaries(messages: list[TranscriptEntry]) -> dict[str, str]:
+    """Extract session summaries from messages.
 
-    Modifies messages in place by attaching _session_summary attribute.
+    Returns:
+        Dict mapping session_id to summary text.
     """
     session_summaries: dict[str, str] = {}
     uuid_to_session: dict[str, str] = {}
@@ -546,12 +594,7 @@ def prepare_session_summaries(messages: list[TranscriptEntry]) -> None:
             ):
                 session_summaries[uuid_to_session_backup[leaf_uuid]] = message.summary
 
-    # Attach summaries to messages
-    for message in messages:
-        if hasattr(message, "sessionId"):
-            session_id = getattr(message, "sessionId", "")
-            if session_id in session_summaries:
-                setattr(message, "_session_summary", session_summaries[session_id])
+    return session_summaries
 
 
 def prepare_session_navigation(
@@ -659,15 +702,9 @@ def _process_system_message(
     title = message.message_title() or "System"
 
     return TemplateMessage(
-        message_type="system",
-        raw_timestamp=meta.timestamp,
-        session_id=meta.session_id,
+        message,
+        meta,
         message_title=title,
-        message_id=None,  # Will be assigned by _build_message_hierarchy
-        ancestry=[],  # Will be assigned by _build_message_hierarchy
-        uuid=meta.uuid,
-        parent_uuid=meta.parent_uuid,
-        content=message,
     )
 
 
@@ -986,13 +1023,15 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
 
                 # Calculate duration between pair messages
                 try:
-                    if msg.raw_timestamp and pair_last.raw_timestamp:
+                    first_ts = msg.meta.timestamp if msg.meta else None
+                    last_ts = pair_last.meta.timestamp if pair_last.meta else None
+                    if first_ts and last_ts:
                         # Parse ISO timestamps
                         first_time = datetime.fromisoformat(
-                            msg.raw_timestamp.replace("Z", "+00:00")
+                            first_ts.replace("Z", "+00:00")
                         )
                         last_time = datetime.fromisoformat(
-                            pair_last.raw_timestamp.replace("Z", "+00:00")
+                            last_ts.replace("Z", "+00:00")
                         )
                         duration = last_time - first_time
 
@@ -1497,6 +1536,7 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
 
 def _collect_session_info(
     messages: list[TranscriptEntry],
+    session_summaries: dict[str, str],
 ) -> tuple[
     dict[str, dict[str, Any]],  # sessions
     list[str],  # session_order
@@ -1514,6 +1554,7 @@ def _collect_session_info(
 
     Args:
         messages: Pre-filtered list of transcript entries
+        session_summaries: Dict mapping session_id to summary text
 
     Returns:
         Tuple containing:
@@ -1547,7 +1588,7 @@ def _collect_session_info(
 
         # Initialize session if new
         if session_id not in sessions:
-            current_session_summary = getattr(message, "_session_summary", None)
+            current_session_summary = session_summaries.get(session_id)
 
             # Get first user message content for preview
             first_user_message = ""
@@ -1707,36 +1748,36 @@ def _render_messages(
 
         # Get session info
         session_id = getattr(message, "sessionId", "unknown")
-        session_summary = getattr(message, "_session_summary", None)
+        session_summary = sessions.get(session_id, {}).get("summary")
 
         # Add session header if this is a new session
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
-            current_session_summary = sessions.get(session_id, {}).get("summary")
+            current_session_summary = session_summary
             session_title = (
                 f"{current_session_summary} • {session_id[:8]}"
                 if current_session_summary
                 else session_id[:8]
             )
 
-            session_header = TemplateMessage(
-                message_type="session_header",
-                raw_timestamp=None,
-                session_summary=current_session_summary,
+            # Create meta with session_id for the session header
+            session_header_meta = MessageMeta(
                 session_id=session_id,
-                message_id=None,
-                ancestry=[],
-                content=SessionHeaderMessage(
-                    MessageMeta.empty(),
-                    title=session_title,
-                    session_id=session_id,
-                    summary=current_session_summary,
-                ),
+                timestamp="",
+                uuid="",
+            )
+            session_header_content = SessionHeaderMessage(
+                session_header_meta,
+                title=session_title,
+                session_id=session_id,
+                summary=current_session_summary,
+            )
+            session_header = TemplateMessage(
+                session_header_content,
+                session_header_meta,
+                session_summary=current_session_summary,
             )
             template_messages.append(session_header)
-
-        # Get timestamp (only for non-summary messages)
-        timestamp = getattr(message, "timestamp", "")
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
@@ -1776,12 +1817,8 @@ def _render_messages(
                 # Extract text for pattern detection
                 chunk_text = extract_text_content(chunk)
 
-                # Determine is_sidechain and content based on message type
-                content_model: Optional[MessageContent] = None
-                chunk_message_type = message_type
-                chunk_is_sidechain = getattr(message, "isSidechain", False)
-
                 # Dispatch to user or assistant parser based on effective_type
+                content_model: Optional[MessageContent] = None
                 # (user message parsing handles all type detection internally)
                 if effective_type == "user":
                     content_model = create_user_message(
@@ -1803,48 +1840,34 @@ def _render_messages(
                         items=content_model.items, meta=meta
                     )
 
-                # Get message_type and message_title from content_model
-                if content_model is not None:
-                    chunk_message_type = content_model.message_type
-                    message_title = content_model.message_title()
-                    # Override for sidechain assistant messages
-                    if chunk_is_sidechain and isinstance(
-                        content_model, AssistantTextMessage
-                    ):
-                        message_title = "Sub-assistant"
-                else:
-                    # Fallback for unknown/empty content
-                    # MessageType inherits from str, so we can use it directly
-                    chunk_message_type = str(message_type)
-                    message_title = chunk_message_type.title()
-
-                # Skip empty chunks
-                if not chunk:
+                # Skip empty chunks or when no content model was created
+                if not chunk or content_model is None:
                     continue
+
+                # Get message_title from content_model
+                message_title = content_model.message_title()
+                # Override for sidechain assistant messages
+                if meta.is_sidechain and isinstance(
+                    content_model, AssistantTextMessage
+                ):
+                    message_title = "Sub-assistant"
 
                 # Only show token usage on first chunk
                 chunk_token_usage = token_usage_str if not token_shown else None
                 token_shown = True
 
                 # Generate UUID for this chunk (append index if multiple chunks)
-                chunk_uuid = getattr(message, "uuid", None)
-                if chunk_uuid and len(chunks) > 1:
-                    chunk_uuid = f"{chunk_uuid}-chunk-{chunk_idx}"
+                chunk_uuid: Optional[str] = None
+                if len(chunks) > 1:
+                    chunk_uuid = f"{meta.uuid}-chunk-{chunk_idx}"
 
                 template_message = TemplateMessage(
-                    message_type=chunk_message_type,
-                    raw_timestamp=timestamp,
-                    session_summary=session_summary,
-                    session_id=session_id,
-                    token_usage=chunk_token_usage,
+                    content_model,
+                    meta,
                     message_title=message_title,
-                    message_id=None,  # Will be assigned by _build_message_hierarchy
-                    ancestry=[],  # Will be assigned by _build_message_hierarchy
-                    agent_id=getattr(message, "agentId", None),
+                    token_usage=chunk_token_usage,
                     uuid=chunk_uuid,
-                    parent_uuid=getattr(message, "parentUuid", None),
-                    is_sidechain=chunk_is_sidechain,
-                    content=content_model,
+                    session_summary=session_summary,
                 )
 
                 # Store raw text content for potential future use
@@ -1855,7 +1878,6 @@ def _render_messages(
             else:
                 # Special chunk: single tool_use/tool_result/thinking item
                 tool_item = chunk
-                tool_timestamp = getattr(message, "timestamp", "")
 
                 # Handle both custom types and Anthropic types
                 item_type = getattr(tool_item, "type", None)
@@ -1892,9 +1914,6 @@ def _render_messages(
                 if tool_result is None:
                     continue
 
-                # Preserve sidechain context for tool/thinking content
-                tool_is_sidechain = getattr(message, "isSidechain", False)
-
                 # Generate unique UUID for this tool message
                 # Use tool_use_id if available, otherwise fall back to msg UUID + index
                 message_uuid = getattr(message, "uuid", "no-uuid")
@@ -1904,20 +1923,16 @@ def _render_messages(
                     else f"{message_uuid}-tool-{len(template_messages)}"
                 )
 
+                # Skip if no content (shouldn't happen, but be safe)
+                if tool_result.content is None:
+                    continue
+
                 tool_template_message = TemplateMessage(
-                    message_type=tool_result.message_type,
-                    raw_timestamp=tool_timestamp,
-                    session_summary=session_summary,
-                    session_id=session_id,
-                    tool_use_id=tool_result.tool_use_id,
-                    title_hint=tool_result.title_hint,
+                    tool_result.content,
+                    meta,
                     message_title=tool_result.message_title,
-                    message_id=None,  # Will be assigned by _build_message_hierarchy
-                    ancestry=[],  # Will be assigned by _build_message_hierarchy
-                    agent_id=getattr(message, "agentId", None),
                     uuid=tool_uuid,
-                    is_sidechain=tool_is_sidechain,
-                    content=tool_result.content,  # Structured content model
+                    session_summary=session_summary,
                 )
 
                 # Store raw text for Task result deduplication
@@ -2075,8 +2090,6 @@ class Renderer:
         Returns:
             Formatted string (e.g., HTML), or empty string if no handler found.
         """
-        if message.content is None:
-            return ""
         for cls in type(message.content).__mro__:
             if cls is object:
                 break

@@ -183,7 +183,7 @@ class HtmlRenderer(Renderer):
             # Update current message UUID for timing tracking
             set_timing_var("_current_msg_uuid", msg.uuid)
             html = self.format_content(msg)
-            formatted_ts = format_timestamp(msg.raw_timestamp)
+            formatted_ts = format_timestamp(msg.meta.timestamp if msg.meta else None)
             flat.append((msg, html, formatted_ts))
             for child in msg.children:
                 visit(child)

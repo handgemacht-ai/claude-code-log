@@ -105,6 +105,15 @@ class MessageContent:
 
     meta: MessageMeta
 
+    @property
+    def message_type(self) -> str:
+        """Return the message type identifier for this content.
+
+        Subclasses MUST override this to return their specific type.
+        This is used for CSS classes, filtering, and type-based rendering.
+        """
+        raise NotImplementedError("Subclasses must implement message_type property")
+
     def message_title(self) -> Optional[str]:
         """Return a title for this message content, or None for default behavior.
 

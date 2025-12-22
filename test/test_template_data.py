@@ -11,6 +11,14 @@ from claude_code_log.renderer import (
     TemplateProject,
     TemplateSummary,
 )
+from claude_code_log.models import (
+    MessageMeta,
+    UserTextMessage,
+    AssistantTextMessage,
+    SessionHeaderMessage,
+    ToolUseMessage,
+    ToolUseContent,
+)
 
 
 class TestTemplateMessage:
@@ -18,30 +26,38 @@ class TestTemplateMessage:
 
     def test_template_message_creation(self):
         """Test creating a TemplateMessage with all fields."""
-        msg = TemplateMessage(
-            message_type="user",
-            raw_timestamp="2025-06-14T10:00:00Z",
+        meta = MessageMeta(
+            session_id="test-session",
+            timestamp="2025-06-14T10:00:00Z",
+            uuid="test-uuid",
         )
+        content = UserTextMessage(meta=meta)
+        msg = TemplateMessage(content, meta)
 
         assert msg.type == "user"
-        assert msg.raw_timestamp == "2025-06-14T10:00:00Z"
+        assert msg.meta.timestamp == "2025-06-14T10:00:00Z"
         assert msg.message_title == "User"
 
     def test_template_message_title_capitalization(self):
         """Test that message_title properly capitalizes message types."""
-        test_cases = [
-            ("user", "User"),
-            ("assistant", "Assistant"),
-            ("system", "System"),
-            ("summary", "Summary"),
-        ]
+        meta = MessageMeta.empty()
 
-        for msg_type, expected_display in test_cases:
-            msg = TemplateMessage(
-                message_type=msg_type,
-                raw_timestamp=None,
-            )
-            assert msg.message_title == expected_display
+        # Test UserTextMessage
+        user_content = UserTextMessage(meta=meta)
+        user_msg = TemplateMessage(user_content, meta)
+        assert user_msg.message_title == "User"
+
+        # Test AssistantTextMessage
+        assistant_content = AssistantTextMessage(meta=meta)
+        assistant_msg = TemplateMessage(assistant_content, meta)
+        assert assistant_msg.message_title == "Assistant"
+
+        # Test SessionHeaderMessage (for session type)
+        session_content = SessionHeaderMessage(
+            meta=meta, title="Test Session", session_id="test-id"
+        )
+        session_msg = TemplateMessage(session_content, meta)
+        assert session_msg.message_title == "Session Header"
 
 
 class TestTemplateProject:
@@ -370,17 +386,41 @@ class TestTemplateMessageTree:
     """Test TemplateMessage tree building and flatten functionality."""
 
     def _create_message(
-        self, msg_type: str, msg_id: str | None = None, ancestry: list | None = None
+        self,
+        msg_type: str,
+        msg_id: str | None = None,
+        ancestry: list[str] | None = None,
     ) -> TemplateMessage:
         """Helper to create a minimal TemplateMessage for testing."""
-        msg = TemplateMessage(
-            message_type=msg_type,
-            raw_timestamp="2025-06-14T10:00:00Z",
+        meta = MessageMeta(
+            session_id="test-session",
+            timestamp="2025-06-14T10:00:00Z",
+            uuid=msg_id or "test-uuid",
         )
-        if msg_id:
-            msg.message_id = msg_id
-        if ancestry:
-            msg.ancestry = ancestry
+
+        # Create appropriate content based on message type
+        if msg_type == "user":
+            content = UserTextMessage(meta=meta)
+        elif msg_type == "assistant":
+            content = AssistantTextMessage(meta=meta)
+        elif msg_type == "tool_use":
+            content = ToolUseMessage(
+                meta=meta,
+                input=ToolUseContent(
+                    type="tool_use", id="test-id", name="TestTool", input={}
+                ),
+                tool_use_id="test-id",
+                tool_name="TestTool",
+            )
+        elif msg_type == "session":
+            content = SessionHeaderMessage(
+                meta=meta, title="Test Session", session_id="test-session"
+            )
+        else:
+            # Fallback to UserTextMessage for unknown types
+            content = UserTextMessage(meta=meta)
+
+        msg = TemplateMessage(content, meta, message_id=msg_id, ancestry=ancestry)
         return msg
 
     def test_flatten_single_message(self):
@@ -524,33 +564,58 @@ class TestTreeBuildingIntegration:
     def test_flatten_roundtrip_preserves_count(self):
         """Test that flatten of built tree gives same count as input."""
         # Create a manual tree and verify flatten returns all messages
+        meta_session = MessageMeta(
+            session_id="session-1",
+            timestamp="2025-06-14T10:00:00Z",
+            uuid="uuid-session",
+        )
+        session_content = SessionHeaderMessage(
+            meta=meta_session, title="Test Session", session_id="session-1"
+        )
         root = TemplateMessage(
-            message_type="session",
-            raw_timestamp="2025-06-14T10:00:00Z",
+            session_content, meta_session, message_id="session-1", ancestry=[]
         )
-        root.message_id = "session-1"
-        root.ancestry = []
 
+        meta_user = MessageMeta(
+            session_id="session-1",
+            timestamp="2025-06-14T10:00:01Z",
+            uuid="uuid-1",
+        )
+        user_content = UserTextMessage(meta=meta_user)
         user = TemplateMessage(
-            message_type="user",
-            raw_timestamp="2025-06-14T10:00:01Z",
+            user_content, meta_user, message_id="d-1", ancestry=["session-1"]
         )
-        user.message_id = "d-1"
-        user.ancestry = ["session-1"]
 
+        meta_assistant = MessageMeta(
+            session_id="session-1",
+            timestamp="2025-06-14T10:00:02Z",
+            uuid="uuid-2",
+        )
+        assistant_content = AssistantTextMessage(meta=meta_assistant)
         assistant = TemplateMessage(
-            message_type="assistant",
-            raw_timestamp="2025-06-14T10:00:02Z",
+            assistant_content,
+            meta_assistant,
+            message_id="d-2",
+            ancestry=["session-1", "d-1"],
         )
-        assistant.message_id = "d-2"
-        assistant.ancestry = ["session-1", "d-1"]
 
-        tool = TemplateMessage(
-            message_type="tool_use",
-            raw_timestamp="2025-06-14T10:00:03Z",
+        meta_tool = MessageMeta(
+            session_id="session-1",
+            timestamp="2025-06-14T10:00:03Z",
+            uuid="uuid-3",
         )
-        tool.message_id = "d-3"
-        tool.ancestry = ["session-1", "d-1", "d-2"]
+        tool_content = ToolUseMessage(
+            meta=meta_tool,
+            input=ToolUseContent(type="tool_use", id="d-3", name="TestTool", input={}),
+            tool_use_id="d-3",
+            tool_name="TestTool",
+        )
+        tool = TemplateMessage(
+            tool_content,
+            meta_tool,
+            message_id="d-3",
+            ancestry=["session-1", "d-1", "d-2"],
+        )
 
         # Build tree manually
         assistant.children = [tool]
