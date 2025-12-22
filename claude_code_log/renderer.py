@@ -43,6 +43,7 @@ from .factories import (
     as_user_entry,
     create_assistant_message,
     create_meta,
+    create_system_message,
     create_thinking_message,
     create_tool_result_message,
     create_tool_use_message,
@@ -649,49 +650,6 @@ def prepare_session_navigation(
         )
 
     return session_nav
-
-
-# -- Message Processing Functions ---------------------------------------------
-
-
-def _process_system_message(
-    transcript: SystemTranscriptEntry,
-) -> Optional[TemplateMessage]:
-    """Process a system transcript entry into a TemplateMessage.
-
-    Handles:
-    - Hook summaries (subtype="stop_hook_summary")
-    - Other system messages with level-specific styling (info, warning, error)
-
-    Args:
-        transcript: The system transcript entry to process
-
-    Returns:
-        TemplateMessage, or None if the message should be skipped
-
-    Note: Slash command messages (<command-name>, <local-command-stdout>) are user messages,
-    not system messages. They are handled by _process_command_message and
-    _process_local_command_output in the main processing loop.
-    """
-    from .factories import create_system_message
-
-    # Create structured message content (with meta attached)
-    message = create_system_message(transcript)
-    if message is None:
-        return None
-
-    # Get metadata from the message content
-    meta = message.meta
-    assert meta is not None, "create_system_message should always set meta"
-
-    # Get title from message (uses message_title() method)
-    title = message.message_title() or "System"
-
-    return TemplateMessage(
-        message,
-        meta,
-        message_title=title,
-    )
 
 
 # Type alias for chunk output: either a list of regular items or a single special item
@@ -1677,11 +1635,17 @@ def _render_messages(
     for message in messages:
         message_type = message.type
 
-        # Handle system messages separately (already filtered in pass 1)
+        # Handle system messages (already filtered in pass 1)
         if isinstance(message, SystemTranscriptEntry):
-            system_template_message = _process_system_message(message)
-            if system_template_message:
-                template_messages.append(system_template_message)
+            system_content = create_system_message(message)
+            if system_content:
+                template_messages.append(
+                    TemplateMessage(
+                        system_content,
+                        system_content.meta,
+                        message_title=system_content.message_title() or "System",
+                    )
+                )
             continue
 
         # Handle queue-operation 'remove' messages as user messages
