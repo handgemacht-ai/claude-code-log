@@ -175,7 +175,6 @@ class TemplateMessage:
         ancestry: Optional[list[str]] = None,
         has_children: bool = False,
         uuid: Optional[str] = None,
-        session_summary: Optional[str] = None,
     ):
         # Required: content and meta
         self.content = content
@@ -196,7 +195,6 @@ class TemplateMessage:
         self.has_children = has_children
         # uuid can differ from meta.uuid (e.g., for chunks: "{uuid}-chunk-{idx}")
         self.uuid = uuid if uuid is not None else meta.uuid
-        self.session_summary = session_summary
 
         # Raw text content for deduplication (sidechain assistants vs Task results)
         self.raw_text_content: Optional[str] = None
@@ -1775,7 +1773,6 @@ def _render_messages(
             session_header = TemplateMessage(
                 session_header_content,
                 session_header_meta,
-                session_summary=current_session_summary,
             )
             template_messages.append(session_header)
 
@@ -1867,7 +1864,6 @@ def _render_messages(
                     message_title=message_title,
                     token_usage=chunk_token_usage,
                     uuid=chunk_uuid,
-                    session_summary=session_summary,
                 )
 
                 # Store raw text content for potential future use
@@ -1932,7 +1928,6 @@ def _render_messages(
                     meta,
                     message_title=tool_result.message_title,
                     uuid=tool_uuid,
-                    session_summary=session_summary,
                 )
 
                 # Store raw text for Task result deduplication
