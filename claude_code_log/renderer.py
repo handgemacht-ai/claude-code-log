@@ -166,7 +166,6 @@ class TemplateMessage:
         token_usage: Optional[str] = None,
         message_id: Optional[str] = None,
         ancestry: Optional[list[str]] = None,
-        has_children: bool = False,
         uuid: Optional[str] = None,
     ):
         # Required: content and meta
@@ -185,7 +184,6 @@ class TemplateMessage:
         self.token_usage = token_usage
         self.message_id = message_id
         self.ancestry = ancestry or []
-        self.has_children = has_children
         # uuid can differ from meta.uuid (e.g., for chunks: "{uuid}-chunk-{idx}")
         self.uuid = uuid if uuid is not None else meta.uuid
 
@@ -225,6 +223,11 @@ class TemplateMessage:
     def has_markdown(self) -> bool:
         """Check if this message has markdown content."""
         return self.content.has_markdown
+
+    @property
+    def has_children(self) -> bool:
+        """Check if this message has any children."""
+        return bool(self.children)
 
     @property
     def session_id(self) -> str:
@@ -1107,10 +1110,9 @@ def _build_message_hierarchy(messages: list[TemplateMessage]) -> None:
 
 
 def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
-    """Mark messages that have children and calculate descendant counts.
+    """Calculate child and descendant counts for messages.
 
     Efficiently calculates:
-    - has_children: Whether message has any children
     - immediate_children_count: Count of direct children only
     - total_descendants_count: Count of all descendants recursively
 
@@ -1145,7 +1147,6 @@ def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
         if immediate_parent_id in message_by_id:
             parent = message_by_id[immediate_parent_id]
             parent.immediate_children_count += 1
-            parent.has_children = True
             # Track by type
             parent.immediate_children_by_type[msg_type] = (
                 parent.immediate_children_by_type.get(msg_type, 0) + 1
