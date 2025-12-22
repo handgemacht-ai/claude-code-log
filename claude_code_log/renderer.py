@@ -1756,7 +1756,7 @@ def _render_messages(
 
         # Process each chunk - regular chunks (list) become text/image messages,
         # special chunks (single item) become tool/thinking messages
-        for chunk_idx, chunk in enumerate(chunks):
+        for chunk in chunks:
             # Regular chunk: list of text/image items
             if isinstance(chunk, list):
                 # Skip text chunks for sidechain user messages
@@ -1806,17 +1806,11 @@ def _render_messages(
                 chunk_token_usage = token_usage_str if not token_shown else None
                 token_shown = True
 
-                # Generate UUID for this chunk (append index if multiple chunks)
-                chunk_uuid: Optional[str] = None
-                if len(chunks) > 1:
-                    chunk_uuid = f"{meta.uuid}-chunk-{chunk_idx}"
-
                 template_message = TemplateMessage(
                     content_model,
                     meta,
                     message_title=message_title,
                     token_usage=chunk_token_usage,
-                    uuid=chunk_uuid,
                 )
 
                 # Store raw text content for potential future use
