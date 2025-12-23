@@ -26,6 +26,7 @@ def create_meta(transcript: BaseTranscriptEntry) -> MessageMeta:
         parent_uuid=transcript.parentUuid,
         # Context fields
         is_sidechain=transcript.isSidechain,
+        is_meta=getattr(transcript, "isMeta", False) or False,
         agent_id=transcript.agentId,
         cwd=transcript.cwd,
         git_branch=transcript.gitBranch,

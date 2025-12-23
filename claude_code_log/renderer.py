@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 from datetime import datetime
 
 from .models import (
-    BaseTranscriptEntry,
     MessageMeta,
     MessageType,
     TranscriptEntry,
@@ -1622,18 +1621,29 @@ def _render_messages(
                 )
             continue
 
+        # Skip summary messages (should be filtered in pass 1, but be defensive)
+        if isinstance(message, SummaryTranscriptEntry):
+            continue
+
         # Handle queue-operation 'remove' messages as user messages
         if isinstance(message, QueueOperationTranscriptEntry):
             message_content = message.content if message.content else []
             message_type = MessageType.QUEUE_OPERATION
+            # QueueOperationTranscriptEntry has limited fields (no uuid, agentId, etc.)
+            meta = MessageMeta(
+                session_id=message.sessionId,
+                timestamp=message.timestamp,
+                uuid="",
+            )
+            effective_type = "user"
         else:
             message_content = message.message.content  # type: ignore
+            meta = create_meta(message)
+            effective_type = message_type
 
         # Track sidechain status for user messages
         # (sidechain user text is skipped to avoid duplicate Task prompts)
-        is_sidechain_user = message_type == MessageType.USER and getattr(
-            message, "isSidechain", False
-        )
+        is_sidechain_user = message_type == MessageType.USER and meta.is_sidechain
 
         # Chunk content: regular items (text/image) accumulate, special items (tool/thinking) separate
         if isinstance(message_content, list):
@@ -1652,26 +1662,8 @@ def _render_messages(
         if not chunks:
             continue
 
-        # Create meta once for all chunks from this message
-        if isinstance(message, BaseTranscriptEntry):
-            meta = create_meta(message)
-        else:
-            # QueueOperationTranscriptEntry has limited fields
-            meta = MessageMeta(
-                session_id=getattr(message, "sessionId", ""),
-                timestamp=getattr(message, "timestamp", ""),
-                uuid="",  # QueueOperationTranscriptEntry has no uuid
-            )
-
-        # Determine effective_type for dispatching to user/assistant parsers
-        # (queue-operation 'remove' messages are treated as user messages)
-        if isinstance(message, QueueOperationTranscriptEntry):
-            effective_type = "user"
-        else:
-            effective_type = message_type
-
         # Get session info
-        session_id = getattr(message, "sessionId", "unknown")
+        session_id = meta.session_id or "unknown"
         session_summary = sessions.get(session_id, {}).get("summary")
 
         # Add session header if this is a new session
@@ -1748,7 +1740,7 @@ def _render_messages(
                         meta,
                         chunk,  # Pass the chunk items
                         chunk_text,  # Pre-extracted text for pattern detection
-                        is_slash_command=getattr(message, "isMeta", False),
+                        is_slash_command=meta.is_meta,
                     )
                 elif effective_type == "assistant":
                     content_model = create_assistant_message(meta, chunk)
@@ -1822,7 +1814,7 @@ def _render_messages(
 
                 # Generate unique UUID for this tool message
                 # Use tool_use_id if available, otherwise fall back to msg UUID + index
-                message_uuid = getattr(message, "uuid", "no-uuid")
+                message_uuid = meta.uuid or "no-uuid"
                 tool_uuid = (
                     tool_result.tool_use_id
                     if tool_result.tool_use_id

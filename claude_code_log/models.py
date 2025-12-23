@@ -69,6 +69,7 @@ class MessageMeta:
 
     # Context fields
     is_sidechain: bool = False
+    is_meta: bool = False  # User slash command (isMeta=True in transcript)
     agent_id: Optional[str] = None
     cwd: str = ""
     git_branch: Optional[str] = None
