@@ -63,85 +63,6 @@ from .renderer_timings import (
 )
 
 
-# -- Helper Functions ---------------------------------------------------------
-
-
-def _format_type_counts(type_counts: dict[str, int]) -> str:
-    """Format type counts into human-readable label.
-
-    Args:
-        type_counts: Dictionary of message type to count
-
-    Returns:
-        Human-readable label like "3 assistant, 4 tools" or "8 messages"
-
-    Examples:
-        {"assistant": 3, "tool_use": 4} -> "3 assistant, 4 tools"
-        {"tool_use": 2, "tool_result": 2} -> "2 tool pairs"
-        {"assistant": 1} -> "1 assistant"
-        {"thinking": 3} -> "3 thoughts"
-    """
-    if not type_counts:
-        return "0 messages"
-
-    # Type name mapping for better readability
-    type_labels = {
-        "assistant": ("assistant", "assistants"),
-        "user": ("user", "users"),
-        "tool_use": ("tool", "tools"),
-        "tool_result": ("result", "results"),
-        "thinking": ("thought", "thoughts"),
-        "system": ("system", "systems"),
-        "system-warning": ("warning", "warnings"),
-        "system-error": ("error", "errors"),
-        "system-info": ("info", "infos"),
-        "sidechain": ("task", "tasks"),
-    }
-
-    # Handle special case: tool_use and tool_result together = "tool pairs"
-    # Create a modified counts dict that combines tool pairs
-    modified_counts = dict(type_counts)
-    if (
-        "tool_use" in modified_counts
-        and "tool_result" in modified_counts
-        and modified_counts["tool_use"] == modified_counts["tool_result"]
-    ):
-        # Replace tool_use and tool_result with tool_pair
-        pair_count = modified_counts["tool_use"]
-        del modified_counts["tool_use"]
-        del modified_counts["tool_result"]
-        modified_counts["tool_pair"] = pair_count
-
-    # Add tool_pair label
-    type_labels_with_pairs = {
-        **type_labels,
-        "tool_pair": ("tool pair", "tool pairs"),
-    }
-
-    # Build label parts
-    parts: list[str] = []
-    for msg_type, count in sorted(
-        modified_counts.items(), key=lambda x: x[1], reverse=True
-    ):
-        singular, plural = type_labels_with_pairs.get(
-            msg_type, (msg_type, f"{msg_type}s")
-        )
-        label = singular if count == 1 else plural
-        parts.append(f"{count} {label}")
-
-    # Return combined label
-    if len(parts) == 1:
-        return parts[0]
-    elif len(parts) == 2:
-        return f"{parts[0]}, {parts[1]}"
-    else:
-        # For 3+ types, show top 2 and "X more"
-        remaining = sum(type_counts.values()) - sum(
-            type_counts[t] for t in list(type_counts.keys())[:2]
-        )
-        return f"{parts[0]}, {parts[1]}, {remaining} more"
-
-
 # -- Template Classes ---------------------------------------------------------
 
 
@@ -272,29 +193,81 @@ class TemplateMessage:
         """Generate human-readable label for all descendants."""
         return _format_type_counts(self.total_descendants_by_type)
 
-    def flatten(self) -> list["TemplateMessage"]:
-        """Recursively flatten this message and all children into a list.
 
-        Returns a list with this message followed by all descendants in
-        depth-first order. This provides backward compatibility with the
-        flat-list template rendering approach.
-        """
-        result: list["TemplateMessage"] = [self]
-        for child in self.children:
-            result.extend(child.flatten())
-        return result
+def _format_type_counts(type_counts: dict[str, int]) -> str:
+    """Format type counts into human-readable label.
 
-    @staticmethod
-    def flatten_all(messages: list["TemplateMessage"]) -> list["TemplateMessage"]:
-        """Flatten a list of root messages into a single flat list.
+    Args:
+        type_counts: Dictionary of message type to count
 
-        Useful for converting a tree structure back to a flat list for
-        templates that expect the traditional flat message list.
-        """
-        result: list["TemplateMessage"] = []
-        for message in messages:
-            result.extend(message.flatten())
-        return result
+    Returns:
+        Human-readable label like "3 assistant, 4 tools" or "8 messages"
+
+    Examples:
+        {"assistant": 3, "tool_use": 4} -> "3 assistant, 4 tools"
+        {"tool_use": 2, "tool_result": 2} -> "2 tool pairs"
+        {"assistant": 1} -> "1 assistant"
+        {"thinking": 3} -> "3 thoughts"
+    """
+    if not type_counts:
+        return "0 messages"
+
+    # Type name mapping for better readability
+    type_labels = {
+        "assistant": ("assistant", "assistants"),
+        "user": ("user", "users"),
+        "tool_use": ("tool", "tools"),
+        "tool_result": ("result", "results"),
+        "thinking": ("thought", "thoughts"),
+        "system": ("system", "systems"),
+        "system-warning": ("warning", "warnings"),
+        "system-error": ("error", "errors"),
+        "system-info": ("info", "infos"),
+        "sidechain": ("task", "tasks"),
+    }
+
+    # Handle special case: tool_use and tool_result together = "tool pairs"
+    # Create a modified counts dict that combines tool pairs
+    modified_counts = dict(type_counts)
+    if (
+        "tool_use" in modified_counts
+        and "tool_result" in modified_counts
+        and modified_counts["tool_use"] == modified_counts["tool_result"]
+    ):
+        # Replace tool_use and tool_result with tool_pair
+        pair_count = modified_counts["tool_use"]
+        del modified_counts["tool_use"]
+        del modified_counts["tool_result"]
+        modified_counts["tool_pair"] = pair_count
+
+    # Add tool_pair label
+    type_labels_with_pairs = {
+        **type_labels,
+        "tool_pair": ("tool pair", "tool pairs"),
+    }
+
+    # Build label parts
+    parts: list[str] = []
+    for msg_type, count in sorted(
+        modified_counts.items(), key=lambda x: x[1], reverse=True
+    ):
+        singular, plural = type_labels_with_pairs.get(
+            msg_type, (msg_type, f"{msg_type}s")
+        )
+        label = singular if count == 1 else plural
+        parts.append(f"{count} {label}")
+
+    # Return combined label
+    if len(parts) == 1:
+        return parts[0]
+    elif len(parts) == 2:
+        return f"{parts[0]}, {parts[1]}"
+    else:
+        # For 3+ types, show top 2 and "X more"
+        remaining = sum(type_counts.values()) - sum(
+            type_counts[t] for t in list(type_counts.keys())[:2]
+        )
+        return f"{parts[0]}, {parts[1]}, {remaining} more"
 
 
 class TemplateProject:
