@@ -254,7 +254,6 @@ class ToolItemResult:
     content: Optional[MessageContent] = None  # Structured content for rendering
     tool_use_id: Optional[str] = None
     title_hint: Optional[str] = None
-    pending_dedup: Optional[str] = None  # For Task result deduplication
     is_error: bool = False  # For tool_result error state
 
 
@@ -344,23 +343,6 @@ def create_tool_result_message(
         file_path=result_file_path,
     )
 
-    # Retroactive deduplication: if Task result, extract content for later matching
-    pending_dedup: Optional[str] = None
-    if result_tool_name == "Task":
-        # Extract text content from tool result
-        # Note: tool_result.content can be str or list[dict[str, Any]]
-        if isinstance(tool_result.content, str):
-            task_result_content = tool_result.content.strip()
-        else:
-            # Handle list of dicts (tool result format)
-            content_parts: list[str] = []
-            for item in tool_result.content:
-                text_val = item.get("text", "")
-                if isinstance(text_val, str):
-                    content_parts.append(text_val)
-            task_result_content = "\n".join(content_parts).strip()
-        pending_dedup = task_result_content if task_result_content else None
-
     escaped_id = escape_html(tool_result.tool_use_id)
     tool_title_hint = f"ID: {escaped_id}"
     tool_message_title = "Error" if tool_result.is_error else ""
@@ -371,6 +353,5 @@ def create_tool_result_message(
         content=content_model,
         tool_use_id=tool_result.tool_use_id,
         title_hint=tool_title_hint,
-        pending_dedup=pending_dedup,
         is_error=tool_result.is_error or False,
     )

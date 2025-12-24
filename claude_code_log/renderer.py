@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Render Claude transcript data to HTML format."""
 
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,7 @@ from .models import (
     SessionHeaderMessage,
     SlashCommandMessage,
     SystemMessage,
+    ToolResultMessage,
     UnknownMessage,
     UserSlashCommandMessage,
     UserSteeringMessage,
@@ -519,6 +521,12 @@ def generate_template_messages(
     with log_timing("Build message tree", t_start):
         root_messages = _build_message_tree(template_messages)
 
+    # Clean up sidechain duplicates on the tree structure
+    # - Remove first UserTextMessage (duplicate of Task input prompt)
+    # - Replace last AssistantTextMessage (duplicate of Task output) with DedupNotice
+    with log_timing("Cleanup sidechain duplicates", t_start):
+        _cleanup_sidechain_duplicates(root_messages)
+
     return root_messages, session_nav
 
 
@@ -984,11 +992,12 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
     - Level 1: User messages
     - Level 2: System commands/errors, Assistant, Thinking
     - Level 3: Tool use/result, System info/warning (nested under assistant)
-    - Level 4: Sidechain assistant/thinking (nested under Task tool result)
+    - Level 4: Sidechain user/assistant/thinking (nested under Task tool result)
     - Level 5: Sidechain tools (nested under sidechain assistant)
 
-    Note: Sidechain user messages (Sub-assistant prompts) are now skipped entirely
-    since they duplicate the Task tool input prompt.
+    Note: Sidechain user messages (duplicate of Task input prompt) and the last
+    sidechain assistant (duplicate of Task output) are cleaned up from the tree
+    by _cleanup_sidechain_duplicates after tree building.
 
     Returns:
         Integer hierarchy level (1-5, session headers are 0)
@@ -996,10 +1005,9 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
     msg_type = msg.type
     is_sidechain = msg.is_sidechain
 
-    # User messages at level 1 (under session)
-    # Note: sidechain user messages are skipped before reaching this function
-    if msg_type == "user" and not is_sidechain:
-        return 1
+    # User messages at level 1 (under session), level 4 for sidechain
+    if msg_type == "user":
+        return 4 if is_sidechain else 1
 
     # System info/warning at level 3 (tool-related, e.g., hook notifications)
     # Get level from SystemMessage if available
@@ -1182,6 +1190,117 @@ def _build_message_tree(messages: list[TemplateMessage]) -> list[TemplateMessage
     return root_messages
 
 
+# Pattern to match agentId lines added to Task results for resume functionality
+# e.g., "agentId: a7c9965 (for resuming to continue this agent's work if needed)"
+_AGENT_ID_LINE_PATTERN = re.compile(r"\n*agentId:\s*\w+\s*\([^)]*\)\s*$", re.IGNORECASE)
+
+
+def _normalize_for_dedup(text: str) -> str:
+    """Normalize text for deduplication matching.
+
+    Strips trailing agentId lines that may be added to Task results
+    but not present in the sidechain assistant's final message.
+    """
+    return _AGENT_ID_LINE_PATTERN.sub("", text).strip()
+
+
+def _extract_task_result_text(tool_result_message: ToolResultMessage) -> Optional[str]:
+    """Extract text content from a Task tool result for deduplication matching.
+
+    Args:
+        tool_result_message: The ToolResultMessage containing Task output
+
+    Returns:
+        The extracted text content (normalized), or None if extraction fails
+    """
+    # Get the ToolResultContent from the output
+    output = tool_result_message.output
+    if not isinstance(output, ToolResultContent):
+        return None
+
+    content = output.content
+    if isinstance(content, str):
+        text = content.strip() if content else None
+        return _normalize_for_dedup(text) if text else None
+
+    # Handle list of dicts (tool result format)
+    content_parts: list[str] = []
+    for item in content:
+        text_val = item.get("text", "")
+        if isinstance(text_val, str):
+            content_parts.append(text_val)
+    result = "\n".join(content_parts).strip()
+    return _normalize_for_dedup(result) if result else None
+
+
+def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
+    """Clean up duplicate content in sidechains after tree is built.
+
+    For each Task tool_result with sidechain children:
+    - Remove the first UserTextMessage (duplicate of Task input prompt)
+    - Replace the last AssistantTextMessage matching Task result with a DedupNotice
+
+    Matching uses raw_text_content (set during _render_messages) and Task result
+    text extracted via _extract_task_result_text().
+
+    Args:
+        root_messages: List of root messages with children populated
+    """
+
+    def process_message(message: TemplateMessage) -> None:
+        """Recursively process a message and its children."""
+        # Recursively process children first (depth-first)
+        for child in message.children:
+            process_message(child)
+
+        # Check if this is a Task tool_result with sidechain children
+        if not (
+            message.type == "tool_result"
+            and isinstance(message.content, ToolResultMessage)
+            and message.content.tool_name == "Task"
+            and message.children
+        ):
+            return
+
+        children = message.children
+
+        # Remove first sidechain UserTextMessage (duplicate of Task input prompt)
+        if children and children[0].type == "user" and children[0].is_sidechain:
+            children.pop(0)
+
+        # Find and replace last sidechain AssistantTextMessage matching Task output
+        task_result_text = _extract_task_result_text(message.content)
+        if not task_result_text:
+            return
+
+        for i in range(len(children) - 1, -1, -1):
+            child = children[i]
+            child_text = (
+                _normalize_for_dedup(child.raw_text_content)
+                if child.raw_text_content
+                else None
+            )
+            if (
+                child.type == "assistant"
+                and child.is_sidechain
+                and child_text
+                and child_text == task_result_text
+            ):
+                # Replace with dedup notice pointing to the Task result
+                child.content = DedupNoticeMessage(
+                    MessageMeta.empty(),
+                    notice_text="Task summary — see result above",
+                    target_uuid=message.uuid,
+                    target_message_id=message.message_id,
+                    original_text=child_text,
+                )
+                child.raw_text_content = None
+                break
+
+    for root in root_messages:
+        process_message(root)
+
+
 # -- Message Reordering -------------------------------------------------------
 
 
@@ -1256,9 +1375,9 @@ def _reorder_sidechain_template_messages(
     order based on when each agent finishes. This function reorders messages so that
     each sidechain's messages appear right after the Task result that references them.
 
-    This function also handles deduplication: the last sidechain assistant message
-    typically contains the same content as the Task result, so we replace it with
-    a forward link to avoid showing the same content twice.
+    Note: Deduplication of sidechain content (first user message = Task input,
+    last assistant message = Task output) is handled later by _cleanup_sidechain_duplicates
+    after the tree structure is built.
 
     This must be called AFTER _reorder_paired_messages, since that function moves
     tool_results next to their tool_uses, which changes where the agentId-bearing
@@ -1291,7 +1410,6 @@ def _reorder_sidechain_template_messages(
         return messages
 
     # Second pass: insert sidechains after their Task result messages
-    # Also perform deduplication of sidechain assistants vs Task results
     result: list[TemplateMessage] = []
     used_agents: set[str] = set()
 
@@ -1311,40 +1429,9 @@ def _reorder_sidechain_template_messages(
             and agent_id in sidechain_map
             and agent_id not in used_agents
         ):
-            sidechain_msgs = sidechain_map[agent_id]
-
-            # Deduplicate: find the last sidechain assistant with text content
-            # that matches the Task result content
-            task_result_content = (
-                message.raw_text_content.strip() if message.raw_text_content else None
-            )
-            if task_result_content and message.type == MessageType.TOOL_RESULT:
-                # Find the last assistant message in this sidechain
-                for sidechain_msg in reversed(sidechain_msgs):
-                    sidechain_text = (
-                        sidechain_msg.raw_text_content.strip()
-                        if sidechain_msg.raw_text_content
-                        else None
-                    )
-                    if (
-                        sidechain_msg.type == MessageType.ASSISTANT
-                        and sidechain_text
-                        and sidechain_text == task_result_content
-                    ):
-                        # Replace with note pointing to the Task result
-                        sidechain_msg.content = DedupNoticeMessage(
-                            MessageMeta.empty(),
-                            notice_text="Task summary — see result above",
-                            target_uuid=message.uuid,
-                            original_text=sidechain_text,
-                        )
-                        # Mark as deduplicated for potential debugging
-                        sidechain_msg.raw_text_content = None
-                        break
-
             # Insert the sidechain messages for this agent right after this message
             # Note: ancestry will be rebuilt by _build_message_hierarchy() later
-            result.extend(sidechain_msgs)
+            result.extend(sidechain_map[agent_id])
             used_agents.add(agent_id)
 
     # Append any sidechains that weren't matched (shouldn't happen normally)
@@ -1641,10 +1728,6 @@ def _render_messages(
             meta = create_meta(message)
             effective_type = message_type
 
-        # Track sidechain status for user messages
-        # (sidechain user text is skipped to avoid duplicate Task prompts)
-        is_sidechain_user = message_type == MessageType.USER and meta.is_sidechain
-
         # Chunk content: regular items (text/image) accumulate, special items (tool/thinking) separate
         if isinstance(message_content, list):
             chunks = chunk_message_content(message_content)  # type: ignore[arg-type]
@@ -1724,11 +1807,6 @@ def _render_messages(
         for chunk in chunks:
             # Regular chunk: list of text/image items
             if isinstance(chunk, list):
-                # Skip text chunks for sidechain user messages
-                # (prompts duplicate Task result; filtering already done in pass 1)
-                if is_sidechain_user:
-                    continue
-
                 # Extract text for pattern detection
                 chunk_text = extract_text_content(chunk)
 
@@ -1778,7 +1856,7 @@ def _render_messages(
                     token_usage=chunk_token_usage,
                 )
 
-                # Store raw text content for potential future use
+                # Store raw text for sidechain deduplication matching
                 template_message.raw_text_content = chunk_text
 
                 template_messages.append(template_message)
@@ -1831,11 +1909,6 @@ def _render_messages(
                     message_title=tool_result.message_title,
                     uuid=tool_uuid,
                 )
-
-                # Store raw text for Task result deduplication
-                # (handled later in _reorder_sidechain_template_messages)
-                if tool_result.pending_dedup is not None:
-                    tool_template_message.raw_text_content = tool_result.pending_dedup
 
                 template_messages.append(tool_template_message)
 
