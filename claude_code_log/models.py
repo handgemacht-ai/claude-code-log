@@ -455,6 +455,9 @@ class UserTextMessage(MessageContent):
         TextContent | ImageContent | IdeNotificationContent
     ] = field(default_factory=list)
 
+    # Cached raw text extracted from items (for dedup matching, simple renderers)
+    raw_text_content: Optional[str] = None
+
     @property
     def message_type(self) -> str:
         return "user"
@@ -500,6 +503,9 @@ class AssistantTextMessage(MessageContent):
     items: list[  # pyright: ignore[reportUnknownVariableType]
         TextContent | ImageContent
     ] = field(default_factory=list)
+
+    # Cached raw text extracted from items (for dedup matching, simple renderers)
+    raw_text_content: Optional[str] = None
 
     @property
     def message_type(self) -> str:

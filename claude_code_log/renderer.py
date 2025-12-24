@@ -109,9 +109,6 @@ class TemplateMessage:
         # uuid can differ from meta.uuid (e.g., for chunks: "{uuid}-chunk-{idx}")
         self.uuid = uuid if uuid is not None else meta.uuid
 
-        # Raw text content for deduplication (sidechain assistants vs Task results)
-        self.raw_text_content: Optional[str] = None
-
         # Fold/unfold counts
         self.immediate_children_count = 0  # Direct children only
         self.total_descendants_count = 0  # All descendants recursively
@@ -1275,11 +1272,9 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
 
         for i in range(len(children) - 1, -1, -1):
             child = children[i]
-            child_text = (
-                _normalize_for_dedup(child.raw_text_content)
-                if child.raw_text_content
-                else None
-            )
+            # Get raw_text_content from content (UserTextMessage/AssistantTextMessage)
+            child_raw = getattr(child.content, "raw_text_content", None)
+            child_text = _normalize_for_dedup(child_raw) if child_raw else None
             if (
                 child.type == "assistant"
                 and child.is_sidechain
@@ -1294,7 +1289,6 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
                     target_message_id=message.message_id,
                     original_text=child_text,
                 )
-                child.raw_text_content = None
                 break
 
     for root in root_messages:
@@ -1855,9 +1849,6 @@ def _render_messages(
                     message_title=message_title,
                     token_usage=chunk_token_usage,
                 )
-
-                # Store raw text for sidechain deduplication matching
-                template_message.raw_text_content = chunk_text
 
                 template_messages.append(template_message)
 
