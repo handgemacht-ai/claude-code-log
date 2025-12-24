@@ -25,11 +25,82 @@ Level 0: Tree roots (messages without ancestry - typically session headers)
 Level 1: User messages
 Level 2: Assistant, System, Thinking
 Level 3: Tool use/result
-Level 4: Sidechain assistant/thinking
+Level 4: Sidechain user/assistant/thinking
 Level 5: Sidechain tools
 ```
 
 **Note:** Tree roots are any messages with empty `ancestry`. This is typically session headers, but in degenerate cases (no session headers), user messages or other top-level messages become roots.
+
+### Sidechain Hierarchy Details (2025-12-24)
+
+Sidechain messages come from **Task tool** invocations (subagent spawning). Key findings from investigating real session data:
+
+#### Where Sidechain Children Attach
+
+Due to **pair reordering** (tool_result is moved right after its corresponding tool_use), sidechain messages become children of the **Task tool_result**, not the tool_use.
+
+#### Agent Type Patterns
+
+Real session data shows two distinct patterns depending on agent type:
+
+**Plan-type agents** (e.g., `-Users-dain-workspace-coderabbit-*`):
+- Start with a **user prompt** (`UserTextMessage` with `isSidechain=true`, `parentUuid=null`)
+- This user prompt duplicates the Task input
+
+Initial tree structure (before cleanup):
+```
+tool_use (Task)      ← 0 children (pair reordering moves tool_result here)
+tool_result (Task)   ← sidechain messages become children here
+  └─ user(sc): UserTextMessage    ← Level 4: duplicate of Task input
+       └─ assistant(sc)           ← Level 4: parented to user(sc)
+       └─ tool_use(sc)            ← Level 5: parented to user(sc)
+       └─ tool_result(sc)         ← Level 5
+```
+
+After cleanup (user prompt removed, children adopted):
+```
+tool_result (Task)
+  └─ assistant(sc)   ← Now direct child of tool_result
+  └─ tool_use(sc)    ← Adopted from removed user(sc)
+  └─ tool_result(sc)
+```
+
+**Explore-type agents** (e.g., `-src-deep-manifest`):
+- Start directly with **assistant** (no user prompt)
+- No cleanup needed for the first message
+
+```
+tool_result (Task)
+  └─ assistant(sc): AssistantTextMessage  ← First child, kept as-is
+  └─ tool_use(sc)
+  └─ tool_result(sc)
+```
+
+#### Child Adoption During Cleanup
+
+When `_cleanup_sidechain_duplicates()` removes a UserTextMessage (the duplicate prompt), it must **adopt the removed message's children** to prevent orphaning Level 5 tool messages:
+
+```python
+# In _cleanup_sidechain_duplicates()
+if (
+    children
+    and children[0].is_sidechain
+    and isinstance(children[0].content, UserTextMessage)
+):
+    removed = children.pop(0)
+    # Adopt orphaned children (tool_use/tool_result from sidechain)
+    if removed.children:
+        children[:0] = removed.children
+```
+
+Without this adoption, the sidechain tool messages would be lost from the tree.
+
+#### Key Insight
+
+The hierarchy level is determined by message **type**, not by `parentUuid`. A sidechain user message (`parentUuid=null`) still appears at Level 4 because:
+1. It has `isSidechain=true`
+2. Its effective parent is determined by the Task tool_result (found via timestamp/session matching)
+3. The tree-building algorithm correctly places it as a child of the Task tool_result
 
 ### Template Rendering (current)
 - Single `{% for message in messages %}` loop over flattened list

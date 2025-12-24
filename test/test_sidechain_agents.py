@@ -197,6 +197,63 @@ def test_sidechain_tool_results_rendered():
         ), "Sidechain user prompts should be skipped"
 
 
+def test_explore_agent_no_user_prompt():
+    """Test Explore-type agents that start with assistant (no user prompt).
+
+    Real-world pattern from -src-deep-manifest project: Explore agents don't have
+    a user prompt message at the start - they begin directly with assistant messages.
+    This differs from Plan-type agents (like in coderabbit) which start with a user
+    prompt that duplicates the Task input.
+
+    The cleanup should handle both patterns correctly:
+    - Plan agents: Remove first UserTextMessage (duplicate prompt)
+    - Explore agents: No UserTextMessage to remove, just process normally
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        # Create main session with Task tool_use (Explore type)
+        main_file = tmpdir_path / "main.jsonl"
+        main_file.write_text(
+            # User request
+            '{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"text","text":"How does the ZIP processing work?"}]},"uuid":"u-0","timestamp":"2025-01-15T15:24:45.000Z"}\n'
+            # Assistant invokes Task (Explore subagent)
+            '{"parentUuid":"u-0","isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_main","type":"message","role":"assistant","content":[{"type":"tool_use","id":"task-explore","name":"Task","input":{"prompt":"Explore ZIP processing","subagent_type":"Explore"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req_main","type":"assistant","uuid":"a-0","timestamp":"2025-01-15T15:24:47.000Z"}\n'
+            # Task result (triggers agent loading)
+            '{"parentUuid":"a-0","isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-explore","content":"ZIP files are processed recursively..."}]},"uuid":"u-1","timestamp":"2025-01-15T15:25:00.000Z","toolUseResult":{"agentId":"explore-agent","content":"ZIP files are processed recursively..."},"agentId":"explore-agent"}\n'
+        )
+
+        # Create Explore-type agent file: starts with ASSISTANT (no user prompt)
+        # This matches real data from -src-deep-manifest/agent-c8d9b115.jsonl
+        agent_file = tmpdir_path / "agent-explore-agent.jsonl"
+        agent_file.write_text(
+            # First message is assistant (NOT user) - Explore agents don't echo the prompt
+            '{"parentUuid":null,"isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","agentId":"explore-agent","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_explore_1","type":"message","role":"assistant","content":[{"type":"text","text":"Let me search for ZIP-related code."},{"type":"tool_use","id":"grep-1","name":"Grep","input":{"pattern":"zip"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":50,"output_tokens":30}},"requestId":"req_explore_1","type":"assistant","uuid":"explore-a-0","timestamp":"2025-01-15T15:24:51.000Z"}\n'
+            # User provides Grep result
+            '{"parentUuid":"explore-a-0","isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","agentId":"explore-agent","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"grep-1","content":"deep_manifest.py:42: def process_zip()"}]},"uuid":"explore-u-0","timestamp":"2025-01-15T15:24:52.000Z"}\n'
+            # Assistant continues with another tool
+            '{"parentUuid":"explore-u-0","isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","agentId":"explore-agent","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_explore_2","type":"message","role":"assistant","content":[{"type":"text","text":"Found it. Let me read the file."},{"type":"tool_use","id":"read-1","name":"Read","input":{"file_path":"deep_manifest.py"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":80,"output_tokens":40}},"requestId":"req_explore_2","type":"assistant","uuid":"explore-a-1","timestamp":"2025-01-15T15:24:53.000Z"}\n'
+            # User provides Read result
+            '{"parentUuid":"explore-a-1","isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","agentId":"explore-agent","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"read-1","content":"def process_zip(path):\\n    with zipfile.ZipFile(path) as zf:\\n        ..."}]},"uuid":"explore-u-1","timestamp":"2025-01-15T15:24:54.000Z"}\n'
+            # Final assistant summary
+            '{"parentUuid":"explore-u-1","isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-explore","version":"2.0.46","gitBranch":"main","agentId":"explore-agent","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_explore_final","type":"message","role":"assistant","content":[{"type":"text","text":"ZIP files are processed recursively..."}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req_explore_final","type":"assistant","uuid":"explore-a-2","timestamp":"2025-01-15T15:24:58.000Z"}\n'
+        )
+
+        messages = load_transcript(main_file)
+        html = generate_html(messages, title="Test Explore Agent")
+
+        # Verify sidechain tool results are rendered (Grep and Read results)
+        assert "deep_manifest.py:42" in html, "Grep tool result should be rendered"
+        assert "def process_zip" in html, "Read tool result should be rendered"
+
+        # Verify assistant messages are rendered
+        assert "Let me search for ZIP-related code" in html
+        assert "Found it. Let me read the file" in html
+
+        # The final assistant message matches Task result, should become dedup notice
+        # (but the intermediate messages should still be visible)
+
+
 def test_multiple_agent_invocations():
     """Test handling of multiple Task invocations in same session."""
     with tempfile.TemporaryDirectory() as tmpdir:

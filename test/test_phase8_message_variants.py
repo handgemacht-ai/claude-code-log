@@ -21,31 +21,14 @@ class TestSlashCommandRendering:
 
     def test_slash_command_css_class(self):
         """Test that isMeta=True user messages get 'slash-command' CSS class."""
-        # Parent user message (normal)
-        parent_message = {
+        # Expanded slash command prompt (isMeta=True)
+        # In real transcripts, slash command expansions are standalone messages
+        slash_command_message = {
             "type": "user",
             "timestamp": "2025-06-11T22:45:17.436Z",
             "parentUuid": None,
             "isSidechain": False,
-            "isMeta": False,
-            "userType": "human",
-            "cwd": "/tmp",
-            "sessionId": "test_session",
-            "version": "1.0.0",
-            "uuid": "parent_001",
-            "message": {
-                "role": "user",
-                "content": [{"type": "text", "text": "/review"}],
-            },
-        }
-
-        # Expanded slash command prompt (isMeta=True)
-        slash_command_message = {
-            "type": "user",
-            "timestamp": "2025-06-11T22:45:17.436Z",  # Same timestamp as parent
-            "parentUuid": "parent_001",
-            "isSidechain": False,
-            "isMeta": True,  # This is the key flag
+            "isMeta": True,  # This is the key flag for slash command expanded prompts
             "userType": "external",
             "cwd": "/tmp",
             "sessionId": "test_session",
@@ -63,14 +46,13 @@ class TestSlashCommandRendering:
         }
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
-            f.write(json.dumps(parent_message) + "\n")
             f.write(json.dumps(slash_command_message) + "\n")
             f.flush()
             test_file_path = Path(f.name)
 
         try:
             messages = load_transcript(test_file_path)
-            assert len(messages) == 2
+            assert len(messages) == 1
 
             html = generate_html(messages, "Test Slash Command")
 
@@ -93,7 +75,12 @@ class TestSlashCommandRendering:
             test_file_path.unlink()
 
     def test_slash_command_sidechain(self):
-        """Test slash command in sidechain context."""
+        """Test slash command in sidechain context renders correctly.
+
+        Standalone sidechain user messages (not children of Task) are rendered,
+        since they're not duplicates of Task input prompts. Only the first
+        UserTextMessage child of a Task tool_result is removed as duplicate.
+        """
         slash_command_sidechain = {
             "type": "user",
             "timestamp": "2025-06-11T22:45:17.436Z",
@@ -126,12 +113,12 @@ class TestSlashCommandRendering:
             messages = load_transcript(test_file_path)
             html = generate_html(messages, "Test Sidechain Slash Command")
 
-            # Sidechain user messages without tool results are skipped during filtering
-            # (see _filter_messages in renderer.py). Even with isMeta=True, they don't
-            # contain tool results so they are not rendered.
-            assert "Sub-agent Slash Command" not in html, (
-                "Sidechain user messages without tool results should be skipped"
+            # Standalone sidechain user messages (not Task children) are rendered
+            assert "Sub-agent Slash Command" in html, (
+                "Standalone sidechain user messages should be rendered"
             )
+            # Should have sidechain CSS class
+            assert "sidechain" in html
 
         finally:
             test_file_path.unlink()
@@ -344,7 +331,12 @@ class TestCssClassModifiers:
             test_file_path.unlink()
 
     def test_user_compacted_sidechain(self):
-        """Test user message with compacted and sidechain modifiers."""
+        """Test user message with compacted and sidechain modifiers renders.
+
+        Standalone sidechain user messages (not children of Task) are rendered,
+        since they're not duplicates of Task input prompts. Only the first
+        UserTextMessage child of a Task tool_result is removed as duplicate.
+        """
         # Compacted messages have specific structure
         compacted_message = {
             "type": "user",
@@ -377,14 +369,13 @@ class TestCssClassModifiers:
             messages = load_transcript(test_file_path)
             html = generate_html(messages, "Test Compacted Sidechain")
 
-            # Sidechain user messages are skipped (duplicate of Task prompt input)
-            # Verify the raw content is not rendered
-            assert "context-messages" not in html, (
-                "Sidechain user messages should be skipped"
+            # Standalone sidechain compacted messages are rendered
+            # They get special formatting as CompactedSummaryMessage
+            assert "Compacted conversation" in html, (
+                "Standalone sidechain compacted messages should be rendered"
             )
-            assert "[Compacted conversation]" not in html, (
-                "Sidechain user message content should not be rendered"
-            )
+            # Should have sidechain CSS class
+            assert "sidechain" in html
 
         finally:
             test_file_path.unlink()

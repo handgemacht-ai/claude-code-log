@@ -5,7 +5,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Optional, Tuple, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from .cache import CacheManager
@@ -33,6 +33,7 @@ from .models import (
     SlashCommandMessage,
     SystemMessage,
     ToolResultMessage,
+    ToolUseMessage,
     UnknownMessage,
     UserSlashCommandMessage,
     UserSteeringMessage,
@@ -1233,12 +1234,12 @@ def _extract_task_result_text(tool_result_message: ToolResultMessage) -> Optiona
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
     """Clean up duplicate content in sidechains after tree is built.
 
-    For each Task tool_result with sidechain children:
+    For each Task tool_use or tool_result with sidechain children:
     - Remove the first UserTextMessage (duplicate of Task input prompt)
-    - Replace the last AssistantTextMessage matching Task result with a DedupNotice
+    - For tool_result: Replace last AssistantTextMessage matching result with DedupNotice
 
-    Matching uses raw_text_content (set during _render_messages) and Task result
-    text extracted via _extract_task_result_text().
+    Sidechain messages can be children of either tool_use or tool_result depending
+    on timestamp order - tool_use during execution, tool_result after completion.
 
     Args:
         root_messages: List of root messages with children populated
@@ -1250,23 +1251,44 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
         for child in message.children:
             process_message(child)
 
-        # Check if this is a Task tool_result with sidechain children
-        if not (
+        # Check if this is a Task tool_use or tool_result with sidechain children
+        is_task_tool_use = (
+            message.type == "tool_use"
+            and isinstance(message.content, ToolUseMessage)
+            and message.content.tool_name == "Task"
+        )
+        is_task_tool_result = (
             message.type == "tool_result"
             and isinstance(message.content, ToolResultMessage)
             and message.content.tool_name == "Task"
-            and message.children
-        ):
+        )
+
+        if not ((is_task_tool_use or is_task_tool_result) and message.children):
             return
 
         children = message.children
 
         # Remove first sidechain UserTextMessage (duplicate of Task input prompt)
-        if children and children[0].type == "user" and children[0].is_sidechain:
-            children.pop(0)
+        # Must be specifically UserTextMessage, not ToolResultMessage or other user types
+        # When removing, adopt its children to preserve sidechain tool messages
+        if (
+            children
+            and children[0].is_sidechain
+            and isinstance(children[0].content, UserTextMessage)
+        ):
+            removed = children.pop(0)
+            # Adopt orphaned children (tool_use/tool_result from sidechain)
+            if removed.children:
+                # Insert at beginning to maintain order
+                children[:0] = removed.children
 
-        # Find and replace last sidechain AssistantTextMessage matching Task output
-        task_result_text = _extract_task_result_text(message.content)
+        # For tool_result only: replace last matching AssistantTextMessage with dedup
+        if not is_task_tool_result:
+            return
+
+        task_result_text = _extract_task_result_text(
+            cast(ToolResultMessage, message.content)
+        )
         if not task_result_text:
             return
 
@@ -1461,9 +1483,11 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     - Queue operations except 'remove' (steering messages)
     - Messages with no meaningful content (no text and no tool items)
     - Messages matching should_skip_message() (warmup, etc.)
-    - Sidechain user messages without tool results (prompts duplicate Task result)
 
     System messages are included as they need special processing in _render_messages.
+
+    Note: Sidechain user prompts (duplicates of Task input) are removed later
+    by _cleanup_sidechain_duplicates after tree building.
 
     Args:
         messages: List of transcript entries to filter
@@ -1474,8 +1498,6 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     filtered: list[TranscriptEntry] = []
 
     for message in messages:
-        message_type = message.type
-
         # Skip summary messages
         if isinstance(message, SummaryTranscriptEntry):
             continue
@@ -1515,16 +1537,6 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
         # Skip messages that should be filtered out
         if should_skip_message(text_content):
             continue
-
-        # Skip sidechain user messages that are just prompts (no tool results)
-        if message_type == MessageType.USER and getattr(message, "isSidechain", False):
-            has_tool_results = any(
-                getattr(item, "type", None) == "tool_result"
-                or isinstance(item, ToolResultContent)
-                for item in message_content
-            )
-            if not has_tool_results:
-                continue
 
         # Message passes all filters
         filtered.append(message)
