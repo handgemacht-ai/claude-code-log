@@ -428,7 +428,7 @@ class ImageSource(BaseModel):
 
 
 class ImageContent(BaseModel):
-    """Image content from the Anthropic API.
+    """Image content.
 
     This represents an image within a content array, not a standalone message.
     Images are always part of UserTextMessage.items or AssistantTextMessage.items.
