@@ -259,42 +259,8 @@ class BashOutputMessage(MessageContent):
         return ""  # Empty title for bash output
 
 
-@dataclass
-class ToolResultMessage(MessageContent):
-    """Message for tool results with rendering context.
-
-    Wraps ToolResultContent or specialized output with additional context
-    needed for rendering, such as the associated tool name and file path.
-    """
-
-    tool_use_id: str
-    output: (
-        "ToolOutput"  # Specialized (ReadOutput, etc.) or generic (ToolResultContent)
-    )
-    is_error: bool = False
-    tool_name: Optional[str] = None  # Name of the tool that produced this result
-    file_path: Optional[str] = None  # File path for Read/Edit/Write tools
-
-    @property
-    def message_type(self) -> str:
-        return "tool_result"
-
-
-@dataclass
-class ToolUseMessage(MessageContent):
-    """Message for tool invocations.
-
-    Wraps ToolUseContent with the parsed input for specialized formatting.
-    Falls back to the original ToolUseContent when no specialized parser exists.
-    """
-
-    input: "ToolInput"  # Specialized (BashInput, etc.) or ToolUseContent fallback
-    tool_use_id: str  # From ToolUseContent.id
-    tool_name: str  # From ToolUseContent.name
-
-    @property
-    def message_type(self) -> str:
-        return "tool_use"
+# Note: ToolResultMessage and ToolUseMessage are defined in the
+# "Tool Message Models" section (before Tool Input Models).
 
 
 @dataclass
@@ -545,6 +511,10 @@ class ThinkingMessage(MessageContent):
         return "Thinking"
 
 
+# Note: ToolUseMessage is also an assistant content type, defined in
+# "Tool Message Models" section (before Tool Input Models).
+
+
 @dataclass
 class UnknownMessage(MessageContent):
     """Content for unknown/unrecognized content types.
@@ -558,138 +528,6 @@ class UnknownMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "unknown"
-
-
-# =============================================================================
-# Tool Output Models
-# =============================================================================
-# Typed models for tool outputs (symmetric with Tool Input Models).
-# These are data containers stored inside ToolResultMessage.output,
-# NOT standalone message types (so they don't inherit from MessageContent).
-
-
-@dataclass
-class ReadOutput:
-    """Parsed Read tool output.
-
-    Represents the result of reading a file with optional line range.
-    Symmetric with ReadInput for tool_use → tool_result pairing.
-    """
-
-    file_path: str
-    content: str  # File content (may be truncated)
-    start_line: int  # 1-based starting line number
-    num_lines: int  # Number of lines in content
-    total_lines: int  # Total lines in file
-    is_truncated: bool  # Whether content was truncated
-    system_reminder: Optional[str] = None  # Embedded system reminder text
-
-
-@dataclass
-class WriteOutput:
-    """Parsed Write tool output.
-
-    Symmetric with WriteInput for tool_use → tool_result pairing.
-
-    TODO: Not currently used - tool results handled as raw strings.
-    """
-
-    file_path: str
-    success: bool
-    message: str  # Success or error message
-
-
-@dataclass
-class EditDiff:
-    """Single diff hunk for edit operations."""
-
-    old_text: str
-    new_text: str
-
-
-@dataclass
-class EditOutput:
-    """Parsed Edit tool output.
-
-    Contains diff information for file edits.
-    Symmetric with EditInput for tool_use → tool_result pairing.
-    """
-
-    file_path: str
-    success: bool
-    diffs: list[EditDiff]  # Changes made
-    message: str  # Result message or code snippet
-    start_line: int = 1  # Starting line number for code display
-
-
-@dataclass
-class BashOutput:
-    """Parsed Bash tool output.
-
-    Symmetric with BashInput for tool_use → tool_result pairing.
-
-    TODO: Not currently used - tool results handled as raw strings.
-    """
-
-    stdout: str
-    stderr: str
-    exit_code: Optional[int]
-    interrupted: bool
-    is_image: bool  # True if output contains image data
-
-
-@dataclass
-class TaskOutput:
-    """Parsed Task (sub-agent) tool output.
-
-    Symmetric with TaskInput for tool_use → tool_result pairing.
-
-    TODO: Not currently used - tool results handled as raw strings.
-    """
-
-    agent_id: Optional[str]
-    result: str  # Agent's response
-    is_background: bool
-
-
-@dataclass
-class GlobOutput:
-    """Parsed Glob tool output.
-
-    Symmetric with GlobInput for tool_use → tool_result pairing.
-
-    TODO: Not currently used - tool results handled as raw strings.
-    """
-
-    pattern: str
-    files: list[str]  # Matching file paths
-    truncated: bool  # Whether list was truncated
-
-
-@dataclass
-class GrepOutput:
-    """Parsed Grep tool output.
-
-    Symmetric with GrepInput for tool_use → tool_result pairing.
-
-    TODO: Not currently used - tool results handled as raw strings.
-    """
-
-    pattern: str
-    matches: list[str]  # Matching lines/files
-    output_mode: str  # "content", "files_with_matches", or "count"
-    truncated: bool
-
-
-# Union of all specialized output types + ToolResultContent as generic fallback
-# Note: Uses forward reference for ToolResultContent (defined later with ContentItem types)
-ToolOutput = Union[
-    ReadOutput,
-    EditOutput,
-    # Add more specialized output types as they're implemented:
-    # WriteOutput, BashOutput, TaskOutput, GlobOutput, GrepOutput
-    "ToolResultContent",  # Generic fallback for unparsed results
-]
 
 
 # =============================================================================
@@ -732,6 +570,51 @@ class DedupNoticeMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "dedup_notice"
+
+
+# =============================================================================
+# Tool Message Models
+# =============================================================================
+# High-level message wrappers for tool invocations and results.
+# These wrap the specialized Tool Input/Output models for rendering.
+
+
+@dataclass
+class ToolResultMessage(MessageContent):
+    """Message for tool results with rendering context.
+
+    Wraps ToolResultContent or specialized output with additional context
+    needed for rendering, such as the associated tool name and file path.
+    """
+
+    tool_use_id: str
+    output: (
+        "ToolOutput"  # Specialized (ReadOutput, etc.) or generic (ToolResultContent)
+    )
+    is_error: bool = False
+    tool_name: Optional[str] = None  # Name of the tool that produced this result
+    file_path: Optional[str] = None  # File path for Read/Edit/Write tools
+
+    @property
+    def message_type(self) -> str:
+        return "tool_result"
+
+
+@dataclass
+class ToolUseMessage(MessageContent):
+    """Message for tool invocations.
+
+    Wraps ToolUseContent with the parsed input for specialized formatting.
+    Falls back to the original ToolUseContent when no specialized parser exists.
+    """
+
+    input: "ToolInput"  # Specialized (BashInput, etc.) or ToolUseContent fallback
+    tool_use_id: str  # From ToolUseContent.id
+    tool_name: str  # From ToolUseContent.name
+
+    @property
+    def message_type(self) -> str:
+        return "tool_use"
 
 
 # =============================================================================
@@ -899,6 +782,145 @@ ToolInput = Union[
     ExitPlanModeInput,
     "ToolUseContent",  # Generic fallback when no specialized parser
 ]
+
+
+# =============================================================================
+# Tool Output Models
+# =============================================================================
+# Typed models for tool outputs (symmetric with Tool Input Models).
+# These are data containers stored inside ToolResultMessage.output,
+# NOT standalone message types (so they don't inherit from MessageContent).
+
+
+@dataclass
+class ReadOutput:
+    """Parsed Read tool output.
+
+    Represents the result of reading a file with optional line range.
+    Symmetric with ReadInput for tool_use → tool_result pairing.
+    """
+
+    file_path: str
+    content: str  # File content (may be truncated)
+    start_line: int  # 1-based starting line number
+    num_lines: int  # Number of lines in content
+    total_lines: int  # Total lines in file
+    is_truncated: bool  # Whether content was truncated
+    system_reminder: Optional[str] = None  # Embedded system reminder text
+
+
+@dataclass
+class WriteOutput:
+    """Parsed Write tool output.
+
+    Symmetric with WriteInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
+    """
+
+    file_path: str
+    success: bool
+    message: str  # Success or error message
+
+
+@dataclass
+class EditDiff:
+    """Single diff hunk for edit operations."""
+
+    old_text: str
+    new_text: str
+
+
+@dataclass
+class EditOutput:
+    """Parsed Edit tool output.
+
+    Contains diff information for file edits.
+    Symmetric with EditInput for tool_use → tool_result pairing.
+    """
+
+    file_path: str
+    success: bool
+    diffs: list[EditDiff]  # Changes made
+    message: str  # Result message or code snippet
+    start_line: int = 1  # Starting line number for code display
+
+
+@dataclass
+class BashOutput:
+    """Parsed Bash tool output.
+
+    Symmetric with BashInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
+    """
+
+    stdout: str
+    stderr: str
+    exit_code: Optional[int]
+    interrupted: bool
+    is_image: bool  # True if output contains image data
+
+
+@dataclass
+class TaskOutput:
+    """Parsed Task (sub-agent) tool output.
+
+    Symmetric with TaskInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
+    """
+
+    agent_id: Optional[str]
+    result: str  # Agent's response
+    is_background: bool
+
+
+@dataclass
+class GlobOutput:
+    """Parsed Glob tool output.
+
+    Symmetric with GlobInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
+    """
+
+    pattern: str
+    files: list[str]  # Matching file paths
+    truncated: bool  # Whether list was truncated
+
+
+@dataclass
+class GrepOutput:
+    """Parsed Grep tool output.
+
+    Symmetric with GrepInput for tool_use → tool_result pairing.
+
+    TODO: Not currently used - tool results handled as raw strings.
+    """
+
+    pattern: str
+    matches: list[str]  # Matching lines/files
+    output_mode: str  # "content", "files_with_matches", or "count"
+    truncated: bool
+
+
+# Union of all specialized output types + ToolResultContent as generic fallback
+# Note: Uses forward reference for ToolResultContent (defined later with ContentItem types)
+ToolOutput = Union[
+    ReadOutput,
+    EditOutput,
+    # Add more specialized output types as they're implemented:
+    # WriteOutput, BashOutput, TaskOutput, GlobOutput, GrepOutput
+    "ToolResultContent",  # Generic fallback for unparsed results
+]
+
+
+# =============================================================================
+# Transcript Content Models (Pydantic)
+# =============================================================================
+# Low-level content types parsed from JSONL transcript entries.
+# These are the raw content items that appear in message content arrays.
 
 
 class UsageInfo(BaseModel):
