@@ -4986,7 +4986,7 @@
       
       <div class='message tool_result pair_last session-test_session d-2' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
-              <span title="ID: tool_001"></span>
+              <span title="ID: tool_001">🧰 Tool Result</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-07-03T15:58:07.874907Z' data-duration='took 2m 0s'>2025-07-03 15:58:07</span>
@@ -5079,7 +5079,7 @@
       
       <div class='message tool_result pair_last session-test_session d-6' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
-              <span title="ID: tool_002"></span>
+              <span title="ID: tool_002">🧰 Tool Result</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-07-03T16:06:07.874907Z' data-duration='took 2m 0s'>2025-07-03 16:06:07</span>
@@ -14812,7 +14812,7 @@
       
       <div class='message tool_result pair_last session-test_session d-5' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
-              <span title="ID: tool_001"></span>
+              <span title="ID: tool_001">🧰 Tool Result</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-07-03T15:58:07.874907Z' data-duration='took 2m 0s'>2025-07-03 15:58:07</span>
@@ -14905,7 +14905,7 @@
       
       <div class='message tool_result pair_last session-test_session d-9' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
-              <span title="ID: tool_002"></span>
+              <span title="ID: tool_002">🧰 Tool Result</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-07-03T16:06:07.874907Z' data-duration='took 2m 0s'>2025-07-03 16:06:07</span>
@@ -19612,7 +19612,7 @@
       
       <div class='message tool_result pair_last session-test_session d-2' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
-              <span title="ID: tool_001"></span>
+              <span title="ID: tool_001">🧰 Tool Result</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-07-03T15:58:07.874907Z' data-duration='took 2m 0s'>2025-07-03 15:58:07</span>
@@ -19705,7 +19705,7 @@
       
       <div class='message tool_result pair_last session-test_session d-6' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
-              <span title="ID: tool_002"></span>
+              <span title="ID: tool_002">🧰 Tool Result</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-07-03T16:06:07.874907Z' data-duration='took 2m 0s'>2025-07-03 16:06:07</span>

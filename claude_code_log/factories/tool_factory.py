@@ -52,7 +52,6 @@ from ..models import (
     ToolOutput,
     WriteOutput,
 )
-from ..html import escape_html, format_tool_use_title
 
 
 # =============================================================================
@@ -637,13 +636,14 @@ def create_tool_output(
 
 @dataclass
 class ToolItemResult:
-    """Result of processing a single tool/thinking/image item."""
+    """Result of processing a single tool/thinking/image item.
+
+    Note: Titles are computed at render time by Renderer.title_content() dispatch.
+    """
 
     message_type: str
-    message_title: str
     content: Optional[MessageContent] = None  # Structured content for rendering
     tool_use_id: Optional[str] = None
-    title_hint: Optional[str] = None
     is_error: bool = False  # For tool_result error state
 
 
@@ -655,25 +655,18 @@ def create_tool_use_message(
     """Create ToolItemResult from a tool_use content item.
 
     Args:
+        meta: Message metadata
         tool_use: The tool use content item
         tool_use_context: Dict to populate with tool_use_id -> ToolUseContent mapping
-        meta: Message metadata
 
     Returns:
         ToolItemResult with tool_use content model
     """
-
-    # Parse tool input once, use for both title and message content
+    # Parse tool input into typed model (BashInput, ReadInput, etc.)
     parsed = create_tool_input(tool_use.name, tool_use.input)
 
-    # Title is computed here but content formatting happens in HtmlRenderer
-    tool_message_title = format_tool_use_title(tool_use.name, parsed)
-    escaped_id = escape_html(tool_use.id)
-    item_tool_use_id = tool_use.id
-    tool_title_hint = f"ID: {escaped_id}"
-
     # Populate tool_use_context for later use when processing tool results
-    tool_use_context[item_tool_use_id] = tool_use
+    tool_use_context[tool_use.id] = tool_use
 
     # Create ToolUseMessage wrapper with parsed input for specialized formatting
     # Use ToolUseContent as fallback when no specialized parser exists
@@ -686,10 +679,8 @@ def create_tool_use_message(
 
     return ToolItemResult(
         message_type="tool_use",
-        message_title=tool_message_title,
         content=tool_use_message,
-        tool_use_id=item_tool_use_id,
-        title_hint=tool_title_hint,
+        tool_use_id=tool_use.id,
     )
 
 
@@ -701,14 +692,13 @@ def create_tool_result_message(
     """Create ToolItemResult from a tool_result content item.
 
     Args:
+        meta: Message metadata
         tool_result: The tool result content item
         tool_use_context: Dict with tool_use_id -> ToolUseContent mapping
-        meta: Message metadata
 
     Returns:
         ToolItemResult with tool_result content model
     """
-
     # Get file_path and tool_name from tool_use context for specialized rendering
     result_file_path: Optional[str] = None
     result_tool_name: Optional[str] = None
@@ -738,15 +728,9 @@ def create_tool_result_message(
         file_path=result_file_path,
     )
 
-    escaped_id = escape_html(tool_result.tool_use_id)
-    tool_title_hint = f"ID: {escaped_id}"
-    tool_message_title = "Error" if tool_result.is_error else ""
-
     return ToolItemResult(
         message_type="tool_result",
-        message_title=tool_message_title,
         content=content_model,
         tool_use_id=tool_result.tool_use_id,
-        title_hint=tool_title_hint,
         is_error=tool_result.is_error or False,
     )

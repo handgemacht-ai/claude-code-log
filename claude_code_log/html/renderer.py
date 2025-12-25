@@ -16,6 +16,8 @@ from ..models import (
     SlashCommandMessage,
     SystemMessage,
     ThinkingMessage,
+    ToolResultMessage,
+    ToolUseMessage,
     TranscriptEntry,
     UnknownMessage,
     UserMemoryMessage,
@@ -93,6 +95,7 @@ from .tool_formatters import (
     format_task_output,
     format_todowrite_input,
     format_tool_result_content_raw,
+    format_tool_use_title,
     format_write_input,
     format_write_output,
     render_params_table,
@@ -259,16 +262,34 @@ class HtmlRenderer(Renderer):
     def format_ToolResultContent(self, output: ToolResultContent) -> str:
         return format_tool_result_content_raw(output)
 
+    # -------------------------------------------------------------------------
+    # Title Methods (for Renderer.title_content dispatch)
+    # -------------------------------------------------------------------------
+
+    def title_ToolUseMessage(self, message: TemplateMessage) -> str:
+        """Generate HTML title for tool use messages."""
+        content = message.content
+        if isinstance(content, ToolUseMessage):
+            return format_tool_use_title(content.tool_name, content.input)
+        return message.message_title
+
+    def title_ToolResultMessage(self, message: TemplateMessage) -> str:
+        """Generate title for tool result messages."""
+        content = message.content
+        if isinstance(content, ToolResultMessage):
+            return "Error" if content.is_error else "Tool Result"
+        return message.message_title
+
     def _flatten_preorder(
         self, roots: list[TemplateMessage]
     ) -> Tuple[
-        list[Tuple[TemplateMessage, str, str]],
+        list[Tuple[TemplateMessage, str, str, str]],
         list[Tuple[str, list[Tuple[float, str]]]],
     ]:
         """Flatten message tree via pre-order traversal, formatting each message.
 
-        Traverses the tree depth-first (pre-order), formats each message's
-        content to HTML, and builds a flat list of (message, html, timestamp) tuples.
+        Traverses the tree depth-first (pre-order), computes title and formats
+        content to HTML, building a flat list of (message, title, html, timestamp) tuples.
 
         Also tracks timing statistics for Markdown and Pygments operations when
         DEBUG_TIMING is enabled.
@@ -278,10 +299,10 @@ class HtmlRenderer(Renderer):
 
         Returns:
             Tuple of:
-            - Flat list of (message, html_content, formatted_timestamp) tuples in pre-order
+            - Flat list of (message, title, html_content, formatted_timestamp) tuples
             - Operation timing data for reporting: [("Markdown", timings), ("Pygments", timings)]
         """
-        flat: list[Tuple[TemplateMessage, str, str]] = []
+        flat: list[Tuple[TemplateMessage, str, str, str]] = []
 
         # Initialize timing tracking for expensive operations
         markdown_timings: list[Tuple[float, str]] = []
@@ -292,9 +313,10 @@ class HtmlRenderer(Renderer):
         def visit(msg: TemplateMessage) -> None:
             # Update current message UUID for timing tracking
             set_timing_var("_current_msg_uuid", msg.uuid)
+            title = self.title_content(msg)
             html = self.format_content(msg)
             formatted_ts = format_timestamp(msg.meta.timestamp if msg.meta else None)
-            flat.append((msg, html, formatted_ts))
+            flat.append((msg, title, html, formatted_ts))
             for child in msg.children:
                 visit(child)
 

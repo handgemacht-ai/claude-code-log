@@ -5,41 +5,12 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Tuple, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Optional, Tuple, cast
+from datetime import datetime
 
 if TYPE_CHECKING:
     from .cache import CacheManager
-    from .models import (
-        MessageContent,
-        # For formatter method type hints
-        BashInputMessage,
-        BashOutputMessage,
-        CompactedSummaryMessage,
-        HookSummaryMessage,
-        ThinkingMessage,
-        UserMemoryMessage,
-        # Tool input types
-        BashInput,
-        ReadInput,
-        WriteInput,
-        EditInput,
-        MultiEditInput,
-        GlobInput,
-        GrepInput,
-        TaskInput,
-        TodoWriteInput,
-        AskUserQuestionInput,
-        ExitPlanModeInput,
-        # Tool output types
-        ReadOutput,
-        WriteOutput,
-        EditOutput,
-        BashOutput,
-        TaskOutput,
-        AskUserQuestionOutput,
-        ExitPlanModeOutput,
-    )
-from datetime import datetime
+    from .models import MessageContent
 
 from .models import (
     MessageMeta,
@@ -115,7 +86,6 @@ class TemplateMessage:
         content: "MessageContent",
         meta: "MessageMeta",
         *,  # Force keyword arguments after this
-        message_title: Optional[str] = None,
         message_id: Optional[str] = None,
         ancestry: Optional[list[str]] = None,
         uuid: Optional[str] = None,
@@ -123,9 +93,6 @@ class TemplateMessage:
         # Required: content and meta
         self.content = content
         self.meta = meta
-
-        # Optional title override (for tool messages with HTML-formatted titles)
-        self._message_title_override = message_title
 
         # Rendering metadata
         self.message_id = message_id
@@ -159,16 +126,15 @@ class TemplateMessage:
 
     @property
     def message_title(self) -> str:
-        """Get message title (override, content.message_title(), or type-based fallback).
+        """Get message title from content or type-based fallback.
 
         Priority:
-        1. Explicit override (for tool messages with HTML-formatted titles)
-        2. Sidechain assistant -> "Sub-assistant"
-        3. content.message_title() if not None
-        4. Type-based fallback from message_type
+        1. Sidechain assistant -> "Sub-assistant"
+        2. content.message_title() if not None
+        3. Type-based fallback from message_type
+
+        Note: Renderer.title_content() may override this for specific content types.
         """
-        if self._message_title_override is not None:
-            return self._message_title_override
         # Sidechain assistant messages get special title
         if self.meta.is_sidechain and isinstance(self.content, AssistantTextMessage):
             return "Sub-assistant"
@@ -1901,7 +1867,6 @@ def _render_messages(
                     content = create_thinking_message(meta, tool_item, chunk_usage)
                     tool_result = ToolItemResult(
                         message_type=content.message_type,
-                        message_title=content.message_title() or "Thinking",
                         content=content,
                     )
                 else:
@@ -1909,7 +1874,6 @@ def _render_messages(
                     tool_result = ToolItemResult(
                         message_type="unknown",
                         content=UnknownMessage(meta, type_name=str(type(tool_item))),
-                        message_title="Unknown Content",
                     )
 
                 # Generate unique UUID for this tool message
@@ -1925,14 +1889,9 @@ def _render_messages(
                 if tool_result.content is None:
                     continue
 
-                tool_template_message = TemplateMessage(
-                    tool_result.content,
-                    meta,
-                    message_title=tool_result.message_title,
-                    uuid=tool_uuid,
+                template_messages.append(
+                    TemplateMessage(tool_result.content, meta, uuid=tool_uuid)
                 )
-
-                template_messages.append(tool_template_message)
 
     return template_messages
 
@@ -2087,295 +2046,90 @@ class Renderer:
         """
         return self._dispatch_format(message.content)
 
-    # -------------------------------------------------------------------------
-    # System Content Formatters
-    # -------------------------------------------------------------------------
+    def title_content(self, message: "TemplateMessage") -> str:
+        """Get message title by dispatching to type-specific title method.
 
-    def format_SystemMessage(self, message: "SystemMessage") -> str:
-        """Format SystemMessage content.
+        Looks for a method named title_{ClassName} (e.g., title_ToolUseMessage).
+        Falls back to content.message_title() or type-based title.
 
-        Fallback: None (base handler for system messages).
+        Args:
+            message: TemplateMessage to get title for.
+
+        Returns:
+            Title string for the message header.
         """
-        return ""
-
-    def format_HookSummaryMessage(self, message: "HookSummaryMessage") -> str:
-        """Format HookSummaryMessage content (hook execution results).
-
-        Fallback: format_SystemMessage (HookSummaryMessage is system-related).
-        """
-        return self.format_SystemMessage(message)  # type: ignore[arg-type]
-
-    def format_SessionHeaderMessage(self, message: "SessionHeaderMessage") -> str:
-        """Format SessionHeaderMessage content (session start markers).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    def format_DedupNoticeMessage(self, message: "DedupNoticeMessage") -> str:
-        """Format DedupNoticeMessage content (duplicate content notices).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
+        # First try title_{ClassName} dispatch
+        for cls in type(message.content).__mro__:
+            if cls is object:
+                break
+            if method := getattr(self, f"title_{cls.__name__}", None):
+                return method(message)
+        # Fall back to the message_title property (content-based)
+        return message.message_title
 
     # -------------------------------------------------------------------------
-    # User Content Formatters
+    # Format Method Stubs (override in subclasses)
     # -------------------------------------------------------------------------
+    # System content formatters
+    # def format_SystemMessage(self, message: "SystemMessage") -> str: return ""
+    # def format_HookSummaryMessage(self, message: "HookSummaryMessage") -> str: ...
+    # def format_SessionHeaderMessage(self, message: "SessionHeaderMessage") -> str: ...
+    # def format_DedupNoticeMessage(self, message: "DedupNoticeMessage") -> str: ...
 
-    def format_UserTextMessage(self, message: "UserTextMessage") -> str:
-        """Format UserTextMessage content (user input with text/images).
+    # User content formatters
+    # def format_UserTextMessage(self, message: "UserTextMessage") -> str: ...
+    # def format_UserSteeringMessage(self, message: "UserSteeringMessage") -> str: ...
+    # def format_UserSlashCommandMessage(self, message: "UserSlashCommandMessage") -> str: ...
+    # def format_SlashCommandMessage(self, message: "SlashCommandMessage") -> str: ...
+    # def format_CommandOutputMessage(self, message: "CommandOutputMessage") -> str: ...
+    # def format_BashInputMessage(self, message: "BashInputMessage") -> str: ...
+    # def format_BashOutputMessage(self, message: "BashOutputMessage") -> str: ...
+    # def format_CompactedSummaryMessage(self, message: "CompactedSummaryMessage") -> str: ...
+    # def format_UserMemoryMessage(self, message: "UserMemoryMessage") -> str: ...
 
-        Fallback: None (base handler for user text messages).
-        """
-        return ""
+    # Assistant content formatters
+    # def format_AssistantTextMessage(self, message: "AssistantTextMessage") -> str: ...
+    # def format_ThinkingMessage(self, message: "ThinkingMessage") -> str: ...
+    # def format_UnknownMessage(self, message: "UnknownMessage") -> str: ...
 
-    def format_UserSteeringMessage(self, message: "UserSteeringMessage") -> str:
-        """Format UserSteeringMessage content (out-of-band steering input).
-
-        Fallback: format_UserTextMessage (UserSteeringMessage extends UserTextMessage).
-        """
-        return self.format_UserTextMessage(message)
-
-    def format_UserSlashCommandMessage(self, message: "UserSlashCommandMessage") -> str:
-        """Format UserSlashCommandMessage content (user slash commands).
-
-        Fallback: format_UserTextMessage (similar content structure).
-        """
-        return self.format_UserTextMessage(message)  # type: ignore[arg-type]
-
-    def format_SlashCommandMessage(self, message: "SlashCommandMessage") -> str:
-        """Format SlashCommandMessage content (system slash commands).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    def format_CommandOutputMessage(self, message: "CommandOutputMessage") -> str:
-        """Format CommandOutputMessage content (slash command output).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    def format_BashInputMessage(self, message: "BashInputMessage") -> str:
-        """Format BashInputMessage content (bash command input).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    def format_BashOutputMessage(self, message: "BashOutputMessage") -> str:
-        """Format BashOutputMessage content (bash command output).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    def format_CompactedSummaryMessage(self, message: "CompactedSummaryMessage") -> str:
-        """Format CompactedSummaryMessage content (context summaries).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    def format_UserMemoryMessage(self, message: "UserMemoryMessage") -> str:
-        """Format UserMemoryMessage content (memory/context updates).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    # -------------------------------------------------------------------------
-    # Assistant Content Formatters
-    # -------------------------------------------------------------------------
-
-    def format_AssistantTextMessage(self, message: "AssistantTextMessage") -> str:
-        """Format AssistantTextMessage content (assistant responses).
-
-        Fallback: None (base handler for assistant messages).
-        """
-        return ""
-
-    def format_ThinkingMessage(self, message: "ThinkingMessage") -> str:
-        """Format ThinkingMessage content (assistant reasoning).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    def format_UnknownMessage(self, message: "UnknownMessage") -> str:
-        """Format UnknownMessage content (unrecognized content types).
-
-        Fallback: None (standalone content type).
-        """
-        return ""
-
-    # -------------------------------------------------------------------------
-    # Tool Content Formatters
-    # -------------------------------------------------------------------------
-
+    # Tool content formatters (dispatch to input/output formatters)
     def format_ToolUseMessage(self, message: "ToolUseMessage") -> str:
-        """Format ToolUseMessage content (tool invocations).
-
-        Dispatches to format_{InputClass} methods based on message.input type.
-        """
+        """Dispatch to format_{InputClass} based on message.input type."""
         return self._dispatch_format(message.input)
 
     def format_ToolResultMessage(self, message: "ToolResultMessage") -> str:
-        """Format ToolResultMessage content (tool results).
-
-        Dispatches to format_{OutputClass} methods based on message.output type.
-        """
+        """Dispatch to format_{OutputClass} based on message.output type."""
         return self._dispatch_format(message.output)
 
-    # -------------------------------------------------------------------------
-    # Tool Input Formatters
-    # -------------------------------------------------------------------------
+    # Tool input formatters
+    # def format_BashInput(self, input: "BashInput") -> str: ...
+    # def format_ReadInput(self, input: "ReadInput") -> str: ...
+    # def format_WriteInput(self, input: "WriteInput") -> str: ...
+    # def format_EditInput(self, input: "EditInput") -> str: ...
+    # def format_MultiEditInput(self, input: "MultiEditInput") -> str: ...
+    # def format_GlobInput(self, input: "GlobInput") -> str: ...
+    # def format_GrepInput(self, input: "GrepInput") -> str: ...
+    # def format_TaskInput(self, input: "TaskInput") -> str: ...
+    # def format_TodoWriteInput(self, input: "TodoWriteInput") -> str: ...
+    # def format_AskUserQuestionInput(self, input: "AskUserQuestionInput") -> str: ...
+    # def format_ExitPlanModeInput(self, input: "ExitPlanModeInput") -> str: ...
+    # def format_ToolUseContent(self, input: "ToolUseContent") -> str: ...  # fallback
 
-    def format_BashInput(self, input: "BashInput") -> str:
-        """Format BashInput (bash command invocation).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_ReadInput(self, input: "ReadInput") -> str:
-        """Format ReadInput (file read request).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_WriteInput(self, input: "WriteInput") -> str:
-        """Format WriteInput (file write request).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_EditInput(self, input: "EditInput") -> str:
-        """Format EditInput (file edit request).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_MultiEditInput(self, input: "MultiEditInput") -> str:
-        """Format MultiEditInput (multi-file edit request).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_GlobInput(self, input: "GlobInput") -> str:
-        """Format GlobInput (file glob search).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_GrepInput(self, input: "GrepInput") -> str:
-        """Format GrepInput (content search).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_TaskInput(self, input: "TaskInput") -> str:
-        """Format TaskInput (sub-agent invocation).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_TodoWriteInput(self, input: "TodoWriteInput") -> str:
-        """Format TodoWriteInput (todo list update).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_AskUserQuestionInput(self, input: "AskUserQuestionInput") -> str:
-        """Format AskUserQuestionInput (user question prompt).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_ExitPlanModeInput(self, input: "ExitPlanModeInput") -> str:
-        """Format ExitPlanModeInput (plan mode exit).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_ToolUseContent(self, input: "ToolUseContent") -> str:
-        """Format ToolUseContent (generic/unknown tool invocation).
-
-        Fallback: None (base handler for unknown tools).
-        """
-        return ""
+    # Tool output formatters
+    # def format_ReadOutput(self, output: "ReadOutput") -> str: ...
+    # def format_WriteOutput(self, output: "WriteOutput") -> str: ...
+    # def format_EditOutput(self, output: "EditOutput") -> str: ...
+    # def format_BashOutput(self, output: "BashOutput") -> str: ...
+    # def format_TaskOutput(self, output: "TaskOutput") -> str: ...
+    # def format_AskUserQuestionOutput(self, output: "AskUserQuestionOutput") -> str: ...
+    # def format_ExitPlanModeOutput(self, output: "ExitPlanModeOutput") -> str: ...
+    # def format_ToolResultContent(self, output: "ToolResultContent") -> str: ...  # fallback
 
     # -------------------------------------------------------------------------
-    # Tool Output Formatters
+    # Title Method Stubs (override in subclasses for custom titles)
     # -------------------------------------------------------------------------
-
-    def format_ReadOutput(self, output: "ReadOutput") -> str:
-        """Format ReadOutput (file read result).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_WriteOutput(self, output: "WriteOutput") -> str:
-        """Format WriteOutput (file write result).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_EditOutput(self, output: "EditOutput") -> str:
-        """Format EditOutput (file edit result).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_BashOutput(self, output: "BashOutput") -> str:
-        """Format BashOutput (bash command result).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_TaskOutput(self, output: "TaskOutput") -> str:
-        """Format TaskOutput (sub-agent result).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_AskUserQuestionOutput(self, output: "AskUserQuestionOutput") -> str:
-        """Format AskUserQuestionOutput (user question result).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_ExitPlanModeOutput(self, output: "ExitPlanModeOutput") -> str:
-        """Format ExitPlanModeOutput (plan mode exit result).
-
-        Fallback: None.
-        """
-        return ""
-
-    def format_ToolResultContent(self, output: "ToolResultContent") -> str:
-        """Format ToolResultContent (generic/unknown tool result).
-
-        Fallback: None (base handler for unknown tools).
-        """
-        return ""
+    # def title_ToolUseMessage(self, message: "TemplateMessage") -> str: ...
+    # def title_ToolResultMessage(self, message: "TemplateMessage") -> str: ...
 
     # -------------------------------------------------------------------------
     # Rendering Entry Points
