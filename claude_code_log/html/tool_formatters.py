@@ -266,99 +266,8 @@ def format_read_tool_content(read_input: ReadInput) -> str:  # noqa: ARG001
     return ""
 
 
-# -- Tool Result Parsing (cat-n format) ---------------------------------------
-
-
-def _parse_cat_n_snippet(
-    lines: list[str], start_idx: int = 0
-) -> Optional[tuple[str, Optional[str], int]]:
-    """Parse cat-n formatted snippet from lines.
-
-    Args:
-        lines: List of lines to parse
-        start_idx: Index to start parsing from (default: 0)
-
-    Returns:
-        Tuple of (code_content, system_reminder, line_offset) or None if not parseable
-    """
-    code_lines: list[str] = []
-    system_reminder: Optional[str] = None
-    in_system_reminder = False
-    line_offset = 1  # Default offset
-
-    for line in lines[start_idx:]:
-        # Check for system-reminder start
-        if "<system-reminder>" in line:
-            in_system_reminder = True
-            system_reminder = ""
-            continue
-
-        # Check for system-reminder end
-        if "</system-reminder>" in line:
-            in_system_reminder = False
-            continue
-
-        # If in system reminder, accumulate reminder text
-        if in_system_reminder:
-            if system_reminder is not None:
-                system_reminder += line + "\n"
-            continue
-
-        # Parse regular code line (format: "  123→content")
-        match = re.match(r"\s+(\d+)→(.*)$", line)
-        if match:
-            line_num = int(match.group(1))
-            # Capture the first line number as offset
-            if not code_lines:
-                line_offset = line_num
-            code_lines.append(match.group(2))
-        elif line.strip() == "":  # Allow empty lines between cat-n lines
-            continue
-        else:  # Non-matching non-empty line, stop parsing
-            break
-
-    if not code_lines:
-        return None
-
-    # Join code lines and trim trailing reminder text
-    code_content = "\n".join(code_lines)
-    if system_reminder:
-        system_reminder = system_reminder.strip()
-
-    return (code_content, system_reminder, line_offset)
-
-
-def parse_read_output(content: str, file_path: str) -> Optional[ReadOutput]:
-    """Parse Read tool result into structured content.
-
-    Args:
-        content: Raw tool result string
-        file_path: Path to the file that was read
-
-    Returns:
-        ReadOutput if parsing succeeds, None otherwise
-    """
-    # Check if content matches the cat-n format pattern (line_number → content)
-    lines = content.split("\n")
-    if not lines or not re.match(r"\s+\d+→", lines[0]):
-        return None
-
-    result = _parse_cat_n_snippet(lines)
-    if result is None:
-        return None
-
-    code_content, system_reminder, line_offset = result
-    num_lines = len(code_content.split("\n"))
-
-    return ReadOutput(
-        file_path=file_path,
-        content=code_content,
-        start_line=line_offset,
-        num_lines=num_lines,
-        total_lines=num_lines,  # We don't know total from result
-        is_truncated=False,  # Can't determine from result
-        system_reminder=system_reminder,
-    )
+# -- Tool Result Formatting ---------------------------------------------------
+# Parsing (parse_read_output, parse_edit_output) is now in factories/tool_factory.py
 
 
 def format_read_tool_result(output: ReadOutput) -> str:
@@ -384,49 +293,6 @@ def format_read_tool_result(output: ReadOutput) -> str:
         "read-tool-result",
         linenostart=output.start_line,
         suffix_html=suffix_html,
-    )
-
-
-def parse_edit_output(content: str, file_path: str) -> Optional[EditOutput]:
-    """Parse Edit tool result into structured content.
-
-    Edit tool results typically have format:
-    "The file ... has been updated. Here's the result of running `cat -n` on a snippet..."
-    followed by cat-n formatted lines.
-
-    Args:
-        content: Raw tool result string
-        file_path: Path to the file that was edited
-
-    Returns:
-        EditOutput if parsing succeeds, None otherwise
-    """
-    # Look for the cat-n snippet after the preamble
-    # Pattern: look for first line that matches the cat-n format
-    lines = content.split("\n")
-    code_start_idx = None
-
-    for i, line in enumerate(lines):
-        if re.match(r"\s+\d+→", line):
-            code_start_idx = i
-            break
-
-    if code_start_idx is None:
-        return None
-
-    result = _parse_cat_n_snippet(lines, code_start_idx)
-    if result is None:
-        return None
-
-    code_content, _system_reminder, line_offset = result
-    # Edit tool doesn't use system_reminder
-
-    return EditOutput(
-        file_path=file_path,
-        success=True,  # If we got here, edit succeeded
-        diffs=[],  # We don't have diff info from result
-        message=code_content,
-        start_line=line_offset,
     )
 
 
@@ -792,15 +658,19 @@ def _looks_like_bash_output(content: str) -> bool:
 
 def format_tool_result_content(
     tool_result: ToolResultContent,
-    file_path: Optional[str] = None,
+    _file_path: Optional[str] = None,
     tool_name: Optional[str] = None,
 ) -> str:
     """Format tool result content as HTML, including images.
 
+    This is the fallback formatter for tool results that don't have specialized
+    output types (ReadOutput, EditOutput). Those are dispatched directly to
+    format_read_tool_result/format_edit_tool_result from renderer.py.
+
     Args:
         tool_result: The tool result content
-        file_path: Optional file path for context (used for Read/Edit/Write tool rendering)
-        tool_name: Optional tool name for specialized rendering (e.g., "Write", "Read", "Edit", "Task")
+        _file_path: Unused (kept for API compatibility)
+        tool_name: Optional tool name for specialized rendering (e.g., "Write", "Task")
     """
     # Handle both string and structured content
     if isinstance(tool_result.content, str):
@@ -868,17 +738,8 @@ def format_tool_result_content(
             escaped_html = escape_html(first_line)
             return f"<pre>{escaped_html} ...</pre>"
 
-    # Try to parse as Read tool result if file_path is provided
-    if file_path and tool_name == "Read" and not has_images:
-        read_output = parse_read_output(raw_content, file_path)
-        if read_output:
-            return format_read_tool_result(read_output)
-
-    # Try to parse as Edit tool result if file_path is provided
-    if file_path and tool_name == "Edit" and not has_images:
-        edit_output = parse_edit_output(raw_content, file_path)
-        if edit_output:
-            return format_edit_tool_result(edit_output)
+    # Note: Read and Edit tool results are now parsed upstream in tool_factory.py
+    # and dispatched to format_read_tool_result/format_edit_tool_result via renderer.py
 
     # Special handling for Task tool: render result as markdown with Pygments (agent's final message)
     # Deduplication is now handled retroactively by replacing the sub-assistant content
@@ -963,10 +824,8 @@ __all__ = [
     # File tools (input)
     "format_read_tool_content",
     "format_write_tool_content",
-    # File tools (output/result)
-    "parse_read_output",
+    # File tools (output/result) - parsing now in factories/tool_factory.py
     "format_read_tool_result",
-    "parse_edit_output",
     "format_edit_tool_result",
     # Edit tools
     "format_edit_tool_content",

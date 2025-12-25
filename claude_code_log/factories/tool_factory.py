@@ -11,9 +11,11 @@ Also provides creation of tool inputs into typed models:
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional, cast
+from typing import Any, Callable, Optional, cast
 
 from pydantic import BaseModel
+
+import re
 
 from ..models import (
     # Tool input models
@@ -39,6 +41,10 @@ from ..models import (
     ToolUseContent,
     ToolUseMessage,
     WriteInput,
+    # Tool output models
+    EditOutput,
+    ReadOutput,
+    ToolOutput,
 )
 from ..html import escape_html, format_tool_use_title
 
@@ -241,6 +247,203 @@ def create_tool_input(
 
 
 # =============================================================================
+# Tool Output Parsing
+# =============================================================================
+# Parse raw tool result content into typed output models (ReadOutput, EditOutput, etc.)
+# Symmetric with Tool Input parsing above.
+
+
+def _parse_cat_n_snippet(
+    lines: list[str], start_idx: int = 0
+) -> Optional[tuple[str, Optional[str], int]]:
+    """Parse cat-n formatted snippet from lines.
+
+    Args:
+        lines: List of lines to parse
+        start_idx: Index to start parsing from (default: 0)
+
+    Returns:
+        Tuple of (code_content, system_reminder, line_offset) or None if not parseable
+    """
+    code_lines: list[str] = []
+    system_reminder: Optional[str] = None
+    in_system_reminder = False
+    line_offset = 1  # Default offset
+
+    for line in lines[start_idx:]:
+        # Check for system-reminder start
+        if "<system-reminder>" in line:
+            in_system_reminder = True
+            system_reminder = ""
+            continue
+
+        # Check for system-reminder end
+        if "</system-reminder>" in line:
+            in_system_reminder = False
+            continue
+
+        # If in system reminder, accumulate reminder text
+        if in_system_reminder:
+            if system_reminder is not None:
+                system_reminder += line + "\n"
+            continue
+
+        # Parse regular code line (format: "  123→content")
+        match = re.match(r"\s+(\d+)→(.*)$", line)
+        if match:
+            line_num = int(match.group(1))
+            # Capture the first line number as offset
+            if not code_lines:
+                line_offset = line_num
+            code_lines.append(match.group(2))
+        elif line.strip() == "":  # Allow empty lines between cat-n lines
+            continue
+        else:  # Non-matching non-empty line, stop parsing
+            break
+
+    if not code_lines:
+        return None
+
+    # Join code lines and trim trailing reminder text
+    code_content = "\n".join(code_lines)
+    if system_reminder:
+        system_reminder = system_reminder.strip()
+
+    return (code_content, system_reminder, line_offset)
+
+
+def parse_read_output(content: str, file_path: Optional[str]) -> Optional[ReadOutput]:
+    """Parse Read tool result into structured content.
+
+    Args:
+        content: Raw tool result string
+        file_path: Path to the file that was read (required for ReadOutput)
+
+    Returns:
+        ReadOutput if parsing succeeds, None otherwise
+    """
+    if not file_path:
+        return None
+
+    # Check if content matches the cat-n format pattern (line_number → content)
+    lines = content.split("\n")
+    if not lines or not re.match(r"\s+\d+→", lines[0]):
+        return None
+
+    result = _parse_cat_n_snippet(lines)
+    if result is None:
+        return None
+
+    code_content, system_reminder, line_offset = result
+    num_lines = len(code_content.split("\n"))
+
+    return ReadOutput(
+        file_path=file_path,
+        content=code_content,
+        start_line=line_offset,
+        num_lines=num_lines,
+        total_lines=num_lines,  # We don't know total from result
+        is_truncated=False,  # Can't determine from result
+        system_reminder=system_reminder,
+    )
+
+
+def parse_edit_output(content: str, file_path: Optional[str]) -> Optional[EditOutput]:
+    """Parse Edit tool result into structured content.
+
+    Edit tool results typically have format:
+    "The file ... has been updated. Here's the result of running `cat -n` on a snippet..."
+    followed by cat-n formatted lines.
+
+    Args:
+        content: Raw tool result string
+        file_path: Path to the file that was edited (required for EditOutput)
+
+    Returns:
+        EditOutput if parsing succeeds, None otherwise
+    """
+    if not file_path:
+        return None
+
+    # Look for the cat-n snippet after the preamble
+    # Pattern: look for first line that matches the cat-n format
+    lines = content.split("\n")
+    code_start_idx = None
+
+    for i, line in enumerate(lines):
+        if re.match(r"\s+\d+→", line):
+            code_start_idx = i
+            break
+
+    if code_start_idx is None:
+        return None
+
+    result = _parse_cat_n_snippet(lines, code_start_idx)
+    if result is None:
+        return None
+
+    code_content, _system_reminder, line_offset = result
+    # Edit tool doesn't use system_reminder
+
+    return EditOutput(
+        file_path=file_path,
+        success=True,  # If we got here, edit succeeded
+        diffs=[],  # We don't have diff info from result
+        message=code_content,
+        start_line=line_offset,
+    )
+
+
+# Registry of tool output parsers: tool_name -> parser(content, file_path) -> Optional[ToolOutput]
+# Add more parsers as specialized output types are implemented.
+TOOL_OUTPUT_PARSERS: dict[str, Callable[[str, Optional[str]], Optional[ToolOutput]]] = {
+    "Read": parse_read_output,
+    "Edit": parse_edit_output,
+    # TODO: Add more specialized output parsers:
+    # "Write": parse_write_output,
+    # "Bash": parse_bash_output,
+    # "Task": parse_task_output,
+    # "Glob": parse_glob_output,
+    # "Grep": parse_grep_output,
+}
+
+
+def create_tool_output(
+    tool_name: str,
+    tool_result: ToolResultContent,
+    file_path: Optional[str] = None,
+) -> ToolOutput:
+    """Create typed tool output from raw ToolResultContent.
+
+    Parses the raw content into specialized output types when possible,
+    using the TOOL_OUTPUT_PARSERS registry.
+
+    Args:
+        tool_name: The name of the tool (e.g., "Bash", "Read")
+        tool_result: The raw tool result content
+        file_path: Optional file path for file-based tools (Read, Edit, Write)
+
+    Returns:
+        A typed output model if parsing succeeds, ToolResultContent as fallback.
+    """
+    # Handle both string and structured content
+    if not isinstance(tool_result.content, str):
+        # Structured content (list of dicts) - use generic fallback
+        return tool_result
+
+    raw_content = tool_result.content
+
+    # Look up parser in registry and parse if available
+    if (parser := TOOL_OUTPUT_PARSERS.get(tool_name)) and (
+        parsed := parser(raw_content, file_path)
+    ):
+        return parsed
+
+    # Fallback to raw ToolResultContent
+    return tool_result
+
+
+# =============================================================================
 # Tool Item Processing
 # =============================================================================
 
@@ -331,13 +534,18 @@ def create_tool_result_message(
         ):
             result_file_path = tool_use_from_ctx.input["file_path"]
 
+    # Parse into typed output (ReadOutput, EditOutput, etc.) when possible
+    parsed_output = create_tool_output(
+        result_tool_name or "",
+        tool_result,
+        result_file_path,
+    )
+
     # Create content model with rendering context
-    # Pass the whole ToolResultContent as output (generic fallback)
-    # TODO: Parse into specialized output types (ReadOutput, EditOutput) when appropriate
     content_model = ToolResultMessage(
         meta,
         tool_use_id=tool_result.tool_use_id,
-        output=tool_result,  # ToolResultContent as ToolOutput
+        output=parsed_output,
         is_error=tool_result.is_error or False,
         tool_name=result_tool_name,
         file_path=result_file_path,
