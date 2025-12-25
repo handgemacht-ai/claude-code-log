@@ -15,7 +15,33 @@ from ..models import (
     TextContent,
     ThinkingContent,
     ThinkingMessage,
+    UsageInfo,
 )
+
+
+# =============================================================================
+# Token Usage Formatting
+# =============================================================================
+
+
+def format_token_usage(usage: UsageInfo) -> str:
+    """Format token usage information as a display string.
+
+    Args:
+        usage: UsageInfo object with token counts.
+
+    Returns:
+        Formatted string like "Input: 100 | Output: 50 | Cache Read: 25"
+    """
+    token_parts = [
+        f"Input: {usage.input_tokens}",
+        f"Output: {usage.output_tokens}",
+    ]
+    if usage.cache_creation_input_tokens:
+        token_parts.append(f"Cache Creation: {usage.cache_creation_input_tokens}")
+    if usage.cache_read_input_tokens:
+        token_parts.append(f"Cache Read: {usage.cache_read_input_tokens}")
+    return " | ".join(token_parts)
 
 
 # =============================================================================
@@ -26,6 +52,7 @@ from ..models import (
 def create_assistant_message(
     meta: MessageMeta,
     items: list[ContentItem],
+    usage: Optional[UsageInfo] = None,
 ) -> Optional[AssistantTextMessage]:
     """Create AssistantTextMessage from content items.
 
@@ -34,6 +61,7 @@ def create_assistant_message(
     Args:
         meta: Message metadata.
         items: List of text/image content items (no tool_use, tool_result, thinking).
+        usage: Optional token usage info to format and attach.
 
     Returns:
         AssistantTextMessage if items is non-empty, None otherwise.
@@ -49,6 +77,7 @@ def create_assistant_message(
             meta,
             items=items,  # type: ignore[arg-type]
             raw_text_content=text_content if text_content else None,
+            token_usage=format_token_usage(usage) if usage else None,
         )
     return None
 
@@ -56,12 +85,14 @@ def create_assistant_message(
 def create_thinking_message(
     meta: MessageMeta,
     tool_item: ContentItem,
+    usage: Optional[UsageInfo] = None,
 ) -> ThinkingMessage:
     """Create ThinkingMessage from a thinking content item.
 
     Args:
         meta: Message metadata.
         tool_item: ThinkingContent or compatible object with 'thinking' attribute
+        usage: Optional token usage info to format and attach.
 
     Returns:
         ThinkingMessage containing the thinking text and optional signature.
@@ -75,4 +106,9 @@ def create_thinking_message(
         signature = None
 
     # Create the content model (formatting happens in HtmlRenderer)
-    return ThinkingMessage(meta, thinking=thinking_text, signature=signature)
+    return ThinkingMessage(
+        meta,
+        thinking=thinking_text,
+        signature=signature,
+        token_usage=format_token_usage(usage) if usage else None,
+    )

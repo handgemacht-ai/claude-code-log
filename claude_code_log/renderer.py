@@ -54,6 +54,7 @@ from .models import (
     ToolResultContent,
     ToolUseContent,
     ThinkingContent,
+    UsageInfo,
     # Structured content types
     AssistantTextMessage,
     CommandOutputMessage,
@@ -101,12 +102,12 @@ class TemplateMessage:
     """Structured message data for template rendering.
 
     This is a lightweight wrapper around MessageContent that adds:
-    - Rendering metadata (message_id, ancestry, token_usage)
+    - Rendering metadata (message_id, ancestry)
     - Tree structure (children, fold/unfold counts)
     - Pairing metadata (is_paired, pair_role, pair_duration)
 
     All identity/context fields come from meta (timestamp, session_id, etc.)
-    and content (tool_use_id, has_markdown, etc.).
+    and content (tool_use_id, has_markdown, token_usage, etc.).
     """
 
     def __init__(
@@ -115,7 +116,6 @@ class TemplateMessage:
         meta: "MessageMeta",
         *,  # Force keyword arguments after this
         message_title: Optional[str] = None,
-        token_usage: Optional[str] = None,
         message_id: Optional[str] = None,
         ancestry: Optional[list[str]] = None,
         uuid: Optional[str] = None,
@@ -133,7 +133,6 @@ class TemplateMessage:
         )
 
         # Rendering metadata
-        self.token_usage = token_usage
         self.message_id = message_id
         self.ancestry = ancestry or []
         # uuid can differ from meta.uuid (e.g., for chunks: "{uuid}-chunk-{idx}")
@@ -192,6 +191,11 @@ class TemplateMessage:
     def agent_id(self) -> Optional[str]:
         """Get agent_id from meta."""
         return self.meta.agent_id
+
+    @property
+    def token_usage(self) -> Optional[str]:
+        """Get token_usage from content (if available)."""
+        return getattr(self.content, "token_usage", None)
 
     @property
     def is_sidechain(self) -> bool:
@@ -1814,28 +1818,15 @@ def _render_messages(
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
-        token_usage_str: Optional[str] = None
+        usage_to_show: Optional[UsageInfo] = None
         if assistant_entry := as_assistant_entry(message):
             assistant_message = assistant_entry.message
             message_uuid = assistant_entry.uuid
-
             if assistant_message.usage and message_uuid in show_tokens_for_message:
-                # Only show token usage for messages marked as first occurrence of requestId
-                usage = assistant_message.usage
-                token_parts = [
-                    f"Input: {usage.input_tokens}",
-                    f"Output: {usage.output_tokens}",
-                ]
-                if usage.cache_creation_input_tokens:
-                    token_parts.append(
-                        f"Cache Creation: {usage.cache_creation_input_tokens}"
-                    )
-                if usage.cache_read_input_tokens:
-                    token_parts.append(f"Cache Read: {usage.cache_read_input_tokens}")
-                token_usage_str = " | ".join(token_parts)
+                usage_to_show = assistant_message.usage
 
-        # Track whether we've shown token usage (only show on first content chunk)
-        token_shown = False
+        # Track whether we've used the usage (only use on first content chunk)
+        usage_used = False
 
         # Process each chunk - regular chunks (list) become text/image messages,
         # special chunks (single item) become tool/thinking messages
@@ -1856,7 +1847,10 @@ def _render_messages(
                         is_slash_command=meta.is_meta,
                     )
                 elif effective_type == "assistant":
-                    content_model = create_assistant_message(meta, chunk)
+                    # Pass usage only on first chunk
+                    chunk_usage = usage_to_show if not usage_used else None
+                    usage_used = True
+                    content_model = create_assistant_message(meta, chunk, chunk_usage)
 
                 # Convert to UserSteeringMessage for queue-operation 'remove' messages
                 if (
@@ -1880,15 +1874,10 @@ def _render_messages(
                 ):
                     message_title = "Sub-assistant"
 
-                # Only show token usage on first chunk
-                chunk_token_usage = token_usage_str if not token_shown else None
-                token_shown = True
-
                 template_message = TemplateMessage(
                     content_model,
                     meta,
                     message_title=message_title,
-                    token_usage=chunk_token_usage,
                 )
 
                 template_messages.append(template_message)
@@ -1908,7 +1897,10 @@ def _render_messages(
                         meta, tool_item, tool_use_context
                     )
                 elif isinstance(tool_item, ThinkingContent):
-                    content = create_thinking_message(meta, tool_item)
+                    # Pass usage only if not yet used
+                    chunk_usage = usage_to_show if not usage_used else None
+                    usage_used = True
+                    content = create_thinking_message(meta, tool_item, chunk_usage)
                     tool_result = ToolItemResult(
                         message_type=content.message_type,
                         message_title=content.message_title() or "Thinking",

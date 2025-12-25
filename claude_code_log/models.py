@@ -624,6 +624,9 @@ class AssistantTextMessage(MessageContent):
     # Cached raw text extracted from items (for dedup matching, simple renderers)
     raw_text_content: Optional[str] = None
 
+    # Token usage string (formatted from UsageInfo when available)
+    token_usage: Optional[str] = None
+
     @property
     def message_type(self) -> str:
         return "assistant"
@@ -649,6 +652,9 @@ class ThinkingMessage(MessageContent):
 
     thinking: str
     signature: Optional[str] = None
+
+    # Token usage string (formatted from UsageInfo when available)
+    token_usage: Optional[str] = None
 
     @property
     def message_type(self) -> str:
