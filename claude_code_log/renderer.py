@@ -2064,12 +2064,30 @@ class Renderer:
     - Subclasses override methods to implement format-specific rendering
     """
 
+    def _dispatch_format(self, obj: Any) -> str:
+        """Dispatch to format_{ClassName} method based on object type.
+
+        Walks the object's type MRO to find the most specific format method.
+        This allows methods for parent classes to serve as fallbacks.
+
+        Args:
+            obj: Object to format (content, input, or output).
+
+        Returns:
+            Formatted string (e.g., HTML), or empty string if no handler found.
+        """
+        for cls in type(obj).__mro__:
+            if cls is object:
+                break
+            if method := getattr(self, f"format_{cls.__name__}", None):
+                return method(obj)
+        return ""
+
     def format_content(self, message: "TemplateMessage") -> str:
         """Format message content by dispatching to type-specific method.
 
         Looks for a method named format_{ClassName} (e.g., format_SystemMessage).
         Walks the content type's MRO to find the most specific format method.
-        This allows methods for parent classes to serve as fallbacks.
 
         Args:
             message: TemplateMessage with content to format.
@@ -2077,12 +2095,7 @@ class Renderer:
         Returns:
             Formatted string (e.g., HTML), or empty string if no handler found.
         """
-        for cls in type(message.content).__mro__:
-            if cls is object:
-                break
-            if method := getattr(self, f"format_{cls.__name__}", None):
-                return method(message.content)
-        return ""
+        return self._dispatch_format(message.content)
 
     # -------------------------------------------------------------------------
     # System Content Formatters
@@ -2216,27 +2229,15 @@ class Renderer:
         """Format ToolUseMessage content (tool invocations).
 
         Dispatches to format_{InputClass} methods based on message.input type.
-        Walks the input type's MRO to find the most specific format method.
         """
-        for cls in type(message.input).__mro__:
-            if cls is object:
-                break
-            if method := getattr(self, f"format_{cls.__name__}", None):
-                return method(message.input)
-        return ""
+        return self._dispatch_format(message.input)
 
     def format_ToolResultMessage(self, message: "ToolResultMessage") -> str:
         """Format ToolResultMessage content (tool results).
 
         Dispatches to format_{OutputClass} methods based on message.output type.
-        Walks the output type's MRO to find the most specific format method.
         """
-        for cls in type(message.output).__mro__:
-            if cls is object:
-                break
-            if method := getattr(self, f"format_{cls.__name__}", None):
-                return method(message.output)
-        return ""
+        return self._dispatch_format(message.output)
 
     # -------------------------------------------------------------------------
     # Tool Input Formatters
