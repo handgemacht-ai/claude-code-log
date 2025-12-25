@@ -9846,7 +9846,7 @@
       
       <div class='message user command-output pair_last session-edge_cases' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
-              <span></span>
+              <span>User</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-06-14T11:02:20Z'>2025-06-14 11:02:20</span>

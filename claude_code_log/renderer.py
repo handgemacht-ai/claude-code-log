@@ -124,13 +124,8 @@ class TemplateMessage:
         self.content = content
         self.meta = meta
 
-        # Display title for message header (capitalized, with decorations)
-        # Falls back to content.message_type if not provided
-        self.message_title = (
-            message_title
-            if message_title is not None
-            else content.message_type.replace("_", " ").replace("-", " ").title()
-        )
+        # Optional title override (for tool messages with HTML-formatted titles)
+        self._message_title_override = message_title
 
         # Rendering metadata
         self.message_id = message_id
@@ -161,6 +156,27 @@ class TemplateMessage:
     def type(self) -> str:
         """Get message type from content."""
         return self.content.message_type
+
+    @property
+    def message_title(self) -> str:
+        """Get message title (override, content.message_title(), or type-based fallback).
+
+        Priority:
+        1. Explicit override (for tool messages with HTML-formatted titles)
+        2. Sidechain assistant -> "Sub-assistant"
+        3. content.message_title() if not None
+        4. Type-based fallback from message_type
+        """
+        if self._message_title_override is not None:
+            return self._message_title_override
+        # Sidechain assistant messages get special title
+        if self.meta.is_sidechain and isinstance(self.content, AssistantTextMessage):
+            return "Sub-assistant"
+        # Try content's message_title method
+        if title := self.content.message_title():
+            return title
+        # Fallback: convert message_type to title case
+        return self.content.message_type.replace("_", " ").replace("-", " ").title()
 
     @property
     def is_session_header(self) -> bool:
@@ -1739,11 +1755,7 @@ def _render_messages(
             system_content = create_system_message(message)
             if system_content:
                 template_messages.append(
-                    TemplateMessage(
-                        system_content,
-                        system_content.meta,
-                        message_title=system_content.message_title() or "System",
-                    )
+                    TemplateMessage(system_content, system_content.meta)
                 )
             continue
 
@@ -1866,21 +1878,7 @@ def _render_messages(
                 if not chunk or content_model is None:
                     continue
 
-                # Get message_title from content_model
-                message_title = content_model.message_title()
-                # Override for sidechain assistant messages
-                if meta.is_sidechain and isinstance(
-                    content_model, AssistantTextMessage
-                ):
-                    message_title = "Sub-assistant"
-
-                template_message = TemplateMessage(
-                    content_model,
-                    meta,
-                    message_title=message_title,
-                )
-
-                template_messages.append(template_message)
+                template_messages.append(TemplateMessage(content_model, meta))
 
             else:
                 # Special chunk: single tool_use/tool_result/thinking item

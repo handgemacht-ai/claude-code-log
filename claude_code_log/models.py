@@ -686,6 +686,9 @@ class UnknownMessage(MessageContent):
     def message_type(self) -> str:
         return "unknown"
 
+    def message_title(self) -> Optional[str]:
+        return "Unknown Content"
+
 
 # =============================================================================
 # Renderer Content Models
