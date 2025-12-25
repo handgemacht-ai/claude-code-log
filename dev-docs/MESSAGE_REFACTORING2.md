@@ -17,9 +17,12 @@ The goal is to achieve a cleaner, type-driven architecture where:
 - **Removed `ContentBlock`** from `ContentItem` union - using our own types
 - **Simplified `_process_regular_message`** - content type detection drives rendering
 - **CSS_CLASS_REGISTRY** derives CSS classes from content types (in `html/utils.py`)
-- **MessageModifiers removed** - only `is_sidechain` remains as a flag on `TemplateMessage`
+- **MessageModifiers removed** - only `is_sidechain` remains as a flag on `MessageMeta`
 - **UserSteeringMessage** created for queue-operation "remove" messages
 - **IdeNotificationContent** is now a plain dataclass (not a MessageContent subclass)
+- **Inverted relationship achieved** - `MessageContent.meta` is the source of truth, `TemplateMessage.meta = content.meta`
+- **Leaner TemplateMessage** - `has_markdown` delegates to content, `raw_text_content` moved to content classes
+- **Title dispatch pattern** - `Renderer.title_content()` dispatches to `title_{ClassName}` methods
 
 ### Factory Organization ✓
 
@@ -50,13 +53,14 @@ def create_thinking_message(meta: MessageMeta, tool_item: ContentItem) -> ...
 
 This ensures every `MessageContent` subclass has valid metadata.
 
-### Remaining Goals
+### Goals Status
 
 | Goal | Status | Notes |
 |------|--------|-------|
-| Inverted relationship | ❌ Pending | Still `TemplateMessage.content: MessageContent`, not `MessageContent.meta` |
-| Leaner TemplateMessage | ❌ Pending | Still has `has_markdown`, `raw_text_content` |
-| Models split | ❌ Pending | Still single `models.py` |
+| Inverted relationship | ✅ Done | `MessageContent.meta` is source of truth, `TemplateMessage.meta = content.meta` |
+| Leaner TemplateMessage | ✅ Done | `has_markdown` delegates to content, `raw_text_content` on content classes |
+| Title dispatch | ✅ Done | `Renderer.title_content()` with `title_{ClassName}` methods |
+| Models split | ❌ Optional | Still single `models.py` - could split if needed |
 
 ## Cache Considerations
 
@@ -86,6 +90,4 @@ If we decide to split models.py:
 - `assistant_models.py` - Assistant message content types
 - `tools_models.py` - Tool use/result models
 
-## Related Work
-
-See [REMOVE_ANTHROPIC_TYPES.md](REMOVE_ANTHROPIC_TYPES.md) for simplifying Anthropic SDK dependencies.
+This is optional and primarily a code organization improvement.
