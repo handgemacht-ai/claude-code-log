@@ -46,6 +46,190 @@ class MessageType(str, Enum):
 
 
 # =============================================================================
+# JSONL Content Models (Pydantic)
+# =============================================================================
+# Low-level content types parsed from JSONL transcript entries.
+# These are defined first as they're the "input" types from transcript files.
+
+
+class TextContent(BaseModel):
+    """Text content block within a message content array."""
+
+    type: Literal["text"]
+    text: str
+
+
+class ImageSource(BaseModel):
+    """Base64-encoded image source data."""
+
+    type: Literal["base64"]
+    media_type: str
+    data: str
+
+
+class ImageContent(BaseModel):
+    """Image content.
+
+    This represents an image within a content array, not a standalone message.
+    Images are always part of UserTextMessage.items or AssistantTextMessage.items.
+    """
+
+    type: Literal["image"]
+    source: ImageSource
+
+
+class UsageInfo(BaseModel):
+    """Token usage information for tracking API consumption."""
+
+    input_tokens: Optional[int] = None
+    cache_creation_input_tokens: Optional[int] = None
+    cache_read_input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    service_tier: Optional[str] = None
+    server_tool_use: Optional[dict[str, Any]] = None
+
+
+class ToolUseContent(BaseModel):
+    type: Literal["tool_use"]
+    id: str
+    name: str
+    input: dict[str, Any]
+
+
+class ToolResultContent(BaseModel):
+    type: Literal["tool_result"]
+    tool_use_id: str
+    content: Union[str, list[dict[str, Any]]]
+    is_error: Optional[bool] = None
+    agentId: Optional[str] = None  # Reference to agent file for sub-agent messages
+
+
+class ThinkingContent(BaseModel):
+    type: Literal["thinking"]
+    thinking: str
+    signature: Optional[str] = None
+
+
+# Content item types that appear in message content arrays
+ContentItem = Union[
+    TextContent,
+    ToolUseContent,
+    ToolResultContent,
+    ThinkingContent,
+    ImageContent,
+]
+
+
+class UserMessageModel(BaseModel):
+    role: Literal["user"]
+    content: list[ContentItem]
+    usage: Optional["UsageInfo"] = (
+        None  # For type compatibility with AssistantMessageModel
+    )
+
+
+class AssistantMessageModel(BaseModel):
+    """Assistant message model."""
+
+    id: str
+    type: Literal["message"]
+    role: Literal["assistant"]
+    model: str
+    content: list[ContentItem]
+    stop_reason: Optional[str] = None
+    stop_sequence: Optional[str] = None
+    usage: Optional[UsageInfo] = None
+
+
+# Tool result type - flexible to accept various result formats from JSONL
+# The specific parsing/formatting happens in tool_formatters.py using
+# ReadOutput, EditOutput, etc. (see Tool Output Content Models section)
+ToolUseResult = Union[
+    str,
+    list[Any],  # Covers list[TodoWriteItem], list[ContentItem], etc.
+    dict[str, Any],  # Covers structured results
+]
+
+
+class BaseTranscriptEntry(BaseModel):
+    parentUuid: Optional[str]
+    isSidechain: bool
+    userType: str
+    cwd: str
+    sessionId: str
+    version: str
+    uuid: str
+    timestamp: str
+    isMeta: Optional[bool] = None
+    agentId: Optional[str] = None  # Agent ID for sidechain messages
+    gitBranch: Optional[str] = None  # Git branch name when available
+
+
+class UserTranscriptEntry(BaseTranscriptEntry):
+    type: Literal["user"]
+    message: UserMessageModel
+    toolUseResult: Optional[ToolUseResult] = None
+    agentId: Optional[str] = None  # From toolUseResult when present
+
+
+class AssistantTranscriptEntry(BaseTranscriptEntry):
+    type: Literal["assistant"]
+    message: AssistantMessageModel
+    requestId: Optional[str] = None
+
+
+class SummaryTranscriptEntry(BaseModel):
+    type: Literal["summary"]
+    summary: str
+    leafUuid: str
+    cwd: Optional[str] = None
+    sessionId: None = None  # Summaries don't have a sessionId
+
+
+class SystemTranscriptEntry(BaseTranscriptEntry):
+    """System messages like warnings, notifications, hook summaries, etc."""
+
+    type: Literal["system"]
+    content: Optional[str] = None
+    subtype: Optional[str] = None  # e.g., "stop_hook_summary"
+    level: Optional[str] = None  # e.g., "warning", "info", "error"
+    # Hook summary fields (for subtype="stop_hook_summary")
+    hasOutput: Optional[bool] = None
+    hookErrors: Optional[list[str]] = None
+    hookInfos: Optional[list[dict[str, Any]]] = None
+    preventedContinuation: Optional[bool] = None
+
+
+class QueueOperationTranscriptEntry(BaseModel):
+    """Queue operations (enqueue/dequeue/remove) for message queueing tracking.
+
+    enqueue/dequeue are internal operations that track when messages are queued and dequeued.
+    They are parsed but not rendered, as the content duplicates actual user messages.
+
+    'remove' operations are out-of-band user inputs made visible to the agent while working
+    for "steering" purposes. These should be rendered as user messages with a 'steering' CSS class.
+    Content can be a list of ContentItems or a simple string (for 'remove' operations).
+    """
+
+    type: Literal["queue-operation"]
+    operation: Literal["enqueue", "dequeue", "remove", "popAll"]
+    timestamp: str
+    sessionId: str
+    content: Optional[Union[list[ContentItem], str]] = (
+        None  # List for enqueue, str for remove/popAll
+    )
+
+
+TranscriptEntry = Union[
+    UserTranscriptEntry,
+    AssistantTranscriptEntry,
+    SummaryTranscriptEntry,
+    SystemTranscriptEntry,
+    QueueOperationTranscriptEntry,
+]
+
+
+# =============================================================================
 # Message Metadata
 # =============================================================================
 # Common metadata fields extracted from transcript entries.
@@ -369,39 +553,6 @@ class IdeNotificationContent:
     selections: list[IdeSelection]
     diagnostics: list[IdeDiagnostic]
     remaining_text: str  # Text after notifications extracted
-
-
-# =============================================================================
-# Content Item Models (Pydantic)
-# =============================================================================
-# These are content items that appear within message content arrays.
-# Defined here before the dataclass models that reference them.
-
-
-class TextContent(BaseModel):
-    """Text content block within a message content array."""
-
-    type: Literal["text"]
-    text: str
-
-
-class ImageSource(BaseModel):
-    """Base64-encoded image source data."""
-
-    type: Literal["base64"]
-    media_type: str
-    data: str
-
-
-class ImageContent(BaseModel):
-    """Image content.
-
-    This represents an image within a content array, not a standalone message.
-    Images are always part of UserTextMessage.items or AssistantTextMessage.items.
-    """
-
-    type: Literal["image"]
-    source: ImageSource
 
 
 @dataclass
@@ -780,7 +931,7 @@ ToolInput = Union[
     TodoWriteInput,
     AskUserQuestionInput,
     ExitPlanModeInput,
-    "ToolUseContent",  # Generic fallback when no specialized parser
+    ToolUseContent,  # Generic fallback when no specialized parser
 ]
 
 
@@ -912,163 +1063,5 @@ ToolOutput = Union[
     EditOutput,
     # Add more specialized output types as they're implemented:
     # WriteOutput, BashOutput, TaskOutput, GlobOutput, GrepOutput
-    "ToolResultContent",  # Generic fallback for unparsed results
-]
-
-
-# =============================================================================
-# Transcript Content Models (Pydantic)
-# =============================================================================
-# Low-level content types parsed from JSONL transcript entries.
-# These are the raw content items that appear in message content arrays.
-
-
-class UsageInfo(BaseModel):
-    """Token usage information for tracking API consumption."""
-
-    input_tokens: Optional[int] = None
-    cache_creation_input_tokens: Optional[int] = None
-    cache_read_input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    service_tier: Optional[str] = None
-    server_tool_use: Optional[dict[str, Any]] = None
-
-
-class ToolUseContent(BaseModel):
-    type: Literal["tool_use"]
-    id: str
-    name: str
-    input: dict[str, Any]
-
-
-class ToolResultContent(BaseModel):
-    type: Literal["tool_result"]
-    tool_use_id: str
-    content: Union[str, list[dict[str, Any]]]
-    is_error: Optional[bool] = None
-    agentId: Optional[str] = None  # Reference to agent file for sub-agent messages
-
-
-class ThinkingContent(BaseModel):
-    type: Literal["thinking"]
-    thinking: str
-    signature: Optional[str] = None
-
-
-# Content item types that appear in message content arrays
-ContentItem = Union[
-    TextContent,
-    ToolUseContent,
-    ToolResultContent,
-    ThinkingContent,
-    ImageContent,
-]
-
-
-class UserMessageModel(BaseModel):
-    role: Literal["user"]
-    content: list[ContentItem]
-    usage: Optional["UsageInfo"] = (
-        None  # For type compatibility with AssistantMessageModel
-    )
-
-
-class AssistantMessageModel(BaseModel):
-    """Assistant message model."""
-
-    id: str
-    type: Literal["message"]
-    role: Literal["assistant"]
-    model: str
-    content: list[ContentItem]
-    stop_reason: Optional[str] = None
-    stop_sequence: Optional[str] = None
-    usage: Optional[UsageInfo] = None
-
-
-# Tool result type - flexible to accept various result formats from JSONL
-# The specific parsing/formatting happens in tool_formatters.py using
-# ReadOutput, EditOutput, etc. (see Tool Output Content Models section)
-ToolUseResult = Union[
-    str,
-    list[Any],  # Covers list[TodoWriteItem], list[ContentItem], etc.
-    dict[str, Any],  # Covers structured results
-]
-
-
-class BaseTranscriptEntry(BaseModel):
-    parentUuid: Optional[str]
-    isSidechain: bool
-    userType: str
-    cwd: str
-    sessionId: str
-    version: str
-    uuid: str
-    timestamp: str
-    isMeta: Optional[bool] = None
-    agentId: Optional[str] = None  # Agent ID for sidechain messages
-    gitBranch: Optional[str] = None  # Git branch name when available
-
-
-class UserTranscriptEntry(BaseTranscriptEntry):
-    type: Literal["user"]
-    message: UserMessageModel
-    toolUseResult: Optional[ToolUseResult] = None
-    agentId: Optional[str] = None  # From toolUseResult when present
-
-
-class AssistantTranscriptEntry(BaseTranscriptEntry):
-    type: Literal["assistant"]
-    message: AssistantMessageModel
-    requestId: Optional[str] = None
-
-
-class SummaryTranscriptEntry(BaseModel):
-    type: Literal["summary"]
-    summary: str
-    leafUuid: str
-    cwd: Optional[str] = None
-    sessionId: None = None  # Summaries don't have a sessionId
-
-
-class SystemTranscriptEntry(BaseTranscriptEntry):
-    """System messages like warnings, notifications, hook summaries, etc."""
-
-    type: Literal["system"]
-    content: Optional[str] = None
-    subtype: Optional[str] = None  # e.g., "stop_hook_summary"
-    level: Optional[str] = None  # e.g., "warning", "info", "error"
-    # Hook summary fields (for subtype="stop_hook_summary")
-    hasOutput: Optional[bool] = None
-    hookErrors: Optional[list[str]] = None
-    hookInfos: Optional[list[dict[str, Any]]] = None
-    preventedContinuation: Optional[bool] = None
-
-
-class QueueOperationTranscriptEntry(BaseModel):
-    """Queue operations (enqueue/dequeue/remove) for message queueing tracking.
-
-    enqueue/dequeue are internal operations that track when messages are queued and dequeued.
-    They are parsed but not rendered, as the content duplicates actual user messages.
-
-    'remove' operations are out-of-band user inputs made visible to the agent while working
-    for "steering" purposes. These should be rendered as user messages with a 'steering' CSS class.
-    Content can be a list of ContentItems or a simple string (for 'remove' operations).
-    """
-
-    type: Literal["queue-operation"]
-    operation: Literal["enqueue", "dequeue", "remove", "popAll"]
-    timestamp: str
-    sessionId: str
-    content: Optional[Union[list[ContentItem], str]] = (
-        None  # List for enqueue, str for remove/popAll
-    )
-
-
-TranscriptEntry = Union[
-    UserTranscriptEntry,
-    AssistantTranscriptEntry,
-    SummaryTranscriptEntry,
-    SystemTranscriptEntry,
-    QueueOperationTranscriptEntry,
+    ToolResultContent,  # Generic fallback for unparsed results
 ]
