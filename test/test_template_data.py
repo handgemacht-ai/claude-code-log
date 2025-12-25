@@ -7,6 +7,7 @@ from pathlib import Path
 from claude_code_log.converter import load_transcript, load_directory_transcripts
 from claude_code_log.html.renderer import generate_html, generate_projects_index_html
 from claude_code_log.renderer import (
+    Renderer,
     TemplateMessage,
     TemplateProject,
     TemplateSummary,
@@ -33,31 +34,33 @@ class TestTemplateMessage:
         )
         content = UserTextMessage(meta=meta)
         msg = TemplateMessage(content, meta)
+        renderer = Renderer()
 
         assert msg.type == "user"
         assert msg.meta.timestamp == "2025-06-14T10:00:00Z"
-        assert msg.message_title == "User"
+        assert renderer.title_content(msg) == "User"
 
-    def test_template_message_title_capitalization(self):
-        """Test that message_title properly capitalizes message types."""
+    def test_template_message_title_generation(self):
+        """Test that Renderer.title_content generates correct titles."""
         meta = MessageMeta.empty()
+        renderer = Renderer()
 
         # Test UserTextMessage
         user_content = UserTextMessage(meta=meta)
         user_msg = TemplateMessage(user_content, meta)
-        assert user_msg.message_title == "User"
+        assert renderer.title_content(user_msg) == "User"
 
         # Test AssistantTextMessage
         assistant_content = AssistantTextMessage(meta=meta)
         assistant_msg = TemplateMessage(assistant_content, meta)
-        assert assistant_msg.message_title == "Assistant"
+        assert renderer.title_content(assistant_msg) == "Assistant"
 
-        # Test SessionHeaderMessage (for session type)
+        # Test SessionHeaderMessage - fallback to type-based title
         session_content = SessionHeaderMessage(
             meta=meta, title="Test Session", session_id="test-id"
         )
         session_msg = TemplateMessage(session_content, meta)
-        assert session_msg.message_title == "Session Header"
+        assert renderer.title_content(session_msg) == "Session Header"
 
 
 class TestTemplateProject:

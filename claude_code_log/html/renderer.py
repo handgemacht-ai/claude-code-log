@@ -1,7 +1,7 @@
 """HTML renderer implementation for Claude Code transcripts."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple, cast
 
 from ..cache import get_library_version
 from ..models import (
@@ -16,7 +16,6 @@ from ..models import (
     SlashCommandMessage,
     SystemMessage,
     ThinkingMessage,
-    ToolResultMessage,
     ToolUseMessage,
     TranscriptEntry,
     UnknownMessage,
@@ -95,13 +94,13 @@ from .tool_formatters import (
     format_task_output,
     format_todowrite_input,
     format_tool_result_content_raw,
-    format_tool_use_title,
     format_write_input,
     format_write_output,
     render_params_table,
 )
 from .utils import (
     css_class_from_message,
+    escape_html,
     get_message_emoji,
     get_template_environment,
     is_session_header,
@@ -263,22 +262,55 @@ class HtmlRenderer(Renderer):
         return format_tool_result_content_raw(output)
 
     # -------------------------------------------------------------------------
-    # Title Methods (for Renderer.title_content dispatch)
+    # Tool Input Title Methods (for Renderer.title_ToolUseMessage dispatch)
     # -------------------------------------------------------------------------
 
-    def title_ToolUseMessage(self, message: TemplateMessage) -> str:
-        """Generate HTML title for tool use messages."""
-        content = message.content
-        if isinstance(content, ToolUseMessage):
-            return format_tool_use_title(content.tool_name, content.input)
-        return message.message_title
+    def _tool_title(
+        self, message: TemplateMessage, icon: str, summary: Optional[str] = None
+    ) -> str:
+        """Format tool title with icon and optional summary."""
+        content = cast(ToolUseMessage, message.content)
+        escaped_name = escape_html(content.tool_name)
+        prefix = f"{icon} " if icon else ""
+        if summary:
+            escaped_summary = escape_html(summary)
+            return f"{prefix}{escaped_name} <span class='tool-summary'>{escaped_summary}</span>"
+        return f"{prefix}{escaped_name}"
 
-    def title_ToolResultMessage(self, message: TemplateMessage) -> str:
-        """Generate title for tool result messages."""
-        content = message.content
-        if isinstance(content, ToolResultMessage):
-            return "Error" if content.is_error else "Tool Result"
-        return message.message_title
+    def title_TodoWriteInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
+        return "📝 Todo List"
+
+    def title_TaskInput(self, message: TemplateMessage) -> str:
+        content = cast(ToolUseMessage, message.content)
+        input = cast(TaskInput, content.input)
+        escaped_name = escape_html(content.tool_name)
+        escaped_subagent = (
+            escape_html(input.subagent_type) if input.subagent_type else ""
+        )
+        if input.description and input.subagent_type:
+            escaped_desc = escape_html(input.description)
+            return f"🔧 {escaped_name} <span class='tool-summary'>{escaped_desc}</span> <span class='tool-subagent'>({escaped_subagent})</span>"
+        elif input.description:
+            return self._tool_title(message, "🔧", input.description)
+        elif input.subagent_type:
+            return f"🔧 {escaped_name} <span class='tool-subagent'>({escaped_subagent})</span>"
+        return f"🔧 {escaped_name}"
+
+    def title_EditInput(self, message: TemplateMessage) -> str:
+        input = cast(EditInput, cast(ToolUseMessage, message.content).input)
+        return self._tool_title(message, "📝", input.file_path)
+
+    def title_WriteInput(self, message: TemplateMessage) -> str:
+        input = cast(WriteInput, cast(ToolUseMessage, message.content).input)
+        return self._tool_title(message, "📝", input.file_path)
+
+    def title_ReadInput(self, message: TemplateMessage) -> str:
+        input = cast(ReadInput, cast(ToolUseMessage, message.content).input)
+        return self._tool_title(message, "📄", input.file_path)
+
+    def title_BashInput(self, message: TemplateMessage) -> str:
+        input = cast(BashInput, cast(ToolUseMessage, message.content).input)
+        return self._tool_title(message, "💻", input.description)
 
     def _flatten_preorder(
         self, roots: list[TemplateMessage]

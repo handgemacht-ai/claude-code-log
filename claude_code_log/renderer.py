@@ -125,26 +125,6 @@ class TemplateMessage:
         return self.content.message_type
 
     @property
-    def message_title(self) -> str:
-        """Get message title from content or type-based fallback.
-
-        Priority:
-        1. Sidechain assistant -> "Sub-assistant"
-        2. content.message_title() if not None
-        3. Type-based fallback from message_type
-
-        Note: Renderer.title_content() may override this for specific content types.
-        """
-        # Sidechain assistant messages get special title
-        if self.meta.is_sidechain and isinstance(self.content, AssistantTextMessage):
-            return "Sub-assistant"
-        # Try content's message_title method
-        if title := self.content.message_title():
-            return title
-        # Fallback: convert message_type to title case
-        return self.content.message_type.replace("_", " ").replace("-", " ").title()
-
-    @property
     def is_session_header(self) -> bool:
         """Check if this message is a session header."""
         return isinstance(self.content, SessionHeaderMessage)
@@ -2014,23 +1994,22 @@ class Renderer:
     """
 
     def _dispatch_format(self, obj: Any) -> str:
-        """Dispatch to format_{ClassName} method based on object type.
-
-        Walks the object's type MRO to find the most specific format method.
-        This allows methods for parent classes to serve as fallbacks.
-
-        Args:
-            obj: Object to format (content, input, or output).
-
-        Returns:
-            Formatted string (e.g., HTML), or empty string if no handler found.
-        """
+        """Dispatch to format_{ClassName} method based on object type."""
         for cls in type(obj).__mro__:
             if cls is object:
                 break
             if method := getattr(self, f"format_{cls.__name__}", None):
                 return method(obj)
         return ""
+
+    def _dispatch_title(self, obj: Any, message: "TemplateMessage") -> Optional[str]:
+        """Dispatch to title_{ClassName} method based on object type."""
+        for cls in type(obj).__mro__:
+            if cls is object:
+                break
+            if method := getattr(self, f"title_{cls.__name__}", None):
+                return method(message)
+        return None
 
     def format_content(self, message: "TemplateMessage") -> str:
         """Format message content by dispatching to type-specific method.
@@ -2050,7 +2029,7 @@ class Renderer:
         """Get message title by dispatching to type-specific title method.
 
         Looks for a method named title_{ClassName} (e.g., title_ToolUseMessage).
-        Falls back to content.message_title() or type-based title.
+        Falls back to type-based title derived from message_type.
 
         Args:
             message: TemplateMessage to get title for.
@@ -2058,14 +2037,88 @@ class Renderer:
         Returns:
             Title string for the message header.
         """
-        # First try title_{ClassName} dispatch
+        # Try title_{ClassName} dispatch
         for cls in type(message.content).__mro__:
             if cls is object:
                 break
             if method := getattr(self, f"title_{cls.__name__}", None):
                 return method(message)
-        # Fall back to the message_title property (content-based)
-        return message.message_title
+        # Fallback: convert message_type to title case
+        return message.content.message_type.replace("_", " ").replace("-", " ").title()
+
+    # -------------------------------------------------------------------------
+    # Title Methods (return title strings for message headers)
+    # -------------------------------------------------------------------------
+    # These methods return title strings for specific content types.
+    # Override in subclasses for format-specific titles (e.g., HTML with icons).
+
+    def title_SystemMessage(self, message: "TemplateMessage") -> str:
+        content = cast("SystemMessage", message.content)
+        return f"System {content.level.title()}"
+
+    def title_HookSummaryMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "System Hook"
+
+    def title_SlashCommandMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "Slash Command"
+
+    def title_CommandOutputMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return ""  # Empty title for command output
+
+    def title_BashInputMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "Bash command"
+
+    def title_BashOutputMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return ""  # Empty title for bash output
+
+    def title_CompactedSummaryMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "User (compacted conversation)"
+
+    def title_UserMemoryMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "Memory"
+
+    def title_UserSlashCommandMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "User (slash command)"
+
+    def title_UserTextMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "User"
+
+    def title_UserSteeringMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "User (steering)"
+
+    def title_AssistantTextMessage(self, message: "TemplateMessage") -> str:
+        # Sidechain assistant messages get special title
+        if message.meta.is_sidechain:
+            return "Sub-assistant"
+        return "Assistant"
+
+    def title_ThinkingMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "Thinking"
+
+    def title_UnknownMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+        return "Unknown Content"
+
+    # Tool title methods (dispatch to input/output title methods)
+    def title_ToolUseMessage(self, message: "TemplateMessage") -> str:
+        content = cast("ToolUseMessage", message.content)
+        if title := self._dispatch_title(content.input, message):
+            return title
+        return content.tool_name  # Default to tool name
+
+    def title_ToolResultMessage(self, message: "TemplateMessage") -> str:
+        content = cast("ToolResultMessage", message.content)
+        if content.is_error:
+            return "Error"
+        if title := self._dispatch_title(content.output, message):
+            return title
+        return ""  # Tool results typically don't need a title
+
+    # Tool input title stubs (override in subclasses for custom titles)
+    # def title_BashInput(self, message: "TemplateMessage") -> str: ...
+    # def title_ReadInput(self, message: "TemplateMessage") -> str: ...
+    # def title_EditInput(self, message: "TemplateMessage") -> str: ...
+    # def title_TaskInput(self, message: "TemplateMessage") -> str: ...
+    # def title_TodoWriteInput(self, message: "TemplateMessage") -> str: ...
 
     # -------------------------------------------------------------------------
     # Format Method Stubs (override in subclasses)
@@ -2124,12 +2177,6 @@ class Renderer:
     # def format_AskUserQuestionOutput(self, output: "AskUserQuestionOutput") -> str: ...
     # def format_ExitPlanModeOutput(self, output: "ExitPlanModeOutput") -> str: ...
     # def format_ToolResultContent(self, output: "ToolResultContent") -> str: ...  # fallback
-
-    # -------------------------------------------------------------------------
-    # Title Method Stubs (override in subclasses for custom titles)
-    # -------------------------------------------------------------------------
-    # def title_ToolUseMessage(self, message: "TemplateMessage") -> str: ...
-    # def title_ToolResultMessage(self, message: "TemplateMessage") -> str: ...
 
     # -------------------------------------------------------------------------
     # Rendering Entry Points

@@ -299,14 +299,6 @@ class MessageContent:
         """
         raise NotImplementedError("Subclasses must implement message_type property")
 
-    def message_title(self) -> Optional[str]:
-        """Return a title for this message content, or None for default behavior.
-
-        Subclasses can override this to provide a specific title that will be
-        used in the TemplateMessage wrapper.
-        """
-        return None
-
     @property
     def has_markdown(self) -> bool:
         """Whether this content should be rendered as markdown.
@@ -329,10 +321,6 @@ class SystemMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "system"
-
-    def message_title(self) -> Optional[str]:
-        """Return 'System Info', 'System Warning', or 'System Error'."""
-        return f"System {self.level.title()}"
 
 
 @dataclass
@@ -358,10 +346,6 @@ class HookSummaryMessage(MessageContent):
     def message_type(self) -> str:
         return "system"
 
-    def message_title(self) -> Optional[str]:
-        """Return 'System Hook' for hook summary messages."""
-        return "System Hook"
-
 
 # =============================================================================
 # User Message Content Models
@@ -386,9 +370,6 @@ class SlashCommandMessage(MessageContent):
     def message_type(self) -> str:
         return "user"
 
-    def message_title(self) -> Optional[str]:
-        return "Slash Command"
-
 
 @dataclass
 class CommandOutputMessage(MessageContent):
@@ -404,9 +385,6 @@ class CommandOutputMessage(MessageContent):
     def message_type(self) -> str:
         return "user"
 
-    def message_title(self) -> Optional[str]:
-        return ""  # Empty title for command output
-
 
 @dataclass
 class BashInputMessage(MessageContent):
@@ -420,9 +398,6 @@ class BashInputMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "bash-input"
-
-    def message_title(self) -> Optional[str]:
-        return "Bash command"
 
 
 @dataclass
@@ -438,9 +413,6 @@ class BashOutputMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "bash-output"
-
-    def message_title(self) -> Optional[str]:
-        return ""  # Empty title for bash output
 
 
 # Note: ToolResultMessage and ToolUseMessage are defined in the
@@ -467,9 +439,6 @@ class CompactedSummaryMessage(MessageContent):
     def has_markdown(self) -> bool:
         return True
 
-    def message_title(self) -> Optional[str]:
-        return "User (compacted conversation)"
-
 
 @dataclass
 class UserMemoryMessage(MessageContent):
@@ -486,9 +455,6 @@ class UserMemoryMessage(MessageContent):
     def message_type(self) -> str:
         return "user"
 
-    def message_title(self) -> Optional[str]:
-        return "Memory"
-
 
 @dataclass
 class UserSlashCommandMessage(MessageContent):
@@ -504,9 +470,6 @@ class UserSlashCommandMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "user"
-
-    def message_title(self) -> Optional[str]:
-        return "User (slash command)"
 
 
 @dataclass
@@ -579,9 +542,6 @@ class UserTextMessage(MessageContent):
     def message_type(self) -> str:
         return "user"
 
-    def message_title(self) -> Optional[str]:
-        return "User"
-
 
 @dataclass
 class UserSteeringMessage(UserTextMessage):
@@ -591,8 +551,7 @@ class UserSteeringMessage(UserTextMessage):
     items from the queue. Inherits from UserTextMessage.
     """
 
-    def message_title(self) -> Optional[str]:
-        return "User (steering)"
+    pass
 
 
 # =============================================================================
@@ -635,9 +594,6 @@ class AssistantTextMessage(MessageContent):
     def has_markdown(self) -> bool:
         return True
 
-    def message_title(self) -> Optional[str]:
-        return "Assistant"
-
 
 @dataclass
 class ThinkingMessage(MessageContent):
@@ -664,9 +620,6 @@ class ThinkingMessage(MessageContent):
     def has_markdown(self) -> bool:
         return True
 
-    def message_title(self) -> Optional[str]:
-        return "Thinking"
-
 
 # Note: ToolUseMessage is also an assistant content type, defined in
 # "Tool Message Models" section (before Tool Input Models).
@@ -685,9 +638,6 @@ class UnknownMessage(MessageContent):
     @property
     def message_type(self) -> str:
         return "unknown"
-
-    def message_title(self) -> Optional[str]:
-        return "Unknown Content"
 
 
 # =============================================================================
