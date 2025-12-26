@@ -343,8 +343,8 @@ class HtmlRenderer(Renderer):
         set_timing_var("_pygments_timings", pygments_timings)
 
         def visit(msg: TemplateMessage) -> None:
-            # Update current message UUID for timing tracking
-            set_timing_var("_current_msg_uuid", msg.uuid)
+            # Update current message ID for timing tracking
+            set_timing_var("_current_msg_id", msg.message_id)
             title = self.title_content(msg)
             html = self.format_content(msg)
             formatted_ts = format_timestamp(msg.meta.timestamp if msg.meta else None)

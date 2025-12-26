@@ -388,6 +388,8 @@ class TestErrorHandling:
 class TestTemplateMessageTree:
     """Test TemplateMessage tree building."""
 
+    _message_counter = 0
+
     def _create_message(
         self,
         msg_type: str,
@@ -395,10 +397,18 @@ class TestTemplateMessageTree:
         ancestry: list[str] | None = None,
     ) -> TemplateMessage:
         """Helper to create a minimal TemplateMessage for testing."""
+        # Parse int message_id from string if provided (e.g., "d-0" -> 0)
+        if msg_id and msg_id.startswith("d-"):
+            int_msg_id = int(msg_id[2:])
+        else:
+            int_msg_id = TestTemplateMessageTree._message_counter
+            TestTemplateMessageTree._message_counter += 1
+
         meta = MessageMeta(
             session_id="test-session",
             timestamp="2025-06-14T10:00:00Z",
             uuid=msg_id or "test-uuid",
+            message_id=int_msg_id,
         )
 
         # Create appropriate content based on message type
@@ -423,7 +433,7 @@ class TestTemplateMessageTree:
             # Fallback to UserTextMessage for unknown types
             content = UserTextMessage(meta=meta)
 
-        msg = TemplateMessage(content, message_id=msg_id, ancestry=ancestry)
+        msg = TemplateMessage(content, ancestry=ancestry)
         return msg
 
     def test_children_field_default_empty(self):

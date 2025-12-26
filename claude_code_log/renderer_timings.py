@@ -25,7 +25,7 @@ def set_timing_var(name: str, value: Any) -> None:
     """Set a timing variable in the global timing data dict.
 
     Args:
-        name: Variable name (e.g., "_markdown_timings", "_pygments_timings", "_current_msg_uuid")
+        name: Variable name (e.g., "_markdown_timings", "_pygments_timings", "_current_msg_id")
         value: Value to set
     """
     if DEBUG_TIMING:
@@ -106,8 +106,8 @@ def timing_stat(list_name: str) -> Iterator[None]:
     finally:
         duration = time.time() - t_start
         if list_name in _timing_data:
-            msg_uuid = _timing_data.get("_current_msg_uuid", "")
-            _timing_data[list_name].append((duration, msg_uuid))
+            msg_id = _timing_data.get("_current_msg_id", "")
+            _timing_data[list_name].append((duration, msg_id))
 
 
 def report_timing_statistics(
