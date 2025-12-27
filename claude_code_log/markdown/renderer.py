@@ -387,7 +387,7 @@ class MarkdownRenderer(Renderer):
         return ""
 
     def format_WriteInput(self, input: WriteInput) -> str:
-        summary = f"`{input.file_path}`"
+        summary = f"<code>{input.file_path}</code>"
         content = self._code_fence(input.content, self._lang_from_path(input.file_path))
         return self._collapsible(summary, content)
 
@@ -482,7 +482,7 @@ class MarkdownRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def format_ReadOutput(self, output: ReadOutput) -> str:
-        summary = f"`{output.file_path}`" if output.file_path else "Content"
+        summary = f"<code>{output.file_path}</code>" if output.file_path else "Content"
         lang = self._lang_from_path(output.file_path or "")
         content = self._code_fence(output.content, lang)
         return self._collapsible(summary, content)
