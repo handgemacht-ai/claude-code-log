@@ -76,7 +76,7 @@
   
       /* Solid colors for text and accents */
       --text-primary: #333;
-      --text-muted: #666;
+      --text-muted: #888;
       --text-secondary: #495057;
   
       /* Border colors */
@@ -1926,7 +1926,7 @@
   
       /* Solid colors for text and accents */
       --text-primary: #333;
-      --text-muted: #666;
+      --text-muted: #888;
       --text-secondary: #495057;
   
       /* Border colors */
@@ -2123,22 +2123,22 @@
       flex: 1;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-end;
       gap: 0.4em;
       cursor: pointer;
       user-select: none;
       font-size: 0.9em;
       font-weight: 500;
-      padding: 0.4em;
+      padding: 0.4em 0.8em 0.4em 0.4em;
       transition: all 0.2s ease;
-      border-bottom: 2px solid transparent;
+      border-bottom: 1px solid transparent;
       background: linear-gradient(to bottom, #f8f8f844, #f0f0f0);
   }
   
   /* Show border only when folded (content is hidden) */
   .fold-bar-section.folded {
       border-bottom-style: solid;
-      border-bottom-width: 2px;
+      border-bottom-width: 1px;
   }
   
   .fold-bar-section:hover {
@@ -2164,6 +2164,7 @@
   .fold-icon {
       font-size: 1.1em;
       line-height: 1;
+      color: var(--text-muted);
   }
   
   .fold-count {
@@ -6730,7 +6731,7 @@
   
       /* Solid colors for text and accents */
       --text-primary: #333;
-      --text-muted: #666;
+      --text-muted: #888;
       --text-secondary: #495057;
   
       /* Border colors */
@@ -6927,22 +6928,22 @@
       flex: 1;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-end;
       gap: 0.4em;
       cursor: pointer;
       user-select: none;
       font-size: 0.9em;
       font-weight: 500;
-      padding: 0.4em;
+      padding: 0.4em 0.8em 0.4em 0.4em;
       transition: all 0.2s ease;
-      border-bottom: 2px solid transparent;
+      border-bottom: 1px solid transparent;
       background: linear-gradient(to bottom, #f8f8f844, #f0f0f0);
   }
   
   /* Show border only when folded (content is hidden) */
   .fold-bar-section.folded {
       border-bottom-style: solid;
-      border-bottom-width: 2px;
+      border-bottom-width: 1px;
   }
   
   .fold-bar-section:hover {
@@ -6968,6 +6969,7 @@
   .fold-icon {
       font-size: 1.1em;
       line-height: 1;
+      color: var(--text-muted);
   }
   
   .fold-count {
@@ -11623,7 +11625,7 @@
   
       /* Solid colors for text and accents */
       --text-primary: #333;
-      --text-muted: #666;
+      --text-muted: #888;
       --text-secondary: #495057;
   
       /* Border colors */
@@ -11820,22 +11822,22 @@
       flex: 1;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-end;
       gap: 0.4em;
       cursor: pointer;
       user-select: none;
       font-size: 0.9em;
       font-weight: 500;
-      padding: 0.4em;
+      padding: 0.4em 0.8em 0.4em 0.4em;
       transition: all 0.2s ease;
-      border-bottom: 2px solid transparent;
+      border-bottom: 1px solid transparent;
       background: linear-gradient(to bottom, #f8f8f844, #f0f0f0);
   }
   
   /* Show border only when folded (content is hidden) */
   .fold-bar-section.folded {
       border-bottom-style: solid;
-      border-bottom-width: 2px;
+      border-bottom-width: 1px;
   }
   
   .fold-bar-section:hover {
@@ -11861,6 +11863,7 @@
   .fold-icon {
       font-size: 1.1em;
       line-height: 1;
+      color: var(--text-muted);
   }
   
   .fold-count {
@@ -16564,7 +16567,7 @@
   
       /* Solid colors for text and accents */
       --text-primary: #333;
-      --text-muted: #666;
+      --text-muted: #888;
       --text-secondary: #495057;
   
       /* Border colors */
@@ -16761,22 +16764,22 @@
       flex: 1;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-end;
       gap: 0.4em;
       cursor: pointer;
       user-select: none;
       font-size: 0.9em;
       font-weight: 500;
-      padding: 0.4em;
+      padding: 0.4em 0.8em 0.4em 0.4em;
       transition: all 0.2s ease;
-      border-bottom: 2px solid transparent;
+      border-bottom: 1px solid transparent;
       background: linear-gradient(to bottom, #f8f8f844, #f0f0f0);
   }
   
   /* Show border only when folded (content is hidden) */
   .fold-bar-section.folded {
       border-bottom-style: solid;
-      border-bottom-width: 2px;
+      border-bottom-width: 1px;
   }
   
   .fold-bar-section:hover {
@@ -16802,6 +16805,7 @@
   .fold-icon {
       font-size: 1.1em;
       line-height: 1;
+      color: var(--text-muted);
   }
   
   .fold-count {
