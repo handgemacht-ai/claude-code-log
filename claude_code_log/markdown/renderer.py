@@ -97,9 +97,31 @@ class MarkdownRenderer(Renderer):
         fence = "`" * max(3, max_ticks + 1)
         return f"{fence}{lang}\n{text}\n{fence}"
 
+    def _escape_html_tag(self, text: str, tag: str) -> str:
+        """Escape HTML closing tags to prevent breaking markdown structure.
+
+        Replaces </tag> with &lt;/tag> to prevent premature closing.
+        """
+        return text.replace(f"</{tag}>", f"&lt;/{tag}>")
+
+    def _escape_for_emphasis(self, text: str) -> str:
+        """Escape text for use inside * or ** emphasis markers.
+
+        Replaces unpaired * with escaped version to prevent broken formatting.
+        """
+        # If odd number of *, escape any standalone ones
+        if text.count("*") % 2 != 0:
+            # Simple approach: replace * with a safe alternative
+            text = text.replace("*", "\\*")
+        return text
+
     def _collapsible(self, summary: str, content: str) -> str:
         """Wrap content in a collapsible <details> block."""
-        return f"<details>\n<summary>{summary}</summary>\n\n{content}\n</details>"
+        # Escape closing tags that would break the structure
+        safe_summary = self._escape_html_tag(summary, "summary")
+        safe_summary = self._escape_html_tag(safe_summary, "details")
+        safe_content = self._escape_html_tag(content, "details")
+        return f"<details>\n<summary>{safe_summary}</summary>\n\n{safe_content}\n</details>"
 
     def _format_image(self, image: ImageContent) -> str:
         """Format image based on export mode."""
@@ -227,8 +249,8 @@ class MarkdownRenderer(Renderer):
                 parts.append(self._format_image(item))
             elif isinstance(item, TextContent):
                 if item.text.strip():
-                    # Quote to protect embedded markdown
-                    parts.append(self._quote(item.text))
+                    # Use code fence to protect embedded markdown
+                    parts.append(self._code_fence(item.text))
         return "\n\n".join(parts)
 
     def format_UserSlashCommandMessage(self, message: UserSlashCommandMessage) -> str:
