@@ -424,12 +424,11 @@ class MarkdownRenderer(Renderer):
         return ""
 
     def format_TaskInput(self, input: TaskInput) -> str:
-        parts: list[str] = []
-        if input.description:
-            parts.append(f"*{input.description}*")
+        # Description is now in the title, just show prompt as collapsible
         if input.prompt:
-            parts.append(self._quote(input.prompt))
-        return "\n\n".join(parts)
+            quoted = self._quote(input.prompt)
+            return self._collapsible("Instructions", quoted)
+        return ""
 
     def format_TodoWriteInput(self, input: TodoWriteInput) -> str:
         parts: list[str] = []
@@ -512,8 +511,9 @@ class MarkdownRenderer(Renderer):
     # Grep results fall back to format_ToolResultContent
 
     def format_TaskOutput(self, output: TaskOutput) -> str:
-        # TaskOutput contains markdown, quote it
-        return self._quote(output.result)
+        # TaskOutput contains markdown, wrap in collapsible Report
+        quoted = self._quote(output.result)
+        return self._collapsible("Report", quoted)
 
     def format_AskUserQuestionOutput(self, output: AskUserQuestionOutput) -> str:
         parts: list[str] = []
@@ -585,9 +585,11 @@ class MarkdownRenderer(Renderer):
     def title_TaskInput(self, message: TemplateMessage) -> str:
         content = cast(ToolUseMessage, message.content)
         input = cast(TaskInput, content.input)
-        desc = input.description or "Task"
         subagent = f" ({input.subagent_type})" if input.subagent_type else ""
-        return f"{desc}{subagent}"
+        if input.description:
+            escaped = self._escape_stars(input.description)
+            return f"Task{subagent}: *{escaped}*"
+        return f"Task{subagent}"
 
     def title_TodoWriteInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
         return "Todo List"
