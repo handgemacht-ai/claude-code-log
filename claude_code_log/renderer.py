@@ -136,7 +136,7 @@ class TemplateMessage:
         self,
         content: "MessageContent",
         *,  # Force keyword arguments after this
-        ancestry: Optional[list[str]] = None,
+        ancestry: Optional[list[int]] = None,
     ):
         # Content carries its own meta
         self.content = content
@@ -221,14 +221,11 @@ class TemplateMessage:
     def message_id(self) -> Optional[str]:
         """Get formatted message ID for HTML element IDs.
 
-        Returns "session-{session_id}" for session headers,
-        "d-{message_index}" for other messages, or None if not registered.
+        Returns "d-{message_index}" for all messages, or None if not registered.
+        All messages use a unified format based on their index.
         """
         if self.message_index is None:
             return None
-        # Session headers use special format for navigation links
-        if self.is_session_header and self.meta.session_id:
-            return f"session-{self.meta.session_id}"
         return f"d-{self.message_index}"
 
     @property
@@ -556,23 +553,19 @@ def generate_template_messages(
         )
 
     # Pass 2: Render messages to TemplateMessage objects
-    with log_timing(
-        lambda: f"Render messages ({len(template_messages)} messages)", t_start
-    ):
-        template_messages = _render_messages(
-            filtered_messages, sessions, show_tokens_for_message
-        )
+    with log_timing(lambda: f"Render messages ({len(ctx.messages)} messages)", t_start):
+        ctx = _render_messages(filtered_messages, sessions, show_tokens_for_message)
 
-    # Prepare session navigation data
+    # Prepare session navigation data (uses ctx for session header indices)
     with log_timing(
         lambda: f"Session navigation building ({len(session_nav)} sessions)", t_start
     ):
-        session_nav = prepare_session_navigation(sessions, session_order)
+        session_nav = prepare_session_navigation(sessions, session_order, ctx)
 
     # Reorder messages so each session's messages follow their session header
     # This fixes interleaving that occurs when sessions are resumed
     with log_timing("Reorder session messages", t_start):
-        template_messages = _reorder_session_template_messages(template_messages)
+        template_messages = _reorder_session_template_messages(ctx.messages)
 
     # Identify and mark paired messages (command+output, tool_use+tool_result, etc.)
     with log_timing("Identify message pairs", t_start):
@@ -655,12 +648,14 @@ def prepare_session_summaries(messages: list[TranscriptEntry]) -> dict[str, str]
 def prepare_session_navigation(
     sessions: dict[str, dict[str, Any]],
     session_order: list[str],
+    ctx: RenderingContext,
 ) -> list[dict[str, Any]]:
     """Prepare session navigation data for template rendering.
 
     Args:
         sessions: Dictionary mapping session_id to session info dict
         session_order: List of session IDs in display order
+        ctx: RenderingContext with session_first_message indices
 
     Returns:
         List of session navigation dicts for template rendering
@@ -698,9 +693,13 @@ def prepare_session_navigation(
                 token_parts.append(f"Cache Read: {total_cache_read}")
             token_summary = "Token usage – " + " | ".join(token_parts)
 
+        # Get message_index for session header (for unified d-{index} links)
+        message_index = ctx.session_first_message.get(session_id)
+
         session_nav.append(
             {
                 "id": session_id,
+                "message_index": message_index,
                 "summary": session_info["summary"],
                 "timestamp_range": timestamp_range,
                 "first_timestamp": first_ts,
@@ -1125,13 +1124,13 @@ def _build_message_hierarchy(messages: list[TemplateMessage]) -> None:
     The hierarchy is determined by message type using _get_message_hierarchy_level(),
     and a stack-based approach builds proper parent-child relationships.
 
-    Note: message_id is a property derived from message_index,
-    which is assigned during ctx.register() in _render_messages.
+    Ancestry stores message_index integers. Templates prefix with "d-" for CSS classes.
 
     Args:
         messages: List of template messages in their final order (modified in place)
     """
-    hierarchy_stack: list[tuple[int, str]] = []
+    # Stack of (level, message_index) tuples
+    hierarchy_stack: list[tuple[int, int]] = []
 
     for message in messages:
         # Session headers are level 0
@@ -1145,12 +1144,12 @@ def _build_message_hierarchy(messages: list[TemplateMessage]) -> None:
         while hierarchy_stack and hierarchy_stack[-1][0] >= current_level:
             hierarchy_stack.pop()
 
-        # Build ancestry from remaining stack
-        ancestry = [msg_id for _, msg_id in hierarchy_stack]
+        # Build ancestry from remaining stack (list of message_index integers)
+        ancestry = [msg_index for _, msg_index in hierarchy_stack]
 
-        # Push current message onto stack (message_id is now a property)
-        if message.message_id:
-            hierarchy_stack.append((current_level, message.message_id))
+        # Push current message onto stack
+        if message.message_index is not None:
+            hierarchy_stack.append((current_level, message.message_index))
 
         # Update the message ancestry
         message.ancestry = ancestry
@@ -1168,11 +1167,11 @@ def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
     Args:
         messages: List of template messages to process
     """
-    # Build index of messages by ID for O(1) lookup
-    message_by_id: dict[str, TemplateMessage] = {}
+    # Build index of messages by message_index for O(1) lookup
+    message_by_index: dict[int, TemplateMessage] = {}
     for message in messages:
-        if message.message_id:
-            message_by_id[message.message_id] = message
+        if message.message_index is not None:
+            message_by_index[message.message_index] = message
 
     # Process each message and update counts for ancestors
     for message in messages:
@@ -1185,14 +1184,14 @@ def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
             continue
 
         # Get immediate parent (last in ancestry list)
-        immediate_parent_id = message.ancestry[-1]
+        immediate_parent_index = message.ancestry[-1]
 
         # Get message type for categorization
         msg_type = message.type
 
         # Increment immediate parent's child count
-        if immediate_parent_id in message_by_id:
-            parent = message_by_id[immediate_parent_id]
+        if immediate_parent_index in message_by_index:
+            parent = message_by_index[immediate_parent_index]
             parent.immediate_children_count += 1
             # Track by type
             parent.immediate_children_by_type[msg_type] = (
@@ -1200,9 +1199,9 @@ def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
             )
 
         # Increment descendant count for ALL ancestors
-        for ancestor_id in message.ancestry:
-            if ancestor_id in message_by_id:
-                ancestor = message_by_id[ancestor_id]
+        for ancestor_index in message.ancestry:
+            if ancestor_index in message_by_index:
+                ancestor = message_by_index[ancestor_index]
                 ancestor.total_descendants_count += 1
                 # Track by type
                 ancestor.total_descendants_by_type[msg_type] = (
@@ -1213,7 +1212,7 @@ def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
 def _build_message_tree(messages: list[TemplateMessage]) -> list[TemplateMessage]:
     """Build tree structure by populating children fields based on ancestry.
 
-    This function takes a flat list of messages (with message_id and ancestry
+    This function takes a flat list of messages (with message_index and ancestry
     already set by _build_message_hierarchy) and populates the children field
     of each message to form an explicit tree structure.
 
@@ -1223,17 +1222,17 @@ def _build_message_tree(messages: list[TemplateMessage]) -> list[TemplateMessage
     - More natural parent-child traversal
 
     Args:
-        messages: List of template messages with message_id and ancestry set
+        messages: List of template messages with message_index and ancestry set
 
     Returns:
         List of root messages (those with empty ancestry). Each message's
         children field is populated with its direct children.
     """
-    # Build index of messages by ID for O(1) lookup
-    message_by_id: dict[str, TemplateMessage] = {}
+    # Build index of messages by message_index for O(1) lookup
+    message_by_index: dict[int, TemplateMessage] = {}
     for message in messages:
-        if message.message_id:
-            message_by_id[message.message_id] = message
+        if message.message_index is not None:
+            message_by_index[message.message_index] = message
 
     # Clear any existing children (in case of re-processing)
     for message in messages:
@@ -1249,9 +1248,9 @@ def _build_message_tree(messages: list[TemplateMessage]) -> list[TemplateMessage
             root_messages.append(message)
         else:
             # Has a parent - add to parent's children
-            immediate_parent_id = message.ancestry[-1]
-            if immediate_parent_id in message_by_id:
-                parent = message_by_id[immediate_parent_id]
+            immediate_parent_index = message.ancestry[-1]
+            if immediate_parent_index in message_by_index:
+                parent = message_by_index[immediate_parent_index]
                 parent.children.append(message)
 
     return root_messages
@@ -1720,7 +1719,7 @@ def _render_messages(
     messages: list[TranscriptEntry],
     sessions: dict[str, dict[str, Any]],
     show_tokens_for_message: set[str],
-) -> list[TemplateMessage]:
+) -> RenderingContext:
     """Pass 2: Render pre-filtered messages to TemplateMessage objects.
 
     This pass creates the actual TemplateMessage objects for rendering:
@@ -1738,16 +1737,13 @@ def _render_messages(
         show_tokens_for_message: Set of message UUIDs that should display tokens
 
     Returns:
-        List of TemplateMessage objects ready for template rendering
+        RenderingContext with all TemplateMessage objects registered
     """
     # Create rendering context for this operation
     ctx = RenderingContext()
 
     # Track which sessions have had headers added
     seen_sessions: set[str] = set()
-
-    # Process messages into template-friendly format
-    template_messages: list[TemplateMessage] = []
 
     for message in messages:
         message_type = message.type
@@ -1758,7 +1754,6 @@ def _render_messages(
             if system_content:
                 system_msg = TemplateMessage(system_content)
                 ctx.register(system_msg)
-                template_messages.append(system_msg)
             continue
 
         # Skip summary messages (should be filtered in pass 1, but be defensive)
@@ -1828,7 +1823,6 @@ def _render_messages(
             session_header = TemplateMessage(session_header_content)
             msg_index = ctx.register(session_header)
             ctx.session_first_message[session_id] = msg_index
-            template_messages.append(session_header)
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
@@ -1887,7 +1881,6 @@ def _render_messages(
 
                 chunk_msg = TemplateMessage(content_model)
                 ctx.register(chunk_msg)
-                template_messages.append(chunk_msg)
 
             else:
                 # Special chunk: single tool_use/tool_result/thinking item
@@ -1929,9 +1922,8 @@ def _render_messages(
 
                 tool_msg = TemplateMessage(tool_result.content)
                 ctx.register(tool_msg)
-                template_messages.append(tool_msg)
 
-    return template_messages
+    return ctx
 
 
 # -- Project Index Generation -------------------------------------------------

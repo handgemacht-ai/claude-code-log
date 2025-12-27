@@ -1003,7 +1003,7 @@
           let prev = messageElement.previousElementSibling;
           while (prev) {
               if (prev.classList.contains('session-header')) {
-                  return prev.id.replace('session-', '');
+                  return prev.dataset.sessionId || null;
               }
               prev = prev.previousElementSibling;
           }
@@ -4852,17 +4852,17 @@
       
       
       <div class="session-divider"></div>
-      <div class='message session-header' data-message-id='session-test_session' id='msg-session-test_session'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='test_session' id='msg-d-0'>
           <div class='header'>Session: test_ses</div>
           
-          <div class='fold-bar' data-message-id='session-test_session' data-border-color='session-header'>
+          <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-test_session' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-0' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>4 users</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-test_session' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-0' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>4 users, 3 assistants, 2 more total</span>
               </div>
@@ -4874,7 +4874,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user d-0' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -4901,7 +4901,7 @@
       
       
       
-      <div class='message assistant session-test_session d-1' data-message-id='d-2' id='msg-d-2'>
+      <div class='message assistant d-0 d-1' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -4940,7 +4940,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user d-0' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -4967,7 +4967,7 @@
       
       
       
-      <div class='message tool_use pair_first session-test_session d-3' data-message-id='d-4' id='msg-d-4'>
+      <div class='message tool_use pair_first d-0 d-3' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -4984,7 +4984,7 @@
       
       
       
-      <div class='message tool_result pair_last session-test_session d-3' data-message-id='d-5' id='msg-d-5'>
+      <div class='message tool_result pair_last d-0 d-3' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -5001,7 +5001,7 @@
       
       
       
-      <div class='message assistant session-test_session d-3' data-message-id='d-6' id='msg-d-6'>
+      <div class='message assistant d-0 d-3' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -5033,7 +5033,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user d-0' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -5060,7 +5060,7 @@
       
       
       
-      <div class='message tool_use pair_first session-test_session d-7' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use pair_first d-0 d-7' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_002">💻 Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -5077,7 +5077,7 @@
       
       
       
-      <div class='message tool_result pair_last session-test_session d-7' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_result pair_last d-0 d-7' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -5096,7 +5096,7 @@
       
       
       
-      <div class='message assistant session-test_session d-7' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant d-0 d-7' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -5124,7 +5124,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-11' id='msg-d-11'>
+      <div class='message user d-0' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -5641,8 +5641,8 @@
                       if (!classList.includes(targetId)) return false;
   
                       // Check if it's an immediate child by finding all ancestor IDs
-                      // Ancestor IDs can be either d-XXX (regular messages) or session-XXX (sessions)
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      // Ancestor IDs use unified d-XXX format
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                       const lastAncestor = ancestorIds[ancestorIds.length - 1];
                       return lastAncestor === targetId;
                   });
@@ -5740,7 +5740,7 @@
                       // Fold: show first level only, hide deeper descendants (State C → State B)
                       descendants.forEach(msg => {
                           const classList = Array.from(msg.classList);
-                          const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                          const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
   
                           // Show immediate children, hide non-immediate children
@@ -5794,7 +5794,7 @@
   
                   allMessages.forEach(msg => {
                       const classList = Array.from(msg.classList);
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
   
                       if (ancestorIds.length > 0) {
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
@@ -6031,7 +6031,7 @@
           let prev = messageElement.previousElementSibling;
           while (prev) {
               if (prev.classList.contains('session-header')) {
-                  return prev.id.replace('session-', '');
+                  return prev.dataset.sessionId || null;
               }
               prev = prev.previousElementSibling;
           }
@@ -9652,17 +9652,17 @@
       
       
       <div class="session-divider"></div>
-      <div class='message session-header' data-message-id='session-edge_cases' id='msg-session-edge_cases'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='edge_cases' id='msg-d-0'>
           <div class='header'>Session: Tested various edge cases including markdown formatting, long text, tool errors, system messages, command outputs, special characters and emojis. All message types render correctly in the transcript viewer. • edge_cas</div>
           
-          <div class='fold-bar' data-message-id='session-edge_cases' data-border-color='session-header'>
+          <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-edge_cases' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 5 users' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-0' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 5 users' title='Fold (all levels) all 9 descendants'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>5 users</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-edge_cases' data-title-unfolded='Fold (to 1st level) 5 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 5 users'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-0' data-title-unfolded='Fold (to 1st level) 5 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 5 users'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>5 users, 2 assistants, 2 more total</span>
               </div>
@@ -9674,7 +9674,7 @@
       
       
       
-      <div class='message user session-edge_cases' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user d-0' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -9701,7 +9701,7 @@
       
       
       
-      <div class='message assistant session-edge_cases d-1' data-message-id='d-2' id='msg-d-2'>
+      <div class='message assistant d-0 d-1' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -9759,7 +9759,7 @@
       
       
       
-      <div class='message user session-edge_cases' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user d-0' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -9786,7 +9786,7 @@
       
       
       
-      <div class='message tool_use pair_first session-edge_cases d-3' data-message-id='d-4' id='msg-d-4'>
+      <div class='message tool_use pair_first d-0 d-3' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span title="ID: tool_edge_001">🛠️ FailingTool</span>
               <div class='header-info'>
@@ -9808,7 +9808,7 @@
       
       
       
-      <div class='message tool_result error pair_last session-edge_cases d-3' data-message-id='d-5' id='msg-d-5'>
+      <div class='message tool_result error pair_last d-0 d-3' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span title="ID: tool_edge_001">🚨 Error</span>
               <div class='header-info'>
@@ -9825,7 +9825,7 @@
       
       
       
-      <div class='message user slash-command pair_first session-edge_cases' data-message-id='d-6' id='msg-d-6'>
+      <div class='message user slash-command pair_first d-0' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤷 Slash Command</span>
               <div class='header-info'>
@@ -9844,7 +9844,7 @@
       
       
       
-      <div class='message user command-output pair_last session-edge_cases' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user command-output pair_last d-0' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span></span>
               <div class='header-info'>
@@ -9880,7 +9880,7 @@
       
       
       
-      <div class='message assistant session-edge_cases d-7' data-message-id='d-8' id='msg-d-8'>
+      <div class='message assistant d-0 d-7' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -9910,7 +9910,7 @@
       
       
       
-      <div class='message tool_use session-edge_cases d-7 d-8' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_use d-0 d-7 d-8' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_edge_002">🛠️ MultiEdit</span>
               <div class='header-info'>
@@ -9927,7 +9927,7 @@
       
       
       
-      <div class='message user session-edge_cases' data-message-id='d-10' id='msg-d-10'>
+      <div class='message user d-0' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -9944,7 +9944,7 @@
       
       
       
-      <div class='message user session-edge_cases' data-message-id='d-13' id='msg-d-13'>
+      <div class='message user d-0' data-message-id='d-13' id='msg-d-13'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -9961,13 +9961,13 @@
       
       
       <div class="session-divider"></div>
-      <div class='message session-header' data-message-id='session-todowrite_session' id='msg-session-todowrite_session'>
+      <div class='message session-header' data-message-id='d-11' data-session-id='todowrite_session' id='msg-d-11'>
           <div class='header'>Session: todowrit</div>
           
-          <div class='fold-bar' data-message-id='session-todowrite_session' data-border-color='session-header'>
+          <div class='fold-bar' data-message-id='d-11' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='session-todowrite_session' data-title-unfolded='Fold 1 tool' data-title-folded='Unfold (1st level) 1 tool' title='Fold 1 tool'>
+              <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-11' data-title-unfolded='Fold 1 tool' data-title-folded='Unfold (1st level) 1 tool' title='Fold 1 tool'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>1 tool</span>
               </div>
@@ -9979,7 +9979,7 @@
       
       
       
-      <div class='message tool_use session-todowrite_session' data-message-id='d-12' id='msg-d-12'>
+      <div class='message tool_use d-11' data-message-id='d-12' id='msg-d-12'>
           <div class='header'>
               <span title="ID: toolu_todowrite_002">📝 Todo List</span>
               <div class='header-info'>
@@ -10530,8 +10530,8 @@
                       if (!classList.includes(targetId)) return false;
   
                       // Check if it's an immediate child by finding all ancestor IDs
-                      // Ancestor IDs can be either d-XXX (regular messages) or session-XXX (sessions)
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      // Ancestor IDs use unified d-XXX format
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                       const lastAncestor = ancestorIds[ancestorIds.length - 1];
                       return lastAncestor === targetId;
                   });
@@ -10629,7 +10629,7 @@
                       // Fold: show first level only, hide deeper descendants (State C → State B)
                       descendants.forEach(msg => {
                           const classList = Array.from(msg.classList);
-                          const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                          const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
   
                           // Show immediate children, hide non-immediate children
@@ -10683,7 +10683,7 @@
   
                   allMessages.forEach(msg => {
                       const classList = Array.from(msg.classList);
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
   
                       if (ancestorIds.length > 0) {
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
@@ -10920,7 +10920,7 @@
           let prev = messageElement.previousElementSibling;
           while (prev) {
               if (prev.classList.contains('session-header')) {
-                  return prev.id.replace('session-', '');
+                  return prev.dataset.sessionId || null;
               }
               prev = prev.previousElementSibling;
           }
@@ -14547,7 +14547,7 @@
   
       <div class='session-nav'>
           
-          <a href='#msg-session-session_b'
+          <a href='#msg-d-0'
               class='session-link'>
               <div class='session-link-title'>
                   
@@ -14564,7 +14564,7 @@
               
           </a>
           
-          <a href='#msg-session-test_session'
+          <a href='#msg-d-2'
               class='session-link'>
               <div class='session-link-title'>
                   
@@ -14592,17 +14592,17 @@
       
       
       <div class="session-divider"></div>
-      <div class='message session-header' data-message-id='session-session_b' id='msg-session-session_b'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='session_b' id='msg-d-0'>
           <div class='header'>Session: session_</div>
           
-          <div class='fold-bar' data-message-id='session-session_b' data-border-color='session-header'>
+          <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-session_b' data-title-unfolded='Fold (all levels) all 3 descendants' data-title-folded='Unfold (1st level) 2 users' title='Fold (all levels) all 3 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-0' data-title-unfolded='Fold (all levels) all 3 descendants' data-title-folded='Unfold (1st level) 2 users' title='Fold (all levels) all 3 descendants'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>2 users</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-session_b' data-title-unfolded='Fold (to 1st level) 2 users' data-title-folded='Unfold (all levels) all 3 descendants' title='Fold (to 1st level) 2 users'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-0' data-title-unfolded='Fold (to 1st level) 2 users' data-title-folded='Unfold (all levels) all 3 descendants' title='Fold (to 1st level) 2 users'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>2 users, 1 assistant total</span>
               </div>
@@ -14614,7 +14614,7 @@
       
       
       
-      <div class='message user session-session_b' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user d-0' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -14641,7 +14641,7 @@
       
       
       
-      <div class='message assistant session-session_b d-1' data-message-id='d-4' id='msg-d-4'>
+      <div class='message assistant d-0 d-1' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -14661,7 +14661,7 @@
       
       
       
-      <div class='message user session-session_b' data-message-id='d-6' id='msg-d-6'>
+      <div class='message user d-0' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -14678,17 +14678,17 @@
       
       
       <div class="session-divider"></div>
-      <div class='message session-header' data-message-id='session-test_session' id='msg-session-test_session'>
+      <div class='message session-header' data-message-id='d-2' data-session-id='test_session' id='msg-d-2'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
           
-          <div class='fold-bar' data-message-id='session-test_session' data-border-color='session-header'>
+          <div class='fold-bar' data-message-id='d-2' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-test_session' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-2' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>4 users</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-test_session' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-2' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>4 users, 3 assistants, 2 more total</span>
               </div>
@@ -14700,7 +14700,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user d-2' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -14727,7 +14727,7 @@
       
       
       
-      <div class='message assistant session-test_session d-3' data-message-id='d-5' id='msg-d-5'>
+      <div class='message assistant d-2 d-3' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -14766,7 +14766,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user d-2' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -14793,7 +14793,7 @@
       
       
       
-      <div class='message tool_use pair_first session-test_session d-7' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use pair_first d-2 d-7' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -14810,7 +14810,7 @@
       
       
       
-      <div class='message tool_result pair_last session-test_session d-7' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_result pair_last d-2 d-7' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -14827,7 +14827,7 @@
       
       
       
-      <div class='message assistant session-test_session d-7' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant d-2 d-7' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -14859,7 +14859,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-11' id='msg-d-11'>
+      <div class='message user d-2' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -14886,7 +14886,7 @@
       
       
       
-      <div class='message tool_use pair_first session-test_session d-11' data-message-id='d-12' id='msg-d-12'>
+      <div class='message tool_use pair_first d-2 d-11' data-message-id='d-12' id='msg-d-12'>
           <div class='header'>
               <span title="ID: tool_002">💻 Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -14903,7 +14903,7 @@
       
       
       
-      <div class='message tool_result pair_last session-test_session d-11' data-message-id='d-13' id='msg-d-13'>
+      <div class='message tool_result pair_last d-2 d-11' data-message-id='d-13' id='msg-d-13'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -14922,7 +14922,7 @@
       
       
       
-      <div class='message assistant session-test_session d-11' data-message-id='d-14' id='msg-d-14'>
+      <div class='message assistant d-2 d-11' data-message-id='d-14' id='msg-d-14'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -14950,7 +14950,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-15' id='msg-d-15'>
+      <div class='message user d-2' data-message-id='d-15' id='msg-d-15'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -15467,8 +15467,8 @@
                       if (!classList.includes(targetId)) return false;
   
                       // Check if it's an immediate child by finding all ancestor IDs
-                      // Ancestor IDs can be either d-XXX (regular messages) or session-XXX (sessions)
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      // Ancestor IDs use unified d-XXX format
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                       const lastAncestor = ancestorIds[ancestorIds.length - 1];
                       return lastAncestor === targetId;
                   });
@@ -15566,7 +15566,7 @@
                       // Fold: show first level only, hide deeper descendants (State C → State B)
                       descendants.forEach(msg => {
                           const classList = Array.from(msg.classList);
-                          const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                          const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
   
                           // Show immediate children, hide non-immediate children
@@ -15620,7 +15620,7 @@
   
                   allMessages.forEach(msg => {
                       const classList = Array.from(msg.classList);
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
   
                       if (ancestorIds.length > 0) {
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
@@ -15857,7 +15857,7 @@
           let prev = messageElement.previousElementSibling;
           while (prev) {
               if (prev.classList.contains('session-header')) {
-                  return prev.id.replace('session-', '');
+                  return prev.dataset.sessionId || null;
               }
               prev = prev.previousElementSibling;
           }
@@ -19478,17 +19478,17 @@
       
       
       <div class="session-divider"></div>
-      <div class='message session-header' data-message-id='session-test_session' id='msg-session-test_session'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='test_session' id='msg-d-0'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
           
-          <div class='fold-bar' data-message-id='session-test_session' data-border-color='session-header'>
+          <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='session-test_session' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-0' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>4 users</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='session-test_session' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-0' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>4 users, 3 assistants, 2 more total</span>
               </div>
@@ -19500,7 +19500,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user d-0' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -19527,7 +19527,7 @@
       
       
       
-      <div class='message assistant session-test_session d-1' data-message-id='d-2' id='msg-d-2'>
+      <div class='message assistant d-0 d-1' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -19566,7 +19566,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user d-0' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -19593,7 +19593,7 @@
       
       
       
-      <div class='message tool_use pair_first session-test_session d-3' data-message-id='d-4' id='msg-d-4'>
+      <div class='message tool_use pair_first d-0 d-3' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -19610,7 +19610,7 @@
       
       
       
-      <div class='message tool_result pair_last session-test_session d-3' data-message-id='d-5' id='msg-d-5'>
+      <div class='message tool_result pair_last d-0 d-3' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -19627,7 +19627,7 @@
       
       
       
-      <div class='message assistant session-test_session d-3' data-message-id='d-6' id='msg-d-6'>
+      <div class='message assistant d-0 d-3' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -19659,7 +19659,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user d-0' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -19686,7 +19686,7 @@
       
       
       
-      <div class='message tool_use pair_first session-test_session d-7' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use pair_first d-0 d-7' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_002">💻 Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -19703,7 +19703,7 @@
       
       
       
-      <div class='message tool_result pair_last session-test_session d-7' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_result pair_last d-0 d-7' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -19722,7 +19722,7 @@
       
       
       
-      <div class='message assistant session-test_session d-7' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant d-0 d-7' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -19750,7 +19750,7 @@
       
       
       
-      <div class='message user session-test_session' data-message-id='d-11' id='msg-d-11'>
+      <div class='message user d-0' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -20267,8 +20267,8 @@
                       if (!classList.includes(targetId)) return false;
   
                       // Check if it's an immediate child by finding all ancestor IDs
-                      // Ancestor IDs can be either d-XXX (regular messages) or session-XXX (sessions)
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      // Ancestor IDs use unified d-XXX format
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                       const lastAncestor = ancestorIds[ancestorIds.length - 1];
                       return lastAncestor === targetId;
                   });
@@ -20366,7 +20366,7 @@
                       // Fold: show first level only, hide deeper descendants (State C → State B)
                       descendants.forEach(msg => {
                           const classList = Array.from(msg.classList);
-                          const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                          const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
   
                           // Show immediate children, hide non-immediate children
@@ -20420,7 +20420,7 @@
   
                   allMessages.forEach(msg => {
                       const classList = Array.from(msg.classList);
-                      const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                      const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
   
                       if (ancestorIds.length > 0) {
                           const lastAncestor = ancestorIds[ancestorIds.length - 1];
@@ -20657,7 +20657,7 @@
           let prev = messageElement.previousElementSibling;
           while (prev) {
               if (prev.classList.contains('session-header')) {
-                  return prev.id.replace('session-', '');
+                  return prev.dataset.sessionId || null;
               }
               prev = prev.previousElementSibling;
           }

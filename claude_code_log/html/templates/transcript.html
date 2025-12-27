@@ -72,7 +72,7 @@
     {% for message, message_title, html_content, formatted_timestamp in messages %}
     {% if is_session_header(message) %}
     <div class="session-divider"></div>
-    <div class='message session-header' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
+    <div class='message session-header' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>Session: {{ html_content }}</div>
         {% if message.has_children %}
         <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='session-header'>
@@ -99,7 +99,7 @@
     {% else %}
     {%- set msg_css_class = css_class_from_message(message) %}
     {% set markdown = message.content.has_markdown if message.content else false %}
-    <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}{% for ancestor_id in message.ancestry %} {{ ancestor_id }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
+    <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}{% for ancestor_index in message.ancestry %} d-{{ ancestor_index }}{% endfor %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>
             {% set msg_emoji = get_message_emoji(message) -%}
             <span{% if message.title_hint %} title="{{ message.title_hint }}"{% endif %}>{% if message_title %}{%
@@ -527,8 +527,8 @@
                     if (!classList.includes(targetId)) return false;
 
                     // Check if it's an immediate child by finding all ancestor IDs
-                    // Ancestor IDs can be either d-XXX (regular messages) or session-XXX (sessions)
-                    const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                    // Ancestor IDs use unified d-XXX format
+                    const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                     const lastAncestor = ancestorIds[ancestorIds.length - 1];
                     return lastAncestor === targetId;
                 });
@@ -626,7 +626,7 @@
                     // Fold: show first level only, hide deeper descendants (State C → State B)
                     descendants.forEach(msg => {
                         const classList = Array.from(msg.classList);
-                        const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                        const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
                         const lastAncestor = ancestorIds[ancestorIds.length - 1];
 
                         // Show immediate children, hide non-immediate children
@@ -680,7 +680,7 @@
 
                 allMessages.forEach(msg => {
                     const classList = Array.from(msg.classList);
-                    const ancestorIds = classList.filter(cls => cls.startsWith('d-') || cls.startsWith('session-'));
+                    const ancestorIds = classList.filter(cls => cls.startsWith('d-'));
 
                     if (ancestorIds.length > 0) {
                         const lastAncestor = ancestorIds[ancestorIds.length - 1];

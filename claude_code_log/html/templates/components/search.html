@@ -158,7 +158,7 @@
         let prev = messageElement.previousElementSibling;
         while (prev) {
             if (prev.classList.contains('session-header')) {
-                return prev.id.replace('session-', '');
+                return prev.dataset.sessionId || null;
             }
             prev = prev.previousElementSibling;
         }
