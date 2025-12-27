@@ -613,11 +613,20 @@ def create_tool_output(
         A typed output model if parsing succeeds, ToolResultContent as fallback.
     """
     # Handle both string and structured content
-    if not isinstance(tool_result.content, str):
-        # Structured content (list of dicts) - use generic fallback
+    raw_content: str
+    if isinstance(tool_result.content, str):
+        raw_content = tool_result.content
+    elif isinstance(tool_result.content, list):
+        # Structured content - extract text from list of content items
+        # Format: [{"type": "text", "text": "..."}, ...]
+        text_parts = []
+        for item in tool_result.content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text_parts.append(item.get("text", ""))
+        raw_content = "\n".join(text_parts)
+    else:
+        # Unknown content type - return as-is
         return tool_result
-
-    raw_content = tool_result.content
 
     # Look up parser in registry and parse if available
     if (parser := TOOL_OUTPUT_PARSERS.get(tool_name)) and (

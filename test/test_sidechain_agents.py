@@ -288,3 +288,92 @@ def test_multiple_agent_invocations():
         html = generate_html(messages, title="Test")
         assert "First done" in html
         assert "Second done" in html
+
+
+def test_task_output_structured_content_markdown():
+    """Test that Task results with structured content render as markdown.
+
+    Real-world Task tool results have structured content like:
+    [{"type": "text", "text": "## Summary\n\nMarkdown content..."}]
+
+    This tests that:
+    1. Structured content is extracted and parsed into TaskOutput
+    2. has_markdown returns True for TaskOutput
+    3. HTML output includes task-result class with rendered markdown headers
+    """
+    import json
+    from claude_code_log.renderer import generate_template_messages
+    from claude_code_log.models import ToolResultMessage, TaskOutput
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+
+        # Task result with structured content containing markdown
+        markdown_content = (
+            "## Summary\n\n"
+            "This is the agent's response with **bold** and `code`.\n\n"
+            "### Section 1\n\n"
+            "Some content here."
+        )
+
+        main_file = tmpdir_path / "main.jsonl"
+        main_file.write_text(
+            # User request
+            '{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-md","version":"2.0.55","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"text","text":"Explore the codebase"}]},"uuid":"u-0","timestamp":"2025-01-15T15:00:00.000Z"}\n'
+            # Assistant invokes Task
+            '{"parentUuid":"u-0","isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-md","version":"2.0.55","gitBranch":"main","message":{"model":"claude-opus-4-5-20251101","id":"msg_main","type":"message","role":"assistant","content":[{"type":"tool_use","id":"task-md","name":"Task","input":{"prompt":"Explore this","subagent_type":"Explore"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req_main","type":"assistant","uuid":"a-0","timestamp":"2025-01-15T15:00:05.000Z"}\n'
+            # Task result with STRUCTURED content (list of text items)
+            + '{"parentUuid":"a-0","isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-md","version":"2.0.55","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-md","content":'
+            + json.dumps([{"type": "text", "text": markdown_content}])
+            + '}]},"uuid":"u-1","timestamp":"2025-01-15T15:00:30.000Z"}\n'
+        )
+
+        messages = load_transcript(main_file)
+
+        # Generate template messages to check TaskOutput parsing
+        root_messages, _ = generate_template_messages(messages)
+
+        # Flatten to find all messages
+        def flatten(msg):
+            yield msg
+            for child in msg.children:
+                yield from flatten(child)
+
+        # Find the Task tool result
+        task_result = None
+        for root in root_messages:
+            for msg in flatten(root):
+                if (
+                    isinstance(msg.content, ToolResultMessage)
+                    and msg.content.tool_name == "Task"
+                ):
+                    task_result = msg.content
+                    break
+
+        assert task_result is not None, "Task tool result should be found"
+
+        # Verify it's parsed as TaskOutput (not raw ToolResultContent)
+        assert isinstance(task_result.output, TaskOutput), (
+            f"Expected TaskOutput, got {type(task_result.output).__name__}"
+        )
+
+        # Verify has_markdown returns True
+        assert task_result.has_markdown, "has_markdown should be True for TaskOutput"
+
+        # Verify the result text is preserved
+        assert "## Summary" in task_result.output.result
+        assert "### Section 1" in task_result.output.result
+
+        # Generate HTML and verify markdown rendering
+        html = generate_html(messages, title="Test Markdown")
+
+        # Should have task-result CSS class
+        assert "task-result" in html, "HTML should include task-result class"
+
+        # Should have rendered markdown headers (h2, h3)
+        assert "<h2>" in html, "Markdown ## should render as <h2>"
+        assert "<h3>" in html, "Markdown ### should render as <h3>"
+
+        # Should include the rendered content
+        assert "<strong>bold</strong>" in html or "<b>bold</b>" in html
+        assert "<code>code</code>" in html

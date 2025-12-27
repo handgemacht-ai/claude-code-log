@@ -716,6 +716,11 @@ class ToolResultMessage(MessageContent):
     def message_type(self) -> str:
         return "tool_result"
 
+    @property
+    def has_markdown(self) -> bool:
+        """TaskOutput results contain markdown (agent responses)."""
+        return isinstance(self.output, TaskOutput)
+
 
 @dataclass
 class ToolUseMessage(MessageContent):
