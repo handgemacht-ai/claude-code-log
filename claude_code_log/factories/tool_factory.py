@@ -317,17 +317,44 @@ def _parse_cat_n_snippet(
     return (code_content, system_reminder, line_offset)
 
 
-def parse_read_output(content: str, file_path: Optional[str]) -> Optional[ReadOutput]:
+def _extract_tool_result_text(tool_result: ToolResultContent) -> str:
+    """Extract text content from a ToolResultContent.
+
+    Handles both string content and structured content (list of dicts).
+
+    Args:
+        tool_result: The tool result to extract text from
+
+    Returns:
+        Extracted text content, or empty string if none found
+    """
+    content = tool_result.content
+    if isinstance(content, str):
+        return content
+    # Structured content - extract text from list of content items
+    # Format: [{"type": "text", "text": "..."}, ...]
+    text_parts: list[str] = []
+    for item in content:
+        if item.get("type") == "text":
+            text_parts.append(str(item.get("text", "")))
+    return "\n".join(text_parts)
+
+
+def parse_read_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[ReadOutput]:
     """Parse Read tool result into structured content.
 
     Args:
-        content: Raw tool result string
+        tool_result: The tool result content
         file_path: Path to the file that was read (required for ReadOutput)
 
     Returns:
         ReadOutput if parsing succeeds, None otherwise
     """
     if not file_path:
+        return None
+    if not (content := _extract_tool_result_text(tool_result)):
         return None
 
     # Check if content matches the cat-n format pattern (line_number → content)
@@ -353,7 +380,9 @@ def parse_read_output(content: str, file_path: Optional[str]) -> Optional[ReadOu
     )
 
 
-def parse_edit_output(content: str, file_path: Optional[str]) -> Optional[EditOutput]:
+def parse_edit_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[EditOutput]:
     """Parse Edit tool result into structured content.
 
     Edit tool results typically have format:
@@ -361,13 +390,15 @@ def parse_edit_output(content: str, file_path: Optional[str]) -> Optional[EditOu
     followed by cat-n formatted lines.
 
     Args:
-        content: Raw tool result string
+        tool_result: The tool result content
         file_path: Path to the file that was edited (required for EditOutput)
 
     Returns:
         EditOutput if parsing succeeds, None otherwise
     """
     if not file_path:
+        return None
+    if not (content := _extract_tool_result_text(tool_result)):
         return None
 
     # Look for the cat-n snippet after the preamble
@@ -399,14 +430,16 @@ def parse_edit_output(content: str, file_path: Optional[str]) -> Optional[EditOu
     )
 
 
-def parse_write_output(content: str, file_path: Optional[str]) -> Optional[WriteOutput]:
+def parse_write_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[WriteOutput]:
     """Parse Write tool result into structured content.
 
     Write tool results contain an acknowledgment on the first line.
     We extract just the first line for display.
 
     Args:
-        content: Raw tool result string
+        tool_result: The tool result content
         file_path: Path to the file that was written (required for WriteOutput)
 
     Returns:
@@ -414,9 +447,11 @@ def parse_write_output(content: str, file_path: Optional[str]) -> Optional[Write
     """
     if not file_path:
         return None
+    if not (content := _extract_tool_result_text(tool_result)):
+        return None
 
     lines = content.split("\n")
-    if not lines:
+    if not lines[0]:
         return None
 
     first_line = lines[0]
@@ -427,22 +462,23 @@ def parse_write_output(content: str, file_path: Optional[str]) -> Optional[Write
     )
 
 
-def parse_task_output(content: str, file_path: Optional[str]) -> Optional[TaskOutput]:
+def parse_task_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[TaskOutput]:
     """Parse Task tool result into structured content.
 
     Task tool results contain the agent's response as markdown.
 
     Args:
-        content: Raw tool result string (agent's response)
+        tool_result: The tool result content (agent's response)
         file_path: Unused for Task tool
 
     Returns:
         TaskOutput with the agent's response
     """
     del file_path  # Unused
-    if not content:
+    if not (content := _extract_tool_result_text(tool_result)):
         return None
-
     return TaskOutput(result=content)
 
 
@@ -479,28 +515,29 @@ def _looks_like_bash_output(content: str) -> bool:
     return False
 
 
-def parse_bash_output(content: str, file_path: Optional[str]) -> Optional[BashOutput]:
+def parse_bash_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[BashOutput]:
     """Parse Bash tool result into structured content.
 
     Detects ANSI escape sequences for terminal formatting.
 
     Args:
-        content: Raw tool result string
+        tool_result: The tool result content
         file_path: Unused for Bash tool
 
     Returns:
         BashOutput with content and ANSI flag
     """
     del file_path  # Unused
-    if not content:
+    if not (content := _extract_tool_result_text(tool_result)):
         return None
-
     has_ansi = _looks_like_bash_output(content)
     return BashOutput(content=content, has_ansi=has_ansi)
 
 
 def parse_askuserquestion_output(
-    content: str, file_path: Optional[str]
+    tool_result: ToolResultContent, file_path: Optional[str]
 ) -> Optional[AskUserQuestionOutput]:
     """Parse AskUserQuestion tool result into structured content.
 
@@ -508,16 +545,15 @@ def parse_askuserquestion_output(
     'User has answered your questions: "Q1"="A1", "Q2"="A2". You can now continue...'
 
     Args:
-        content: Raw tool result string
+        tool_result: The tool result content
         file_path: Unused for AskUserQuestion tool
 
     Returns:
         AskUserQuestionOutput with Q&A pairs
     """
     del file_path  # Unused
-    if not content:
+    if not (content := _extract_tool_result_text(tool_result)):
         return None
-
     # Check if this is a successful answer
     if not content.startswith("User has answered your question"):
         return None
@@ -545,7 +581,7 @@ def parse_askuserquestion_output(
 
 
 def parse_exitplanmode_output(
-    content: str, file_path: Optional[str]
+    tool_result: ToolResultContent, file_path: Optional[str]
 ) -> Optional[ExitPlanModeOutput]:
     """Parse ExitPlanMode tool result into structured content.
 
@@ -556,16 +592,15 @@ def parse_exitplanmode_output(
     3. "## Approved Plan:" followed by full plan text (redundant)
 
     Args:
-        content: Raw tool result string
+        tool_result: The tool result content
         file_path: Unused for ExitPlanMode tool
 
     Returns:
         ExitPlanModeOutput with truncated message
     """
     del file_path  # Unused
-    if not content:
+    if not (content := _extract_tool_result_text(tool_result)):
         return None
-
     approved = "User has approved your plan" in content
 
     if approved:
@@ -582,8 +617,12 @@ def parse_exitplanmode_output(
     return ExitPlanModeOutput(message=message, approved=approved)
 
 
-# Registry of tool output parsers: tool_name -> parser(content, file_path) -> Optional[ToolOutput]
-TOOL_OUTPUT_PARSERS: dict[str, Callable[[str, Optional[str]], Optional[ToolOutput]]] = {
+# Type alias for tool output parsers
+ToolOutputParser = Callable[[ToolResultContent, Optional[str]], Optional[ToolOutput]]
+
+# Registry of tool output parsers: tool_name -> parser(tool_result, file_path) -> Optional[ToolOutput]
+# Parsers receive the full ToolResultContent and can use _extract_tool_result_text() for text.
+TOOL_OUTPUT_PARSERS: dict[str, ToolOutputParser] = {
     "Read": parse_read_output,
     "Edit": parse_edit_output,
     "Write": parse_write_output,
@@ -602,7 +641,8 @@ def create_tool_output(
     """Create typed tool output from raw ToolResultContent.
 
     Parses the raw content into specialized output types when possible,
-    using the TOOL_OUTPUT_PARSERS registry.
+    using the TOOL_OUTPUT_PARSERS registry. Each parser receives the full
+    ToolResultContent and can use _extract_tool_result_text() if it needs text.
 
     Args:
         tool_name: The name of the tool (e.g., "Bash", "Read")
@@ -612,25 +652,9 @@ def create_tool_output(
     Returns:
         A typed output model if parsing succeeds, ToolResultContent as fallback.
     """
-    # Handle both string and structured content
-    raw_content: str
-    if isinstance(tool_result.content, str):
-        raw_content = tool_result.content
-    elif isinstance(tool_result.content, list):
-        # Structured content - extract text from list of content items
-        # Format: [{"type": "text", "text": "..."}, ...]
-        text_parts = []
-        for item in tool_result.content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text_parts.append(item.get("text", ""))
-        raw_content = "\n".join(text_parts)
-    else:
-        # Unknown content type - return as-is
-        return tool_result
-
     # Look up parser in registry and parse if available
     if (parser := TOOL_OUTPUT_PARSERS.get(tool_name)) and (
-        parsed := parser(raw_content, file_path)
+        parsed := parser(tool_result, file_path)
     ):
         return parsed
 
