@@ -60,7 +60,35 @@ This ensures every `MessageContent` subclass has valid metadata.
 | Inverted relationship | ✅ Done | `MessageContent.meta` is source of truth, `TemplateMessage.meta = content.meta` |
 | Leaner TemplateMessage | ✅ Done | `has_markdown` delegates to content, `raw_text_content` on content classes |
 | Title dispatch | ✅ Done | `Renderer.title_content()` with `title_{ClassName}` methods |
+| Pure MessageContent | ✅ Done | MessageContent has no render-time fields (relationship data on TemplateMessage) |
+| TemplateMessage as primary | ✅ Done | RenderingContext registers TemplateMessage, holds pairing/hierarchy data |
 | Models split | ❌ Optional | Still single `models.py` - could split if needed |
+
+### TemplateMessage Architecture ✓
+
+TemplateMessage is now the primary render-time object, with clear separation of concerns:
+
+**MessageContent** (pure transcript data):
+- `meta: MessageMeta` - metadata from transcript
+- `message_type` property - type identifier
+- `has_markdown` property - whether content has markdown
+
+**TemplateMessage** (render-time wrapper):
+- `content: MessageContent` - the wrapped content
+- `meta = content.meta` - convenience alias
+- `message_index: Optional[int]` - index in RenderingContext.messages
+- `message_id` property - formatted ID for HTML ("d-{index}" or "session-{id}")
+- Pairing fields: `pair_first`, `pair_last`, `pair_duration`
+- Pairing properties: `is_paired`, `is_first_in_pair`, `is_last_in_pair`, `pair_role`
+- Hierarchy fields: `ancestry`, `children`
+- Fold/unfold counts: `immediate_children_count`, `total_descendants_count`, etc.
+
+**RenderingContext**:
+- `messages: list[TemplateMessage]` - registry of all messages
+- `register(message: TemplateMessage) -> int` - assigns `message_index`
+- `get(message_index: int) -> TemplateMessage` - lookup by index
+- `tool_use_context: dict[str, ToolUseContent]` - for tool result pairing
+- `session_first_message: dict[str, int]` - session header indices
 
 ## Cache Considerations
 

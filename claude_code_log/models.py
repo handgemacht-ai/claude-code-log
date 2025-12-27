@@ -258,9 +258,6 @@ class MessageMeta:
     cwd: str = ""
     git_branch: Optional[str] = None
 
-    # Render-time assigned (None until registered with RenderingContext)
-    message_id: Optional[int] = None
-
     @classmethod
     def empty(cls, uuid: str = "") -> "MessageMeta":
         """Create a placeholder MessageMeta with empty/default values.
@@ -290,20 +287,11 @@ class MessageContent:
     content always has associated metadata. Use MessageMeta.empty() when
     full metadata isn't available at creation time.
 
-    Relationship fields (populated during rendering):
-    - children: Indices of child messages in ctx.messages
-    - ancestry: Indices of ancestor messages in ctx.messages
-    - pair_first/pair_last: Indices for paired messages (tool_use <-> tool_result)
+    Note: Render-time relationship data (pairing, hierarchy, children) is stored
+    on TemplateMessage, not here. MessageContent is pure transcript data.
     """
 
     meta: MessageMeta
-
-    # Render-time relationship fields (indices into RenderingContext.messages)
-    # Using kw_only=True to allow subclasses to have required fields after meta
-    children: list[int] = field(default_factory=list, kw_only=True)
-    ancestry: list[int] = field(default_factory=list, kw_only=True)
-    pair_first: Optional[int] = field(default=None, kw_only=True)
-    pair_last: Optional[int] = field(default=None, kw_only=True)
 
     @property
     def message_type(self) -> str:
@@ -321,16 +309,6 @@ class MessageContent:
         Subclasses that contain markdown content should override to return True.
         """
         return False
-
-    @property
-    def is_paired(self) -> bool:
-        """Whether this message is part of a pair."""
-        return self.pair_first is not None or self.pair_last is not None
-
-    @property
-    def has_children(self) -> bool:
-        """Whether this message has any children."""
-        return bool(self.children)
 
 
 @dataclass

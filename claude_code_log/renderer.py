@@ -76,61 +76,41 @@ class RenderingContext:
     This enables parallel-safe rendering where each render gets its own context.
 
     Attributes:
-        messages: Registry of all MessageContent objects (message_id = index).
+        messages: Registry of all TemplateMessage objects (message_index = index).
         tool_use_context: Maps tool_use_id -> ToolUseContent for result rendering.
         session_first_message: Maps session_id -> index of first message in session.
     """
 
-    messages: list["MessageContent"] = field(default_factory=list)
+    messages: list["TemplateMessage"] = field(default_factory=list)
     tool_use_context: dict[str, "ToolUseContent"] = field(default_factory=dict)
     session_first_message: dict[str, int] = field(default_factory=dict)
 
-    def register(self, content: MessageContent) -> int:
-        """Register a MessageContent and assign its message_id.
+    def register(self, message: "TemplateMessage") -> int:
+        """Register a TemplateMessage and assign its message_index.
 
         Args:
-            content: The MessageContent to register.
+            message: The TemplateMessage to register.
 
         Returns:
-            The assigned message_id (= index in messages list).
+            The assigned message_index (= index in messages list).
         """
-        msg_id = len(self.messages)
-        content.meta.message_id = msg_id
-        self.messages.append(content)
-        return msg_id
+        msg_index = len(self.messages)
+        message.message_index = msg_index
+        self.messages.append(message)
+        return msg_index
 
-    def get(self, message_id: int) -> Optional[MessageContent]:
-        """Get a MessageContent by its message_id.
+    def get(self, message_index: int) -> Optional["TemplateMessage"]:
+        """Get a TemplateMessage by its message_index.
 
         Args:
-            message_id: The message_id (index) to look up.
+            message_index: The message_index (index) to look up.
 
         Returns:
-            The MessageContent if found, None if out of range.
+            The TemplateMessage if found, None if out of range.
         """
-        if 0 <= message_id < len(self.messages):
-            return self.messages[message_id]
+        if 0 <= message_index < len(self.messages):
+            return self.messages[message_index]
         return None
-
-    def register_tool_use(self, tool_use_id: str, tool_use: ToolUseContent) -> None:
-        """Register a tool_use for later lookup when processing its result.
-
-        Args:
-            tool_use_id: The unique ID of the tool use.
-            tool_use: The ToolUseContent object.
-        """
-        self.tool_use_context[tool_use_id] = tool_use
-
-    def get_tool_use(self, tool_use_id: str) -> Optional[ToolUseContent]:
-        """Get a previously registered tool_use by ID.
-
-        Args:
-            tool_use_id: The unique ID of the tool use.
-
-        Returns:
-            The ToolUseContent if found, None otherwise.
-        """
-        return self.tool_use_context.get(tool_use_id)
 
 
 # -- Template Classes ---------------------------------------------------------
@@ -139,10 +119,14 @@ class RenderingContext:
 class TemplateMessage:
     """Structured message data for template rendering.
 
-    This is a lightweight wrapper around MessageContent that adds:
-    - Rendering metadata (message_id, ancestry)
-    - Tree structure (children, fold/unfold counts)
-    - Pairing metadata (is_paired, pair_role, pair_duration)
+    This is the primary render-time object that wraps MessageContent. Each
+    MessageContent has exactly one TemplateMessage wrapper.
+
+    TemplateMessage holds all render-time state:
+    - message_index: Index in RenderingContext.messages (unique identifier)
+    - Pairing metadata: pair_first, pair_last, pair_duration
+    - Hierarchy metadata: ancestry
+    - Tree structure: children, fold/unfold counts
 
     All identity/context fields come from meta (timestamp, session_id, etc.)
     and content (tool_use_id, has_markdown, token_usage, etc.).
@@ -158,6 +142,14 @@ class TemplateMessage:
         self.content = content
         self.meta = content.meta
 
+        # Unique index in RenderingContext.messages (assigned by ctx.register())
+        self.message_index: Optional[int] = None
+
+        # Pairing metadata (assigned by _mark_pair())
+        self.pair_first: Optional[int] = None  # Index of first message in pair
+        self.pair_last: Optional[int] = None  # Index of last message in pair
+        self.pair_duration: Optional[str] = None  # Duration string for pair_last
+
         # Rendering metadata
         self.ancestry = ancestry or []
 
@@ -169,11 +161,6 @@ class TemplateMessage:
             str, int
         ] = {}  # {"assistant": 2, "tool_use": 3}
         self.total_descendants_by_type: dict[str, int] = {}  # All descendants by type
-
-        # Pairing metadata
-        self.is_paired = False
-        self.pair_role: Optional[str] = None  # "pair_first", "pair_last", "pair_middle"
-        self.pair_duration: Optional[str] = None  # Duration for pair_last messages
 
         # Children for tree-based rendering
         self.children: list["TemplateMessage"] = []
@@ -201,18 +188,48 @@ class TemplateMessage:
         return bool(self.children)
 
     @property
+    def is_paired(self) -> bool:
+        """Check if this message is part of a pair."""
+        return self.pair_first is not None or self.pair_last is not None
+
+    @property
+    def is_first_in_pair(self) -> bool:
+        """Check if this is the first message in a pair (has pair_last set)."""
+        return self.pair_last is not None
+
+    @property
+    def is_last_in_pair(self) -> bool:
+        """Check if this is the last message in a pair (has pair_first set)."""
+        return self.pair_first is not None
+
+    @property
+    def pair_role(self) -> Optional[str]:
+        """Get the pairing role for CSS class.
+
+        Returns:
+            "pair_first" if this is the first message in a pair,
+            "pair_last" if this is the last message in a pair,
+            None if not paired.
+        """
+        if self.is_first_in_pair:
+            return "pair_first"
+        if self.is_last_in_pair:
+            return "pair_last"
+        return None
+
+    @property
     def message_id(self) -> Optional[str]:
         """Get formatted message ID for HTML element IDs.
 
         Returns "session-{session_id}" for session headers,
-        "d-{message_id}" for other messages, or None if not registered.
+        "d-{message_index}" for other messages, or None if not registered.
         """
-        if self.meta.message_id is None:
+        if self.message_index is None:
             return None
         # Session headers use special format for navigation links
         if self.is_session_header and self.meta.session_id:
             return f"session-{self.meta.session_id}"
-        return f"d-{self.meta.message_id}"
+        return f"d-{self.message_index}"
 
     @property
     def session_id(self) -> str:
@@ -825,11 +842,12 @@ def _build_pairing_indices(messages: list[TemplateMessage]) -> PairingIndices:
 
 
 def _mark_pair(first: TemplateMessage, last: TemplateMessage) -> None:
-    """Mark two messages as a pair."""
-    first.is_paired = True
-    first.pair_role = "pair_first"
-    last.is_paired = True
-    last.pair_role = "pair_last"
+    """Mark two messages as a pair by setting their pair indices."""
+    first_index = first.message_index
+    last_index = last.message_index
+    if first_index is not None and last_index is not None:
+        first.pair_last = last_index
+        last.pair_first = first_index
 
 
 def _try_pair_adjacent(
@@ -956,18 +974,12 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
     slash_command_pair_index: dict[str, TemplateMessage] = {}
 
     for msg in messages:
-        if (
-            msg.is_paired
-            and msg.pair_role == "pair_last"
-            and msg.tool_use_id
-            and msg.session_id
-        ):
+        if msg.is_last_in_pair and msg.tool_use_id and msg.session_id:
             key = (msg.session_id, msg.tool_use_id)
             pair_last_index[key] = msg
         # Index slash-command messages by parent_uuid
         if (
-            msg.is_paired
-            and msg.pair_role == "pair_last"
+            msg.is_last_in_pair
             and msg.parent_uuid
             and isinstance(msg.content, (SlashCommandMessage, UserSlashCommandMessage))
         ):
@@ -975,20 +987,20 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
 
     # Create reordered list
     reordered: list[TemplateMessage] = []
-    already_added: set[int] = set()  # Track by message_id (unique per message)
+    already_added: set[int] = set()  # Track by message_index (unique per message)
 
     for msg in messages:
-        msg_id = msg.meta.message_id
-        if msg_id in already_added:
+        msg_index = msg.message_index
+        if msg_index in already_added:
             continue
 
         reordered.append(msg)
-        if msg_id is not None:
-            already_added.add(msg_id)
+        if msg_index is not None:
+            already_added.add(msg_index)
 
         # If this is the first message in a pair, immediately add its pair_last
         # Key includes session_id to prevent cross-session pairing on resume
-        if msg.is_paired and msg.pair_role == "pair_first":
+        if msg.is_first_in_pair:
             pair_last: Optional[TemplateMessage] = None
 
             # Check for tool_use_id based pairs
@@ -1004,10 +1016,10 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
             # Only append if we haven't already added this pair_last
             # (handles case where multiple pair_firsts match the same pair_last)
             if pair_last is not None:
-                pair_last_id = pair_last.meta.message_id
-                if pair_last_id is not None and pair_last_id not in already_added:
+                last_msg_index = pair_last.message_index
+                if last_msg_index is not None and last_msg_index not in already_added:
                     reordered.append(pair_last)
-                    already_added.add(pair_last_id)
+                    already_added.add(last_msg_index)
 
                 # Calculate duration between pair messages
                 try:
@@ -1113,7 +1125,7 @@ def _build_message_hierarchy(messages: list[TemplateMessage]) -> None:
     The hierarchy is determined by message type using _get_message_hierarchy_level(),
     and a stack-based approach builds proper parent-child relationships.
 
-    Note: message_id is now a property derived from content.meta.message_id,
+    Note: message_id is a property derived from message_index,
     which is assigned during ctx.register() in _render_messages.
 
     Args:
@@ -1169,7 +1181,7 @@ def _mark_messages_with_children(messages: list[TemplateMessage]) -> None:
 
         # Skip counting pair_last messages (second in a pair)
         # Pairs are visually presented as a single unit, so we only count the first
-        if message.is_paired and message.pair_role == "pair_last":
+        if message.is_last_in_pair:
             continue
 
         # Get immediate parent (last in ancestry list)
@@ -1744,8 +1756,9 @@ def _render_messages(
         if isinstance(message, SystemTranscriptEntry):
             system_content = create_system_message(message)
             if system_content:
-                ctx.register(system_content)
-                template_messages.append(TemplateMessage(system_content))
+                system_msg = TemplateMessage(system_content)
+                ctx.register(system_msg)
+                template_messages.append(system_msg)
             continue
 
         # Skip summary messages (should be filtered in pass 1, but be defensive)
@@ -1812,9 +1825,9 @@ def _render_messages(
                 summary=current_session_summary,
             )
             # Register and track session's first message
-            msg_id = ctx.register(session_header_content)
-            ctx.session_first_message[session_id] = msg_id
             session_header = TemplateMessage(session_header_content)
+            msg_index = ctx.register(session_header)
+            ctx.session_first_message[session_id] = msg_index
             template_messages.append(session_header)
 
         # Extract token usage for assistant messages
@@ -1832,8 +1845,7 @@ def _render_messages(
         # Process each chunk - regular chunks (list) become text/image messages,
         # special chunks (single item) become tool/thinking messages
         for chunk in chunks:
-            # Each chunk needs its own meta copy so ctx.register() can set
-            # unique message_id for each without overwriting previous chunks
+            # Each chunk needs its own meta copy to preserve original values
             chunk_meta = replace(meta)
 
             # Regular chunk: list of text/image items
@@ -1873,8 +1885,9 @@ def _render_messages(
                 if not chunk or content_model is None:
                     continue
 
-                ctx.register(content_model)
-                template_messages.append(TemplateMessage(content_model))
+                chunk_msg = TemplateMessage(content_model)
+                ctx.register(chunk_msg)
+                template_messages.append(chunk_msg)
 
             else:
                 # Special chunk: single tool_use/tool_result/thinking item
@@ -1914,8 +1927,9 @@ def _render_messages(
                 if tool_result.content is None:
                     continue
 
-                ctx.register(tool_result.content)
-                template_messages.append(TemplateMessage(tool_result.content))
+                tool_msg = TemplateMessage(tool_result.content)
+                ctx.register(tool_msg)
+                template_messages.append(tool_msg)
 
     return template_messages
 

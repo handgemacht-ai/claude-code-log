@@ -397,18 +397,17 @@ class TestTemplateMessageTree:
         ancestry: list[str] | None = None,
     ) -> TemplateMessage:
         """Helper to create a minimal TemplateMessage for testing."""
-        # Parse int message_id from string if provided (e.g., "d-0" -> 0)
+        # Parse int message_index from string if provided (e.g., "d-0" -> 0)
         if msg_id and msg_id.startswith("d-"):
-            int_msg_id = int(msg_id[2:])
+            int_msg_index = int(msg_id[2:])
         else:
-            int_msg_id = TestTemplateMessageTree._message_counter
+            int_msg_index = TestTemplateMessageTree._message_counter
             TestTemplateMessageTree._message_counter += 1
 
         meta = MessageMeta(
             session_id="test-session",
             timestamp="2025-06-14T10:00:00Z",
             uuid=msg_id or "test-uuid",
-            message_id=int_msg_id,
         )
 
         # Create appropriate content based on message type
@@ -434,6 +433,7 @@ class TestTemplateMessageTree:
             content = UserTextMessage(meta=meta)
 
         msg = TemplateMessage(content, ancestry=ancestry)
+        msg.message_index = int_msg_index  # Set message_index on TemplateMessage
         return msg
 
     def test_children_field_default_empty(self):
