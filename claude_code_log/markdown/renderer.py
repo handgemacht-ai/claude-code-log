@@ -403,7 +403,8 @@ class MarkdownRenderer(Renderer):
         return "\n\n".join(parts)
 
     def format_ExitPlanModeInput(self, input: ExitPlanModeInput) -> str:  # noqa: ARG002
-        return "*Exiting plan mode*"
+        # Title contains "Exiting plan mode", body is empty
+        return ""
 
     def format_ToolUseContent(self, content: ToolUseContent) -> str:
         """Fallback for unknown tool inputs - render as key/value list."""
@@ -546,7 +547,7 @@ class MarkdownRenderer(Renderer):
         return "Asking questions..."
 
     def title_ExitPlanModeInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
-        return "Exit Plan Mode"
+        return "Exiting plan mode"
 
     # -------------------------------------------------------------------------
     # Core Generate Methods
