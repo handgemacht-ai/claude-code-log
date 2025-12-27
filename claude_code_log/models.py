@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Union, Optional, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MessageType(str, Enum):
@@ -867,7 +867,9 @@ class AskUserQuestionItem(BaseModel):
 
     question: str = ""
     header: Optional[str] = None
-    options: list[AskUserQuestionOption] = []
+    options: list[AskUserQuestionOption] = Field(
+        default_factory=lambda: list[AskUserQuestionOption]()
+    )
     multiSelect: bool = False
 
 
@@ -877,7 +879,9 @@ class AskUserQuestionInput(BaseModel):
     Supports both modern format (questions list) and legacy format (single question).
     """
 
-    questions: list[AskUserQuestionItem] = []
+    questions: list[AskUserQuestionItem] = Field(
+        default_factory=lambda: list[AskUserQuestionItem]()
+    )
     question: Optional[str] = None  # Legacy single question format
 
 

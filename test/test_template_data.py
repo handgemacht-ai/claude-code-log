@@ -390,6 +390,10 @@ class TestTemplateMessageTree:
 
     _message_counter = 0
 
+    def setup_method(self):
+        """Reset counter before each test to avoid order-dependent tests."""
+        TestTemplateMessageTree._message_counter = 0
+
     def _create_message(
         self,
         msg_type: str,

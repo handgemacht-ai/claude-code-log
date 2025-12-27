@@ -230,8 +230,8 @@ class HtmlRenderer(Renderer):
     def format_ExitPlanModeInput(self, input: ExitPlanModeInput) -> str:
         return format_exitplanmode_input(input)
 
-    def format_ToolUseContent(self, input: ToolUseContent) -> str:
-        return render_params_table(input.input)
+    def format_ToolUseContent(self, content: ToolUseContent) -> str:
+        return render_params_table(content.input)
 
     # -------------------------------------------------------------------------
     # Tool Output Formatters
