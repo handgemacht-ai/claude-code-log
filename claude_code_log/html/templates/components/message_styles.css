@@ -539,11 +539,6 @@
 }
 
 .thinking {
-    border-left-color: var(--assistant-dimmed);
-}
-
-/* Full purple when thinking is paired (as pair_first) */
-.thinking.pair_first {
     border-left-color: var(--assistant-color);
 }
 
