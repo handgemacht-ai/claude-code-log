@@ -378,19 +378,18 @@ class MarkdownRenderer(Renderer):
         return self._code_fence(input.command, "bash")
 
     def format_ReadInput(self, input: ReadInput) -> str:
-        info = f"`{input.file_path}`"
+        # File path goes in the collapsible summary of ReadOutput
+        # Just show line range hint here if applicable
         if input.offset or input.limit:
             start = input.offset or 0
             end = start + (input.limit or 0)
-            info += f" (lines {start}–{end})"
-        return info
+            return f"*(lines {start}–{end})*"
+        return ""
 
     def format_WriteInput(self, input: WriteInput) -> str:
-        parts = [f"`{input.file_path}`"]
-        parts.append(
-            self._code_fence(input.content, self._lang_from_path(input.file_path))
-        )
-        return "\n\n".join(parts)
+        summary = f"`{input.file_path}`"
+        content = self._code_fence(input.content, self._lang_from_path(input.file_path))
+        return self._collapsible(summary, content)
 
     def format_EditInput(self, input: EditInput) -> str:
         parts = [f"`{input.file_path}`"]
@@ -483,8 +482,10 @@ class MarkdownRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def format_ReadOutput(self, output: ReadOutput) -> str:
+        summary = f"`{output.file_path}`" if output.file_path else "Content"
         lang = self._lang_from_path(output.file_path or "")
-        return self._code_fence(output.content, lang)
+        content = self._code_fence(output.content, lang)
+        return self._collapsible(summary, content)
 
     def format_WriteOutput(self, output: WriteOutput) -> str:
         return f"✓ {output.message}"
