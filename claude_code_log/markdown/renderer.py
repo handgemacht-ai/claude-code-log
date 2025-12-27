@@ -372,12 +372,10 @@ class MarkdownRenderer(Renderer):
         return "\n\n".join(parts)
 
     def format_GrepInput(self, input: GrepInput) -> str:
-        parts = [f"Pattern: `{input.pattern}`"]
-        if input.path:
-            parts.append(f"Path: `{input.path}`")
+        # Pattern and path are in the title, only show glob filter if present
         if input.glob:
-            parts.append(f"Glob: `{input.glob}`")
-        return "\n\n".join(parts)
+            return f"Glob: `{input.glob}`"
+        return ""
 
     def format_TaskInput(self, input: TaskInput) -> str:
         parts: list[str] = []
@@ -530,6 +528,8 @@ class MarkdownRenderer(Renderer):
     def title_GrepInput(self, message: TemplateMessage) -> str:
         content = cast(ToolUseMessage, message.content)
         input = cast(GrepInput, content.input)
+        if input.path:
+            return f"Grep `{input.pattern}` in `{input.path}`"
         return f"Grep `{input.pattern}`"
 
     def title_TaskInput(self, message: TemplateMessage) -> str:
