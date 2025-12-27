@@ -322,7 +322,10 @@ class HtmlRenderer(Renderer):
 
     def title_GlobInput(self, message: TemplateMessage) -> str:
         input = cast(GlobInput, cast(ToolUseMessage, message.content).input)
-        return self._tool_title(message, "🔍", f"({input.pattern})")
+        summary = input.pattern
+        if input.path:
+            summary = f"{summary} in {input.path}"
+        return self._tool_title(message, "🔍", summary)
 
     def title_BashInput(self, message: TemplateMessage) -> str:
         input = cast(BashInput, cast(ToolUseMessage, message.content).input)
