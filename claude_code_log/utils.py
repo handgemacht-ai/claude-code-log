@@ -334,3 +334,23 @@ def get_warmup_session_ids(messages: list[TranscriptEntry]) -> set[str]:
             warmup_sessions.add(session_id)
 
     return warmup_sessions
+
+
+def strip_error_tags(text: str) -> str:
+    """Strip <tool_use_error>...</tool_use_error> tags, keeping content.
+
+    Claude Code uses these XML-style tags to wrap error messages in tool results.
+    This function strips the tags while preserving the error message content.
+
+    Args:
+        text: Text that may contain tool_use_error tags
+
+    Returns:
+        Text with error tags removed but content preserved
+    """
+    return re.sub(
+        r"<tool_use_error>(.*?)</tool_use_error>",
+        r"\1",
+        text,
+        flags=re.DOTALL,
+    )

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from ..cache import get_library_version
+from ..utils import strip_error_tags
 from ..models import (
     AssistantTextMessage,
     BashInputMessage,
@@ -483,7 +484,8 @@ class MarkdownRenderer(Renderer):
     def format_ToolResultContent(self, output: ToolResultContent) -> str:
         """Fallback for unknown tool outputs."""
         if isinstance(output.content, str):
-            return self._code_fence(output.content)
+            content = strip_error_tags(output.content)
+            return self._code_fence(content)
         return self._code_fence(json.dumps(output.content, indent=2), "json")
 
     # -------------------------------------------------------------------------

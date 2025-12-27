@@ -25,6 +25,7 @@ from .utils import (
     render_file_content_collapsible,
     render_markdown_collapsible,
 )
+from ..utils import strip_error_tags
 from ..models import (
     AskUserQuestionInput,
     AskUserQuestionItem,
@@ -735,13 +736,7 @@ def format_tool_result_content_raw(tool_result: ToolResultContent) -> str:
     # Strip <tool_use_error> XML tags but keep the content inside
     # Also strip redundant "String: ..." portions that echo the input
     if raw_content:
-        # Remove <tool_use_error>...</tool_use_error> tags but keep inner content
-        raw_content = re.sub(
-            r"<tool_use_error>(.*?)</tool_use_error>",
-            r"\1",
-            raw_content,
-            flags=re.DOTALL,
-        )
+        raw_content = strip_error_tags(raw_content)
         # Remove "String: ..." portions that echo the input
         raw_content = re.sub(r"\nString:.*$", "", raw_content, flags=re.DOTALL)
 
