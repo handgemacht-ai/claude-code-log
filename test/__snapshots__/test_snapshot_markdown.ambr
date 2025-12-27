@@ -125,9 +125,7 @@
   Can you run that example to show the output?
   ```
   
-  ### Bash: Run the decorator example to show output
-  
-  *Run the decorator example to show output*
+  ### Bash: *Run the decorator example to show output*
   
   ```bash
   python /tmp/decorator_example.py
@@ -223,9 +221,7 @@
   Error: Tool execution failed with error: Command not found
   ```
   
-  ## Slash Command
-  
-  **Command:** `/test-command`
+  ## Command `/test-command`
   
   **Args:** `--verbose --output /tmp/test.log`
   
@@ -399,9 +395,7 @@
   Can you run that example to show the output?
   ```
   
-  ### Bash: Run the decorator example to show output
-  
-  *Run the decorator example to show output*
+  ### Bash: *Run the decorator example to show output*
   
   ```bash
   python /tmp/decorator_example.py
@@ -542,9 +536,7 @@
   Can you run that example to show the output?
   ```
   
-  ### Bash: Run the decorator example to show output
-  
-  *Run the decorator example to show output*
+  ### Bash: *Run the decorator example to show output*
   
   ```bash
   python /tmp/decorator_example.py

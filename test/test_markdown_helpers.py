@@ -95,36 +95,42 @@ class TestEscapeHtmlTag:
         assert result == "</DETAILS> and &lt;/details>"
 
 
-class TestEscapeForEmphasis:
-    """Tests for the _escape_for_emphasis() method."""
-
-    def test_even_asterisks_unchanged(self, renderer):
-        """Even number of asterisks is left alone (valid emphasis)."""
-        text = "some *bold* text **with** emphasis"
-        result = renderer._escape_for_emphasis(text)
-        assert result == text  # Unchanged
+class TestEscapeStars:
+    """Tests for the _escape_stars() method."""
 
     def test_single_asterisk_escaped(self, renderer):
         """Single asterisk gets escaped."""
         text = "a * b = c"
-        result = renderer._escape_for_emphasis(text)
+        result = renderer._escape_stars(text)
         assert result == "a \\* b = c"
 
-    def test_three_asterisks_escaped(self, renderer):
-        """Odd number (3) of asterisks gets all escaped."""
+    def test_multiple_asterisks_escaped(self, renderer):
+        """All asterisks get escaped."""
         text = "a * b * c *"
-        result = renderer._escape_for_emphasis(text)
+        result = renderer._escape_stars(text)
         assert result == "a \\* b \\* c \\*"
+
+    def test_already_escaped_asterisk(self, renderer):
+        """Already escaped \\* becomes \\\\\\*."""
+        text = "show \\* files"
+        result = renderer._escape_stars(text)
+        assert result == "show \\\\\\* files"
+
+    def test_mixed_escaped_and_bare(self, renderer):
+        """Mix of escaped and bare asterisks."""
+        text = "foo * bar \\* baz"
+        result = renderer._escape_stars(text)
+        assert result == "foo \\* bar \\\\\\* baz"
 
     def test_no_asterisks(self, renderer):
         """Text without asterisks is unchanged."""
         text = "no asterisks here"
-        result = renderer._escape_for_emphasis(text)
+        result = renderer._escape_stars(text)
         assert result == text
 
     def test_empty_text(self, renderer):
         """Empty text remains empty."""
-        result = renderer._escape_for_emphasis("")
+        result = renderer._escape_stars("")
         assert result == ""
 
 

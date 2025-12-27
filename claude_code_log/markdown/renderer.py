@@ -104,15 +104,16 @@ class MarkdownRenderer(Renderer):
         """
         return text.replace(f"</{tag}>", f"&lt;/{tag}>")
 
-    def _escape_for_emphasis(self, text: str) -> str:
-        """Escape text for use inside * or ** emphasis markers.
+    def _escape_stars(self, text: str) -> str:
+        """Escape asterisks for safe use inside emphasis markers.
 
-        Replaces unpaired * with escaped version to prevent broken formatting.
+        - * becomes \\*
+        - \\* becomes \\\\\\* (preserves the escaped asterisk)
         """
-        # If odd number of *, escape any standalone ones
-        if text.count("*") % 2 != 0:
-            # Simple approach: replace * with a safe alternative
-            text = text.replace("*", "\\*")
+        # First double all backslashes
+        text = text.replace("\\", "\\\\")
+        # Then escape all asterisks
+        text = text.replace("*", "\\*")
         return text
 
     def _collapsible(self, summary: str, content: str) -> str:
@@ -261,12 +262,16 @@ class MarkdownRenderer(Renderer):
 
     def format_SlashCommandMessage(self, message: SlashCommandMessage) -> str:
         parts: list[str] = []
-        parts.append(f"**Command:** `/{message.command_name}`")
+        # Command name is in the title, only include args and contents here
         if message.command_args:
             parts.append(f"**Args:** `{message.command_args}`")
         if message.command_contents:
             parts.append(self._code_fence(message.command_contents))
         return "\n\n".join(parts)
+
+    def title_SlashCommandMessage(self, message: TemplateMessage) -> str:
+        content = cast(SlashCommandMessage, message.content)
+        return f"Command `/{content.command_name}`"
 
     def format_CommandOutputMessage(self, message: CommandOutputMessage) -> str:
         if message.is_markdown:
@@ -322,11 +327,8 @@ class MarkdownRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def format_BashInput(self, input: BashInput) -> str:
-        parts: list[str] = []
-        if input.description:
-            parts.append(f"*{input.description}*")
-        parts.append(self._code_fence(input.command, "bash"))
-        return "\n\n".join(parts)
+        # Description is in the title, just show the command
+        return self._code_fence(input.command, "bash")
 
     def format_ReadInput(self, input: ReadInput) -> str:
         info = f"`{input.file_path}`"
@@ -450,7 +452,9 @@ class MarkdownRenderer(Renderer):
     def format_BashOutput(self, output: BashOutput) -> str:
         # Strip ANSI codes for markdown output
         text = re.sub(r"\x1b\[[0-9;]*m", "", output.content)
-        return self._code_fence(text)
+        # Detect git diff output
+        lang = "diff" if text.startswith("diff --git a/") else ""
+        return self._code_fence(text, lang)
 
     def format_GlobOutput(self, output: GlobOutput) -> str:
         if not output.files:
@@ -491,7 +495,8 @@ class MarkdownRenderer(Renderer):
         content = cast(ToolUseMessage, message.content)
         input = cast(BashInput, content.input)
         if input.description:
-            return f"Bash: {input.description}"
+            escaped = self._escape_stars(input.description)
+            return f"Bash: *{escaped}*"
         return "Bash"
 
     def title_ReadInput(self, message: TemplateMessage) -> str:
