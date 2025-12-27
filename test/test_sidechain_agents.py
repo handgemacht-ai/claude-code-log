@@ -331,7 +331,7 @@ def test_task_output_structured_content_markdown():
         messages = load_transcript(main_file)
 
         # Generate template messages to check TaskOutput parsing
-        root_messages, _ = generate_template_messages(messages)
+        root_messages, _, _ = generate_template_messages(messages)
 
         # Flatten to find all messages
         def flatten(msg):

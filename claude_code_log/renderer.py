@@ -98,6 +98,9 @@ class RenderingContext:
     def register(self, message: "TemplateMessage") -> int:
         """Register a TemplateMessage and assign its message_index.
 
+        Sets message_index on both the TemplateMessage and its content,
+        enabling content→TemplateMessage lookups during rendering.
+
         Args:
             message: The TemplateMessage to register.
 
@@ -106,6 +109,7 @@ class RenderingContext:
         """
         msg_index = len(self.messages)
         message.message_index = msg_index
+        message.content.message_index = msg_index  # Enable content→message lookup
         self.messages.append(message)
         return msg_index
 
@@ -519,8 +523,8 @@ class TemplateSummary:
 
 def generate_template_messages(
     messages: list[TranscriptEntry],
-) -> Tuple[list[TemplateMessage], list[dict[str, Any]]]:
-    """Generate template messages and session navigation from transcript messages.
+) -> Tuple[list[TemplateMessage], list[dict[str, Any]], RenderingContext]:
+    """Generate root messages and session navigation from transcript messages.
 
     This is the format-neutral rendering step that produces data structures
     ready for template rendering by any format-specific renderer.
@@ -529,9 +533,10 @@ def generate_template_messages(
         messages: List of transcript entries to process.
 
     Returns:
-        A tuple of (template_messages, session_nav) where:
-        - template_messages: Processed messages ready for template rendering
+        A tuple of (root_messages, session_nav, context) where:
+        - root_messages: Tree of TemplateMessages (session headers with children)
         - session_nav: Session navigation data with summaries and metadata
+        - context: RenderingContext with message registry for index lookups
     """
     from .utils import get_warmup_session_ids
 
@@ -611,7 +616,7 @@ def generate_template_messages(
     with log_timing("Cleanup sidechain duplicates", t_start):
         _cleanup_sidechain_duplicates(root_messages)
 
-    return root_messages, session_nav
+    return root_messages, session_nav, ctx
 
 
 # -- Session Utilities --------------------------------------------------------

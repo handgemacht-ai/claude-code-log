@@ -288,10 +288,16 @@ class MessageContent:
     full metadata isn't available at creation time.
 
     Note: Render-time relationship data (pairing, hierarchy, children) is stored
-    on TemplateMessage, not here. MessageContent is pure transcript data.
+    on TemplateMessage, not here. MessageContent is pure transcript data,
+    except for message_index which links back to TemplateMessage for render-time
+    lookups (e.g., accessing paired messages).
     """
 
     meta: MessageMeta
+
+    # Set by RenderingContext.register() to enable content→TemplateMessage lookup
+    # Using init=False to avoid dataclass inheritance issues with required fields
+    message_index: Optional[int] = field(default=None, init=False, repr=False)
 
     @property
     def message_type(self) -> str:

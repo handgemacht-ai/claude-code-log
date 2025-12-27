@@ -21,6 +21,7 @@ from ..models import (
     SystemMessage,
     TextContent,
     ThinkingMessage,
+    ToolResultMessage,
     ToolUseMessage,
     TranscriptEntry,
     UnknownMessage,
@@ -53,6 +54,7 @@ from ..models import (
 )
 from ..renderer import (
     Renderer,
+    RenderingContext,
     TemplateMessage,
     generate_template_messages,
     prepare_projects_index,
@@ -76,7 +78,7 @@ class MarkdownRenderer(Renderer):
         self.image_export_mode = image_export_mode
         self._output_dir: Path | None = None
         self._image_counter = 0
-        self._message_index: dict[int, TemplateMessage] = {}
+        self._ctx: RenderingContext | None = None
 
     # -------------------------------------------------------------------------
     # Private Utility Methods
@@ -230,22 +232,6 @@ class MarkdownRenderer(Renderer):
                 if isinstance(item, TextContent) and item.text.strip():
                     return item.text
         return ""
-
-    def _build_message_index(
-        self, roots: list[TemplateMessage]
-    ) -> dict[int, TemplateMessage]:
-        """Build index mapping message_index -> TemplateMessage."""
-        index: dict[int, TemplateMessage] = {}
-
-        def visit(msg: TemplateMessage) -> None:
-            if msg.message_index is not None:
-                index[msg.message_index] = msg
-            for child in msg.children:
-                visit(child)
-
-        for root in roots:
-            visit(root)
-        return index
 
     # -------------------------------------------------------------------------
     # System Content Formatters
@@ -439,10 +425,12 @@ class MarkdownRenderer(Renderer):
             parts.append(f"- {status_icon} {todo.content}")
         return "\n".join(parts)
 
-    def format_AskUserQuestionInput(self, input: AskUserQuestionInput) -> str:
-        # Store questions for use by paired output formatter
-        self._pending_questions = {q.question: q for q in input.questions}
-        return ""  # Full output rendered by format_AskUserQuestionOutput
+    def format_AskUserQuestionInput(
+        self,
+        input: AskUserQuestionInput,  # noqa: ARG002
+    ) -> str:
+        # Input is rendered together with output in format_AskUserQuestionOutput
+        return ""
 
     def format_ExitPlanModeInput(self, input: ExitPlanModeInput) -> str:  # noqa: ARG002
         # Title contains "Exiting plan mode", body is empty
@@ -507,15 +495,30 @@ class MarkdownRenderer(Renderer):
     # Note: GrepOutput is not used (tool results handled as raw strings)
     # Grep results fall back to format_ToolResultContent
 
-    def format_TaskOutput(self, output: TaskOutput) -> str:
-        # TaskOutput contains markdown, wrap in collapsible Report
-        quoted = self._quote(output.result)
-        return self._collapsible("Report", quoted)
+    def format_ToolResultMessage(self, message: ToolResultMessage) -> str:
+        """Override to handle AskUserQuestion with paired input access."""
+        if isinstance(message.output, AskUserQuestionOutput):
+            return self._format_ask_user_question(message, message.output)
+        # Default: dispatch to output formatter
+        return self._dispatch_format(message.output)
 
-    def format_AskUserQuestionOutput(self, output: AskUserQuestionOutput) -> str:
-        # Get stored questions from paired input
-        questions_map = getattr(self, "_pending_questions", {})
-        self._pending_questions = {}  # Clear for next use
+    def _format_ask_user_question(
+        self, message: ToolResultMessage, output: AskUserQuestionOutput
+    ) -> str:
+        """Format AskUserQuestion with interleaved Q/options/A.
+
+        Uses message.message_index to look up paired input for question options.
+        """
+        # Get questions from paired input via message_index → TemplateMessage → pair
+        questions_map: dict[str, Any] = {}
+        if message.message_index is not None and self._ctx:
+            template_msg = self._ctx.get(message.message_index)
+            if template_msg and template_msg.pair_first is not None:
+                pair_msg = self._ctx.get(template_msg.pair_first)
+                if pair_msg and isinstance(pair_msg.content, ToolUseMessage):
+                    input_content = pair_msg.content.input
+                    if isinstance(input_content, AskUserQuestionInput):
+                        questions_map = {q.question: q for q in input_content.questions}
 
         parts: list[str] = []
         for qa in output.answers:
@@ -533,6 +536,11 @@ class MarkdownRenderer(Renderer):
             parts.append("")  # Blank line between Q&A pairs
 
         return "\n\n".join(parts).rstrip()
+
+    def format_TaskOutput(self, output: TaskOutput) -> str:
+        # TaskOutput contains markdown, wrap in collapsible Report
+        quoted = self._quote(output.result)
+        return self._collapsible("Report", quoted)
 
     def format_ExitPlanModeOutput(self, output: ExitPlanModeOutput) -> str:
         status = "✓ Approved" if output.approved else "✗ Not approved"
@@ -615,7 +623,7 @@ class MarkdownRenderer(Renderer):
     def title_ThinkingMessage(self, message: TemplateMessage) -> str:
         # When paired with Assistant, use Assistant title with assistant excerpt
         if message.is_first_in_pair and message.pair_last is not None:
-            pair_msg = self._message_index.get(message.pair_last)
+            pair_msg = self._ctx.get(message.pair_last) if self._ctx else None
             if pair_msg and isinstance(pair_msg.content, AssistantTextMessage):
                 text = self._get_message_text(pair_msg)
                 excerpt = self._excerpt(text)
@@ -696,7 +704,7 @@ class MarkdownRenderer(Renderer):
 
         # Format paired message content (e.g., tool result)
         if msg.is_first_in_pair and msg.pair_last is not None:
-            pair_msg = self._message_index.get(msg.pair_last)
+            pair_msg = self._ctx.get(msg.pair_last) if self._ctx else None
             if pair_msg:
                 pair_content = self.format_content(pair_msg)
                 if pair_content:
@@ -724,11 +732,9 @@ class MarkdownRenderer(Renderer):
         if not title:
             title = "Claude Transcript"
 
-        # Get root messages (tree) and session navigation
-        root_messages, session_nav = generate_template_messages(messages)
-
-        # Build message index for paired message lookup
-        self._message_index = self._build_message_index(root_messages)
+        # Get root messages (tree), session navigation, and rendering context
+        root_messages, session_nav, ctx = generate_template_messages(messages)
+        self._ctx = ctx
 
         parts = [f"<!-- Generated by claude-code-log v{get_library_version()} -->", ""]
         parts.append(f"# {title}")
