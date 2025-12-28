@@ -191,6 +191,21 @@ class TestQuote:
         result = renderer._quote("")
         assert result == "> "
 
+    def test_escapes_summary_tags(self, renderer):
+        """Escapes <summary> tags that would interfere with <details> rendering."""
+        text = "Some text\n<summary>\nMore text\n</summary>\nEnd"
+        result = renderer._quote(text)
+        # Tags on their own lines get escaped with backslash
+        assert "> \\<summary>" in result
+        assert "> \\</summary>" in result
+
+    def test_preserves_inline_summary_tags(self, renderer):
+        """Does not escape <summary> tags that are inline with other content."""
+        text = "The <summary> tag is used in HTML"
+        result = renderer._quote(text)
+        # Inline tags are not escaped
+        assert result == "> The <summary> tag is used in HTML"
+
 
 class TestStripErrorTags:
     """Tests for the strip_error_tags() utility function."""

@@ -85,7 +85,12 @@ class MarkdownRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def _quote(self, text: str) -> str:
-        """Prefix each line with '> ' to create a blockquote."""
+        """Prefix each line with '> ' to create a blockquote.
+
+        Also escapes <summary> tags that would interfere with <details> rendering.
+        """
+        # Escape <summary> and </summary> tags on their own lines
+        text = re.sub(r"^(</?summary>)$", r"\\\1", text, flags=re.MULTILINE)
         return "\n".join(f"> {line}" for line in text.split("\n"))
 
     def _code_fence(self, text: str, lang: str = "") -> str:
