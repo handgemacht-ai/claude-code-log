@@ -279,12 +279,33 @@ class HtmlRenderer(Renderer):
         return f"{prefix}{escaped_name}"
 
     def title_TodoWriteInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
+        """
+        Return the display title used for Todo write tool messages.
+        
+        Returns:
+            title (str): The title string "📝 Todo List".
+        """
         return "📝 Todo List"
 
     def title_AskUserQuestionInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
+        """
+        Render the title for an AskUserQuestion tool input.
+        
+        Returns:
+            title (str): The title string "❓ Asking questions...".
+        """
         return "❓ Asking questions..."
 
     def title_TaskInput(self, message: TemplateMessage) -> str:
+        """
+        Builds the HTML title for a Task tool input, showing an icon, the tool name, and optional description and subagent.
+        
+        Parameters:
+            message (TemplateMessage): Message whose content is a Task tool use; its content provides `tool_name` and an `input` with optional `description` and `subagent_type`. Values are HTML-escaped before insertion.
+        
+        Returns:
+            str: HTML-formatted title starting with a wrench icon ("🔧") followed by the escaped tool name. If present, the description is included in a `<span class='tool-summary'>...</span>` and the subagent is included in a `<span class='tool-subagent'>(...)</span>`.
+        """
         content = cast(ToolUseMessage, message.content)
         input = cast(TaskInput, content.input)
         escaped_name = escape_html(content.tool_name)
@@ -309,6 +330,15 @@ class HtmlRenderer(Renderer):
         return self._tool_title(message, "📝", input.file_path)
 
     def title_ReadInput(self, message: TemplateMessage) -> str:
+        """
+        Builds a display title for a ReadInput tool use that includes the file path and optional 1-based line range.
+        
+        Parameters:
+            message (TemplateMessage): A message whose content is a ToolUseMessage with a ReadInput in `content.input`. The ReadInput's `file_path`, `offset`, and `limit` fields are used to compose the title.
+        
+        Returns:
+            str: HTML-escaped title string prefixed with a document icon ("📄") and containing the file path; if `limit` is provided, appends either "line N" or "lines N-M" using 1-based line numbers.
+        """
         input = cast(ReadInput, cast(ToolUseMessage, message.content).input)
         summary = input.file_path
         # Add line range info if available
@@ -321,6 +351,15 @@ class HtmlRenderer(Renderer):
         return self._tool_title(message, "📄", summary)
 
     def title_GlobInput(self, message: TemplateMessage) -> str:
+        """
+        Create a title for a GlobInput tool use, using a magnifying-glass icon and the glob pattern (optionally including the path).
+        
+        Parameters:
+            message (TemplateMessage): A template message whose content is a ToolUseMessage containing a GlobInput.
+        
+        Returns:
+            str: Title string containing the "🔍" icon and the glob pattern; appends "in <path>" when the input specifies a path.
+        """
         input = cast(GlobInput, cast(ToolUseMessage, message.content).input)
         summary = input.pattern
         if input.path:
@@ -328,6 +367,15 @@ class HtmlRenderer(Renderer):
         return self._tool_title(message, "🔍", summary)
 
     def title_BashInput(self, message: TemplateMessage) -> str:
+        """
+        Builds the title for a Bash tool input using a computer icon and the input's description.
+        
+        Parameters:
+        	message (TemplateMessage): Message whose content is a ToolUseMessage with a BashInput.
+        
+        Returns:
+        	title (str): A string containing the "💻" icon followed by the tool input's description.
+        """
         input = cast(BashInput, cast(ToolUseMessage, message.content).input)
         return self._tool_title(message, "💻", input.description)
 

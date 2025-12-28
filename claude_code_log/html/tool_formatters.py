@@ -54,7 +54,18 @@ from .renderer_code import render_single_diff
 
 
 def _render_question_item(q: AskUserQuestionItem) -> str:
-    """Render a single question item to HTML."""
+    """
+    Render a single question item into an HTML question block.
+    
+    Parameters:
+        q (AskUserQuestionItem): Question item containing optional `header`, the main `question` text,
+            optional `options` (each with `label` and optional `description`), and a `multiSelect` flag.
+    
+    Returns:
+        html (str): HTML string representing the question block. Includes an optional header, the
+        question text prefixed with a "Q:" label, and an optional options list with a "(select one)"
+        or "(select multiple)" hint.
+    """
     html_parts: list[str] = ['<div class="question-block">']
 
     # Header (if present)
@@ -116,12 +127,18 @@ def format_askuserquestion_input(ask_input: AskUserQuestionInput) -> str:
 
 
 def format_askuserquestion_result(content: str) -> str:
-    """Format AskUserQuestion tool result with styled question/answer pairs.
-
-    Parses the result format:
-    'User has answered your questions: "Q1"="A1", "Q2"="A2". You can now continue...'
-
-    Returns HTML with styled Q&A blocks matching the input styling.
+    """
+    Render AskUserQuestion tool result into HTML with styled Q/A blocks.
+    
+    Parses a success message containing quoted Question="Answer" pairs (the expected
+    format begins with "User has answered your question" and contains entries like
+    "Q"="A") and returns an escaped HTML fragment with each pair rendered as a
+    question block and an answer block. Returns an empty string if the input does
+    not match the expected success format or contains no pairs.
+    
+    Returns:
+        html (str): HTML fragment containing the rendered Q/A blocks, or an empty
+        string when the input format is not a recognized successful response.
     """
     # Check if this is a successful answer
     if not content.startswith("User has answered your question"):
@@ -381,13 +398,14 @@ def format_task_output(output: TaskOutput) -> str:
 
 
 def format_askuserquestion_output(output: AskUserQuestionOutput) -> str:
-    """Format AskUserQuestion tool result with styled Q&A pairs.
-
-    Args:
-        output: Parsed AskUserQuestionOutput with Q&A pairs
-
+    """
+    Render an AskUserQuestionOutput as HTML containing styled question and answer blocks.
+    
+    Parameters:
+        output (AskUserQuestionOutput): Parsed tool output containing a sequence of Q/A pairs.
+    
     Returns:
-        HTML string with styled question/answer blocks
+        html (str): HTML string with one styled question/answer block per pair.
     """
     html_parts: list[str] = [
         '<div class="askuserquestion-content askuserquestion-result">'
