@@ -265,8 +265,8 @@ class MarkdownRenderer(Renderer):
         content = cast(SessionHeaderMessage, message.content)
         session_short = content.session_id[:8]
         if content.summary:
-            return f"Session `{session_short}`: {content.summary}"
-        return f"Session `{session_short}`"
+            return f"📋 Session `{session_short}`: {content.summary}"
+        return f"📋 Session `{session_short}`"
 
     def format_DedupNoticeMessage(self, message: DedupNoticeMessage) -> str:  # noqa: ARG002
         # Skip dedup notices in markdown output
@@ -293,8 +293,8 @@ class MarkdownRenderer(Renderer):
 
     def title_UserTextMessage(self, message: TemplateMessage) -> str:
         if excerpt := self._excerpt(self._get_message_text(message)):
-            return f"User: *{self._escape_stars(excerpt)}*"
-        return "User"
+            return f"🤷 User: *{self._escape_stars(excerpt)}*"
+        return "🤷 User"
 
     def format_UserSlashCommandMessage(self, message: UserSlashCommandMessage) -> str:
         # UserSlashCommandMessage has a text attribute (markdown), quote to protect it
@@ -312,7 +312,7 @@ class MarkdownRenderer(Renderer):
     def title_SlashCommandMessage(self, message: TemplateMessage) -> str:
         content = cast(SlashCommandMessage, message.content)
         # command_name already includes the leading slash
-        return f"Command `{content.command_name}`"
+        return f"🤷 Command `{content.command_name}`"
 
     def format_CommandOutputMessage(self, message: CommandOutputMessage) -> str:
         if message.is_markdown:
@@ -570,50 +570,50 @@ class MarkdownRenderer(Renderer):
     def title_BashInput(self, message: TemplateMessage) -> str:
         input = cast(BashInput, cast(ToolUseMessage, message.content).input)
         if desc := input.description:
-            return f"Bash: *{self._escape_stars(desc)}*"
-        return "Bash"
+            return f"💻 Bash: *{self._escape_stars(desc)}*"
+        return "💻 Bash"
 
     def title_ReadInput(self, message: TemplateMessage) -> str:
         input = cast(ReadInput, cast(ToolUseMessage, message.content).input)
-        return f"Read `{Path(input.file_path).name}`"
+        return f"👀 Read `{Path(input.file_path).name}`"
 
     def title_WriteInput(self, message: TemplateMessage) -> str:
         input = cast(WriteInput, cast(ToolUseMessage, message.content).input)
-        return f"Write `{Path(input.file_path).name}`"
+        return f"✍️ Write `{Path(input.file_path).name}`"
 
     def title_EditInput(self, message: TemplateMessage) -> str:
         input = cast(EditInput, cast(ToolUseMessage, message.content).input)
-        return f"Edit `{Path(input.file_path).name}`"
+        return f"✏️ Edit `{Path(input.file_path).name}`"
 
     def title_MultiEditInput(self, message: TemplateMessage) -> str:
         input = cast(MultiEditInput, cast(ToolUseMessage, message.content).input)
-        return f"MultiEdit `{Path(input.file_path).name}`"
+        return f"✏️ MultiEdit `{Path(input.file_path).name}`"
 
     def title_GlobInput(self, message: TemplateMessage) -> str:
         input = cast(GlobInput, cast(ToolUseMessage, message.content).input)
-        title = f"Glob `{input.pattern}`"
+        title = f"📂 Glob `{input.pattern}`"
         return f"{title} in `{input.path}`" if input.path else title
 
     def title_GrepInput(self, message: TemplateMessage) -> str:
         input = cast(GrepInput, cast(ToolUseMessage, message.content).input)
-        base = f"Grep `{input.pattern}`"
+        base = f"🔎 Grep `{input.pattern}`"
         return f"{base} in `{input.path}`" if input.path else base
 
     def title_TaskInput(self, message: TemplateMessage) -> str:
         input = cast(TaskInput, cast(ToolUseMessage, message.content).input)
         subagent = f" ({input.subagent_type})" if input.subagent_type else ""
         if desc := input.description:
-            return f"Task{subagent}: *{self._escape_stars(desc)}*"
-        return f"Task{subagent}"
+            return f"🤖 Task{subagent}: *{self._escape_stars(desc)}*"
+        return f"🤖 Task{subagent}"
 
     def title_TodoWriteInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
-        return "Todo List"
+        return "✅ Todo List"
 
     def title_AskUserQuestionInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
-        return "Asking questions..."
+        return "❓ Asking questions..."
 
     def title_ExitPlanModeInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
-        return "Exiting plan mode"
+        return "📝 Exiting plan mode"
 
     def title_ThinkingMessage(self, message: TemplateMessage) -> str:
         # When paired with Assistant, use Assistant title with assistant excerpt
@@ -622,13 +622,13 @@ class MarkdownRenderer(Renderer):
                 pair_msg := self._ctx.get(message.pair_last) if self._ctx else None
             ) and isinstance(pair_msg.content, AssistantTextMessage):
                 if excerpt := self._excerpt(self._get_message_text(pair_msg)):
-                    return f"Assistant: *{self._escape_stars(excerpt)}*"
-                return "Assistant"
+                    return f"🤖 Assistant: *{self._escape_stars(excerpt)}*"
+                return "🤖 Assistant"
 
         # Standalone thinking
         if excerpt := self._excerpt(self._get_message_text(message)):
-            return f"Thinking: *{self._escape_stars(excerpt)}*"
-        return "Thinking"
+            return f"💭 Thinking: *{self._escape_stars(excerpt)}*"
+        return "💭 Thinking"
 
     def title_AssistantTextMessage(self, message: TemplateMessage) -> str:
         # When paired (after Thinking), skip title (already rendered with Thinking)
@@ -636,10 +636,10 @@ class MarkdownRenderer(Renderer):
             return ""
         # Sidechain assistant messages get special title
         if message.meta.is_sidechain:
-            return "Sub-assistant"
+            return "🔗 Sub-assistant"
         if excerpt := self._excerpt(self._get_message_text(message)):
-            return f"Assistant: *{self._escape_stars(excerpt)}*"
-        return "Assistant"
+            return f"🤖 Assistant: *{self._escape_stars(excerpt)}*"
+        return "🤖 Assistant"
 
     # -------------------------------------------------------------------------
     # Core Generate Methods
