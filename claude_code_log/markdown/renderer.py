@@ -292,18 +292,13 @@ class MarkdownRenderer(Renderer):
         return "\n\n".join(parts)
 
     def title_UserTextMessage(self, message: TemplateMessage) -> str:
-        text = self._get_message_text(message)
-        excerpt = self._excerpt(text)
-        if excerpt:
-            escaped = self._escape_stars(excerpt)
-            return f"User: *{escaped}*"
+        if excerpt := self._excerpt(self._get_message_text(message)):
+            return f"User: *{self._escape_stars(excerpt)}*"
         return "User"
 
     def format_UserSlashCommandMessage(self, message: UserSlashCommandMessage) -> str:
         # UserSlashCommandMessage has a text attribute (markdown), quote to protect it
-        if message.text.strip():
-            return self._quote(message.text)
-        return ""
+        return self._quote(message.text) if message.text.strip() else ""
 
     def format_SlashCommandMessage(self, message: SlashCommandMessage) -> str:
         parts: list[str] = []
@@ -416,10 +411,11 @@ class MarkdownRenderer(Renderer):
 
     def format_TaskInput(self, input: TaskInput) -> str:
         # Description is now in the title, just show prompt as collapsible
-        if input.prompt:
-            quoted = self._quote(input.prompt)
-            return self._collapsible("Instructions", quoted)
-        return ""
+        return (
+            self._collapsible("Instructions", self._quote(input.prompt))
+            if input.prompt
+            else ""
+        )
 
     def format_TodoWriteInput(self, input: TodoWriteInput) -> str:
         parts: list[str] = []
@@ -480,11 +476,9 @@ class MarkdownRenderer(Renderer):
         return f"✓ {output.message}"
 
     def format_EditOutput(self, output: EditOutput) -> str:
-        if output.message:
-            lang = self._lang_from_path(output.file_path)
-            content = self._code_fence(output.message, lang)
-            summary = f"<code>{output.file_path}</code>"
-            return self._collapsible(summary, content)
+        if msg := output.message:
+            content = self._code_fence(msg, self._lang_from_path(output.file_path))
+            return self._collapsible(f"<code>{output.file_path}</code>", content)
         return "✓ Edited"
 
     def format_BashOutput(self, output: BashOutput) -> str:
@@ -554,8 +548,7 @@ class MarkdownRenderer(Renderer):
 
     def format_TaskOutput(self, output: TaskOutput) -> str:
         # TaskOutput contains markdown, wrap in collapsible Report
-        quoted = self._quote(output.result)
-        return self._collapsible("Report", quoted)
+        return self._collapsible("Report", self._quote(output.result))
 
     def format_ExitPlanModeOutput(self, output: ExitPlanModeOutput) -> str:
         status = "✓ Approved" if output.approved else "✗ Not approved"
@@ -575,55 +568,42 @@ class MarkdownRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def title_BashInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(BashInput, content.input)
-        if input.description:
-            escaped = self._escape_stars(input.description)
-            return f"Bash: *{escaped}*"
+        input = cast(BashInput, cast(ToolUseMessage, message.content).input)
+        if desc := input.description:
+            return f"Bash: *{self._escape_stars(desc)}*"
         return "Bash"
 
     def title_ReadInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(ReadInput, content.input)
+        input = cast(ReadInput, cast(ToolUseMessage, message.content).input)
         return f"Read `{Path(input.file_path).name}`"
 
     def title_WriteInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(WriteInput, content.input)
+        input = cast(WriteInput, cast(ToolUseMessage, message.content).input)
         return f"Write `{Path(input.file_path).name}`"
 
     def title_EditInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(EditInput, content.input)
+        input = cast(EditInput, cast(ToolUseMessage, message.content).input)
         return f"Edit `{Path(input.file_path).name}`"
 
     def title_MultiEditInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(MultiEditInput, content.input)
+        input = cast(MultiEditInput, cast(ToolUseMessage, message.content).input)
         return f"MultiEdit `{Path(input.file_path).name}`"
 
     def title_GlobInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(GlobInput, content.input)
+        input = cast(GlobInput, cast(ToolUseMessage, message.content).input)
         title = f"Glob `{input.pattern}`"
-        if input.path:
-            title += f" in `{input.path}`"
-        return title
+        return f"{title} in `{input.path}`" if input.path else title
 
     def title_GrepInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(GrepInput, content.input)
-        if input.path:
-            return f"Grep `{input.pattern}` in `{input.path}`"
-        return f"Grep `{input.pattern}`"
+        input = cast(GrepInput, cast(ToolUseMessage, message.content).input)
+        base = f"Grep `{input.pattern}`"
+        return f"{base} in `{input.path}`" if input.path else base
 
     def title_TaskInput(self, message: TemplateMessage) -> str:
-        content = cast(ToolUseMessage, message.content)
-        input = cast(TaskInput, content.input)
+        input = cast(TaskInput, cast(ToolUseMessage, message.content).input)
         subagent = f" ({input.subagent_type})" if input.subagent_type else ""
-        if input.description:
-            escaped = self._escape_stars(input.description)
-            return f"Task{subagent}: *{escaped}*"
+        if desc := input.description:
+            return f"Task{subagent}: *{self._escape_stars(desc)}*"
         return f"Task{subagent}"
 
     def title_TodoWriteInput(self, message: TemplateMessage) -> str:  # noqa: ARG002
@@ -638,37 +618,27 @@ class MarkdownRenderer(Renderer):
     def title_ThinkingMessage(self, message: TemplateMessage) -> str:
         # When paired with Assistant, use Assistant title with assistant excerpt
         if message.is_first_in_pair and message.pair_last is not None:
-            pair_msg = self._ctx.get(message.pair_last) if self._ctx else None
-            if pair_msg and isinstance(pair_msg.content, AssistantTextMessage):
-                text = self._get_message_text(pair_msg)
-                excerpt = self._excerpt(text)
-                if excerpt:
-                    escaped = self._escape_stars(excerpt)
-                    return f"Assistant: *{escaped}*"
+            if (
+                pair_msg := self._ctx.get(message.pair_last) if self._ctx else None
+            ) and isinstance(pair_msg.content, AssistantTextMessage):
+                if excerpt := self._excerpt(self._get_message_text(pair_msg)):
+                    return f"Assistant: *{self._escape_stars(excerpt)}*"
                 return "Assistant"
 
         # Standalone thinking
-        text = self._get_message_text(message)
-        excerpt = self._excerpt(text)
-        if excerpt:
-            escaped = self._escape_stars(excerpt)
-            return f"Thinking: *{escaped}*"
+        if excerpt := self._excerpt(self._get_message_text(message)):
+            return f"Thinking: *{self._escape_stars(excerpt)}*"
         return "Thinking"
 
     def title_AssistantTextMessage(self, message: TemplateMessage) -> str:
         # When paired (after Thinking), skip title (already rendered with Thinking)
         if message.is_last_in_pair:
             return ""
-
         # Sidechain assistant messages get special title
         if message.meta.is_sidechain:
             return "Sub-assistant"
-
-        text = self._get_message_text(message)
-        excerpt = self._excerpt(text)
-        if excerpt:
-            escaped = self._escape_stars(excerpt)
-            return f"Assistant: *{escaped}*"
+        if excerpt := self._excerpt(self._get_message_text(message)):
+            return f"Assistant: *{self._escape_stars(excerpt)}*"
         return "Assistant"
 
     # -------------------------------------------------------------------------
@@ -721,10 +691,8 @@ class MarkdownRenderer(Renderer):
         # Format paired message content (e.g., tool result)
         pair_msg = None
         if msg.is_first_in_pair and msg.pair_last is not None:
-            pair_msg = self._ctx.get(msg.pair_last) if self._ctx else None
-            if pair_msg:
-                pair_content = self.format_content(pair_msg)
-                if pair_content:
+            if pair_msg := (self._ctx.get(msg.pair_last) if self._ctx else None):
+                if pair_content := self.format_content(pair_msg):
                     parts.append(pair_content)
 
         # Render children at next level (from both this message and paired message)
@@ -732,8 +700,7 @@ class MarkdownRenderer(Renderer):
         if pair_msg and pair_msg.children:
             all_children.extend(pair_msg.children)
         for child in all_children:
-            child_output = self._render_message(child, level + 1)
-            if child_output:
+            if child_output := self._render_message(child, level + 1):
                 parts.append(child_output)
 
         return "\n\n".join(parts)
@@ -770,8 +737,7 @@ class MarkdownRenderer(Renderer):
 
         # Render message tree
         for root in root_messages:
-            rendered = self._render_message(root, level=1)
-            if rendered:
+            if rendered := self._render_message(root, level=1):
                 parts.append(rendered)
 
         return "\n\n".join(parts)
