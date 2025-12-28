@@ -45,7 +45,6 @@ from .tool_formatters import (
     render_params_table,
 )
 from .system_formatters import (
-    format_dedup_notice_content,
     format_hook_summary_content,
     format_session_header_content,
     format_system_content,
@@ -56,7 +55,6 @@ from ..models import (
     BashOutputMessage,
     CommandOutputMessage,
     CompactedSummaryMessage,
-    DedupNoticeMessage,
     IdeDiagnostic,
     IdeNotificationContent,
     IdeOpenedFile,
@@ -131,12 +129,10 @@ __all__ = [
     "get_tool_summary",
     "render_params_table",
     # system_formatters
-    "format_dedup_notice_content",
     "format_hook_summary_content",
     "format_session_header_content",
     "format_system_content",
     # system content models
-    "DedupNoticeMessage",
     "SessionHeaderMessage",
     # user_formatters (content models)
     "SlashCommandMessage",

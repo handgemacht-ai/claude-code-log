@@ -105,7 +105,6 @@ CSS classes are derived from the content type using `CSS_CLASS_REGISTRY` (in `ht
 | `"user command-output"` | `CommandOutputMessage` | — |
 | `"user steering"` | `UserSteeringMessage` | — |
 | `"assistant"` | `AssistantTextMessage` | — |
-| `"assistant dedup-notice"` | `DedupNoticeMessage` | — |
 | `"tool_use"` | `ToolUseMessage` | — |
 | `"tool_result"` | `ToolResultMessage` | — |
 | `"tool_result error"` | `ToolResultMessage` | `is_error=True` |
@@ -705,18 +704,6 @@ class SessionHeaderMessage(MessageContent):
     summary: Optional[str] = None  # Session summary if available
 ```
 
-## 5.2 DedupNoticeMessage
-
-Deduplication notices are shown when content is deduplicated (e.g., sidechain assistant text that duplicates the Task tool result):
-
-```python
-@dataclass
-class DedupNoticeMessage(MessageContent):
-    notice_text: str  # e.g., "Content omitted (duplicates Task result)"
-    target_uuid: Optional[str] = None  # UUID of target message
-    target_message_id: Optional[str] = None  # Resolved message ID for anchor link
-```
-
 ---
 
 # Part 6: Infrastructure Models
@@ -740,7 +727,6 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     CommandOutputMessage: ["user", "command-output"],
     # Assistant message types
     AssistantTextMessage: ["assistant"],
-    DedupNoticeMessage: ["assistant", "dedup-notice"],  # Styled as assistant
     # Tool message types
     ToolUseMessage: ["tool_use"],
     ToolResultMessage: ["tool_result"],  # error added dynamically

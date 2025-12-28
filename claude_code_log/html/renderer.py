@@ -10,7 +10,6 @@ from ..models import (
     BashOutputMessage,
     CommandOutputMessage,
     CompactedSummaryMessage,
-    DedupNoticeMessage,
     HookSummaryMessage,
     SessionHeaderMessage,
     SlashCommandMessage,
@@ -59,7 +58,6 @@ from ..renderer_timings import (
 )
 from ..utils import format_timestamp
 from .system_formatters import (
-    format_dedup_notice_content,
     format_hook_summary_content,
     format_session_header_content,
     format_system_content,
@@ -168,10 +166,6 @@ class HtmlRenderer(Renderer):
     def format_SessionHeaderMessage(self, message: SessionHeaderMessage) -> str:
         """Format → <details class='session-header'>...</details>."""
         return format_session_header_content(message)
-
-    def format_DedupNoticeMessage(self, message: DedupNoticeMessage) -> str:
-        """Format → <span class='muted'>...</span>."""
-        return format_dedup_notice_content(message)
 
     # -------------------------------------------------------------------------
     # User Content Formatters

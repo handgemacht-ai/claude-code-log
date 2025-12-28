@@ -51,7 +51,7 @@ def test_agent_insertion():
 
 
 def test_deduplication_task_result_vs_sidechain():
-    """Test that sidechain assistant final message is deduplicated when it matches Task result."""
+    """Test that sidechain assistant final message is dropped when it matches Task result."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
 
@@ -71,13 +71,7 @@ def test_deduplication_task_result_vs_sidechain():
         html = generate_html(messages, title="Test")
 
         # Verify deduplication occurred:
-        # The sidechain assistant's final message should be replaced with a forward link
-        assert "Task summary" in html
-        assert "see result above" in html
-
-        # Verify the dedup notice has an anchor link to the Task result
-        assert 'href="#msg-' in html
-
+        # The sidechain assistant's final message should be dropped entirely
         # The actual content "I created the test file successfully" should only appear once
         # in the Task result, not in the sidechain assistant
         content_count = html.count("I created the test file successfully")

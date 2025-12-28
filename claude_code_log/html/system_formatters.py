@@ -12,7 +12,6 @@ import html
 
 from .ansi_colors import convert_ansi_to_html
 from ..models import (
-    DedupNoticeMessage,
     HookSummaryMessage,
     SessionHeaderMessage,
     SystemMessage,
@@ -92,30 +91,8 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
     return escaped_title
 
 
-def format_dedup_notice_content(content: DedupNoticeMessage) -> str:
-    """Format a deduplication notice as HTML.
-
-    Args:
-        content: DedupNoticeMessage with notice text and optional target link
-
-    Returns:
-        HTML for the dedup notice display with optional anchor link
-    """
-    escaped_notice = html.escape(content.notice_text)
-
-    if content.target_message_id:
-        # Create clickable link to the target message
-        return (
-            f'<p><em><a href="#msg-{content.target_message_id}">'
-            f"{escaped_notice}</a></em></p>"
-        )
-    else:
-        return f"<p><em>{escaped_notice}</em></p>"
-
-
 __all__ = [
     "format_system_content",
     "format_hook_summary_content",
     "format_session_header_content",
-    "format_dedup_notice_content",
 ]

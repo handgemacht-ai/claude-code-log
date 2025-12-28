@@ -28,7 +28,6 @@ from ..models import (
     BashOutputMessage,
     CommandOutputMessage,
     CompactedSummaryMessage,
-    DedupNoticeMessage,
     HookSummaryMessage,
     MessageContent,
     SessionHeaderMessage,
@@ -68,7 +67,6 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     CommandOutputMessage: ["user", "command-output"],
     # Assistant message types
     AssistantTextMessage: ["assistant"],
-    DedupNoticeMessage: ["assistant", "dedup-notice"],  # Styled as assistant
     # Tool message types
     ToolUseMessage: ["tool_use"],
     ToolResultMessage: ["tool_result"],  # error added dynamically

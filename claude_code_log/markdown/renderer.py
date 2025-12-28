@@ -13,7 +13,6 @@ from ..models import (
     BashOutputMessage,
     CommandOutputMessage,
     CompactedSummaryMessage,
-    DedupNoticeMessage,
     HookSummaryMessage,
     ImageContent,
     SessionHeaderMessage,
@@ -272,14 +271,6 @@ class MarkdownRenderer(Renderer):
         if content.summary:
             return f"📋 Session `{session_short}`: {content.summary}"
         return f"📋 Session `{session_short}`"
-
-    def format_DedupNoticeMessage(self, message: DedupNoticeMessage) -> str:  # noqa: ARG002
-        # Skip dedup notices in markdown output
-        return ""
-
-    def title_DedupNoticeMessage(self, message: TemplateMessage) -> str:  # noqa: ARG002
-        # Skip dedup notices in markdown output
-        return ""
 
     # -------------------------------------------------------------------------
     # User Content Formatters
@@ -683,7 +674,7 @@ class MarkdownRenderer(Renderer):
             parts.append(content)
             content = None  # Don't output again below
 
-        # Heading with title (skip if empty, e.g., DedupNoticeMessage)
+        # Heading with title (skip if empty)
         title = self.title_content(msg)
         if title:
             heading_level = min(level, 6)  # Markdown max is h6

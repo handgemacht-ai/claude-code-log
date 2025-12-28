@@ -31,7 +31,6 @@ from .models import (
     # Structured content types
     AssistantTextMessage,
     CommandOutputMessage,
-    DedupNoticeMessage,
     SessionHeaderMessage,
     SlashCommandMessage,
     SystemMessage,
@@ -612,7 +611,7 @@ def generate_template_messages(
 
     # Clean up sidechain duplicates on the tree structure
     # - Remove first UserTextMessage (duplicate of Task input prompt)
-    # - Replace last AssistantTextMessage (duplicate of Task output) with DedupNotice
+    # - Remove last AssistantTextMessage (duplicate of Task output)
     with log_timing("Cleanup sidechain duplicates", t_start):
         _cleanup_sidechain_duplicates(root_messages)
 
@@ -1325,7 +1324,7 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
 
     For each Task tool_use or tool_result with sidechain children:
     - Remove the first UserTextMessage (duplicate of Task input prompt)
-    - For tool_result: Replace last AssistantTextMessage matching result with DedupNotice
+    - For tool_result: Remove last AssistantTextMessage if it matches the result
 
     Sidechain messages can be children of either tool_use or tool_result depending
     on timestamp order - tool_use during execution, tool_result after completion.
@@ -1399,15 +1398,8 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
             else:
                 child_text = None
             if child_text and child_text == task_result_text:
-                # Replace with dedup notice pointing to the Task result
-                # Preserve original meta (sidechain/session flags) and original message
-                child.content = DedupNoticeMessage(
-                    child_content.meta,
-                    notice_text="Task summary — see result above",
-                    target_message_id=message.message_id,
-                    original_text=child_text,
-                    original=child_content,
-                )
+                # Drop duplicate sidechain assistant message
+                del children[i]
                 break
 
     for root in root_messages:
@@ -2207,7 +2199,6 @@ class Renderer:
     # def format_SystemMessage(self, message: "SystemMessage") -> str: return ""
     # def format_HookSummaryMessage(self, message: "HookSummaryMessage") -> str: ...
     # def format_SessionHeaderMessage(self, message: "SessionHeaderMessage") -> str: ...
-    # def format_DedupNoticeMessage(self, message: "DedupNoticeMessage") -> str: ...
 
     # User content formatters
     # def format_UserTextMessage(self, message: "UserTextMessage") -> str: ...
