@@ -31,7 +31,7 @@
   
   # Session `test_ses`
   
-  ## User
+  ## User: *Hello Claude!*
   
   ```
   Hello Claude! Can you help me understand how Python decorators work?
@@ -65,7 +65,7 @@
   > Something after the function
   > ```
   
-  ## User
+  ## User: *Great! Can you also show me how to create…*
   
   ```
   Great! Can you also show me how to create a decorator that takes parameters?
@@ -73,31 +73,21 @@
   
   ### Edit `decorator_example.py`
   
-  `/tmp/decorator_example.py`
-  
-  **Old:**
-  
-  ```python
-  
-  ```
-  
-  **New:**
-  
-  ```python
-  def repeat(times):
-      def decorator(func):
-          def wrapper(*args, **kwargs):
-              for _ in range(times):
-                  result = func(*args, **kwargs)
-              return result
-          return wrapper
-      return decorator
-  
-  @repeat(3)
-  def greet(name):
-      print(f"Hello, {name}!")
-  
-  greet("Alice")
+  ```diff
+  @@ -0,0 +1,14 @@+def repeat(times):
+  +    def decorator(func):
+  +        def wrapper(*args, **kwargs):
+  +            for _ in range(times):
+  +                result = func(*args, **kwargs)
+  +            return result
+  +        return wrapper
+  +    return decorator
+  +
+  +@repeat(3)
+  +def greet(name):
+  +    print(f"Hello, {name}!")
+  +
+  +greet("Alice")
   ```
   
   ```
@@ -119,7 +109,7 @@
   > 
   > When you run this code, it will print "Hello, Alice!" three times.
   
-  ## User
+  ## User: *Can you run that example to show the output…*
   
   ```
   Can you run that example to show the output?
@@ -128,7 +118,7 @@
   ### Bash: *Run the decorator example to show output*
   
   ```bash
-  python /tmp/decorator_example.py
+  $ python /tmp/decorator_example.py
   ```
   
   ```
@@ -150,7 +140,7 @@
   > 
   > The pattern is always the same: decorator factory → decorator → wrapper function.
   
-  ## User
+  ## User: *This is really helpful!*
   
   ```
   This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?
@@ -172,7 +162,7 @@
   
   # Session `edge_cas`: Tested various edge cases including markdown formatting, long text, tool errors, system messages, command outputs, special characters and emojis. All message types render correctly in the transcript viewer.
   
-  ## User
+  ## User: *Here's a message with some \*\*markdown\*\* formatting…*
   
   ```
   Here's a message with some **markdown** formatting, `inline code`, and even a [link](https://example.com). Let's see how it renders!
@@ -207,7 +197,7 @@
   > 
   > The markdown renderer handles all of this automatically!
   
-  ## User
+  ## User: *Let's test a very long message to see how…*
   
   ```
   Let's test a very long message to see how it handles text wrapping and layout. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.
@@ -221,7 +211,7 @@
   Error: Tool execution failed with error: Command not found
   ```
   
-  ## Command `/test-command`
+  ## Command `test-command`
   
   **Args:** `--verbose --output /tmp/test.log`
   
@@ -240,13 +230,13 @@
   Timestamp: 2025-06-14T11:02:20Z
   ```
   
-  ## User
+  ## User: *Testing special characters: café, naïve,…*
   
   ```
   Testing special characters: café, naïve, résumé, 中文, العربية, русский, 🎉 emojis 🚀 and symbols ∑∆√π∞
   ```
   
-  ## User
+  ## User: *wow error*
   
   ```
   wow error
@@ -281,7 +271,7 @@
   
   # Session `session_`
   
-  ## User
+  ## User: *This is from a different session file to…*
   
   ```
   This is from a different session file to test multi-session handling.
@@ -291,7 +281,7 @@
   
   > Indeed! This message is from a different JSONL file, which should help test the session divider logic. Only the first session should show a divider.
   
-  ## User
+  ## User: *Perfect! This should appear without any session…*
   
   ```
   Perfect! This should appear without any session divider above it.
@@ -301,7 +291,7 @@
   
   # Session `test_ses`: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator.
   
-  ## User
+  ## User: *Hello Claude!*
   
   ```
   Hello Claude! Can you help me understand how Python decorators work?
@@ -335,7 +325,7 @@
   > Something after the function
   > ```
   
-  ## User
+  ## User: *Great! Can you also show me how to create…*
   
   ```
   Great! Can you also show me how to create a decorator that takes parameters?
@@ -343,31 +333,21 @@
   
   ### Edit `decorator_example.py`
   
-  `/tmp/decorator_example.py`
-  
-  **Old:**
-  
-  ```python
-  
-  ```
-  
-  **New:**
-  
-  ```python
-  def repeat(times):
-      def decorator(func):
-          def wrapper(*args, **kwargs):
-              for _ in range(times):
-                  result = func(*args, **kwargs)
-              return result
-          return wrapper
-      return decorator
-  
-  @repeat(3)
-  def greet(name):
-      print(f"Hello, {name}!")
-  
-  greet("Alice")
+  ```diff
+  @@ -0,0 +1,14 @@+def repeat(times):
+  +    def decorator(func):
+  +        def wrapper(*args, **kwargs):
+  +            for _ in range(times):
+  +                result = func(*args, **kwargs)
+  +            return result
+  +        return wrapper
+  +    return decorator
+  +
+  +@repeat(3)
+  +def greet(name):
+  +    print(f"Hello, {name}!")
+  +
+  +greet("Alice")
   ```
   
   ```
@@ -389,7 +369,7 @@
   > 
   > When you run this code, it will print "Hello, Alice!" three times.
   
-  ## User
+  ## User: *Can you run that example to show the output…*
   
   ```
   Can you run that example to show the output?
@@ -398,7 +378,7 @@
   ### Bash: *Run the decorator example to show output*
   
   ```bash
-  python /tmp/decorator_example.py
+  $ python /tmp/decorator_example.py
   ```
   
   ```
@@ -420,7 +400,7 @@
   > 
   > The pattern is always the same: decorator factory → decorator → wrapper function.
   
-  ## User
+  ## User: *This is really helpful!*
   
   ```
   This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?
@@ -442,7 +422,7 @@
   
   # Session `test_ses`: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator.
   
-  ## User
+  ## User: *Hello Claude!*
   
   ```
   Hello Claude! Can you help me understand how Python decorators work?
@@ -476,7 +456,7 @@
   > Something after the function
   > ```
   
-  ## User
+  ## User: *Great! Can you also show me how to create…*
   
   ```
   Great! Can you also show me how to create a decorator that takes parameters?
@@ -484,31 +464,21 @@
   
   ### Edit `decorator_example.py`
   
-  `/tmp/decorator_example.py`
-  
-  **Old:**
-  
-  ```python
-  
-  ```
-  
-  **New:**
-  
-  ```python
-  def repeat(times):
-      def decorator(func):
-          def wrapper(*args, **kwargs):
-              for _ in range(times):
-                  result = func(*args, **kwargs)
-              return result
-          return wrapper
-      return decorator
-  
-  @repeat(3)
-  def greet(name):
-      print(f"Hello, {name}!")
-  
-  greet("Alice")
+  ```diff
+  @@ -0,0 +1,14 @@+def repeat(times):
+  +    def decorator(func):
+  +        def wrapper(*args, **kwargs):
+  +            for _ in range(times):
+  +                result = func(*args, **kwargs)
+  +            return result
+  +        return wrapper
+  +    return decorator
+  +
+  +@repeat(3)
+  +def greet(name):
+  +    print(f"Hello, {name}!")
+  +
+  +greet("Alice")
   ```
   
   ```
@@ -530,7 +500,7 @@
   > 
   > When you run this code, it will print "Hello, Alice!" three times.
   
-  ## User
+  ## User: *Can you run that example to show the output…*
   
   ```
   Can you run that example to show the output?
@@ -539,7 +509,7 @@
   ### Bash: *Run the decorator example to show output*
   
   ```bash
-  python /tmp/decorator_example.py
+  $ python /tmp/decorator_example.py
   ```
   
   ```
@@ -561,7 +531,7 @@
   > 
   > The pattern is always the same: decorator factory → decorator → wrapper function.
   
-  ## User
+  ## User: *This is really helpful!*
   
   ```
   This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?

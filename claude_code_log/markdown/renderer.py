@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from ..cache import get_library_version
-from ..utils import strip_error_tags
+from ..utils import generate_unified_diff, strip_error_tags
 from ..models import (
     AssistantTextMessage,
     BashInputMessage,
@@ -226,7 +226,7 @@ class MarkdownRenderer(Renderer):
         content = msg.content
         if isinstance(content, ThinkingMessage):
             return content.thinking
-        if isinstance(content, AssistantTextMessage):
+        if isinstance(content, (AssistantTextMessage, UserTextMessage)):
             # Get first text item
             for item in content.items:
                 if isinstance(item, TextContent) and item.text.strip():
@@ -287,6 +287,14 @@ class MarkdownRenderer(Renderer):
                     parts.append(self._code_fence(item.text))
         return "\n\n".join(parts)
 
+    def title_UserTextMessage(self, message: TemplateMessage) -> str:
+        text = self._get_message_text(message)
+        excerpt = self._excerpt(text)
+        if excerpt:
+            escaped = self._escape_stars(excerpt)
+            return f"User: *{escaped}*"
+        return "User"
+
     def format_UserSlashCommandMessage(self, message: UserSlashCommandMessage) -> str:
         # UserSlashCommandMessage has a text attribute (markdown), quote to protect it
         if message.text.strip():
@@ -304,7 +312,8 @@ class MarkdownRenderer(Renderer):
 
     def title_SlashCommandMessage(self, message: TemplateMessage) -> str:
         content = cast(SlashCommandMessage, message.content)
-        return f"Command `/{content.command_name}`"
+        # command_name already includes the leading slash
+        return f"Command `{content.command_name}`"
 
     def format_CommandOutputMessage(self, message: CommandOutputMessage) -> str:
         if message.is_markdown:
@@ -313,7 +322,7 @@ class MarkdownRenderer(Renderer):
         return self._code_fence(message.stdout)
 
     def format_BashInputMessage(self, message: BashInputMessage) -> str:
-        return self._code_fence(message.command, "bash")
+        return self._code_fence(f"$ {message.command}", "bash")
 
     def format_BashOutputMessage(self, message: BashOutputMessage) -> str:
         # Combine stdout and stderr, strip ANSI codes for markdown output
@@ -360,8 +369,8 @@ class MarkdownRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def format_BashInput(self, input: BashInput) -> str:
-        # Description is in the title, just show the command
-        return self._code_fence(input.command, "bash")
+        # Description is in the title, just show the command with $ prefix
+        return self._code_fence(f"$ {input.command}", "bash")
 
     def format_ReadInput(self, input: ReadInput) -> str:
         # File path goes in the collapsible summary of ReadOutput
@@ -378,30 +387,22 @@ class MarkdownRenderer(Renderer):
         return self._collapsible(summary, content)
 
     def format_EditInput(self, input: EditInput) -> str:
-        parts = [f"`{input.file_path}`"]
-        lang = self._lang_from_path(input.file_path)
-        parts.append("**Old:**")
-        parts.append(self._code_fence(input.old_string, lang))
-        parts.append("**New:**")
-        parts.append(self._code_fence(input.new_string, lang))
-        return "\n\n".join(parts)
+        # Diff is visible; result goes in collapsible in format_EditOutput
+        diff_text = generate_unified_diff(input.old_string, input.new_string)
+        return self._code_fence(diff_text, "diff")
 
     def format_MultiEditInput(self, input: MultiEditInput) -> str:
-        parts = [f"`{input.file_path}`"]
-        lang = self._lang_from_path(input.file_path)
+        # All diffs visible; result goes in collapsible in format_EditOutput
+        parts: list[str] = []
         for i, edit in enumerate(input.edits, 1):
             parts.append(f"**Edit {i}:**")
-            parts.append("Old:")
-            parts.append(self._code_fence(edit.old_string, lang))
-            parts.append("New:")
-            parts.append(self._code_fence(edit.new_string, lang))
+            diff_text = generate_unified_diff(edit.old_string, edit.new_string)
+            parts.append(self._code_fence(diff_text, "diff"))
         return "\n\n".join(parts)
 
-    def format_GlobInput(self, input: GlobInput) -> str:
-        parts = [f"Pattern: `{input.pattern}`"]
-        if input.path:
-            parts.append(f"Path: `{input.path}`")
-        return "\n\n".join(parts)
+    def format_GlobInput(self, input: GlobInput) -> str:  # noqa: ARG002
+        # Pattern and path are in the title
+        return ""
 
     def format_GrepInput(self, input: GrepInput) -> str:
         # Pattern and path are in the title, only show glob filter if present
@@ -477,7 +478,9 @@ class MarkdownRenderer(Renderer):
     def format_EditOutput(self, output: EditOutput) -> str:
         if output.message:
             lang = self._lang_from_path(output.file_path)
-            return self._code_fence(output.message, lang)
+            content = self._code_fence(output.message, lang)
+            summary = f"<code>{output.file_path}</code>"
+            return self._collapsible(summary, content)
         return "✓ Edited"
 
     def format_BashOutput(self, output: BashOutput) -> str:
@@ -496,9 +499,17 @@ class MarkdownRenderer(Renderer):
     # Grep results fall back to format_ToolResultContent
 
     def format_ToolResultMessage(self, message: ToolResultMessage) -> str:
-        """Override to handle AskUserQuestion with paired input access."""
+        """Override for special output handling."""
         if isinstance(message.output, AskUserQuestionOutput):
             return self._format_ask_user_question(message, message.output)
+
+        # TodoWrite success message - render as plain text, not code fence
+        if message.tool_name == "TodoWrite":
+            if isinstance(message.output, ToolResultContent):
+                if isinstance(message.output.content, str):
+                    return message.output.content
+            return ""
+
         # Default: dispatch to output formatter
         return self._dispatch_format(message.output)
 
@@ -545,7 +556,7 @@ class MarkdownRenderer(Renderer):
     def format_ExitPlanModeOutput(self, output: ExitPlanModeOutput) -> str:
         status = "✓ Approved" if output.approved else "✗ Not approved"
         if output.message:
-            return f"{status}\n\n{self._quote(output.message)}"
+            return f"{status}\n\n{output.message}"
         return status
 
     def format_ToolResultContent(self, output: ToolResultContent) -> str:

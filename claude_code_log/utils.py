@@ -354,3 +354,33 @@ def strip_error_tags(text: str) -> str:
         text,
         flags=re.DOTALL,
     )
+
+
+def generate_unified_diff(old_string: str, new_string: str) -> str:
+    """Generate a unified diff between old and new strings.
+
+    Args:
+        old_string: The original content
+        new_string: The modified content
+
+    Returns:
+        Unified diff as a string (without header lines)
+    """
+    import difflib
+
+    old_lines = old_string.splitlines(keepends=True)
+    new_lines = new_string.splitlines(keepends=True)
+
+    # Ensure last lines end with newline for proper diff output
+    if old_lines and not old_lines[-1].endswith("\n"):
+        old_lines[-1] += "\n"
+    if new_lines and not new_lines[-1].endswith("\n"):
+        new_lines[-1] += "\n"
+
+    diff_lines = list(difflib.unified_diff(old_lines, new_lines, lineterm="", n=3))
+
+    # Skip the header lines (--- and +++) if present
+    if len(diff_lines) >= 2 and diff_lines[0].startswith("---"):
+        diff_lines = diff_lines[2:]
+
+    return "".join(diff_lines).rstrip("\n")
