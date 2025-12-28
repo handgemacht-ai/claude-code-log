@@ -30,14 +30,20 @@ from .models import (
     UsageInfo,
     # Structured content types
     AssistantTextMessage,
+    BashInputMessage,
+    BashOutputMessage,
     CommandOutputMessage,
+    CompactedSummaryMessage,
+    HookSummaryMessage,
     SessionHeaderMessage,
     SlashCommandMessage,
     SystemMessage,
     TaskOutput,
+    ThinkingMessage,
     ToolResultMessage,
     ToolUseMessage,
     UnknownMessage,
+    UserMemoryMessage,
     UserSlashCommandMessage,
     UserSteeringMessage,
     UserTextMessage,
@@ -1996,25 +2002,25 @@ class Renderer:
     - Subclasses override methods to implement format-specific rendering
     """
 
-    def _dispatch_format(self, obj: Any) -> str:
-        """Dispatch to format_{ClassName} method based on object type."""
+    def _dispatch_format(self, obj: Any, message: TemplateMessage) -> str:
+        """Dispatch to format_{ClassName}(obj, message) based on object type."""
         for cls in type(obj).__mro__:
             if cls is object:
                 break
             if method := getattr(self, f"format_{cls.__name__}", None):
-                return method(obj)
+                return method(obj, message)
         return ""
 
-    def _dispatch_title(self, obj: Any, message: "TemplateMessage") -> Optional[str]:
-        """Dispatch to title_{ClassName} method based on object type."""
+    def _dispatch_title(self, obj: Any, message: TemplateMessage) -> Optional[str]:
+        """Dispatch to title_{ClassName}(obj, message) based on object type."""
         for cls in type(obj).__mro__:
             if cls is object:
                 break
             if method := getattr(self, f"title_{cls.__name__}", None):
-                return method(message)
+                return method(obj, message)
         return None
 
-    def format_content(self, message: "TemplateMessage") -> str:
+    def format_content(self, message: TemplateMessage) -> str:
         """Format message content by dispatching to type-specific method.
 
         Looks for a method named format_{ClassName} (e.g., format_SystemMessage).
@@ -2026,9 +2032,9 @@ class Renderer:
         Returns:
             Formatted string (e.g., HTML), or empty string if no handler found.
         """
-        return self._dispatch_format(message.content)
+        return self._dispatch_format(message.content, message)
 
-    def title_content(self, message: "TemplateMessage") -> str:
+    def title_content(self, message: TemplateMessage) -> str:
         """Get message title by dispatching to type-specific title method.
 
         Looks for a method named title_{ClassName} (e.g., title_ToolUseMessage).
@@ -2045,7 +2051,7 @@ class Renderer:
             if cls is object:
                 break
             if method := getattr(self, f"title_{cls.__name__}", None):
-                return method(message)
+                return method(message.content, message)
         # Fallback: convert message_type to title case
         return message.content.message_type.replace("_", " ").replace("-", " ").title()
 
@@ -2055,61 +2061,86 @@ class Renderer:
     # These methods return title strings for specific content types.
     # Override in subclasses for format-specific titles (e.g., HTML with icons).
 
-    def title_SystemMessage(self, message: "TemplateMessage") -> str:
-        content = cast("SystemMessage", message.content)
+    def title_SystemMessage(self, content: SystemMessage, _: TemplateMessage) -> str:
         return f"System {content.level.title()}"
 
-    def title_HookSummaryMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_HookSummaryMessage(
+        self, _content: HookSummaryMessage, _: TemplateMessage
+    ) -> str:
         return "System Hook"
 
-    def title_SlashCommandMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_SlashCommandMessage(
+        self, content: SlashCommandMessage, _message: TemplateMessage
+    ) -> str:
         return "Slash Command"
 
-    def title_CommandOutputMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_CommandOutputMessage(
+        self, _content: CommandOutputMessage, _: TemplateMessage
+    ) -> str:
         return ""  # Empty title for command output
 
-    def title_BashInputMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_BashInputMessage(
+        self, _content: BashInputMessage, _: TemplateMessage
+    ) -> str:
         return "Bash command"
 
-    def title_BashOutputMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_BashOutputMessage(
+        self, _content: BashOutputMessage, _: TemplateMessage
+    ) -> str:
         return ""  # Empty title for bash output
 
-    def title_CompactedSummaryMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_CompactedSummaryMessage(
+        self, _content: CompactedSummaryMessage, _: TemplateMessage
+    ) -> str:
         return "User (compacted conversation)"
 
-    def title_UserMemoryMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_UserMemoryMessage(
+        self, _content: UserMemoryMessage, _: TemplateMessage
+    ) -> str:
         return "Memory"
 
-    def title_UserSlashCommandMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_UserSlashCommandMessage(
+        self, _content: UserSlashCommandMessage, _: TemplateMessage
+    ) -> str:
         return "User (slash command)"
 
-    def title_UserTextMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_UserTextMessage(
+        self, _content: UserTextMessage, _message: TemplateMessage
+    ) -> str:
         return "User"
 
-    def title_UserSteeringMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_UserSteeringMessage(
+        self, _content: UserSteeringMessage, _: TemplateMessage
+    ) -> str:
         return "User (steering)"
 
-    def title_AssistantTextMessage(self, message: "TemplateMessage") -> str:
+    def title_AssistantTextMessage(
+        self, _content: AssistantTextMessage, message: TemplateMessage
+    ) -> str:
         # Sidechain assistant messages get special title
         if message.meta.is_sidechain:
             return "Sub-assistant"
         return "Assistant"
 
-    def title_ThinkingMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_ThinkingMessage(
+        self, _content: ThinkingMessage, _message: TemplateMessage
+    ) -> str:
         return "Thinking"
 
-    def title_UnknownMessage(self, message: "TemplateMessage") -> str:  # noqa: ARG002
+    def title_UnknownMessage(self, _content: UnknownMessage, _: TemplateMessage) -> str:
         return "Unknown Content"
 
     # Tool title methods (dispatch to input/output title methods)
-    def title_ToolUseMessage(self, message: "TemplateMessage") -> str:
-        content = cast("ToolUseMessage", message.content)
+    def title_ToolUseMessage(
+        self, content: ToolUseMessage, message: TemplateMessage
+    ) -> str:
         if title := self._dispatch_title(content.input, message):
             return title
         return content.tool_name  # Default to tool name
 
-    def title_ToolResultMessage(self, message: "TemplateMessage") -> str:
-        content = cast("ToolResultMessage", message.content)
+    def title_ToolResultMessage(
+        self, content: ToolResultMessage, message: TemplateMessage
+    ) -> str:
         if content.is_error:
             return "Error"
         if title := self._dispatch_title(content.output, message):
@@ -2117,47 +2148,44 @@ class Renderer:
         return ""  # Tool results typically don't need a title
 
     # Tool input title stubs (override in subclasses for custom titles)
-    # def title_BashInput(self, message: "TemplateMessage") -> str: ...
-    # def title_ReadInput(self, message: "TemplateMessage") -> str: ...
-    # def title_EditInput(self, message: "TemplateMessage") -> str: ...
-    # def title_TaskInput(self, message: "TemplateMessage") -> str: ...
-    # def title_TodoWriteInput(self, message: "TemplateMessage") -> str: ...
+    # def title_BashInput(self, input: "BashInput", message: "TemplateMessage") -> str: ...
+    # def title_ReadInput(self, input: "ReadInput", message: "TemplateMessage") -> str: ...
+    # def title_EditInput(self, input: "EditInput", message: "TemplateMessage") -> str: ...
+    # def title_TaskInput(self, input: "TaskInput", message: "TemplateMessage") -> str: ...
+    # def title_TodoWriteInput(self, input: "TodoWriteInput", message: "TemplateMessage") -> str: ...
 
     # -------------------------------------------------------------------------
     # Format Method Stubs (override in subclasses)
     # -------------------------------------------------------------------------
     # System content formatters
-    # def format_SystemMessage(self, message: "SystemMessage") -> str: return ""
-    # def format_HookSummaryMessage(self, message: "HookSummaryMessage") -> str: ...
-    # def format_SessionHeaderMessage(self, message: "SessionHeaderMessage") -> str: ...
+    # def format_SystemMessage(self, content: "SystemMessage", message: "TemplateMessage") -> str: ...
+    # def format_HookSummaryMessage(self, content: "HookSummaryMessage", _: "TemplateMessage") -> str: ...
+    # def format_SessionHeaderMessage(self, content: "SessionHeaderMessage", _: "TemplateMessage") -> str: ...
 
     # User content formatters
-    # def format_UserTextMessage(self, message: "UserTextMessage") -> str: ...
-    # def format_UserSteeringMessage(self, message: "UserSteeringMessage") -> str: ...
-    # def format_UserSlashCommandMessage(self, message: "UserSlashCommandMessage") -> str: ...
-    # def format_SlashCommandMessage(self, message: "SlashCommandMessage") -> str: ...
-    # def format_CommandOutputMessage(self, message: "CommandOutputMessage") -> str: ...
-    # def format_BashInputMessage(self, message: "BashInputMessage") -> str: ...
-    # def format_BashOutputMessage(self, message: "BashOutputMessage") -> str: ...
-    # def format_CompactedSummaryMessage(self, message: "CompactedSummaryMessage") -> str: ...
-    # def format_UserMemoryMessage(self, message: "UserMemoryMessage") -> str: ...
+    # def format_UserTextMessage(self, content: "UserTextMessage", _: "TemplateMessage") -> str: ...
+    # ...
 
     # Assistant content formatters
-    # def format_AssistantTextMessage(self, message: "AssistantTextMessage") -> str: ...
-    # def format_ThinkingMessage(self, message: "ThinkingMessage") -> str: ...
-    # def format_UnknownMessage(self, message: "UnknownMessage") -> str: ...
+    # def format_AssistantTextMessage(self, content: "AssistantTextMessage", _: "TemplateMessage") -> str: ...
+    # def format_ThinkingMessage(self, content: "ThinkingMessage", _: "TemplateMessage") -> str: ...
+    # def format_UnknownMessage(self, content: "UnknownMessage", _: "TemplateMessage") -> str: ...
 
     # Tool content formatters (dispatch to input/output formatters)
-    def format_ToolUseMessage(self, message: "ToolUseMessage") -> str:
-        """Dispatch to format_{InputClass} based on message.input type."""
-        return self._dispatch_format(message.input)
+    def format_ToolUseMessage(
+        self, content: ToolUseMessage, message: TemplateMessage
+    ) -> str:
+        """Dispatch to format_{InputClass} based on content.input type."""
+        return self._dispatch_format(content.input, message)
 
-    def format_ToolResultMessage(self, message: "ToolResultMessage") -> str:
-        """Dispatch to format_{OutputClass} based on message.output type."""
-        return self._dispatch_format(message.output)
+    def format_ToolResultMessage(
+        self, content: ToolResultMessage, message: TemplateMessage
+    ) -> str:
+        """Dispatch to format_{OutputClass} based on content.output type."""
+        return self._dispatch_format(content.output, message)
 
     # Tool input formatters
-    # def format_BashInput(self, input: "BashInput") -> str: ...
+    # def format_BashInput(self, input: "BashInput", _: "TemplateMessage") -> str: ...
     # def format_ReadInput(self, input: "ReadInput") -> str: ...
     # def format_WriteInput(self, input: "WriteInput") -> str: ...
     # def format_EditInput(self, input: "EditInput") -> str: ...

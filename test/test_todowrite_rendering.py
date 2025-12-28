@@ -15,6 +15,7 @@ from claude_code_log.models import (
     TodoWriteItem,
     ToolUseMessage,
 )
+from claude_code_log.renderer import TemplateMessage
 
 
 class TestTodoWriteRendering:
@@ -230,8 +231,10 @@ class TestTodoWriteRendering:
 
         # Test both through the HtmlRenderer
         renderer = HtmlRenderer()
-        regular_html = renderer.format_ToolUseMessage(regular_tool)
-        todowrite_html = renderer.format_ToolUseMessage(todowrite_tool)
+        regular_msg = TemplateMessage(regular_tool)
+        todowrite_msg = TemplateMessage(todowrite_tool)
+        regular_html = renderer.format_ToolUseMessage(regular_tool, regular_msg)
+        todowrite_html = renderer.format_ToolUseMessage(todowrite_tool, todowrite_msg)
 
         # Edit tool should use diff formatting (not table)
         assert "edit-diff" in regular_html

@@ -219,31 +219,48 @@ The base `Renderer` class ([renderer.py:2056](../claude_code_log/renderer.py#L20
 
 ### Dispatch Mechanism
 
-The dispatcher finds methods by content type name:
+The dispatcher finds methods by content type name and passes both the typed object and the `TemplateMessage`:
 
 ```python
-def _dispatch_format(self, obj: Any) -> str:
-    """Dispatch to format_{ClassName} method."""
+def _dispatch_format(self, obj: Any, message: TemplateMessage) -> str:
+    """Dispatch to format_{ClassName}(obj, message) method."""
     for cls in type(obj).__mro__:
         if cls is object:
             break
         if method := getattr(self, f"format_{cls.__name__}", None):
-            return method(obj)
+            return method(obj, message)
     return ""
 ```
 
 For example, `ToolUseMessage` with `BashInput`:
-1. `format_content(message)` calls `_dispatch_format(message.content)`
-2. Finds `format_ToolUseMessage()` which calls `_dispatch_format(content.input)`
-3. Finds `format_BashInput()` for the specific tool
+1. `format_content(message)` calls `_dispatch_format(message.content, message)`
+2. Finds `format_ToolUseMessage(content, message)` which calls `_dispatch_format(content.input, message)`
+3. Finds `format_BashInput(input, message)` for the specific tool
+
+### Consistent (obj, message) Signature
+
+All `format_*` and `title_*` methods receive both parameters:
+
+```python
+def format_BashInput(self, input: BashInput, _: TemplateMessage) -> str:
+    return format_bash_input(input)
+
+def title_BashInput(self, input: BashInput, message: TemplateMessage) -> str:
+    return self._tool_title(message, "💻", input.description)
+```
+
+This design gives handlers access to:
+- **The typed object** (`input: BashInput`) for type-safe field access without casting
+- **The full context** (`message: TemplateMessage`) for paired message lookups, ancestry, etc.
+
+Methods that don't need the message parameter use `_` or `_message` (for LSP compliance in overrides).
 
 ### Title Dispatch
 
 Similar pattern for titles via `title_{ClassName}` methods:
 
 ```python
-def title_ToolUseMessage(self, message: TemplateMessage) -> str:
-    content = cast(ToolUseMessage, message.content)
+def title_ToolUseMessage(self, content: ToolUseMessage, message: TemplateMessage) -> str:
     if title := self._dispatch_title(content.input, message):
         return title
     return content.tool_name  # Default fallback

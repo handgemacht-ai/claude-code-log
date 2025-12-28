@@ -94,17 +94,23 @@ class MarkdownVisitor(MessageVisitor[str]):
 
 The current dispatcher approach works well; the visitor pattern would mainly help if we add many more output formats.
 
-### Inconsistency: format_ vs title_ Method Signatures
+### ✅ COMPLETED: Consistent (obj, message) Signatures
 
-Currently there's an asymmetry in method signatures:
-- `format_{ClassName}(obj)` receives the precise type directly (e.g., `BashInput`)
-- `title_{ClassName}(message)` receives the `TemplateMessage` wrapper
+Previously there was an asymmetry in method signatures:
+- `format_{ClassName}(obj)` received the precise type directly
+- `title_{ClassName}(message)` received the `TemplateMessage` wrapper
 
-Each approach has drawbacks:
-- Direct type: No access to `TemplateMessage` or even `MessageContent` (for `*Input`/`*Output` objects)
-- TemplateMessage: Requires casting to access the specific content type
+**Resolution**: All `format_*` and `title_*` methods now consistently receive both parameters:
 
-A cleaner solution might be to pass **both**: `format_{ClassName}(obj, message)` and `title_{ClassName}(obj, message)`, giving handlers access to both the specific type and the full context.
+```python
+def format_BashInput(self, input: BashInput, _: TemplateMessage) -> str:
+    ...
+
+def title_BashInput(self, input: BashInput, message: TemplateMessage) -> str:
+    ...
+```
+
+This gives handlers access to both the specific type (for type-safe field access) and the full context (for paired message lookups, ancestry, etc.). Methods that don't need the message parameter use `_` or `_message` to indicate it's unused.
 
 ---
 
