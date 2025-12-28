@@ -272,6 +272,10 @@ class MarkdownRenderer(Renderer):
         # Skip dedup notices in markdown output
         return ""
 
+    def title_DedupNoticeMessage(self, message: TemplateMessage) -> str:  # noqa: ARG002
+        # Skip dedup notices in markdown output
+        return ""
+
     # -------------------------------------------------------------------------
     # User Content Formatters
     # -------------------------------------------------------------------------
@@ -704,16 +708,18 @@ class MarkdownRenderer(Renderer):
             parts.append(content)
             content = None  # Don't output again below
 
-        # Heading with title
+        # Heading with title (skip if empty, e.g., DedupNoticeMessage)
         title = self.title_content(msg)
-        heading_level = min(level, 6)  # Markdown max is h6
-        parts.append(f"{'#' * heading_level} {title}")
+        if title:
+            heading_level = min(level, 6)  # Markdown max is h6
+            parts.append(f"{'#' * heading_level} {title}")
 
-        # Format content (if not already output above)
-        if content:
-            parts.append(content)
+            # Format content (if not already output above)
+            if content:
+                parts.append(content)
 
         # Format paired message content (e.g., tool result)
+        pair_msg = None
         if msg.is_first_in_pair and msg.pair_last is not None:
             pair_msg = self._ctx.get(msg.pair_last) if self._ctx else None
             if pair_msg:
@@ -721,8 +727,11 @@ class MarkdownRenderer(Renderer):
                 if pair_content:
                     parts.append(pair_content)
 
-        # Render children at next level
-        for child in msg.children:
+        # Render children at next level (from both this message and paired message)
+        all_children = list(msg.children)
+        if pair_msg and pair_msg.children:
+            all_children.extend(pair_msg.children)
+        for child in all_children:
             child_output = self._render_message(child, level + 1)
             if child_output:
                 parts.append(child_output)

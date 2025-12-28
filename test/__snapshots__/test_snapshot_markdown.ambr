@@ -230,6 +230,44 @@
   Timestamp: 2025-06-14T11:02:20Z
   ```
   
+  ### Assistant: *I see the long Lorem ipsum text wraps nicely…*
+  
+  > I see the long Lorem ipsum text wraps nicely! Long text handling is important for readability. The CSS should handle word wrapping automatically.
+  
+  #### MultiEdit `complex_example.py`
+  
+  **Edit 1:**
+  
+  ```diff
+  @@ -0,0 +1,27 @@+#!/usr/bin/env python3
+  +"""
+  +Complex example with multiple operations.
+  +"""
+  +
+  +import json
+  +import sys
+  +from typing import List, Dict, Any
+  +
+  +def process_data(items: List[Dict[str, Any]]) -> None:
+  +    """
+  +    Process a list of data items.
+  +    """
+  +    for item in items:
+  +        print(f"Processing: {item['name']}")
+  +        if item.get('active', False):
+  +            print(f"  Status: Active")
+  +        else:
+  +            print(f"  Status: Inactive")
+  +
+  +if __name__ == "__main__":
+  +    sample_data = [
+  +        {"name": "Item 1", "active": True},
+  +        {"name": "Item 2", "active": False},
+  +        {"name": "Item 3", "active": True}
+  +    ]
+  +    process_data(sample_data)
+  ```
+  
   ## User: *Testing special characters: café, naïve,…*
   
   ```
