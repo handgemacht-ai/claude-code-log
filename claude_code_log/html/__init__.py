@@ -39,9 +39,7 @@ from .tool_formatters import (
     # Legacy formatters (still used)
     format_askuserquestion_result,
     format_exitplanmode_result,
-    # Tool summary and title
-    format_tool_use_title,
-    get_tool_summary,
+    # Generic
     render_params_table,
 )
 from .system_formatters import (
@@ -124,9 +122,7 @@ __all__ = [
     # Legacy formatters (still used)
     "format_askuserquestion_result",
     "format_exitplanmode_result",
-    # Tool summary and title
-    "format_tool_use_title",
-    "get_tool_summary",
+    # Generic
     "render_params_table",
     # system_formatters
     "format_hook_summary_content",

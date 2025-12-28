@@ -18,7 +18,7 @@ import base64
 import binascii
 import json
 import re
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from .utils import (
     escape_html,
@@ -42,7 +42,6 @@ from ..models import (
     TaskInput,
     TaskOutput,
     TodoWriteInput,
-    ToolInput,
     ToolResultContent,
     WriteInput,
     WriteOutput,
@@ -524,94 +523,6 @@ def format_task_input(task_input: TaskInput) -> str:
     return render_markdown_collapsible(task_input.prompt, "task-prompt")
 
 
-# -- Tool Summary and Title ---------------------------------------------------
-
-
-def get_tool_summary(parsed: Optional[ToolInput]) -> Optional[str]:
-    """Extract a one-line summary from parsed tool input for display in header.
-
-    Returns a brief description or filename that can be shown in the message header
-    to save vertical space.
-
-    Args:
-        parsed: Parsed tool input, or None if parsing failed/not available
-    """
-    if isinstance(parsed, BashInput):
-        return parsed.description
-
-    if isinstance(parsed, (ReadInput, EditInput, WriteInput)):
-        return parsed.file_path if parsed.file_path else None
-
-    if isinstance(parsed, TaskInput):
-        return parsed.description if parsed.description else None
-
-    # No summary for other tools or unparsed input
-    return None
-
-
-def format_tool_use_title(tool_name: str, parsed: Optional[ToolInput]) -> str:
-    """Generate the title HTML for a tool use message.
-
-    Returns HTML string for the message header, with tool name, icon,
-    and optional summary/metadata.
-
-    Args:
-        tool_name: The tool name (e.g., "Bash", "Read", "Edit")
-        parsed: Parsed tool input, or None if parsing failed/not available
-    """
-    escaped_name = escape_html(tool_name)
-    summary = get_tool_summary(parsed)
-
-    # TodoWrite: fixed title
-    if tool_name == "TodoWrite":
-        return "📝 Todo List"
-
-    # Task: show subagent_type and description
-    if isinstance(parsed, TaskInput):
-        escaped_subagent = (
-            escape_html(parsed.subagent_type) if parsed.subagent_type else ""
-        )
-        description = parsed.description
-
-        if description and parsed.subagent_type:
-            escaped_desc = escape_html(description)
-            return f"🔧 {escaped_name} <span class='tool-summary'>{escaped_desc}</span> <span class='tool-subagent'>({escaped_subagent})</span>"
-        elif description:
-            escaped_desc = escape_html(description)
-            return f"🔧 {escaped_name} <span class='tool-summary'>{escaped_desc}</span>"
-        elif parsed.subagent_type:
-            return f"🔧 {escaped_name} <span class='tool-subagent'>({escaped_subagent})</span>"
-        else:
-            return f"🔧 {escaped_name}"
-
-    # Edit/Write: use 📝 icon
-    if isinstance(parsed, (EditInput, WriteInput)):
-        if summary:
-            escaped_summary = escape_html(summary)
-            return (
-                f"📝 {escaped_name} <span class='tool-summary'>{escaped_summary}</span>"
-            )
-        else:
-            return f"📝 {escaped_name}"
-
-    # Read: use 📄 icon
-    if isinstance(parsed, ReadInput):
-        if summary:
-            escaped_summary = escape_html(summary)
-            return (
-                f"📄 {escaped_name} <span class='tool-summary'>{escaped_summary}</span>"
-            )
-        else:
-            return f"📄 {escaped_name}"
-
-    # Other tools: append summary if present
-    if summary:
-        escaped_summary = escape_html(summary)
-        return f"{escaped_name} <span class='tool-summary'>{escaped_summary}</span>"
-
-    return escaped_name
-
-
 # -- Generic Parameter Table --------------------------------------------------
 
 
@@ -812,9 +723,6 @@ __all__ = [
     # Legacy formatters (still used)
     "format_askuserquestion_result",
     "format_exitplanmode_result",
-    # Tool summary and title
-    "get_tool_summary",
-    "format_tool_use_title",
     # Generic
     "render_params_table",
 ]
