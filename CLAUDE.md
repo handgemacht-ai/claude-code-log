@@ -189,6 +189,8 @@ just test-all
 just test-cov
 ```
 
+**Tip:** Add `-x` to stop on first failure (e.g., `uv run pytest -n auto -m "not (tui or browser)" -v -x`). Always keep `-n auto` for parallel execution.
+
 #### Prerequisites
 
 Browser tests require Chromium to be installed:
