@@ -403,25 +403,20 @@ class HtmlRenderer(Renderer):
 
     def _flatten_preorder(
         self, roots: list[TemplateMessage]
-    ) -> Tuple[
-        list[Tuple[TemplateMessage, str, str, str]],
-        list[Tuple[str, list[Tuple[float, str]]]],
-    ]:
+    ) -> list[Tuple[TemplateMessage, str, str, str]]:
         """Flatten message tree via pre-order traversal, formatting each message.
 
         Traverses the tree depth-first (pre-order), computes title and formats
         content to HTML, building a flat list of (message, title, html, timestamp) tuples.
 
-        Also tracks timing statistics for Markdown and Pygments operations when
-        DEBUG_TIMING is enabled.
+        Also tracks and reports timing statistics for Markdown and Pygments operations
+        when DEBUG_TIMING is enabled.
 
         Args:
             roots: Root messages (typically session headers) with children populated
 
         Returns:
-            Tuple of:
-            - Flat list of (message, title, html_content, formatted_timestamp) tuples
-            - Operation timing data for reporting: [("Markdown", timings), ("Pygments", timings)]
+            Flat list of (message, title, html_content, formatted_timestamp) tuples
         """
         flat: list[Tuple[TemplateMessage, str, str, str]] = []
 
@@ -444,13 +439,16 @@ class HtmlRenderer(Renderer):
         for root in roots:
             visit(root)
 
-        # Return timing data for reporting
-        operation_timings: list[Tuple[str, list[Tuple[float, str]]]] = [
-            ("Markdown", markdown_timings),
-            ("Pygments", pygments_timings),
-        ]
+        # Report timing statistics for Markdown/Pygments operations
+        if DEBUG_TIMING:
+            report_timing_statistics(
+                [
+                    ("Markdown", markdown_timings),
+                    ("Pygments", pygments_timings),
+                ]
+            )
 
-        return flat, operation_timings
+        return flat
 
     def generate(
         self,
@@ -476,11 +474,7 @@ class HtmlRenderer(Renderer):
 
         # Flatten tree via pre-order traversal, formatting content along the way
         with log_timing("Content formatting (pre-order)", t_start):
-            template_messages, operation_timings = self._flatten_preorder(root_messages)
-
-        # Report timing statistics for Markdown/Pygments operations
-        if DEBUG_TIMING:
-            report_timing_statistics([], operation_timings)
+            template_messages = self._flatten_preorder(root_messages)
 
         # Render template
         with log_timing("Template environment setup", t_start):
