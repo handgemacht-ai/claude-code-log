@@ -105,6 +105,7 @@ CSS classes are derived from the content type using `CSS_CLASS_REGISTRY` (in `ht
 | `"user command-output"` | `CommandOutputMessage` | — |
 | `"user steering"` | `UserSteeringMessage` | — |
 | `"assistant"` | `AssistantTextMessage` | — |
+| `"assistant dedup-notice"` | `DedupNoticeMessage` | — |
 | `"tool_use"` | `ToolUseMessage` | — |
 | `"tool_result"` | `ToolResultMessage` | — |
 | `"tool_result error"` | `ToolResultMessage` | `is_error=True` |
@@ -263,6 +264,18 @@ class UserSteeringMessage(UserTextMessage):
 
 Steering messages represent user interrupts that cancel queued operations.
 
+### User Memory
+
+- **Condition**: Contains `<user-memory-input>` tags
+- **Content Model**: `UserMemoryMessage`
+- **CSS Class**: `user`
+
+```python
+@dataclass
+class UserMemoryMessage(MessageContent):
+    memory_text: str  # The memory content from the tag
+```
+
 ### Sidechain User (Sub-agent)
 
 - **Condition**: `isSidechain: true`
@@ -390,7 +403,7 @@ Tool results are wrapped in `ToolResultMessage` for rendering, which provides ad
 @dataclass
 class ToolResultMessage(MessageContent):
     tool_use_id: str
-    output: ToolOutput  # Specialized (ReadOutput, EditOutput) or ToolResultContent
+    output: ToolOutput  # Specialized output or ToolResultContent fallback
     is_error: bool = False
     tool_name: Optional[str] = None   # Name of the tool
     file_path: Optional[str] = None   # File path for Read/Edit/Write
@@ -398,7 +411,12 @@ class ToolResultMessage(MessageContent):
 # ToolOutput is a union type for tool results
 ToolOutput = Union[
     ReadOutput,
+    WriteOutput,
     EditOutput,
+    BashOutput,
+    TaskOutput,
+    AskUserQuestionOutput,
+    ExitPlanModeOutput,
     ToolResultContent,  # Generic fallback for unparsed results
 ]
 ```
@@ -460,6 +478,8 @@ Assistant messages contain `ContentItem` instances that are:
 @dataclass
 class AssistantTextMessage(MessageContent):
     items: list[TextContent | ImageContent]  # Interleaved text and images
+    raw_text_content: Optional[str]          # Cached raw text for dedup/search
+    token_usage: Optional[str]               # Formatted token usage string
 ```
 
 ### Sidechain Assistant
@@ -480,6 +500,7 @@ class AssistantTextMessage(MessageContent):
 class ThinkingMessage(MessageContent):
     thinking: str              # The thinking text
     signature: Optional[str]   # Thinking block signature
+    token_usage: Optional[str] # Formatted token usage string
 ```
 
 ```json
@@ -527,8 +548,8 @@ The original `ToolUseContent` (Pydantic model) provides:
 | MultiEdit | `MultiEditInput` | file_path, edits[] |
 | Bash | `BashInput` | command, description, timeout, run_in_background |
 | Glob | `GlobInput` | pattern, path |
-| Grep | `GrepInput` | pattern, path, glob, type, output_mode |
-| Task | `TaskInput` | prompt, subagent_type, description, model |
+| Grep | `GrepInput` | pattern, path, glob, type, output_mode, multiline, head_limit, offset |
+| Task | `TaskInput` | prompt, subagent_type, description, model, run_in_background, resume |
 | TodoWrite | `TodoWriteInput` | todos[] |
 | AskUserQuestion | `AskUserQuestionInput` | questions[], question |
 | ExitPlanMode | `ExitPlanModeInput` | plan, launchSwarm, teammateCount |
@@ -720,6 +741,7 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     CommandOutputMessage: ["user", "command-output"],
     # Assistant message types
     AssistantTextMessage: ["assistant"],
+    DedupNoticeMessage: ["assistant", "dedup-notice"],  # Styled as assistant
     # Tool message types
     ToolUseMessage: ["tool_use"],
     ToolResultMessage: ["tool_result"],  # error added dynamically
@@ -766,6 +788,7 @@ class BaseTranscriptEntry(BaseModel):
     timestamp: str             # ISO 8601 timestamp
     isMeta: Optional[bool] = None   # Slash command marker
     agentId: Optional[str] = None   # Sub-agent ID
+    gitBranch: Optional[str] = None # Git branch name when available
 ```
 
 ---
