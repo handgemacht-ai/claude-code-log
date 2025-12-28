@@ -9984,7 +9984,7 @@
       
       <div class='message tool_use d-11' data-message-id='d-12' id='msg-d-12'>
           <div class='header'>
-              <span title="ID: toolu_todowrite_002">📝 Todo List</span>
+              <span title="ID: toolu_todowrite_002">🛠️ TodoWrite</span>
               <div class='header-info'>
                   <div class='timestamp-row'>
                       <span class='timestamp' data-timestamp='2025-06-14T10:02:00Z'>2025-06-14 10:02:00</span>
@@ -9992,41 +9992,48 @@
                   
               </div>
           </div>
-          <div class='content'>
-      <div class="todo-list">
-          
-              <div class="todo-item pending medium">
-                  <span class="todo-status">⏳</span>
-                  <span class="todo-content">broken_todo</span>
-                  
-              </div>
-          
-              <div class="todo-item in_progress high">
-                  <span class="todo-status">🔄</span>
-                  <span class="todo-content">Implement core functionality</span>
-                  <span class="todo-id">#2</span>
-              </div>
-          
-              <div class="todo-item pending medium">
-                  <span class="todo-status">⏳</span>
-                  <span class="todo-content">Add comprehensive tests</span>
-                  <span class="todo-id">#3</span>
-              </div>
-          
-              <div class="todo-item pending low">
-                  <span class="todo-status">⏳</span>
-                  <span class="todo-content">Write user documentation</span>
-                  <span class="todo-id">#4</span>
-              </div>
-          
-              <div class="todo-item pending medium">
-                  <span class="todo-status">⏳</span>
-                  <span class="todo-content">Perform code review</span>
-                  <span class="todo-id">#5</span>
-              </div>
-          
-      </div>
-      </div>
+          <div class='content'><table class='tool-params-table'>
+              <tr>
+                  <td class='tool-param-key'>todos</td>
+                  <td class='tool-param-value'>
+                          <details class='tool-param-collapsible'>
+                              <summary>[
+    &quot;broken_todo&quot;,
+    {
+      &quot;id&quot;: &quot;2&quot;,
+      &quot;content&quot;: &quot;Implement core functionality&quot;,
+      &quot;status&quot;: &quot;...</summary>
+                              <pre class='tool-param-structured'>[
+    &quot;broken_todo&quot;,
+    {
+      &quot;id&quot;: &quot;2&quot;,
+      &quot;content&quot;: &quot;Implement core functionality&quot;,
+      &quot;status&quot;: &quot;in_progress&quot;,
+      &quot;priority&quot;: &quot;high&quot;
+    },
+    {
+      &quot;id&quot;: &quot;3&quot;,
+      &quot;content&quot;: &quot;Add comprehensive tests&quot;,
+      &quot;status&quot;: &quot;pending&quot;,
+      &quot;priority&quot;: &quot;medium&quot;
+    },
+    {
+      &quot;id&quot;: &quot;4&quot;,
+      &quot;content&quot;: &quot;Write user documentation&quot;,
+      &quot;status&quot;: &quot;pending&quot;,
+      &quot;priority&quot;: &quot;low&quot;
+    },
+    {
+      &quot;id&quot;: &quot;5&quot;,
+      &quot;content&quot;: &quot;Perform code review&quot;,
+      &quot;status&quot;: &quot;pending&quot;,
+      &quot;priority&quot;: &quot;medium&quot;
+    }
+  ]</pre>
+                          </details>
+                      </td>
+              </tr>
+          </table></div>
           
       </div>
       

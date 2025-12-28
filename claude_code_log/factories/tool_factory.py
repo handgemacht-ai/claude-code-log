@@ -20,11 +20,8 @@ import re
 from ..models import (
     # Tool input models
     AskUserQuestionInput,
-    AskUserQuestionItem,
-    AskUserQuestionOption,
     BashInput,
     EditInput,
-    EditItem,
     ExitPlanModeInput,
     GlobInput,
     GrepInput,
@@ -34,7 +31,6 @@ from ..models import (
     ReadInput,
     TaskInput,
     TodoWriteInput,
-    TodoWriteItem,
     ToolInput,
     ToolResultContent,
     ToolResultMessage,
@@ -75,149 +71,6 @@ TOOL_INPUT_MODELS: dict[str, type[BaseModel]] = {
 
 
 # =============================================================================
-# Lenient Parsing Helpers
-# =============================================================================
-# These functions create typed models even when strict validation fails.
-# They use defaults for missing fields and skip invalid nested items.
-
-
-def _parse_todowrite_lenient(data: dict[str, Any]) -> TodoWriteInput:
-    """Parse TodoWrite input leniently, handling malformed data."""
-    todos_raw = data.get("todos", [])
-    valid_todos: list[TodoWriteItem] = []
-    for item in todos_raw:
-        if isinstance(item, dict):
-            try:
-                valid_todos.append(TodoWriteItem.model_validate(item))
-            except Exception:
-                pass
-        elif isinstance(item, str):
-            valid_todos.append(TodoWriteItem(content=item))
-    return TodoWriteInput(todos=valid_todos)
-
-
-def _parse_bash_lenient(data: dict[str, Any]) -> BashInput:
-    """Parse Bash input leniently."""
-    return BashInput(
-        command=data.get("command", ""),
-        description=data.get("description"),
-        timeout=data.get("timeout"),
-        run_in_background=data.get("run_in_background"),
-    )
-
-
-def _parse_write_lenient(data: dict[str, Any]) -> WriteInput:
-    """Parse Write input leniently."""
-    return WriteInput(
-        file_path=data.get("file_path", ""),
-        content=data.get("content", ""),
-    )
-
-
-def _parse_edit_lenient(data: dict[str, Any]) -> EditInput:
-    """Parse Edit input leniently."""
-    return EditInput(
-        file_path=data.get("file_path", ""),
-        old_string=data.get("old_string", ""),
-        new_string=data.get("new_string", ""),
-        replace_all=data.get("replace_all"),
-    )
-
-
-def _parse_multiedit_lenient(data: dict[str, Any]) -> MultiEditInput:
-    """Parse Multiedit input leniently."""
-    edits_raw = data.get("edits", [])
-    valid_edits: list[EditItem] = []
-    for edit in edits_raw:
-        if isinstance(edit, dict):
-            try:
-                valid_edits.append(EditItem.model_validate(edit))
-            except Exception:
-                pass
-    return MultiEditInput(file_path=data.get("file_path", ""), edits=valid_edits)
-
-
-def _parse_task_lenient(data: dict[str, Any]) -> TaskInput:
-    """Parse Task input leniently."""
-    return TaskInput(
-        prompt=data.get("prompt", ""),
-        subagent_type=data.get("subagent_type", ""),
-        description=data.get("description", ""),
-        model=data.get("model"),
-        run_in_background=data.get("run_in_background"),
-        resume=data.get("resume"),
-    )
-
-
-def _parse_read_lenient(data: dict[str, Any]) -> ReadInput:
-    """Parse Read input leniently."""
-    return ReadInput(
-        file_path=data.get("file_path", ""),
-        offset=data.get("offset"),
-        limit=data.get("limit"),
-    )
-
-
-def _parse_askuserquestion_lenient(data: dict[str, Any]) -> AskUserQuestionInput:
-    """Parse AskUserQuestion input leniently, handling malformed data."""
-    questions_raw = data.get("questions", [])
-    valid_questions: list[AskUserQuestionItem] = []
-    for q in questions_raw:
-        if isinstance(q, dict):
-            q_dict = cast(dict[str, Any], q)
-            try:
-                # Parse options leniently
-                options_raw = q_dict.get("options", [])
-                valid_options: list[AskUserQuestionOption] = []
-                for opt in options_raw:
-                    if isinstance(opt, dict):
-                        try:
-                            valid_options.append(
-                                AskUserQuestionOption.model_validate(opt)
-                            )
-                        except Exception:
-                            pass
-                valid_questions.append(
-                    AskUserQuestionItem(
-                        question=str(q_dict.get("question", "")),
-                        header=q_dict.get("header"),
-                        options=valid_options,
-                        multiSelect=bool(q_dict.get("multiSelect", False)),
-                    )
-                )
-            except Exception:
-                pass
-    return AskUserQuestionInput(
-        questions=valid_questions,
-        question=data.get("question"),
-    )
-
-
-def _parse_exitplanmode_lenient(data: dict[str, Any]) -> ExitPlanModeInput:
-    """Parse ExitPlanMode input leniently."""
-    return ExitPlanModeInput(
-        plan=data.get("plan", ""),
-        launchSwarm=data.get("launchSwarm"),
-        teammateCount=data.get("teammateCount"),
-    )
-
-
-# Mapping of tool names to their lenient parsers
-TOOL_LENIENT_PARSERS: dict[str, Any] = {
-    "Bash": _parse_bash_lenient,
-    "Write": _parse_write_lenient,
-    "Edit": _parse_edit_lenient,
-    "MultiEdit": _parse_multiedit_lenient,
-    "Task": _parse_task_lenient,
-    "TodoWrite": _parse_todowrite_lenient,
-    "Read": _parse_read_lenient,
-    "AskUserQuestion": _parse_askuserquestion_lenient,
-    "ask_user_question": _parse_askuserquestion_lenient,  # Legacy tool name
-    "ExitPlanMode": _parse_exitplanmode_lenient,
-}
-
-
-# =============================================================================
 # Tool Input Creation
 # =============================================================================
 
@@ -227,7 +80,9 @@ def create_tool_input(
 ) -> Optional[ToolInput]:
     """Create typed tool input from raw dictionary.
 
-    Uses strict validation first, then lenient parsing if available.
+    Uses Pydantic model_validate for strict validation. On failure, returns None
+    and the caller should use ToolUseContent as the fallback (which preserves
+    all original data for display).
 
     Args:
         tool_name: The name of the tool (e.g., "Bash", "Read")
@@ -235,18 +90,12 @@ def create_tool_input(
 
     Returns:
         A typed input model if parsing succeeds, None otherwise.
-        When None is returned, the caller should use ToolUseContent itself
-        as the fallback (it's part of the ToolInput union).
     """
     model_class = TOOL_INPUT_MODELS.get(tool_name)
     if model_class is not None:
         try:
             return cast(ToolInput, model_class.model_validate(input_data))
         except Exception:
-            # Try lenient parsing if available
-            lenient_parser = TOOL_LENIENT_PARSERS.get(tool_name)
-            if lenient_parser is not None:
-                return cast(ToolInput, lenient_parser(input_data))
             return None
     return None
 
