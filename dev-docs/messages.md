@@ -73,8 +73,8 @@ class TemplateMessage:
 
     # Display
     message_title: str         # Display title (e.g., "User", "Assistant")
-    is_sidechain: bool         # Sub-agent message flag
-    has_markdown: bool         # Content should be rendered as markdown
+    is_sidechain: bool         # Sub-agent message flag (via content.meta)
+    # Note: has_markdown is accessed via content.has_markdown
     # Note: CSS classes are derived from content type via CSS_CLASS_REGISTRY
 
     # Metadata

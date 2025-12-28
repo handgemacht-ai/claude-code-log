@@ -191,11 +191,6 @@ class TemplateMessage:
         return isinstance(self.content, SessionHeaderMessage)
 
     @property
-    def has_markdown(self) -> bool:
-        """Check if this message has markdown content."""
-        return self.content.has_markdown
-
-    @property
     def has_children(self) -> bool:
         """Check if this message has any children."""
         return bool(self.children)
@@ -812,8 +807,6 @@ class PairingIndices:
     tool_result: dict[tuple[str, str], TemplateMessage]
     # uuid -> TemplateMessage for system messages (parent-child pairing)
     uuid: dict[str, TemplateMessage]
-    # parent_uuid -> TemplateMessage for slash-command messages
-    slash_command_by_parent: dict[str, TemplateMessage]
 
 
 def _build_pairing_indices(messages: list[TemplateMessage]) -> PairingIndices:
@@ -825,7 +818,6 @@ def _build_pairing_indices(messages: list[TemplateMessage]) -> PairingIndices:
     tool_use_index: dict[tuple[str, str], TemplateMessage] = {}
     tool_result_index: dict[tuple[str, str], TemplateMessage] = {}
     uuid_index: dict[str, TemplateMessage] = {}
-    slash_command_by_parent: dict[str, TemplateMessage] = {}
 
     for msg in messages:
         # Index tool_use and tool_result by (session_id, tool_use_id)
@@ -840,17 +832,10 @@ def _build_pairing_indices(messages: list[TemplateMessage]) -> PairingIndices:
         if msg.meta.uuid and msg.type == "system":
             uuid_index[msg.meta.uuid] = msg
 
-        # Index slash-command user messages by parent_uuid
-        if msg.parent_uuid and isinstance(
-            msg.content, (SlashCommandMessage, UserSlashCommandMessage)
-        ):
-            slash_command_by_parent[msg.parent_uuid] = msg
-
     return PairingIndices(
         tool_use=tool_use_index,
         tool_result=tool_result_index,
         uuid=uuid_index,
-        slash_command_by_parent=slash_command_by_parent,
     )
 
 
@@ -905,7 +890,6 @@ def _try_pair_by_index(
     Index-based pairing rules (can be any distance apart):
     - tool_use + tool_result (by tool_use_id within same session)
     - system parent + system child (by uuid/parent_uuid)
-    - system + slash-command (by uuid -> parent_uuid)
     """
     # Tool use + tool result (by tool_use_id within same session)
     if current.type == "tool_use" and current.tool_use_id and current.session_id:
@@ -917,13 +901,6 @@ def _try_pair_by_index(
     if current.type == "system" and current.parent_uuid:
         if current.parent_uuid in indices.uuid:
             _mark_pair(indices.uuid[current.parent_uuid], current)
-
-    # System command finding its slash-command child (by uuid -> parent_uuid)
-    if (
-        current.type == "system"
-        and current.meta.uuid in indices.slash_command_by_parent
-    ):
-        _mark_pair(current, indices.slash_command_by_parent[current.meta.uuid])
 
 
 def _identify_message_pairs(messages: list[TemplateMessage]) -> None:
@@ -974,8 +951,7 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
 
     Uses dictionary-based approach to find pairs efficiently:
     1. Build index of all pair_last messages by tool_use_id
-    2. Build index of slash-command pair_last messages by parent_uuid
-    3. Single pass through messages, inserting pair_last immediately after pair_first
+    2. Single pass through messages, inserting pair_last immediately after pair_first
     """
     from datetime import datetime
 
@@ -983,20 +959,11 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
     # Session ID is included to prevent cross-session pairing when sessions are resumed
     # Stores message references directly (not list positions)
     pair_last_index: dict[tuple[str, str], TemplateMessage] = {}
-    # Index slash-command pair_last messages by parent_uuid
-    slash_command_pair_index: dict[str, TemplateMessage] = {}
 
     for msg in messages:
         if msg.is_last_in_pair and msg.tool_use_id and msg.session_id:
             key = (msg.session_id, msg.tool_use_id)
             pair_last_index[key] = msg
-        # Index slash-command messages by parent_uuid
-        if (
-            msg.is_last_in_pair
-            and msg.parent_uuid
-            and isinstance(msg.content, (SlashCommandMessage, UserSlashCommandMessage))
-        ):
-            slash_command_pair_index[msg.parent_uuid] = msg
 
     # Create reordered list
     reordered: list[TemplateMessage] = []
@@ -1021,10 +988,6 @@ def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMe
                 key = (msg.session_id, msg.tool_use_id)
                 if key in pair_last_index:
                     pair_last = pair_last_index[key]
-
-            # Check for system + slash-command pairs (via uuid -> parent_uuid)
-            if pair_last is None and msg.meta.uuid in slash_command_pair_index:
-                pair_last = slash_command_pair_index[msg.meta.uuid]
 
             # Only append if we haven't already added this pair_last
             # (handles case where multiple pair_firsts match the same pair_last)
@@ -1284,41 +1247,6 @@ def _normalize_for_dedup(text: str) -> str:
     return _AGENT_ID_LINE_PATTERN.sub("", text).strip()
 
 
-def _extract_task_result_text(tool_result_message: ToolResultMessage) -> Optional[str]:
-    """Extract text content from a Task tool result for deduplication matching.
-
-    Args:
-        tool_result_message: The ToolResultMessage containing Task output
-
-    Returns:
-        The extracted text content (normalized), or None if extraction fails
-    """
-    output = tool_result_message.output
-
-    # Handle parsed TaskOutput (preferred - has structured result field)
-    if isinstance(output, TaskOutput):
-        text = output.result.strip() if output.result else None
-        return _normalize_for_dedup(text) if text else None
-
-    # Handle raw ToolResultContent (fallback for unparsed results)
-    if not isinstance(output, ToolResultContent):
-        return None
-
-    content = output.content
-    if isinstance(content, str):
-        text = content.strip() if content else None
-        return _normalize_for_dedup(text) if text else None
-
-    # Handle list of dicts (tool result format)
-    content_parts: list[str] = []
-    for item in content:
-        text_val = item.get("text", "")
-        if isinstance(text_val, str):
-            content_parts.append(text_val)
-    result = "\n".join(content_parts).strip()
-    return _normalize_for_dedup(result) if result else None
-
-
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
     """Clean up duplicate content in sidechains after tree is built.
 
@@ -1374,10 +1302,13 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
         if not is_task_tool_result:
             return
 
-        task_result_text = _extract_task_result_text(
-            cast(ToolResultMessage, message.content)
-        )
-        if not task_result_text:
+        # Extract task result text from parsed TaskOutput
+        tool_result_msg = cast(ToolResultMessage, message.content)
+        if not isinstance(task_output := tool_result_msg.output, TaskOutput):
+            return
+        if not (result := task_output.result):
+            return
+        if not (task_result_text := _normalize_for_dedup(result.strip())):
             return
 
         for i in range(len(children) - 1, -1, -1):

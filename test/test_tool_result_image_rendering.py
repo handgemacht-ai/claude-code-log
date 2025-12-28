@@ -1,7 +1,15 @@
-"""Test image rendering within tool results."""
+"""Test image rendering within tool results and assistant messages."""
 
 from claude_code_log.html.tool_formatters import format_tool_result_content_raw
-from claude_code_log.models import ToolResultContent
+from claude_code_log.html.assistant_formatters import format_assistant_text_content
+from claude_code_log.models import (
+    AssistantTextMessage,
+    ImageContent,
+    ImageSource,
+    MessageMeta,
+    TextContent,
+    ToolResultContent,
+)
 
 
 def test_tool_result_with_image():
@@ -153,3 +161,112 @@ def test_tool_result_structured_text_only():
 
     # Should not be treated as having images
     assert "Text and image content" not in html
+
+
+# =============================================================================
+# Assistant Message Image Tests
+# =============================================================================
+# These tests prepare for future image generation capabilities where Claude
+# might return ImageContent in assistant messages.
+
+
+def _make_meta() -> MessageMeta:
+    """Create a minimal MessageMeta for testing."""
+    return MessageMeta(
+        session_id="test-session",
+        timestamp="2024-01-01T00:00:00Z",
+        uuid="test-uuid",
+    )
+
+
+def test_assistant_message_with_image():
+    """Test assistant message containing an image (future image generation)."""
+    sample_image_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+
+    content = AssistantTextMessage(
+        _make_meta(),
+        items=[
+            ImageContent(
+                type="image",
+                source=ImageSource(
+                    type="base64",
+                    media_type="image/png",
+                    data=sample_image_data,
+                ),
+            ),
+        ],
+    )
+
+    html = format_assistant_text_content(content)
+
+    # Should contain the image with proper data URL
+    assert "<img src=" in html
+    assert f"data:image/png;base64,{sample_image_data}" in html
+    assert 'class="uploaded-image"' in html
+
+
+def test_assistant_message_with_text_and_image():
+    """Test assistant message with interleaved text and image."""
+    sample_image_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+
+    content = AssistantTextMessage(
+        _make_meta(),
+        items=[
+            TextContent(type="text", text="Here is the generated image:"),
+            ImageContent(
+                type="image",
+                source=ImageSource(
+                    type="base64",
+                    media_type="image/png",
+                    data=sample_image_data,
+                ),
+            ),
+            TextContent(type="text", text="The image shows a red pixel."),
+        ],
+    )
+
+    html = format_assistant_text_content(content)
+
+    # Should contain the text (rendered as markdown)
+    assert "Here is the generated image:" in html
+    assert "The image shows a red pixel." in html
+
+    # Should contain the image
+    assert "<img src=" in html
+    assert f"data:image/png;base64,{sample_image_data}" in html
+
+
+def test_assistant_message_with_multiple_images():
+    """Test assistant message with multiple generated images."""
+    image_data_1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+    image_data_2 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR42mNk+M/AyMDIwAAACRoB/1M6xG8AAAAASUVORK5CYII="
+
+    content = AssistantTextMessage(
+        _make_meta(),
+        items=[
+            TextContent(type="text", text="Generated two variations:"),
+            ImageContent(
+                type="image",
+                source=ImageSource(
+                    type="base64",
+                    media_type="image/png",
+                    data=image_data_1,
+                ),
+            ),
+            ImageContent(
+                type="image",
+                source=ImageSource(
+                    type="base64",
+                    media_type="image/jpeg",
+                    data=image_data_2,
+                ),
+            ),
+        ],
+    )
+
+    html = format_assistant_text_content(content)
+
+    # Should contain both images
+    assert html.count("<img src=") == 2
+    assert f"data:image/png;base64,{image_data_1}" in html
+    assert f"data:image/jpeg;base64,{image_data_2}" in html
