@@ -6,10 +6,10 @@ This module creates typed model instances from JSONL transcript data:
 
 Also provides:
 - Conditional casts for TranscriptEntry discrimination
-- Usage info normalization for Anthropic SDK compatibility
+- Usage info normalization
 """
 
-from typing import Any, Callable, Optional, Sequence, cast
+from typing import Any, Callable, Sequence, cast
 
 from pydantic import BaseModel
 
@@ -75,38 +75,11 @@ def as_assistant_entry(entry: TranscriptEntry) -> AssistantTranscriptEntry | Non
 # =============================================================================
 
 
-def normalize_usage_info(usage_data: Any) -> Optional[UsageInfo]:
-    """Normalize usage data from various formats to UsageInfo."""
+def normalize_usage_info(usage_data: dict[str, Any] | None) -> UsageInfo | None:
+    """Normalize usage data from JSON to UsageInfo."""
     if usage_data is None:
         return None
-
-    # If it's already a UsageInfo instance, return as-is
-    if isinstance(usage_data, UsageInfo):
-        return usage_data
-
-    # If it's a dict, validate and convert
-    if isinstance(usage_data, dict):
-        return UsageInfo.model_validate(usage_data)
-
-    # Handle object-like access (e.g., from SDK types)
-    if hasattr(usage_data, "input_tokens"):
-        server_tool_use = getattr(usage_data, "server_tool_use", None)
-        if server_tool_use is not None and hasattr(server_tool_use, "model_dump"):
-            server_tool_use = server_tool_use.model_dump()
-        return UsageInfo(
-            input_tokens=getattr(usage_data, "input_tokens", None),
-            output_tokens=getattr(usage_data, "output_tokens", None),
-            cache_creation_input_tokens=getattr(
-                usage_data, "cache_creation_input_tokens", None
-            ),
-            cache_read_input_tokens=getattr(
-                usage_data, "cache_read_input_tokens", None
-            ),
-            service_tier=getattr(usage_data, "service_tier", None),
-            server_tool_use=server_tool_use,
-        )
-
-    return None
+    return UsageInfo.model_validate(usage_data)
 
 
 # =============================================================================
