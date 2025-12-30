@@ -136,167 +136,6 @@ claude-code-log /path/to/directory --from-date "yesterday" --to-date "today"
 claude-code-log /path/to/directory --from-date "3 days ago" --to-date "yesterday"
 ```
 
-## File Structure
-
-- `claude_code_log/parser.py` - Data extraction and parsing from JSONL files
-- `claude_code_log/renderer.py` - HTML generation and template rendering
-- `claude_code_log/converter.py` - High-level conversion orchestration
-- `claude_code_log/cli.py` - Command-line interface with project discovery
-- `claude_code_log/models.py` - Pydantic models for transcript data structures
-- `claude_code_log/templates/` - Jinja2 HTML templates
-  - `transcript.html` - Main transcript viewer template
-  - `index.html` - Project directory index template
-- `pyproject.toml` - Project configuration with dependencies
-
-## Development
-
-The project uses:
-
-- Python 3.10+ with uv package management
-- Click for CLI interface and argument parsing
-- Textual for interactive Terminal User Interface
-- Pydantic for robust data modeling and validation
-- dateparser for natural language date parsing
-- Standard library for JSON/HTML processing
-- Minimal dependencies for portability
-- mistune for quick Markdown rendering
-
-## Development Commands
-
-### Testing
-
-The project uses a categorized test system to avoid async event loop conflicts between different testing frameworks:
-
-#### Test Categories
-
-- **Unit Tests** (no mark): Fast, standalone tests with no external dependencies
-- **TUI Tests** (`@pytest.mark.tui`): Tests for the Textual-based Terminal User Interface
-- **Browser Tests** (`@pytest.mark.browser`): Playwright-based tests that run in real browsers
-
-#### Running Tests
-
-```bash
-# Run only unit tests (fast, recommended for development)
-uv run pytest -n auto -m "not (tui or browser)"
-
-# Run TUI tests (isolated event loop)
-uv run pytest -n auto -m tui
-
-# Run browser tests (requires Chromium)
-uv run pytest -n auto -m browser
-
-# Run all tests in sequence (separated to avoid conflicts)
-uv run pytest -n auto -m "not tui and not browser"; uv run pytest -n auto -m tui; uv run pytest -n auto -m browser
-```
-
-#### Prerequisites
-
-Browser tests require Chromium to be installed:
-
-```bash
-uv run playwright install chromium
-```
-
-#### Why Test Categories?
-
-The test suite is categorized because:
-
-- **TUI tests** use Textual's async event loop (`run_test()`)
-- **Browser tests** use Playwright's internal asyncio
-- **pytest-asyncio** manages async test execution
-
-Running all tests together can cause "RuntimeError: This event loop is already running" conflicts. The categorization ensures reliable test execution by isolating different async frameworks.
-
-### Test Coverage
-
-Generate test coverage reports:
-
-```bash
-# Run tests with coverage
-uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term
-
-# Generate HTML coverage report only
-uv run pytest -n auto --cov=claude_code_log --cov-report=html
-
-# View coverage in terminal
-uv run pytest -n auto --cov=claude_code_log --cov-report=term-missing
-```
-
-HTML coverage reports are generated in `htmlcov/index.html`.
-
-**Comprehensive Testing & Style Guide**: The project includes extensive testing infrastructure and visual documentation. See [test/README.md](test/README.md) for details on:
-
-- **Unit Tests**: Template rendering, message type handling, edge cases
-- **Test Coverage**: 78%+ coverage across all modules with detailed reporting
-- **Visual Style Guide**: Interactive documentation showing all message types
-- **Representative Test Data**: Real-world JSONL samples for development
-- **Style Guide Generation**: Create visual documentation with `uv run python scripts/generate_style_guide.py`
-
-### Code Quality
-
-- **Format code**: `ruff format`
-- **Lint and fix**: `ruff check --fix`
-- **Type checking**: `uv run pyright` and `uv run ty check`
-
-### All Commands
-
-- **Test (Unit only)**: `uv run pytest -n auto`
-- **Test (TUI)**: `uv run pytest -n auto -m tui`
-- **Test (Browser)**: `uv run pytest -n auto -m browser`
-- **Test (All categories)**: `uv run pytest -n auto -m "not tui and not browser"; uv run pytest -n auto -m tui; uv run pytest -n auto -m browser`
-- **Test with Coverage**: `uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term`
-- **Format**: `ruff format`
-- **Lint**: `ruff check --fix`
-- **Type Check**: `uv run pyright` and `uv run ty check`
-- **Generate Style Guide**: `uv run python scripts/generate_style_guide.py`
-
-Test with Claude transcript JSONL files typically found in `~/.claude/projects/` directories.
-
-## Release Process (For Maintainers)
-
-The project uses an automated release process with semantic versioning. Here's how to create and publish a new release:
-
-### Quick Release
-
-```bash
-# Bump version and create release (patch/minor/major)
-just release-prep patch    # For bug fixes
-just release-prep minor    # For new features
-just release-prep major    # For breaking changes
-
-# Or specify exact version
-just release-prep 0.4.3
-
-# Preview what would be released
-just release-preview
-
-# Push to PyPI and create GitHub release
-just release-push
-```
-
-3. **GitHub Release Only**: If you need to create/update just the GitHub release:
-
-   ```bash
-   just github-release          # For latest tag
-   just github-release 0.4.2    # For specific version
-   ```
-
-### Cache Structure and Benefits
-
-The tool implements a sophisticated caching system for performance:
-
-- **Cache Location**: `.cache/` directory within each project folder
-- **Session Metadata**: Pre-parsed session information (IDs, summaries, timestamps, token usage)
-- **Timestamp Index**: Enables fast date-range filtering without parsing full files
-- **Invalidation**: Automatic detection of stale cache based on file modification times
-- **Performance**: 10-100x faster loading for large projects with many sessions
-
-The cache is transparent to users and automatically rebuilds when:
-
-- Source JSONL files are modified
-- New sessions are added
-- Cache structure version changes
-
 ## Project Hierarchy Output
 
 When processing all projects, the tool generates:
@@ -372,6 +211,10 @@ cd claude-code-log
 uv sync
 uv run claude-code-log
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and architecture documentation.
 
 ## TODO
 
