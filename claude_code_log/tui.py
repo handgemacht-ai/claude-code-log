@@ -348,6 +348,10 @@ class SessionBrowser(App[Optional[str]]):
         Binding("h", "export_selected", "Open HTML page"),
         Binding("m", "export_markdown", "Open Markdown"),
         Binding("v", "view_markdown", "View Markdown"),
+        # Hidden "force regenerate" variants (uppercase)
+        Binding("H", "force_export_html", "Force HTML", show=False),
+        Binding("M", "force_export_markdown", "Force Markdown", show=False),
+        Binding("V", "force_view_markdown", "Force View", show=False),
         Binding("c", "resume_selected", "Resume in Claude Code"),
         Binding("e", "toggle_expanded", "Toggle Expanded View"),
         Binding("p", "back_to_projects", "Open Project Selector"),
@@ -634,53 +638,51 @@ class SessionBrowser(App[Optional[str]]):
             # If widget not mounted yet or we can't get the row data, don't update selection
             pass
 
-    def action_export_selected(self) -> None:
-        """Export the selected session to HTML and open in browser."""
+    def _export_to_browser(self, format: str, *, force: bool = False) -> None:
+        """Export session to file and open in browser.
+
+        Args:
+            format: Output format - "html" or "md".
+            force: If True, always regenerate even if file is up-to-date.
+        """
         if not self.selected_session_id:
             self.notify("No session selected", severity="warning")
             return
 
+        format_name = "HTML" if format == "html" else "Markdown"
         try:
-            # Ensure HTML file exists and is up-to-date
-            session_file = self._ensure_session_file(self.selected_session_id, "html")
+            session_file = self._ensure_session_file(
+                self.selected_session_id, format, force=force
+            )
             if session_file is None:
-                self.notify("Failed to generate HTML file", severity="error")
+                self.notify(f"Failed to generate {format_name} file", severity="error")
                 return
 
             webbrowser.open(f"file://{session_file}")
-            self.notify(f"Opened session HTML: {session_file.name}")
+            msg = (
+                f"Regenerated: {session_file.name}"
+                if force
+                else f"Opened: {session_file.name}"
+            )
+            self.notify(msg)
 
         except Exception as e:
-            self.notify(f"Error opening session HTML: {e}", severity="error")
+            self.notify(f"Error with {format_name}: {e}", severity="error")
 
-    def action_export_markdown(self) -> None:
-        """Export the selected session to Markdown and open in browser."""
+    def _view_markdown_embedded(self, *, force: bool = False) -> None:
+        """View session Markdown in embedded viewer.
+
+        Args:
+            force: If True, always regenerate even if file is up-to-date.
+        """
         if not self.selected_session_id:
             self.notify("No session selected", severity="warning")
             return
 
         try:
-            # Ensure Markdown file exists and is up-to-date
-            session_file = self._ensure_session_file(self.selected_session_id, "md")
-            if session_file is None:
-                self.notify("Failed to generate Markdown file", severity="error")
-                return
-
-            webbrowser.open(f"file://{session_file}")
-            self.notify(f"Opened session Markdown: {session_file.name}")
-
-        except Exception as e:
-            self.notify(f"Error opening session Markdown: {e}", severity="error")
-
-    def action_view_markdown(self) -> None:
-        """View the selected session's Markdown in an embedded viewer."""
-        if not self.selected_session_id:
-            self.notify("No session selected", severity="warning")
-            return
-
-        try:
-            # Ensure Markdown file exists and is up-to-date
-            session_file = self._ensure_session_file(self.selected_session_id, "md")
+            session_file = self._ensure_session_file(
+                self.selected_session_id, "md", force=force
+            )
             if session_file is None:
                 self.notify("Failed to generate Markdown file", severity="error")
                 return
@@ -688,9 +690,35 @@ class SessionBrowser(App[Optional[str]]):
             content = session_file.read_text(encoding="utf-8")
             title = f"Session: {self.selected_session_id[:8]}..."
             self.push_screen(MarkdownViewerScreen(content, title))
+            if force:
+                self.notify(f"Regenerated: {session_file.name}")
 
         except Exception as e:
             self.notify(f"Error viewing Markdown: {e}", severity="error")
+
+    def action_export_selected(self) -> None:
+        """Export the selected session to HTML and open in browser."""
+        self._export_to_browser("html")
+
+    def action_export_markdown(self) -> None:
+        """Export the selected session to Markdown and open in browser."""
+        self._export_to_browser("md")
+
+    def action_view_markdown(self) -> None:
+        """View the selected session's Markdown in an embedded viewer."""
+        self._view_markdown_embedded()
+
+    def action_force_export_html(self) -> None:
+        """Force regenerate HTML and open in browser (hidden shortcut: H)."""
+        self._export_to_browser("html", force=True)
+
+    def action_force_export_markdown(self) -> None:
+        """Force regenerate Markdown and open in browser (hidden shortcut: M)."""
+        self._export_to_browser("md", force=True)
+
+    def action_force_view_markdown(self) -> None:
+        """Force regenerate and view Markdown in embedded viewer (hidden shortcut: V)."""
+        self._view_markdown_embedded(force=True)
 
     def action_resume_selected(self) -> None:
         """Resume the selected session in Claude Code."""
@@ -784,7 +812,9 @@ class SessionBrowser(App[Optional[str]]):
 
         expanded_content.update("\n".join(content_parts))
 
-    def _ensure_session_file(self, session_id: str, format: str) -> Optional[Path]:
+    def _ensure_session_file(
+        self, session_id: str, format: str, *, force: bool = False
+    ) -> Optional[Path]:
         """Ensure the session file exists and is up-to-date.
 
         Regenerates the file if it doesn't exist or is outdated.
@@ -792,6 +822,7 @@ class SessionBrowser(App[Optional[str]]):
         Args:
             session_id: The session ID to generate a file for.
             format: Output format - "html" or "md".
+            force: If True, always regenerate even if file is up-to-date.
 
         Returns:
             Path to the file if successful, None if regeneration failed.
@@ -801,8 +832,8 @@ class SessionBrowser(App[Optional[str]]):
         renderer = get_renderer(format)
 
         # Check if we need to regenerate
-        needs_regeneration = not session_file.exists() or renderer.is_outdated(
-            session_file
+        needs_regeneration = (
+            force or not session_file.exists() or renderer.is_outdated(session_file)
         )
 
         if not needs_regeneration:
