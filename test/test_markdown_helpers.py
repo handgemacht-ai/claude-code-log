@@ -6,6 +6,7 @@ Tests for the private utility methods that handle content escaping and formattin
 import pytest
 
 from claude_code_log.markdown.renderer import MarkdownRenderer
+from claude_code_log.utils import strip_error_tags
 
 
 @pytest.fixture
@@ -212,16 +213,12 @@ class TestStripErrorTags:
 
     def test_simple_error(self):
         """Single error tag is stripped, content preserved."""
-        from claude_code_log.utils import strip_error_tags
-
         text = "<tool_use_error>File not found</tool_use_error>"
         result = strip_error_tags(text)
         assert result == "File not found"
 
     def test_multiline_error(self):
         """Multiline error content is preserved."""
-        from claude_code_log.utils import strip_error_tags
-
         text = (
             "<tool_use_error>String to replace not found.\nString: foo</tool_use_error>"
         )
@@ -230,24 +227,18 @@ class TestStripErrorTags:
 
     def test_no_error_tag(self):
         """Text without error tags is unchanged."""
-        from claude_code_log.utils import strip_error_tags
-
         text = "Normal tool output"
         result = strip_error_tags(text)
         assert result == "Normal tool output"
 
     def test_nested_content(self):
         """Error with complex content is handled."""
-        from claude_code_log.utils import strip_error_tags
-
         text = "<tool_use_error>Error: Code has <angle> brackets</tool_use_error>"
         result = strip_error_tags(text)
         assert result == "Error: Code has <angle> brackets"
 
     def test_empty_error(self):
         """Empty error tag produces empty string."""
-        from claude_code_log.utils import strip_error_tags
-
         text = "<tool_use_error></tool_use_error>"
         result = strip_error_tags(text)
         assert result == ""
