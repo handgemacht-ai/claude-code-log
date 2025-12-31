@@ -1,6 +1,6 @@
 # Claude Code Log
 
-A Python CLI tool that converts Claude Code transcript JSONL files into readable HTML format.
+A Python CLI tool that converts Claude Code transcript JSONL files into readable HTML and Markdown formats.
 
 Browser log demo:
 
@@ -81,10 +81,13 @@ claude-code-log my-project --tui  # Automatically converts to ~/.claude/projects
 - **Smart Summaries**: Prioritizes Claude-generated summaries over first user messages for better session identification
 - **Working Directory Matching**: Automatically finds and opens projects matching your current working directory
 - **Quick Actions**:
-  - `h` or "Export to HTML" button: Generate and open session HTML in browser
-  - `c` or "Resume in Claude Code" button: Continue session with `claude -r <sessionId>`
-  - `r` or "Refresh" button: Reload session data from files
-  - `p` or "Projects View" button: Switch to project selector view
+  - `h`: Generate and open session HTML in browser
+  - `m`: Generate and open session Markdown in browser
+  - `v`: View session Markdown in embedded viewer (with table of contents)
+  - `c`: Resume session in Claude Code with `claude -r <sessionId>`
+  - `r`: Reload session data from files
+  - `p`: Switch to project selector view
+  - `H`/`M`/`V`: Force regenerate HTML/Markdown (hidden shortcuts for development)
 - **Project Statistics**: Real-time display of total sessions, messages, tokens, and date range
 - **Cache Integration**: Leverages existing cache system for fast loading with automatic cache validation
 - **Keyboard Navigation**: Arrow keys to navigate, Enter to expand row details, `q` to quit
@@ -115,6 +118,7 @@ This creates:
 - `~/.claude/projects/index.html` - Top level index with project cards and statistics
 - `~/.claude/projects/project-name/combined_transcripts.html` - Individual project pages (these can be several megabytes)
 - `~/.claude/projects/project-name/session-{session-id}.html` - Individual session pages
+- `~/.claude/projects/project-name/session-{session-id}.md` - Markdown versions (generated on-demand via TUI)
 
 ### Single File or Directory Processing
 
@@ -146,6 +150,7 @@ When processing all projects, the tool generates:
 ├── project1/
 │   ├── combined_transcripts.html        # Combined project page
 │   ├── session-{session-id}.html        # Individual session pages
+│   ├── session-{session-id}.md          # Markdown version (on-demand via TUI)
 │   └── session-{session-id2}.html       # More session pages...
 ├── project2/
 │   ├── combined_transcripts.html
@@ -188,6 +193,17 @@ When processing all projects, the tool generates:
 - **Collapsible Content**: Tool use, system commands, and long content in expandable sections
 - **Floating Controls**: Always-available filter button, details toggle, and back-to-top navigation
 - **Cross-Session Features**: Summaries properly matched across async sessions
+
+## Markdown Output Features
+
+Markdown export provides a lightweight, portable alternative to HTML:
+
+- **GitHub-Flavored Markdown**: Compatible with GitHub, GitLab, and other Markdown renderers
+- **Hierarchical Structure**: Sessions organized with headers and collapsible details
+- **Message Excerpts**: Section titles include message previews for quick navigation
+- **Code Preservation**: Syntax highlighting hints via fenced code blocks
+- **Embedded Viewer**: TUI includes built-in Markdown viewer with table of contents
+- **Image Support**: Configurable image handling (placeholder, embedded base64, or referenced files)
 
 ## Installation
 
