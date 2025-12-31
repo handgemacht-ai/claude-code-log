@@ -9,14 +9,14 @@ from typing import ClassVar, Optional, cast
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Container, Vertical, VerticalScroll
+from textual.containers import Container, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     DataTable,
     Footer,
     Header,
     Label,
-    Markdown,
+    MarkdownViewer,
     Static,
 )
 from textual.reactive import reactive
@@ -183,7 +183,7 @@ class ProjectSelector(App[Path]):
 
 
 class MarkdownViewerScreen(ModalScreen[None]):
-    """Modal screen for viewing Markdown content."""
+    """Modal screen for viewing Markdown content with table of contents."""
 
     CSS = """
     MarkdownViewerScreen {
@@ -191,8 +191,8 @@ class MarkdownViewerScreen(ModalScreen[None]):
     }
 
     #md-container {
-        width: 90%;
-        height: 90%;
+        width: 95%;
+        height: 95%;
         border: solid $primary;
         background: $surface;
     }
@@ -206,9 +206,8 @@ class MarkdownViewerScreen(ModalScreen[None]):
         padding: 1;
     }
 
-    #md-content {
+    #md-viewer {
         height: 1fr;
-        padding: 1 2;
     }
 
     #md-footer {
@@ -233,9 +232,10 @@ class MarkdownViewerScreen(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Container(id="md-container"):
             yield Static(self.md_title, id="md-header")
-            with VerticalScroll(id="md-content"):
-                yield Markdown(self.md_content)
-            yield Static("Press ESC or q to close", id="md-footer")
+            yield MarkdownViewer(
+                self.md_content, id="md-viewer", show_table_of_contents=True
+            )
+            yield Static("Press ESC or q to close | t: toggle ToC", id="md-footer")
 
     def action_dismiss(self) -> None:
         self.dismiss(None)
