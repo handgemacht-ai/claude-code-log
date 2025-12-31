@@ -688,16 +688,22 @@ class MarkdownRenderer(Renderer):
         self, _content: ThinkingMessage, _message: TemplateMessage
     ) -> str:
         """Title → '🤖 Assistant: *excerpt*' (paired) or '💭 Thinking: *excerpt*'."""
+        is_sidechain = _message.meta.is_sidechain
+
         # When paired with Assistant, use Assistant title with assistant excerpt
         if _message.is_first_in_pair and _message.pair_last is not None:
             if (
                 pair_msg := self._ctx.get(_message.pair_last) if self._ctx else None
             ) and isinstance(pair_msg.content, AssistantTextMessage):
+                if is_sidechain:
+                    if excerpt := self._excerpt(self._get_message_text(pair_msg)):
+                        return f"🔗 Sub-assistant: *{self._escape_stars(excerpt)}*"
+                    return "🔗 Sub-assistant"
                 if excerpt := self._excerpt(self._get_message_text(pair_msg)):
                     return f"🤖 Assistant: *{self._escape_stars(excerpt)}*"
                 return "🤖 Assistant"
 
-        # Standalone thinking
+        # Standalone thinking (use "Thinking" for both main and sidechain)
         if excerpt := self._excerpt(self._get_message_text(_message)):
             return f"💭 Thinking: *{self._escape_stars(excerpt)}*"
         return "💭 Thinking"
@@ -709,8 +715,10 @@ class MarkdownRenderer(Renderer):
         # When paired (after Thinking), skip title (already rendered with Thinking)
         if message.is_last_in_pair:
             return ""
-        # Sidechain assistant messages get special title
+        # Sidechain assistant messages get excerpt too
         if message.meta.is_sidechain:
+            if excerpt := self._excerpt(self._get_message_text(message)):
+                return f"🔗 Sub-assistant: *{self._escape_stars(excerpt)}*"
             return "🔗 Sub-assistant"
         if excerpt := self._excerpt(self._get_message_text(message)):
             return f"🤖 Assistant: *{self._escape_stars(excerpt)}*"

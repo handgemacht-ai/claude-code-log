@@ -269,10 +269,17 @@ class MarkdownViewerScreen(ModalScreen[None]):
 
     def _clean_toc_labels(self, node: Any) -> None:
         """Recursively clean tree node labels for a cleaner ToC."""
+        import re
+
         # Unicode roman numerals used by Textual's MarkdownTableOfContents
         roman_numerals = "ⅠⅡⅢⅣⅤⅥ"
         # Message type prefixes that add clutter in ToC context
-        clutter_prefixes = ("User: ", "Assistant: ", "Thinking: ")
+        clutter_prefixes = (
+            "User: ",
+            "Assistant: ",
+            "Thinking: ",
+            "Sub-assistant: ",
+        )
 
         label = str(node.label)
 
@@ -286,6 +293,9 @@ class MarkdownViewerScreen(ModalScreen[None]):
             if prefix in label:
                 label = label.replace(prefix, "", 1)
                 break
+
+        # Simplify "Task (details): " to "Task: " (details are redundant)
+        label = re.sub(r"Task \([^)]+\): ", "Task: ", label)
 
         node.set_label(label)
         for child in node.children:
