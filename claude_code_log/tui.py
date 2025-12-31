@@ -5,7 +5,7 @@ import os
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar, Optional, cast
+from typing import Any, ClassVar, Optional, cast
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
@@ -244,16 +244,19 @@ class MarkdownViewerScreen(ModalScreen[None]):
             yield Static("Press ESC or q to close | t: toggle ToC", id="md-footer")
 
     def on_mount(self) -> None:
-        """Collapse ToC tree to show only first two levels after mount."""
-        self.call_later(self._collapse_toc_tree)
+        """Customize ToC tree after mount."""
+        self.call_later(self._customize_toc_tree)
 
-    def _collapse_toc_tree(self) -> None:
-        """Collapse all tree nodes beyond depth 3 (root + 2 levels)."""
+    def _customize_toc_tree(self) -> None:
+        """Customize ToC: collapse to 3 levels and remove roman numeral prefixes."""
         try:
             viewer = self.query_one("#md-viewer", MarkdownViewer)
-            # Access the tree inside the table of contents
             toc = viewer.query_one("MarkdownTableOfContents")
             tree = toc.query_one(Tree)
+
+            # Remove roman numeral prefixes from all labels
+            self._strip_roman_numerals(tree.root)
+
             # Collapse all, then expand root, children, and grandchildren
             tree.root.collapse_all()
             tree.root.expand()
@@ -263,6 +266,17 @@ class MarkdownViewerScreen(ModalScreen[None]):
                     grandchild.expand()
         except Exception:
             pass  # ToC might not be ready yet, or tree structure differs
+
+    def _strip_roman_numerals(self, node: Any) -> None:
+        """Recursively strip roman numeral prefixes from tree node labels."""
+        # Unicode roman numerals used by Textual's MarkdownTableOfContents
+        roman_numerals = "ⅠⅡⅢⅣⅤⅥ"
+        label = str(node.label)
+        # Strip leading roman numeral and space (e.g., "Ⅱ Heading" -> "Heading")
+        if label and label[0] in roman_numerals:
+            node.set_label(label[2:] if len(label) > 1 else label)
+        for child in node.children:
+            self._strip_roman_numerals(child)
 
     def action_dismiss(self) -> None:
         self.dismiss(None)
