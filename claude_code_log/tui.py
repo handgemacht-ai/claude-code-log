@@ -254,8 +254,8 @@ class MarkdownViewerScreen(ModalScreen[None]):
             toc = viewer.query_one("MarkdownTableOfContents")
             tree = toc.query_one(Tree)
 
-            # Remove roman numeral prefixes from all labels
-            self._strip_roman_numerals(tree.root)
+            # Clean up labels (remove roman numerals and message type prefixes)
+            self._clean_toc_labels(tree.root)
 
             # Collapse all, then expand root, children, and grandchildren
             tree.root.collapse_all()
@@ -267,16 +267,29 @@ class MarkdownViewerScreen(ModalScreen[None]):
         except Exception:
             pass  # ToC might not be ready yet, or tree structure differs
 
-    def _strip_roman_numerals(self, node: Any) -> None:
-        """Recursively strip roman numeral prefixes from tree node labels."""
+    def _clean_toc_labels(self, node: Any) -> None:
+        """Recursively clean tree node labels for a cleaner ToC."""
         # Unicode roman numerals used by Textual's MarkdownTableOfContents
         roman_numerals = "ⅠⅡⅢⅣⅤⅥ"
+        # Message type prefixes that add clutter in ToC context
+        clutter_prefixes = ("User: ", "Assistant: ", "Thinking: ")
+
         label = str(node.label)
+
         # Strip leading roman numeral and space (e.g., "Ⅱ Heading" -> "Heading")
         if label and label[0] in roman_numerals:
-            node.set_label(label[2:] if len(label) > 1 else label)
+            label = label[2:] if len(label) > 1 else label
+
+        # Strip message type prefixes wherever they appear
+        # (they come after the emoji, e.g., "🤷 User: *text*" -> "🤷 *text*")
+        for prefix in clutter_prefixes:
+            if prefix in label:
+                label = label.replace(prefix, "", 1)
+                break
+
+        node.set_label(label)
         for child in node.children:
-            self._strip_roman_numerals(child)
+            self._clean_toc_labels(child)
 
     def action_dismiss(self) -> None:
         self.dismiss(None)

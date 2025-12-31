@@ -71,7 +71,7 @@
   Great! Can you also show me how to create a decorator that takes parameters?
   ```
   
-  ### ✏️ Edit `decorator_example.py`
+  ### ✏️  Edit `decorator_example.py`
   
   ```diff
   @@ -0,0 +1,14 @@+def repeat(times):
@@ -234,7 +234,7 @@
   
   > I see the long Lorem ipsum text wraps nicely! Long text handling is important for readability. The CSS should handle word wrapping automatically.
   
-  #### ✏️ MultiEdit `complex_example.py`
+  #### ✏️  MultiEdit `complex_example.py`
   
   **Edit 1:**
   
@@ -395,7 +395,7 @@
   Great! Can you also show me how to create a decorator that takes parameters?
   ```
   
-  ### ✏️ Edit `decorator_example.py`
+  ### ✏️  Edit `decorator_example.py`
   
   ```diff
   @@ -0,0 +1,14 @@+def repeat(times):
@@ -526,7 +526,7 @@
   Great! Can you also show me how to create a decorator that takes parameters?
   ```
   
-  ### ✏️ Edit `decorator_example.py`
+  ### ✏️  Edit `decorator_example.py`
   
   ```diff
   @@ -0,0 +1,14 @@+def repeat(times):

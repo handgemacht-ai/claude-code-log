@@ -640,16 +640,16 @@ class MarkdownRenderer(Renderer):
         return f"👀 Read `{Path(input.file_path).name}`"
 
     def title_WriteInput(self, input: WriteInput, _: TemplateMessage) -> str:
-        """Title → '✍️ Write `filename`'."""
-        return f"✍️ Write `{Path(input.file_path).name}`"
+        """Title → '✍️  Write `filename`'."""
+        return f"✍️  Write `{Path(input.file_path).name}`"
 
     def title_EditInput(self, input: EditInput, _: TemplateMessage) -> str:
-        """Title → '✏️ Edit `filename`'."""
-        return f"✏️ Edit `{Path(input.file_path).name}`"
+        """Title → '✏️  Edit `filename`'."""
+        return f"✏️  Edit `{Path(input.file_path).name}`"
 
     def title_MultiEditInput(self, input: MultiEditInput, _: TemplateMessage) -> str:
-        """Title → '✏️ MultiEdit `filename`'."""
-        return f"✏️ MultiEdit `{Path(input.file_path).name}`"
+        """Title → '✏️  MultiEdit `filename`'."""
+        return f"✏️  MultiEdit `{Path(input.file_path).name}`"
 
     def title_GlobInput(self, input: GlobInput, _: TemplateMessage) -> str:
         """Title → '📂 Glob `pattern`[ in `path`]'."""
