@@ -23,7 +23,11 @@ from textual.widgets import (
 from textual.reactive import reactive
 
 from .cache import CacheManager, SessionCacheData, get_library_version
-from .converter import ensure_fresh_cache, load_directory_transcripts
+from .converter import (
+    ensure_fresh_cache,
+    get_file_extension,
+    load_directory_transcripts,
+)
 from .renderer import get_renderer
 from .utils import get_project_display_name
 
@@ -827,7 +831,7 @@ class SessionBrowser(App[Optional[str]]):
         Returns:
             Path to the file if successful, None if regeneration failed.
         """
-        ext = "html" if format == "html" else "md"
+        ext = get_file_extension(format)
         session_file = self.project_path / f"session-{session_id}.{ext}"
         renderer = get_renderer(format)
 

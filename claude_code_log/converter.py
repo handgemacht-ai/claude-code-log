@@ -1167,7 +1167,7 @@ def process_projects_hierarchy(
             continue
 
     # Generate index (always regenerate if outdated)
-    ext = "md" if output_format in ("md", "markdown") else "html"
+    ext = get_file_extension(output_format)
     index_path = projects_path / f"index.{ext}"
     renderer = get_renderer(output_format, image_export_mode)
     if renderer.is_outdated(index_path) or from_date or to_date or any_cache_updated:

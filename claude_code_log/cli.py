@@ -14,6 +14,7 @@ from .converter import (
     convert_jsonl_to,
     convert_jsonl_to_html,
     ensure_fresh_cache,
+    get_file_extension,
     process_projects_hierarchy,
 )
 from .cache import CacheManager, get_library_version
@@ -573,7 +574,7 @@ def main(
 
         # Handle output files clearing
         if clear_output:
-            file_ext = "md" if output_format in ("md", "markdown") else "html"
+            file_ext = get_file_extension(output_format)
             _clear_output_files(input_path, all_projects, file_ext)
             if clear_output and not (from_date or to_date or input_path.is_file()):
                 # If only clearing output files, exit after clearing
@@ -651,7 +652,7 @@ def main(
         else:
             jsonl_count = len(list(input_path.glob("*.jsonl")))
             if not no_individual_sessions:
-                ext = "md" if output_format in ("md", "markdown") else "html"
+                ext = get_file_extension(output_format)
                 session_files = list(input_path.glob(f"session-*.{ext}"))
                 click.echo(
                     f"Successfully combined {jsonl_count} transcript files from {input_path} to {output_path} and generated {len(session_files)} individual session files"
