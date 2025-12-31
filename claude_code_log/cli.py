@@ -13,6 +13,7 @@ from git import Repo, InvalidGitRepositoryError
 from .converter import (
     convert_jsonl_to,
     convert_jsonl_to_html,
+    ensure_fresh_cache,
     process_projects_hierarchy,
 )
 from .cache import CacheManager, get_library_version
@@ -42,13 +43,13 @@ def _launch_tui_with_cache_check(project_path: Path) -> Optional[str]:
         else:
             click.echo("Building session cache...")
 
-        # Pre-build the cache before launching TUI
+        # Pre-build the cache before launching TUI (no HTML generation)
         try:
-            convert_jsonl_to_html(project_path, silent=True)
+            ensure_fresh_cache(project_path, cache_manager, silent=True)
             click.echo("Cache ready! Launching TUI...")
         except Exception as e:
             click.echo(f"Error building cache: {e}", err=True)
-            return
+            return None
     else:
         click.echo(
             f"Cache up to date. Found {len(project_cache.sessions)} sessions. Launching TUI..."
