@@ -252,7 +252,7 @@ class MarkdownViewerScreen(ModalScreen[None]):
         try:
             viewer = self.query_one("#md-viewer", MarkdownViewer)
             toc = viewer.query_one("MarkdownTableOfContents")
-            tree = toc.query_one(Tree)
+            tree = cast(Tree[Any], toc.query_one(Tree))
 
             # Clean up labels (remove roman numerals and message type prefixes)
             self._clean_toc_labels(tree.root)
@@ -301,8 +301,8 @@ class MarkdownViewerScreen(ModalScreen[None]):
         for child in node.children:
             self._clean_toc_labels(child)
 
-    def action_dismiss(self) -> None:
-        self.dismiss(None)
+    async def action_dismiss(self, result: None = None) -> None:
+        self.dismiss(result)
 
 
 class SessionBrowser(App[Optional[str]]):
