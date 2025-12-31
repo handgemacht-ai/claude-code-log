@@ -18,6 +18,7 @@ from textual.widgets import (
     Label,
     MarkdownViewer,
     Static,
+    Tree,
 )
 from textual.reactive import reactive
 
@@ -210,6 +211,11 @@ class MarkdownViewerScreen(ModalScreen[None]):
         height: 1fr;
     }
 
+    /* Limit ToC width to ~1/3 of the viewer */
+    #md-viewer MarkdownTableOfContents {
+        max-width: 60;
+    }
+
     #md-footer {
         dock: bottom;
         height: 1;
@@ -236,6 +242,27 @@ class MarkdownViewerScreen(ModalScreen[None]):
                 self.md_content, id="md-viewer", show_table_of_contents=True
             )
             yield Static("Press ESC or q to close | t: toggle ToC", id="md-footer")
+
+    def on_mount(self) -> None:
+        """Collapse ToC tree to show only first two levels after mount."""
+        self.call_later(self._collapse_toc_tree)
+
+    def _collapse_toc_tree(self) -> None:
+        """Collapse all tree nodes beyond depth 3 (root + 2 levels)."""
+        try:
+            viewer = self.query_one("#md-viewer", MarkdownViewer)
+            # Access the tree inside the table of contents
+            toc = viewer.query_one("MarkdownTableOfContents")
+            tree = toc.query_one(Tree)
+            # Collapse all, then expand root, children, and grandchildren
+            tree.root.collapse_all()
+            tree.root.expand()
+            for child in tree.root.children:
+                child.expand()
+                for grandchild in child.children:
+                    grandchild.expand()
+        except Exception:
+            pass  # ToC might not be ready yet, or tree structure differs
 
     def action_dismiss(self) -> None:
         self.dismiss(None)
