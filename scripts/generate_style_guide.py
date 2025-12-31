@@ -2,9 +2,9 @@
 """
 Generate a visual style guide showing all message types and rendering styles.
 
-This script creates a comprehensive HTML file that demonstrates how different
-types of Claude transcript messages are rendered, serving both as a test
-and as documentation for the visual design.
+This script creates comprehensive HTML and Markdown files that demonstrate how
+different types of Claude transcript messages are rendered, serving both as a
+test and as documentation for the visual design.
 
 Session 1: Hand-crafted examples showing various formatting scenarios
 Session 2: Auto-generated from dev-docs/messages samples showing all message types
