@@ -646,7 +646,8 @@ def main(
         else:
             jsonl_count = len(list(input_path.glob("*.jsonl")))
             if not no_individual_sessions:
-                session_files = list(input_path.glob("session-*.html"))
+                ext = "md" if output_format in ("md", "markdown") else "html"
+                session_files = list(input_path.glob(f"session-*.{ext}"))
                 click.echo(
                     f"Successfully combined {jsonl_count} transcript files from {input_path} to {output_path} and generated {len(session_files)} individual session files"
                 )
