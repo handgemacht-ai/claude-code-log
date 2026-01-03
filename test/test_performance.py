@@ -206,7 +206,7 @@ class TestBenchmarkAllProjects:
 
     def _write_github_summary(self, summary_path: str, results: List[dict]) -> None:
         """Write benchmark results to GitHub Actions Job Summary."""
-        with open(summary_path, "a") as f:
+        with open(summary_path, "a", encoding="utf-8") as f:
             f.write("\n## 📊 Performance Benchmark Results\n\n")
             f.write(
                 "| Project | Messages | Input (MB) | Output (MB) | "

@@ -17,11 +17,38 @@
 {% include 'components/search_styles.css' %}
 {% include 'components/edit_diff_styles.css' %}
 {% include 'components/pygments_styles.css' %}
+{% include 'components/page_nav_styles.css' %}
     </style>
 </head>
 
 <body>
     <h1 id="title">{{ title }}</h1>
+
+    {% if page_info %}
+    <!-- Page Navigation -->
+    <div class="page-navigation">
+        <div class="page-header">
+            <div class="page-title">Page {{ page_info.page_number }}</div>
+            {% if page_stats %}
+            <div class="page-stats">
+                <span class="stat">💬 {{ page_stats.message_count }} messages</span>
+                <span class="stat">🕒 {{ page_stats.date_range }}</span>
+                {% if page_stats.token_summary %}
+                <span class="stat">🪙 {{ page_stats.token_summary }}</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        <div class="page-nav-links">
+            {% if page_info.prev_link %}
+            <a href="{{ page_info.prev_link }}" class="page-nav-link prev">← Previous</a>
+            {% endif %}
+            {% if page_info.next_link %}
+            <a href="{{ page_info.next_link }}" class="page-nav-link next">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Timeline Component -->
     {% include 'components/timeline.html' %}

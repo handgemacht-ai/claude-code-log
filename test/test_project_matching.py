@@ -26,27 +26,20 @@ class TestProjectMatching:
             (project1 / "test1.jsonl").touch()
             (project2 / "test2.jsonl").touch()
 
-            # Mock cache data for projects
-            mock_cache1 = Mock()
-            mock_cache1.working_directories = ["/Users/test/workspace/myproject"]
-
-            mock_cache2 = Mock()
-            mock_cache2.working_directories = ["/Users/test/other/project"]
-
             with patch("claude_code_log.cli.CacheManager") as mock_cache_manager:
 
                 def cache_side_effect(project_dir, version):
                     cache_instance = Mock()
                     if project_dir == project1:
-                        cache_instance.get_cached_project_data.return_value = (
-                            mock_cache1
-                        )
+                        cache_instance.get_working_directories.return_value = [
+                            "/Users/test/workspace/myproject"
+                        ]
                     elif project_dir == project2:
-                        cache_instance.get_cached_project_data.return_value = (
-                            mock_cache2
-                        )
+                        cache_instance.get_working_directories.return_value = [
+                            "/Users/test/other/project"
+                        ]
                     else:
-                        cache_instance.get_cached_project_data.return_value = None
+                        cache_instance.get_working_directories.return_value = []
                     return cache_instance
 
                 mock_cache_manager.side_effect = cache_side_effect
@@ -74,20 +67,16 @@ class TestProjectMatching:
             project1.mkdir()
             (project1 / "test1.jsonl").touch()
 
-            # Mock cache data with parent directory
-            mock_cache1 = Mock()
-            mock_cache1.working_directories = ["/Users/test/workspace/myproject"]
-
             with patch("claude_code_log.cli.CacheManager") as mock_cache_manager:
 
                 def cache_side_effect(project_dir, version):
                     cache_instance = Mock()
                     if project_dir == project1:
-                        cache_instance.get_cached_project_data.return_value = (
-                            mock_cache1
-                        )
+                        cache_instance.get_working_directories.return_value = [
+                            "/Users/test/workspace/myproject"
+                        ]
                     else:
-                        cache_instance.get_cached_project_data.return_value = None
+                        cache_instance.get_working_directories.return_value = []
                     return cache_instance
 
                 mock_cache_manager.side_effect = cache_side_effect

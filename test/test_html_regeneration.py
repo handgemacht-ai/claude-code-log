@@ -48,9 +48,13 @@ class TestHtmlRegeneration:
         # Second run: No changes, should skip regeneration
         with patch("builtins.print") as mock_print:
             convert_jsonl_to_html(project_dir)
-            mock_print.assert_any_call(
-                "HTML file combined_transcripts.html is current, skipping regeneration"
+            # Check for either the per-file skip message (legacy) or the early-exit message (new)
+            printed_calls = [str(call) for call in mock_print.call_args_list]
+            skip_found = any(
+                "skipping regeneration" in call or "All HTML files are current" in call
+                for call in printed_calls
             )
+            assert skip_found, f"Expected skip message, got: {printed_calls}"
 
         # Verify file wasn't regenerated
         assert output_file.stat().st_mtime == original_mtime
@@ -101,15 +105,13 @@ class TestHtmlRegeneration:
         # Second run: No changes, should skip regeneration
         with patch("builtins.print") as mock_print:
             convert_jsonl_to_html(project_dir, generate_individual_sessions=True)
-            # Check that session file regeneration was skipped
+            # Check for either per-file skip message (legacy) or early-exit message (new)
             printed_calls = [str(call) for call in mock_print.call_args_list]
-            session_skip_found = any(
-                "Session file" in call and "skipping regeneration" in call
+            skip_found = any(
+                "skipping regeneration" in call or "All HTML files are current" in call
                 for call in printed_calls
             )
-            assert session_skip_found, (
-                f"Expected session skip message, got: {printed_calls}"
-            )
+            assert skip_found, f"Expected skip message, got: {printed_calls}"
 
         # Verify file wasn't regenerated
         assert session_file.stat().st_mtime == original_mtime
@@ -170,7 +172,7 @@ class TestHtmlRegeneration:
 
         # Second run: No changes, should skip regeneration
         with patch("builtins.print") as mock_print:
-            process_projects_hierarchy(projects_dir)
+            process_projects_hierarchy(projects_dir, silent=False)
             mock_print.assert_any_call("Index HTML is current, skipping regeneration")
 
         # Verify file wasn't regenerated
@@ -314,3 +316,177 @@ class TestHtmlRegeneration:
 
         # Verify file wasn't regenerated (this is expected behavior for single file mode)
         assert output_file.stat().st_mtime == original_mtime
+
+
+class TestIncrementalHtmlCache:
+    """Test incremental HTML regeneration using html_cache table."""
+
+    def test_html_cache_tracks_generation(self, tmp_path):
+        """Test that html_cache table correctly tracks when HTML was generated."""
+        # Setup project with JSONL
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+
+        test_data_dir = Path(__file__).parent / "test_data"
+        jsonl_file = project_dir / "test.jsonl"
+        jsonl_file.write_text(
+            (test_data_dir / "representative_messages.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+
+        # Generate HTML
+        convert_jsonl_to_html(project_dir, generate_individual_sessions=True)
+
+        # Check that html_cache has entries
+        cache_manager = CacheManager(project_dir, get_library_version())
+        combined_cache = cache_manager.get_html_cache("combined_transcripts.html")
+
+        assert combined_cache is not None
+        assert combined_cache.html_path == "combined_transcripts.html"
+        assert combined_cache.source_session_id is None  # Combined has no session
+        assert combined_cache.message_count > 0
+
+        # Check session HTML cache
+        session_files = list(project_dir.glob("session-*.html"))
+        assert len(session_files) >= 1
+
+        session_file = session_files[0]
+        session_id = session_file.stem.replace("session-", "")
+        session_cache = cache_manager.get_html_cache(session_file.name)
+
+        assert session_cache is not None
+        assert session_cache.source_session_id == session_id
+        assert session_cache.message_count > 0
+
+    def test_incremental_regeneration_only_updates_changed_sessions(self, tmp_path):
+        """Test that only sessions with changes are regenerated."""
+        # Setup project with two JSONL files (different sessions)
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+
+        # Create two sessions in separate files
+        session1 = (
+            '{"type":"user","timestamp":"2025-01-01T10:00:00Z","parentUuid":null,'
+            '"isSidechain":false,"userType":"human","cwd":"/tmp","sessionId":"session1",'
+            '"version":"1.0.0","uuid":"msg1","message":{"role":"user",'
+            '"content":[{"type":"text","text":"Session 1 message"}]}}\n'
+        )
+        session2 = (
+            '{"type":"user","timestamp":"2025-01-01T11:00:00Z","parentUuid":null,'
+            '"isSidechain":false,"userType":"human","cwd":"/tmp","sessionId":"session2",'
+            '"version":"1.0.0","uuid":"msg2","message":{"role":"user",'
+            '"content":[{"type":"text","text":"Session 2 message"}]}}\n'
+        )
+
+        (project_dir / "session1.jsonl").write_text(session1, encoding="utf-8")
+        (project_dir / "session2.jsonl").write_text(session2, encoding="utf-8")
+
+        # First run: Generate all HTML
+        convert_jsonl_to_html(project_dir, generate_individual_sessions=True)
+
+        session1_html = project_dir / "session-session1.html"
+        session2_html = project_dir / "session-session2.html"
+        assert session1_html.exists()
+        assert session2_html.exists()
+
+        session1_mtime = session1_html.stat().st_mtime
+        session2_mtime = session2_html.stat().st_mtime
+
+        # Wait and modify only session1
+        time.sleep(1.1)  # Ensure > 1.0 second difference
+        new_msg = (
+            '{"type":"user","timestamp":"2025-01-01T10:05:00Z","parentUuid":"msg1",'
+            '"isSidechain":false,"userType":"human","cwd":"/tmp","sessionId":"session1",'
+            '"version":"1.0.0","uuid":"msg1b","message":{"role":"user",'
+            '"content":[{"type":"text","text":"New message in session 1"}]}}\n'
+        )
+        with open(project_dir / "session1.jsonl", "a", encoding="utf-8") as f:
+            f.write(new_msg)
+
+        # Second run: Should only regenerate session1
+        convert_jsonl_to_html(project_dir, generate_individual_sessions=True)
+
+        # Session 1 should be regenerated (newer mtime)
+        assert session1_html.stat().st_mtime > session1_mtime
+
+        # Session 2 should NOT be regenerated (same mtime)
+        assert session2_html.stat().st_mtime == session2_mtime
+
+    def test_html_cache_detects_library_version_change(self, tmp_path):
+        """Test that HTML is regenerated when library version changes."""
+        # Setup project
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+
+        test_data_dir = Path(__file__).parent / "test_data"
+        jsonl_file = project_dir / "test.jsonl"
+        jsonl_file.write_text(
+            (test_data_dir / "representative_messages.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+
+        # Generate HTML with current version
+        convert_jsonl_to_html(project_dir)
+
+        cache_manager = CacheManager(project_dir, get_library_version())
+
+        # Check staleness with same version
+        is_stale, reason = cache_manager.is_html_stale("combined_transcripts.html")
+        assert not is_stale
+        assert reason == "up_to_date"
+
+        # Create new cache manager with different version
+        cache_manager_new = CacheManager(project_dir, "999.999.999")
+        is_stale, reason = cache_manager_new.is_html_stale("combined_transcripts.html")
+        assert is_stale
+        assert reason == "version_mismatch"
+
+    def test_html_cache_message_count_validation(self, tmp_path):
+        """Test that session HTML regenerates when message count changes."""
+        # Setup project
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+
+        session_msg = (
+            '{"type":"user","timestamp":"2025-01-01T10:00:00Z","parentUuid":null,'
+            '"isSidechain":false,"userType":"human","cwd":"/tmp","sessionId":"test_session",'
+            '"version":"1.0.0","uuid":"msg1","message":{"role":"user",'
+            '"content":[{"type":"text","text":"Test message"}]}}\n'
+        )
+        (project_dir / "test.jsonl").write_text(session_msg, encoding="utf-8")
+
+        # Generate HTML
+        convert_jsonl_to_html(project_dir, generate_individual_sessions=True)
+
+        cache_manager = CacheManager(project_dir, get_library_version())
+
+        # Check session is not stale
+        is_stale, reason = cache_manager.is_html_stale(
+            "session-test_session.html", "test_session"
+        )
+        assert not is_stale
+
+        # Add a new message (increases count)
+        time.sleep(1.1)
+        new_msg = (
+            '{"type":"user","timestamp":"2025-01-01T10:01:00Z","parentUuid":"msg1",'
+            '"isSidechain":false,"userType":"human","cwd":"/tmp","sessionId":"test_session",'
+            '"version":"1.0.0","uuid":"msg2","message":{"role":"user",'
+            '"content":[{"type":"text","text":"Second message"}]}}\n'
+        )
+        with open(project_dir / "test.jsonl", "a", encoding="utf-8") as f:
+            f.write(new_msg)
+
+        # Update cache to reflect new message
+        ensure_fresh_cache(project_dir, cache_manager)
+
+        # Now session should be stale (message count changed)
+        is_stale, reason = cache_manager.is_html_stale(
+            "session-test_session.html", "test_session"
+        )
+        assert is_stale
+        assert reason == "session_updated"

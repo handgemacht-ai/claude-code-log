@@ -193,24 +193,23 @@ def _find_relative_matches(
         try:
             # Load cache to check for working directories
             cache_manager = CacheManager(project_dir, get_library_version())
-            project_cache = cache_manager.get_cached_project_data()
+            working_directories = cache_manager.get_working_directories()
 
             # Build cache if needed
-            if not project_cache or not project_cache.working_directories:
+            if not working_directories:
                 jsonl_files = list(project_dir.glob("*.jsonl"))
                 if jsonl_files:
                     try:
                         convert_jsonl_to_html(project_dir, silent=True)
-                        project_cache = cache_manager.get_cached_project_data()
+                        working_directories = cache_manager.get_working_directories()
                     except Exception as e:
                         logging.warning(
                             f"Failed to build cache for project {project_dir.name}: {e}"
                         )
-                        project_cache = None
 
-            if project_cache and project_cache.working_directories:
+            if working_directories:
                 # Check for relative matches
-                for cwd in project_cache.working_directories:
+                for cwd in working_directories:
                     cwd_path = Path(cwd).resolve()
                     if current_cwd_path.is_relative_to(cwd_path):
                         relative_matches.append(project_dir)
@@ -263,6 +262,17 @@ def _clear_caches(input_path: Path, all_projects: bool) -> None:
         if all_projects:
             # Clear cache for all project directories
             click.echo("Clearing caches for all projects...")
+
+            # Delete the shared SQLite cache database
+            cache_db = input_path / "cache.db"
+            if cache_db.exists():
+                try:
+                    cache_db.unlink()
+                    click.echo(f"  Deleted SQLite cache database: {cache_db}")
+                except Exception as e:
+                    click.echo(f"  Warning: Failed to delete cache database: {e}")
+
+            # Also clean up old JSON cache directories (migration cleanup)
             project_dirs = [
                 d
                 for d in input_path.iterdir()
@@ -271,12 +281,16 @@ def _clear_caches(input_path: Path, all_projects: bool) -> None:
 
             for project_dir in project_dirs:
                 try:
-                    cache_manager = CacheManager(project_dir, library_version)
-                    cache_manager.clear_cache()
-                    click.echo(f"  Cleared cache for {project_dir.name}")
+                    # Clean up old JSON cache directory if it exists
+                    old_cache_dir = project_dir / "cache"
+                    if old_cache_dir.exists():
+                        import shutil
+
+                        shutil.rmtree(old_cache_dir)
+                        click.echo(f"  Cleared old JSON cache for {project_dir.name}")
                 except Exception as e:
                     click.echo(
-                        f"  Warning: Failed to clear cache for {project_dir.name}: {e}"
+                        f"  Warning: Failed to clear old cache for {project_dir.name}: {e}"
                     )
 
         elif input_path.is_dir():
@@ -284,6 +298,14 @@ def _clear_caches(input_path: Path, all_projects: bool) -> None:
             click.echo(f"Clearing cache for {input_path}...")
             cache_manager = CacheManager(input_path, library_version)
             cache_manager.clear_cache()
+
+            # Also clean up old JSON cache directory if it exists
+            old_cache_dir = input_path / "cache"
+            if old_cache_dir.exists():
+                import shutil
+
+                shutil.rmtree(old_cache_dir)
+                click.echo("  Cleared old JSON cache directory")
         else:
             # Single file - no cache to clear
             click.echo("Cache clearing not applicable for single files.")
@@ -435,6 +457,12 @@ def _clear_output_files(input_path: Path, all_projects: bool, file_ext: str) -> 
     help="Image export mode: placeholder (mark position), embedded (base64), referenced (PNG files). Default: embedded for HTML, referenced for Markdown.",
 )
 @click.option(
+    "--page-size",
+    type=int,
+    default=2000,
+    help="Maximum messages per page for combined transcript (default: 2000). Sessions are never split across pages.",
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -455,6 +483,7 @@ def main(
     projects_dir: Optional[Path],
     output_format: str,
     image_export_mode: Optional[str],
+    page_size: int,
     debug: bool,
 ) -> None:
     """Convert Claude transcript JSONL files to HTML or Markdown.
@@ -595,6 +624,7 @@ def main(
                 not no_individual_sessions,
                 output_format,
                 image_export_mode,
+                page_size=page_size,
             )
 
             # Count processed projects
@@ -646,6 +676,7 @@ def main(
             not no_individual_sessions,
             not no_cache,
             image_export_mode=image_export_mode,
+            page_size=page_size,
         )
         if input_path.is_file():
             click.echo(f"Successfully converted {input_path} to {output_path}")

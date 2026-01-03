@@ -89,7 +89,7 @@ def temp_project_dir():
 
         # Write test data to JSONL file
         jsonl_file = project_path / "test-transcript.jsonl"
-        with open(jsonl_file, "w") as f:
+        with open(jsonl_file, "w", encoding="utf-8") as f:
             for entry in test_data:
                 f.write(json.dumps(entry) + "\n")
 
@@ -797,7 +797,7 @@ class TestRunSessionBrowser:
         """Test running session browser with a file instead of directory."""
         # Create a file
         test_file = temp_project_dir / "test.txt"
-        test_file.write_text("test")
+        test_file.write_text("test", encoding="utf-8")
 
         run_session_browser(test_file)
 

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Tests for caching functionality."""
 
-import json
 import tempfile
 from pathlib import Path
-from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -12,7 +10,6 @@ import pytest
 from claude_code_log.cache import (
     CacheManager,
     get_library_version,
-    ProjectCache,
     SessionCacheData,
 )
 from claude_code_log.models import (
@@ -30,7 +27,10 @@ from claude_code_log.models import (
 def temp_project_dir():
     """Create a temporary project directory for testing."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        yield Path(temp_dir)
+        # Create project subdirectory so db_path (parent/cache.db) is unique per test
+        project_dir = Path(temp_dir) / "project"
+        project_dir.mkdir()
+        yield project_dir
 
 
 @pytest.fixture
@@ -101,16 +101,16 @@ class TestCacheManager:
 
         assert cache_manager.project_path == temp_project_dir
         assert cache_manager.library_version == mock_version
-        assert cache_manager.cache_dir == temp_project_dir / "cache"
-        assert cache_manager.cache_dir.exists()
+        # SQLite database should be created at parent level
+        assert cache_manager.db_path == temp_project_dir.parent / "cache.db"
+        assert cache_manager.db_path.exists()
 
-    def test_cache_file_path(self, cache_manager, temp_project_dir):
-        """Test cache file path generation."""
-        jsonl_path = temp_project_dir / "test.jsonl"
-        cache_path = cache_manager._get_cache_file_path(jsonl_path)
-
-        expected = temp_project_dir / "cache" / "test.json"
-        assert cache_path == expected
+    def test_database_path(self, cache_manager, temp_project_dir):
+        """Test that SQLite database is created at the correct location."""
+        # Database should be at parent level (projects_dir/cache.db)
+        expected_db = temp_project_dir.parent / "cache.db"
+        assert cache_manager.db_path == expected_db
+        assert expected_db.exists()
 
     def test_save_and_load_entries(
         self, cache_manager, temp_project_dir, sample_entries
@@ -122,9 +122,8 @@ class TestCacheManager:
         # Save entries to cache
         cache_manager.save_cached_entries(jsonl_path, sample_entries)
 
-        # Verify cache file exists
-        cache_file = cache_manager._get_cache_file_path(jsonl_path)
-        assert cache_file.exists()
+        # Verify file is cached
+        assert cache_manager.is_file_cached(jsonl_path)
 
         # Load entries from cache
         loaded_entries = cache_manager.load_cached_entries(jsonl_path)
@@ -136,30 +135,36 @@ class TestCacheManager:
         assert loaded_entries[1].type == "assistant"
         assert loaded_entries[2].type == "summary"
 
-    def test_timestamp_based_cache_structure(
+    def test_message_storage_with_timestamps(
         self, cache_manager, temp_project_dir, sample_entries
     ):
-        """Test that cache uses timestamp-based structure."""
+        """Test that messages are stored with correct timestamps in SQLite."""
+        import sqlite3
+
         jsonl_path = temp_project_dir / "test.jsonl"
         jsonl_path.write_text("dummy content", encoding="utf-8")
 
         cache_manager.save_cached_entries(jsonl_path, sample_entries)
 
-        # Read raw cache file
-        cache_file = cache_manager._get_cache_file_path(jsonl_path)
-        with open(cache_file, "r") as f:
-            cache_data = json.load(f)
+        # Query the SQLite database directly to verify structure
+        # Filter by project_id since database is shared between tests
+        conn = sqlite3.connect(cache_manager.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT timestamp, type FROM messages WHERE project_id = ? ORDER BY timestamp NULLS LAST",
+            (cache_manager._project_id,),
+        )
+        rows = cursor.fetchall()
+        conn.close()
 
-        # Verify timestamp-based structure
-        assert isinstance(cache_data, dict)
-        assert "2023-01-01T10:00:00Z" in cache_data
-        assert "2023-01-01T10:01:00Z" in cache_data
-        assert "_no_timestamp" in cache_data  # Summary entry
-
-        # Verify entry grouping
-        assert len(cache_data["2023-01-01T10:00:00Z"]) == 1
-        assert len(cache_data["2023-01-01T10:01:00Z"]) == 1
-        assert len(cache_data["_no_timestamp"]) == 1
+        # Verify entries are stored with timestamps
+        assert len(rows) == 3
+        assert rows[0]["timestamp"] == "2023-01-01T10:00:00Z"
+        assert rows[0]["type"] == "user"
+        assert rows[1]["timestamp"] == "2023-01-01T10:01:00Z"
+        assert rows[1]["type"] == "assistant"
+        assert rows[2]["timestamp"] is None  # Summary has no timestamp
+        assert rows[2]["type"] == "summary"
 
     def test_cache_invalidation_file_modification(
         self, cache_manager, temp_project_dir, sample_entries
@@ -186,17 +191,10 @@ class TestCacheManager:
         # Create cache with version 1.0.0
         with patch("claude_code_log.cache.get_library_version", return_value="1.0.0"):
             cache_manager_v1 = CacheManager(temp_project_dir, "1.0.0")
-            # Create some cache data
-            index_data = ProjectCache(
-                version="1.0.0",
-                cache_created=datetime.now().isoformat(),
-                last_updated=datetime.now().isoformat(),
-                project_path=str(temp_project_dir),
-                cached_files={},
-                sessions={},
-            )
-            with open(cache_manager_v1.index_file, "w") as f:
-                json.dump(index_data.model_dump(), f)
+            # Verify project was created with version 1.0.0
+            cached_data = cache_manager_v1.get_cached_project_data()
+            assert cached_data is not None
+            assert cached_data.version == "1.0.0"
 
         # Create new cache manager with different version
         with patch("claude_code_log.cache.get_library_version", return_value="2.0.0"):
@@ -269,16 +267,22 @@ class TestCacheManager:
 
         # Create cache
         cache_manager.save_cached_entries(jsonl_path, sample_entries)
-        cache_file = cache_manager._get_cache_file_path(jsonl_path)
-        assert cache_file.exists()
-        assert cache_manager.index_file.exists()
+        assert cache_manager.is_file_cached(jsonl_path)
+
+        # Verify data exists before clearing
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert len(cached_data.cached_files) > 0
 
         # Clear cache
         cache_manager.clear_cache()
 
-        # Verify files are deleted
-        assert not cache_file.exists()
-        assert not cache_manager.index_file.exists()
+        # Verify cache is cleared (no more files or sessions)
+        assert not cache_manager.is_file_cached(jsonl_path)
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert len(cached_data.cached_files) == 0
+        assert len(cached_data.sessions) == 0
 
     def test_session_cache_updates(self, cache_manager):
         """Test updating session cache data."""
@@ -586,17 +590,15 @@ class TestCacheVersionCompatibility:
 class TestCacheErrorHandling:
     """Test cache error handling and edge cases."""
 
-    def test_corrupted_cache_file(self, cache_manager, temp_project_dir):
-        """Test handling of corrupted cache files."""
+    def test_missing_cache_entry(self, cache_manager, temp_project_dir):
+        """Test handling when cache entry doesn't exist."""
         jsonl_path = temp_project_dir / "test.jsonl"
         jsonl_path.write_text("dummy content", encoding="utf-8")
 
-        # Create corrupted cache file
-        cache_file = cache_manager._get_cache_file_path(jsonl_path)
-        cache_file.parent.mkdir(exist_ok=True)
-        cache_file.write_text("invalid json content", encoding="utf-8")
+        # File exists but not cached
+        assert not cache_manager.is_file_cached(jsonl_path)
 
-        # Should handle gracefully
+        # Should return None when not cached
         result = cache_manager.load_cached_entries(jsonl_path)
         assert result is None
 

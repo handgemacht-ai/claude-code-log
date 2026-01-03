@@ -73,15 +73,6 @@ class TestProjectDisplayName:
         # Should fall back to path conversion
         assert result == "Users/dain/workspace/platform/frontend/next"
 
-    def test_none_working_directories(self):
-        """Test fallback when working directories is None."""
-        project_dir_name = "-Users-dain-workspace-platform-frontend-next"
-        working_directories = None
-
-        result = get_project_display_name(project_dir_name, working_directories)
-        # Should fall back to path conversion
-        assert result == "Users/dain/workspace/platform/frontend/next"
-
     def test_single_working_directory(self):
         """Test with a single working directory."""
         project_dir_name = "-Users-dain-workspace-simple-project"
@@ -123,3 +114,27 @@ class TestProjectDisplayName:
         result = get_project_display_name(project_dir_name, working_directories)
         # Should pick the root directory
         assert result == "shared-names"
+
+    def test_tmp_paths_filtered_out(self):
+        """Test that temporary paths (pytest, macOS temp) are filtered out."""
+        project_dir_name = "-tmp-pytest-123-test_foo0"
+        working_directories = [
+            "/private/var/folders/4n/2f7pppjd2_n0fftzg8vrlg040000gn/T/pytest-91/test_foo0",
+            "/Users/dain/workspace/real-project",
+        ]
+
+        result = get_project_display_name(project_dir_name, working_directories)
+        # Should use the real project, not the pytest temp dir
+        assert result == "real-project"
+
+    def test_only_tmp_paths_falls_back(self):
+        """Test fallback when all working directories are tmp paths."""
+        project_dir_name = "-tmp-pytest-123-test_foo0"
+        working_directories = [
+            "/private/var/folders/4n/test",
+            "/tmp/pytest-91/test_foo0",
+        ]
+
+        result = get_project_display_name(project_dir_name, working_directories)
+        # Should fall back to converting project directory name
+        assert result == "tmp/pytest/123/test_foo0"

@@ -1,0 +1,550 @@
+#!/usr/bin/env python3
+"""Tests for pagination functionality."""
+
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from claude_code_log.cache import (
+    CacheManager,
+    SessionCacheData,
+)
+from claude_code_log.converter import (
+    _get_page_html_path,
+    _assign_sessions_to_pages,
+)
+
+
+class TestPageHtmlPath:
+    """Tests for _get_page_html_path function."""
+
+    def test_page_1_returns_base_filename(self):
+        """Page 1 should return combined_transcripts.html."""
+        assert _get_page_html_path(1) == "combined_transcripts.html"
+
+    def test_page_2_returns_numbered_filename(self):
+        """Page 2 should return combined_transcripts_2.html."""
+        assert _get_page_html_path(2) == "combined_transcripts_2.html"
+
+    def test_page_10_returns_numbered_filename(self):
+        """Page 10 should return combined_transcripts_10.html."""
+        assert _get_page_html_path(10) == "combined_transcripts_10.html"
+
+
+class TestAssignSessionsToPages:
+    """Tests for _assign_sessions_to_pages function."""
+
+    def _make_session(
+        self, session_id: str, message_count: int, timestamp: str
+    ) -> SessionCacheData:
+        """Helper to create a SessionCacheData instance."""
+        return SessionCacheData(
+            session_id=session_id,
+            message_count=message_count,
+            first_timestamp=timestamp,
+            last_timestamp=timestamp,
+            first_user_message="Test message",
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+
+    def test_single_session_below_threshold(self):
+        """Single session below page_size should result in one page."""
+        sessions = {
+            "s1": self._make_session("s1", 100, "2023-01-01T10:00:00Z"),
+        }
+        pages = _assign_sessions_to_pages(sessions, page_size=5000)
+
+        assert len(pages) == 1
+        assert pages[0] == ["s1"]
+
+    def test_multiple_sessions_below_threshold(self):
+        """Multiple sessions below page_size should be on one page."""
+        sessions = {
+            "s1": self._make_session("s1", 1000, "2023-01-01T10:00:00Z"),
+            "s2": self._make_session("s2", 2000, "2023-01-02T10:00:00Z"),
+            "s3": self._make_session("s3", 1500, "2023-01-03T10:00:00Z"),
+        }
+        pages = _assign_sessions_to_pages(sessions, page_size=5000)
+
+        assert len(pages) == 1
+        assert sorted(pages[0]) == ["s1", "s2", "s3"]
+
+    def test_session_exceeds_threshold_creates_new_page(self):
+        """When adding a session exceeds threshold, it becomes last on current page."""
+        sessions = {
+            "s1": self._make_session("s1", 3000, "2023-01-01T10:00:00Z"),
+            "s2": self._make_session("s2", 3000, "2023-01-02T10:00:00Z"),
+            "s3": self._make_session("s3", 2000, "2023-01-03T10:00:00Z"),
+        }
+        pages = _assign_sessions_to_pages(sessions, page_size=5000)
+
+        # s1 (3000) + s2 (3000) > 5000, so s2 becomes last on page 1
+        # s3 (2000) goes to page 2
+        assert len(pages) == 2
+        assert pages[0] == ["s1", "s2"]
+        assert pages[1] == ["s3"]
+
+    def test_large_session_allows_overflow(self):
+        """A single large session is allowed to exceed page_size (no splitting)."""
+        sessions = {
+            "s1": self._make_session("s1", 10000, "2023-01-01T10:00:00Z"),
+        }
+        pages = _assign_sessions_to_pages(sessions, page_size=5000)
+
+        # Single session, even if large, stays on one page
+        assert len(pages) == 1
+        assert pages[0] == ["s1"]
+
+    def test_sessions_sorted_chronologically(self):
+        """Sessions should be assigned to pages in chronological order."""
+        sessions = {
+            "s3": self._make_session("s3", 1000, "2023-01-03T10:00:00Z"),
+            "s1": self._make_session("s1", 1000, "2023-01-01T10:00:00Z"),
+            "s2": self._make_session("s2", 1000, "2023-01-02T10:00:00Z"),
+        }
+        pages = _assign_sessions_to_pages(sessions, page_size=5000)
+
+        assert len(pages) == 1
+        # Should be in chronological order
+        assert pages[0] == ["s1", "s2", "s3"]
+
+    def test_multiple_pages_with_overflow(self):
+        """Test complex pagination with multiple pages."""
+        sessions = {
+            "s1": self._make_session("s1", 2000, "2023-01-01T10:00:00Z"),
+            "s2": self._make_session("s2", 4000, "2023-01-02T10:00:00Z"),  # exceeds
+            "s3": self._make_session("s3", 3000, "2023-01-03T10:00:00Z"),
+            "s4": self._make_session("s4", 3000, "2023-01-04T10:00:00Z"),  # exceeds
+            "s5": self._make_session("s5", 1000, "2023-01-05T10:00:00Z"),
+        }
+        pages = _assign_sessions_to_pages(sessions, page_size=5000)
+
+        # s1 (2000) + s2 (4000) > 5000, s2 last on page 1
+        # s3 (3000) + s4 (3000) > 5000, s4 last on page 2
+        # s5 (1000) on page 3
+        assert len(pages) == 3
+        assert pages[0] == ["s1", "s2"]
+        assert pages[1] == ["s3", "s4"]
+        assert pages[2] == ["s5"]
+
+    def test_empty_sessions(self):
+        """Empty sessions dict should return empty list."""
+        pages = _assign_sessions_to_pages({}, page_size=5000)
+        assert pages == []
+
+
+@pytest.fixture
+def temp_project_dir():
+    """Create a temporary project directory for testing."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield Path(temp_dir)
+
+
+@pytest.fixture
+def mock_version():
+    """Mock library version for consistent testing."""
+    return "1.0.0-test"
+
+
+@pytest.fixture
+def cache_manager(temp_project_dir, mock_version):
+    """Create a cache manager for testing."""
+    with patch("claude_code_log.cache.get_library_version", return_value=mock_version):
+        return CacheManager(temp_project_dir, mock_version)
+
+
+class TestPageCacheMethods:
+    """Tests for page cache methods in CacheManager."""
+
+    def test_get_page_count_empty(self, cache_manager):
+        """get_page_count should return 0 when no pages exist."""
+        assert cache_manager.get_page_count() == 0
+
+    def test_get_page_size_config_empty(self, cache_manager):
+        """get_page_size_config should return None when no pages exist."""
+        assert cache_manager.get_page_size_config() is None
+
+    def test_update_and_get_page_cache(self, cache_manager):
+        """Test updating and retrieving page cache data."""
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1", "s2"],
+            message_count=3000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-02T10:00:00Z",
+            total_input_tokens=1000,
+            total_output_tokens=500,
+            total_cache_creation_tokens=200,
+            total_cache_read_tokens=100,
+        )
+
+        page_data = cache_manager.get_page_data(1)
+        assert page_data is not None
+        assert page_data.page_number == 1
+        assert page_data.html_path == "combined_transcripts.html"
+        assert page_data.page_size_config == 5000
+        assert page_data.session_ids == ["s1", "s2"]
+        assert page_data.message_count == 3000
+        assert page_data.first_timestamp == "2023-01-01T10:00:00Z"
+        assert page_data.last_timestamp == "2023-01-02T10:00:00Z"
+        assert page_data.total_input_tokens == 1000
+        assert page_data.total_output_tokens == 500
+
+    def test_get_page_count_after_adding_pages(self, cache_manager):
+        """get_page_count should return correct count after adding pages."""
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+        cache_manager.update_page_cache(
+            page_number=2,
+            html_path="combined_transcripts_2.html",
+            page_size_config=5000,
+            session_ids=["s2"],
+            message_count=2000,
+            first_timestamp="2023-01-02T10:00:00Z",
+            last_timestamp="2023-01-02T11:00:00Z",
+            total_input_tokens=200,
+            total_output_tokens=100,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+
+        assert cache_manager.get_page_count() == 2
+
+    def test_get_page_size_config_after_adding_page(self, cache_manager):
+        """get_page_size_config should return the configured page size."""
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+
+        assert cache_manager.get_page_size_config() == 5000
+
+    def test_is_page_stale_no_cache(self, cache_manager):
+        """is_page_stale should return True when page not in cache."""
+        is_stale, reason = cache_manager.is_page_stale(1, 5000)
+        assert is_stale is True
+        assert "not_cached" in reason or "not in cache" in reason.lower()
+
+    def test_is_page_stale_page_size_changed(self, cache_manager):
+        """is_page_stale should return True when page_size changed."""
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+
+        is_stale, reason = cache_manager.is_page_stale(1, 10000)  # Different page_size
+        assert is_stale is True
+        assert "page_size" in reason.lower() or "size" in reason.lower()
+
+    def test_invalidate_all_pages(self, cache_manager):
+        """invalidate_all_pages should remove all page cache entries."""
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+        cache_manager.update_page_cache(
+            page_number=2,
+            html_path="combined_transcripts_2.html",
+            page_size_config=5000,
+            session_ids=["s2"],
+            message_count=2000,
+            first_timestamp="2023-01-02T10:00:00Z",
+            last_timestamp="2023-01-02T11:00:00Z",
+            total_input_tokens=200,
+            total_output_tokens=100,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+
+        old_paths = cache_manager.invalidate_all_pages()
+
+        assert len(old_paths) == 2
+        assert cache_manager.get_page_count() == 0
+        assert cache_manager.get_page_data(1) is None
+        assert cache_manager.get_page_data(2) is None
+
+    def test_get_all_pages(self, cache_manager):
+        """get_all_pages should return all page cache entries."""
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+        cache_manager.update_page_cache(
+            page_number=2,
+            html_path="combined_transcripts_2.html",
+            page_size_config=5000,
+            session_ids=["s2"],
+            message_count=2000,
+            first_timestamp="2023-01-02T10:00:00Z",
+            last_timestamp="2023-01-02T11:00:00Z",
+            total_input_tokens=200,
+            total_output_tokens=100,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+
+        all_pages = cache_manager.get_all_pages()
+
+        assert len(all_pages) == 2
+        assert all_pages[0].page_number == 1
+        assert all_pages[1].page_number == 2
+
+
+# Integration tests for pagination with converter
+
+
+def _create_session_messages(session_id: str, num_messages: int, base_timestamp: str):
+    """Helper to create messages for a session."""
+    messages = []
+    for i in range(num_messages):
+        # Alternate between user and assistant messages
+        if i % 2 == 0:
+            messages.append(
+                {
+                    "type": "user",
+                    "uuid": f"{session_id}-user-{i}",
+                    "timestamp": f"{base_timestamp}T{10 + i // 60:02d}:{i % 60:02d}:00Z",
+                    "sessionId": session_id,
+                    "version": "1.0.0",
+                    "parentUuid": None,
+                    "isSidechain": False,
+                    "userType": "user",
+                    "cwd": "/test",
+                    "message": {"role": "user", "content": f"Message {i} from user"},
+                }
+            )
+        else:
+            messages.append(
+                {
+                    "type": "assistant",
+                    "uuid": f"{session_id}-assistant-{i}",
+                    "timestamp": f"{base_timestamp}T{10 + i // 60:02d}:{i % 60:02d}:00Z",
+                    "sessionId": session_id,
+                    "version": "1.0.0",
+                    "parentUuid": None,
+                    "isSidechain": False,
+                    "userType": "assistant",
+                    "cwd": "/test",
+                    "requestId": f"req-{session_id}-{i}",
+                    "message": {
+                        "id": f"msg-{session_id}-{i}",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-3",
+                        "content": [{"type": "text", "text": f"Response {i}"}],
+                        "usage": {"input_tokens": 10, "output_tokens": 15},
+                    },
+                }
+            )
+    return messages
+
+
+class TestPaginationIntegration:
+    """Integration tests for pagination with the converter."""
+
+    def test_small_project_no_pagination(self, temp_project_dir):
+        """Projects below page_size should create single combined file."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create a project with 50 messages (below default 5000)
+        jsonl_file = temp_project_dir / "session1.jsonl"
+        messages = _create_session_messages("session1", 50, "2023-01-01")
+        with open(jsonl_file, "w", encoding="utf-8") as f:
+            for msg in messages:
+                f.write(json.dumps(msg) + "\n")
+
+        # Convert with default page_size
+        output = convert_jsonl_to_html(temp_project_dir, page_size=5000, silent=True)
+
+        # Should create single combined file
+        assert output.name == "combined_transcripts.html"
+        assert (temp_project_dir / "combined_transcripts.html").exists()
+        assert not (temp_project_dir / "combined_transcripts_2.html").exists()
+
+    def test_large_project_creates_multiple_pages(self, temp_project_dir):
+        """Projects above page_size should create multiple page files."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create multiple sessions totaling > 30 messages with page_size=10
+        for i, session_id in enumerate(
+            ["session1", "session2", "session3", "session4"]
+        ):
+            jsonl_file = temp_project_dir / f"{session_id}.jsonl"
+            messages = _create_session_messages(session_id, 15, f"2023-01-0{i + 1}")
+            with open(jsonl_file, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+        # Convert with small page_size to force pagination
+        output = convert_jsonl_to_html(temp_project_dir, page_size=20, silent=True)
+
+        # Should create multiple page files
+        assert output.name == "combined_transcripts.html"
+        assert (temp_project_dir / "combined_transcripts.html").exists()
+        # With 4 sessions x 15 messages = 60 messages, page_size=20
+        # Should create at least 2 pages
+        assert (temp_project_dir / "combined_transcripts_2.html").exists()
+
+    def test_page_size_change_regenerates_all(self, temp_project_dir):
+        """Changing page_size should regenerate all pages."""
+        from claude_code_log.converter import convert_jsonl_to_html
+        from claude_code_log.cache import CacheManager, get_library_version
+
+        # Create sessions
+        for i, session_id in enumerate(["session1", "session2", "session3"]):
+            jsonl_file = temp_project_dir / f"{session_id}.jsonl"
+            messages = _create_session_messages(session_id, 20, f"2023-01-0{i + 1}")
+            with open(jsonl_file, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+        # First conversion with page_size=30
+        convert_jsonl_to_html(temp_project_dir, page_size=30, silent=True)
+
+        # Check cache has page_size=30
+        cache_manager = CacheManager(temp_project_dir, get_library_version())
+        assert cache_manager.get_page_size_config() == 30
+
+        # Second conversion with different page_size=25
+        convert_jsonl_to_html(temp_project_dir, page_size=25, silent=True)
+
+        # Cache should now have page_size=25
+        cache_manager2 = CacheManager(temp_project_dir, get_library_version())
+        assert cache_manager2.get_page_size_config() == 25
+
+    def test_pagination_with_very_small_page_size(self, temp_project_dir):
+        """Test pagination with very small page size respects session boundaries."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create 4 sessions with 10 messages each
+        for i, session_id in enumerate(["s1", "s2", "s3", "s4"]):
+            jsonl_file = temp_project_dir / f"{session_id}.jsonl"
+            messages = _create_session_messages(session_id, 10, f"2023-01-0{i + 1}")
+            with open(jsonl_file, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+        # Convert with tiny page_size=5 (each session has 10 messages)
+        # New simpler pagination logic:
+        # - Add session, then check if page > limit
+        # - If over, close page immediately
+        # s1: add, count=10 > 5 -> page 1 = [s1]
+        # s2: add, count=10 > 5 -> page 2 = [s2]
+        # s3: add, count=10 > 5 -> page 3 = [s3]
+        # s4: add, count=10 > 5 -> page 4 = [s4]
+        convert_jsonl_to_html(temp_project_dir, page_size=5, silent=True)
+
+        # Should create 4 pages (one per session, each exceeds threshold)
+        assert (temp_project_dir / "combined_transcripts.html").exists()
+        assert (temp_project_dir / "combined_transcripts_2.html").exists()
+        assert (temp_project_dir / "combined_transcripts_3.html").exists()
+        assert (temp_project_dir / "combined_transcripts_4.html").exists()
+
+    def test_pagination_html_contains_navigation(self, temp_project_dir):
+        """Paginated pages should contain navigation links."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create 4 sessions that will span multiple pages
+        # With page_size=15 and sessions of 10 messages:
+        # s1 (10): page empty, add s1 (count=10)
+        # s2 (10): 10+10 > 15 and page not empty -> s2 becomes last, page 1 = [s1, s2]
+        # s3 (10): page empty, add s3 (count=10)
+        # s4 (10): 10+10 > 15 and page not empty -> s4 becomes last, page 2 = [s3, s4]
+        for i, session_id in enumerate(["s1", "s2", "s3", "s4"]):
+            jsonl_file = temp_project_dir / f"{session_id}.jsonl"
+            messages = _create_session_messages(session_id, 10, f"2023-01-0{i + 1}")
+            with open(jsonl_file, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+        convert_jsonl_to_html(temp_project_dir, page_size=15, silent=True)
+
+        # Check page 1 has Next link (pre-enabled when page exceeds threshold)
+        page1_content = (temp_project_dir / "combined_transcripts.html").read_text(
+            encoding="utf-8"
+        )
+        assert "Next" in page1_content or "combined_transcripts_2.html" in page1_content
+
+        # Check page 2 has Previous link
+        page2_content = (temp_project_dir / "combined_transcripts_2.html").read_text(
+            encoding="utf-8"
+        )
+        assert (
+            "Previous" in page2_content or "combined_transcripts.html" in page2_content
+        )
+
+    def test_page_contains_stats(self, temp_project_dir):
+        """Paginated pages should contain stats (message count, date range)."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create sessions
+        for i, session_id in enumerate(["s1", "s2"]):
+            jsonl_file = temp_project_dir / f"{session_id}.jsonl"
+            messages = _create_session_messages(session_id, 20, f"2023-01-0{i + 1}")
+            with open(jsonl_file, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+        convert_jsonl_to_html(temp_project_dir, page_size=15, silent=True)
+
+        # Check page contains stats
+        page1_content = (temp_project_dir / "combined_transcripts.html").read_text(
+            encoding="utf-8"
+        )
+        assert "messages" in page1_content.lower()
+        assert "Page 1" in page1_content or "page-navigation" in page1_content

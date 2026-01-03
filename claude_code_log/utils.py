@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from claude_code_log.cache import SessionCacheData
 from .models import ContentItem, TextContent, TranscriptEntry, UserTranscriptEntry
 from .factories import (
     IDE_DIAGNOSTICS_PATTERN,
@@ -199,6 +198,17 @@ def extract_working_directories(
     # Sort by timestamp (most recent first) and return just the paths
     sorted_dirs = sorted(working_directories.items(), key=lambda x: x[1], reverse=True)
     return [path for path, _ in sorted_dirs]
+
+
+# IDE tag patterns for compact preview rendering (same as renderer.py)
+IDE_OPENED_FILE_PATTERN = re.compile(
+    r"<ide_opened_file>(.*?)</ide_opened_file>", re.DOTALL
+)
+IDE_SELECTION_PATTERN = re.compile(r"<ide_selection>(.*?)</ide_selection>", re.DOTALL)
+IDE_DIAGNOSTICS_PATTERN = re.compile(
+    r"<post-tool-use-hook>\s*<ide_diagnostics>(.*?)</ide_diagnostics>\s*</post-tool-use-hook>",
+    re.DOTALL,
+)
 
 
 def _compact_ide_tags_for_preview(text_content: str) -> str:

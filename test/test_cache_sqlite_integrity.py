@@ -1,0 +1,908 @@
+#!/usr/bin/env python3
+"""Comprehensive SQL-level integrity tests for SQLite cache."""
+
+import json
+import sqlite3
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+import pytest
+
+from claude_code_log.cache import CacheManager, SessionCacheData
+from claude_code_log.models import (
+    AssistantMessage,
+    AssistantTranscriptEntry,
+    TextContent,
+    ThinkingContent,
+    ToolResultContent,
+    ToolUseContent,
+    UsageInfo,
+    UserMessage,
+    UserTranscriptEntry,
+)
+
+
+@pytest.fixture
+def temp_project_dir():
+    """Create a temporary project directory."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_dir = Path(temp_dir) / "test-project"
+        project_dir.mkdir()
+        yield project_dir
+
+
+@pytest.fixture
+def cache_manager(temp_project_dir):
+    """Create a cache manager for testing."""
+    return CacheManager(temp_project_dir, "1.0.0")
+
+
+@pytest.fixture
+def sample_user_entry():
+    """Create a sample user transcript entry."""
+    return UserTranscriptEntry(
+        type="user",
+        uuid="user-123",
+        timestamp="2024-01-01T10:00:00Z",
+        sessionId="session-1",
+        version="1.0.0",
+        parentUuid=None,
+        isSidechain=False,
+        userType="external",
+        cwd="/test/path",
+        message=UserMessage(role="user", content="Hello, world!"),
+    )
+
+
+@pytest.fixture
+def sample_assistant_entry():
+    """Create a sample assistant transcript entry with token usage."""
+    return AssistantTranscriptEntry(
+        type="assistant",
+        uuid="assistant-123",
+        timestamp="2024-01-01T10:01:00Z",
+        sessionId="session-1",
+        version="1.0.0",
+        parentUuid="user-123",
+        isSidechain=False,
+        userType="assistant",
+        cwd="/test/path",
+        requestId="req-123",
+        message=AssistantMessage(
+            id="msg-123",
+            type="message",
+            role="assistant",
+            model="claude-3",
+            content=[TextContent(type="text", text="Hi there!")],
+            usage=UsageInfo(
+                input_tokens=100,
+                output_tokens=50,
+                cache_creation_input_tokens=10,
+                cache_read_input_tokens=5,
+            ),
+        ),
+    )
+
+
+class TestCascadeDelete:
+    """Tests for cascade delete behaviour."""
+
+    def test_cascade_delete_project_removes_all_nested_records(
+        self, temp_project_dir, sample_user_entry, sample_assistant_entry
+    ):
+        """Deleting project cascades to files, messages, sessions."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create a JSONL file with entries
+        jsonl_file = temp_project_dir / "test.jsonl"
+        jsonl_file.write_text(
+            json.dumps(sample_user_entry.model_dump())
+            + "\n"
+            + json.dumps(sample_assistant_entry.model_dump())
+            + "\n",
+            encoding="utf-8",
+        )
+
+        # Save entries to cache
+        cache_manager.save_cached_entries(
+            jsonl_file, [sample_user_entry, sample_assistant_entry]
+        )
+
+        # Update session cache
+        cache_manager.update_session_cache(
+            {
+                "session-1": SessionCacheData(
+                    session_id="session-1",
+                    summary="Test session",
+                    first_timestamp="2024-01-01T10:00:00Z",
+                    last_timestamp="2024-01-01T10:01:00Z",
+                    message_count=2,
+                    first_user_message="Hello, world!",
+                    cwd="/test/path",
+                    total_input_tokens=100,
+                    total_output_tokens=50,
+                )
+            }
+        )
+
+        # Get project ID
+        project_id = cache_manager._project_id
+
+        # Verify data exists
+        with cache_manager._get_connection() as conn:
+            files = conn.execute(
+                "SELECT COUNT(*) FROM cached_files WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()[0]
+            messages = conn.execute(
+                "SELECT COUNT(*) FROM messages WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()[0]
+            sessions = conn.execute(
+                "SELECT COUNT(*) FROM sessions WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()[0]
+
+        assert files > 0
+        assert messages > 0
+        assert sessions > 0
+
+        # Delete the project
+        with cache_manager._get_connection() as conn:
+            conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.commit()
+
+        # Verify cascade delete removed all nested records
+        with cache_manager._get_connection() as conn:
+            files = conn.execute(
+                "SELECT COUNT(*) FROM cached_files WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()[0]
+            messages = conn.execute(
+                "SELECT COUNT(*) FROM messages WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()[0]
+            sessions = conn.execute(
+                "SELECT COUNT(*) FROM sessions WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()[0]
+
+        assert files == 0
+        assert messages == 0
+        assert sessions == 0
+
+
+class TestTokenSumVerification:
+    """Tests for token sum calculations."""
+
+    def test_session_token_totals_match_message_sums(
+        self, temp_project_dir, sample_assistant_entry
+    ):
+        """Session token totals equal sum of message tokens."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create multiple assistant entries with known token values
+        entries = []
+        total_input = 0
+        total_output = 0
+
+        for i in range(5):
+            entry = AssistantTranscriptEntry(
+                type="assistant",
+                uuid=f"assistant-{i}",
+                timestamp=f"2024-01-01T10:{i:02d}:00Z",
+                sessionId="session-1",
+                version="1.0.0",
+                parentUuid=None,
+                isSidechain=False,
+                userType="assistant",
+                cwd="/test/path",
+                requestId=f"req-{i}",
+                message=AssistantMessage(
+                    id=f"msg-{i}",
+                    type="message",
+                    role="assistant",
+                    model="claude-3",
+                    content=[TextContent(type="text", text=f"Response {i}")],
+                    usage=UsageInfo(
+                        input_tokens=100 + i * 10,
+                        output_tokens=50 + i * 5,
+                    ),
+                ),
+            )
+            entries.append(entry)
+            total_input += 100 + i * 10
+            total_output += 50 + i * 5
+
+        # Save entries
+        jsonl_file = temp_project_dir / "test.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        # Query actual sums from database
+        with cache_manager._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) as total_input,
+                    COALESCE(SUM(output_tokens), 0) as total_output
+                FROM messages
+                WHERE project_id = ? AND session_id = 'session-1'
+                """,
+                (cache_manager._project_id,),
+            ).fetchone()
+
+        assert row["total_input"] == total_input
+        assert row["total_output"] == total_output
+
+
+class TestForeignKeyConstraints:
+    """Tests for foreign key constraint enforcement."""
+
+    def test_cannot_insert_message_without_valid_file_id(self, cache_manager):
+        """Foreign key prevents orphaned messages."""
+        with cache_manager._get_connection() as conn:
+            # Attempt to insert message with non-existent file_id
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    """
+                    INSERT INTO messages (project_id, file_id, type, content)
+                    VALUES (?, 99999, 'user', '{}')
+                    """,
+                    (cache_manager._project_id,),
+                )
+
+    def test_cannot_insert_message_without_valid_project_id(self, cache_manager):
+        """Foreign key prevents messages with invalid project."""
+        with cache_manager._get_connection() as conn:
+            # First create a valid file
+            conn.execute(
+                """
+                INSERT INTO cached_files (project_id, file_name, file_path, source_mtime, cached_mtime)
+                VALUES (?, 'test.jsonl', '/test/test.jsonl', 0, 0)
+                """,
+                (cache_manager._project_id,),
+            )
+            file_id = conn.execute(
+                "SELECT id FROM cached_files WHERE file_name = 'test.jsonl'"
+            ).fetchone()[0]
+
+            # Attempt to insert message with non-existent project_id
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    """
+                    INSERT INTO messages (project_id, file_id, type, content)
+                    VALUES (99999, ?, 'user', '{}')
+                    """,
+                    (file_id,),
+                )
+
+
+class TestSerializationRoundTrip:
+    """Tests for message serialization/deserialization."""
+
+    def test_complex_message_types_roundtrip_correctly(self, temp_project_dir):
+        """Tool use, images, thinking content survive JSON serialization."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create entries with complex content types
+        entries = [
+            # Tool use
+            AssistantTranscriptEntry(
+                type="assistant",
+                uuid="tool-use-msg",
+                timestamp="2024-01-01T10:00:00Z",
+                sessionId="session-1",
+                version="1.0.0",
+                parentUuid=None,
+                isSidechain=False,
+                userType="assistant",
+                cwd="/test",
+                requestId="req-1",
+                message=AssistantMessage(
+                    id="msg-tool",
+                    type="message",
+                    role="assistant",
+                    model="claude-3",
+                    content=[
+                        ToolUseContent(
+                            type="tool_use",
+                            id="tool-123",
+                            name="read_file",
+                            input={"path": "/test/file.txt"},
+                        )
+                    ],
+                ),
+            ),
+            # Tool result
+            UserTranscriptEntry(
+                type="user",
+                uuid="tool-result-msg",
+                timestamp="2024-01-01T10:01:00Z",
+                sessionId="session-1",
+                version="1.0.0",
+                parentUuid="tool-use-msg",
+                isSidechain=False,
+                userType="tool_result",
+                cwd="/test",
+                message=UserMessage(
+                    role="user",
+                    content=[
+                        ToolResultContent(
+                            type="tool_result",
+                            tool_use_id="tool-123",
+                            content="File contents here",
+                        )
+                    ],
+                ),
+            ),
+            # Thinking content
+            AssistantTranscriptEntry(
+                type="assistant",
+                uuid="thinking-msg",
+                timestamp="2024-01-01T10:02:00Z",
+                sessionId="session-1",
+                version="1.0.0",
+                parentUuid=None,
+                isSidechain=False,
+                userType="assistant",
+                cwd="/test",
+                requestId="req-2",
+                message=AssistantMessage(
+                    id="msg-thinking",
+                    type="message",
+                    role="assistant",
+                    model="claude-3",
+                    content=[
+                        ThinkingContent(
+                            type="thinking",
+                            thinking="Let me think about this...",
+                        ),
+                        TextContent(type="text", text="Here's my answer"),
+                    ],
+                ),
+            ),
+        ]
+
+        # Save entries
+        jsonl_file = temp_project_dir / "complex.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        # Load and compare
+        loaded = cache_manager.load_cached_entries(jsonl_file)
+        assert loaded is not None
+        assert len(loaded) == len(entries)
+
+        for original, loaded_entry in zip(entries, loaded):
+            # Compare key fields - exact serialization may differ due to default values
+            assert original.type == loaded_entry.type
+            assert original.uuid == loaded_entry.uuid
+            assert original.timestamp == loaded_entry.timestamp
+            assert original.sessionId == loaded_entry.sessionId
+
+            # For assistant entries, verify message content types are preserved
+            if hasattr(original, "message") and hasattr(original.message, "content"):
+                orig_content = original.message.content
+                loaded_content = loaded_entry.message.content
+                assert len(orig_content) == len(loaded_content)
+                for orig_item, loaded_item in zip(orig_content, loaded_content):
+                    assert orig_item.type == loaded_item.type
+
+
+class TestIndexUniquenessConstraints:
+    """Tests for UNIQUE constraints on indexes."""
+
+    def test_duplicate_file_name_in_project_fails(self, cache_manager):
+        """UNIQUE(project_id, file_name) enforced."""
+        with cache_manager._get_connection() as conn:
+            # Insert first file
+            conn.execute(
+                """
+                INSERT INTO cached_files (project_id, file_name, file_path, source_mtime, cached_mtime)
+                VALUES (?, 'duplicate.jsonl', '/path1', 0, 0)
+                """,
+                (cache_manager._project_id,),
+            )
+            conn.commit()
+
+            # Attempt to insert duplicate file name
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    """
+                    INSERT INTO cached_files (project_id, file_name, file_path, source_mtime, cached_mtime)
+                    VALUES (?, 'duplicate.jsonl', '/path2', 0, 0)
+                    """,
+                    (cache_manager._project_id,),
+                )
+
+    def test_duplicate_session_id_in_project_fails(self, cache_manager):
+        """UNIQUE(project_id, session_id) enforced."""
+        with cache_manager._get_connection() as conn:
+            # Insert first session
+            conn.execute(
+                """
+                INSERT INTO sessions (project_id, session_id, first_timestamp, last_timestamp)
+                VALUES (?, 'dup-session', '2024-01-01', '2024-01-01')
+                """,
+                (cache_manager._project_id,),
+            )
+            conn.commit()
+
+            # Attempt to insert duplicate session_id
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    """
+                    INSERT INTO sessions (project_id, session_id, first_timestamp, last_timestamp)
+                    VALUES (?, 'dup-session', '2024-01-02', '2024-01-02')
+                    """,
+                    (cache_manager._project_id,),
+                )
+
+
+class TestTimestampOrdering:
+    """Tests for message timestamp ordering."""
+
+    def test_messages_ordered_by_timestamp(self, temp_project_dir, sample_user_entry):
+        """Messages retrieved in timestamp order."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create entries with out-of-order timestamps
+        entries = []
+        timestamps = [
+            "2024-01-01T10:05:00Z",
+            "2024-01-01T10:01:00Z",
+            "2024-01-01T10:03:00Z",
+            "2024-01-01T10:02:00Z",
+            "2024-01-01T10:04:00Z",
+        ]
+
+        for i, ts in enumerate(timestamps):
+            entry = UserTranscriptEntry(
+                type="user",
+                uuid=f"user-{i}",
+                timestamp=ts,
+                sessionId="session-1",
+                version="1.0.0",
+                parentUuid=None,
+                isSidechain=False,
+                userType="external",
+                cwd="/test",
+                message=UserMessage(role="user", content=f"Message {i}"),
+            )
+            entries.append(entry)
+
+        jsonl_file = temp_project_dir / "order.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        # Load and verify order
+        loaded = cache_manager.load_cached_entries(jsonl_file)
+        assert loaded is not None
+
+        loaded_timestamps = [
+            ts for e in loaded if (ts := getattr(e, "timestamp", None)) is not None
+        ]
+        assert loaded_timestamps == sorted(loaded_timestamps)
+
+
+class TestNullTokenHandling:
+    """Tests for NULL token value handling."""
+
+    def test_null_tokens_handled_in_aggregates(self, temp_project_dir):
+        """NULL token values don't corrupt sums."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create mix of entries with and without tokens
+        entries = [
+            # Entry with tokens
+            AssistantTranscriptEntry(
+                type="assistant",
+                uuid="with-tokens",
+                timestamp="2024-01-01T10:00:00Z",
+                sessionId="session-1",
+                version="1.0.0",
+                parentUuid=None,
+                isSidechain=False,
+                userType="assistant",
+                cwd="/test",
+                requestId="req-1",
+                message=AssistantMessage(
+                    id="msg-1",
+                    type="message",
+                    role="assistant",
+                    model="claude-3",
+                    content=[TextContent(type="text", text="With tokens")],
+                    usage=UsageInfo(input_tokens=100, output_tokens=50),
+                ),
+            ),
+            # Entry without usage (NULL tokens)
+            UserTranscriptEntry(
+                type="user",
+                uuid="without-tokens",
+                timestamp="2024-01-01T10:01:00Z",
+                sessionId="session-1",
+                version="1.0.0",
+                parentUuid=None,
+                isSidechain=False,
+                userType="external",
+                cwd="/test",
+                message=UserMessage(role="user", content="No tokens"),
+            ),
+        ]
+
+        jsonl_file = temp_project_dir / "mixed.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        # Query sums - COALESCE should handle NULLs
+        with cache_manager._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(SUM(input_tokens), 0) as total_input,
+                    COALESCE(SUM(output_tokens), 0) as total_output
+                FROM messages
+                WHERE project_id = ?
+                """,
+                (cache_manager._project_id,),
+            ).fetchone()
+
+        # Should only count the entry with tokens
+        assert row["total_input"] == 100
+        assert row["total_output"] == 50
+
+
+class TestMessageFileRelationship:
+    """Tests for message-file relationships."""
+
+    def test_cached_file_message_count_matches_actual(
+        self, temp_project_dir, sample_user_entry, sample_assistant_entry
+    ):
+        """message_count column matches COUNT(*) FROM messages."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        entries = [sample_user_entry, sample_assistant_entry]
+        jsonl_file = temp_project_dir / "count.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        with cache_manager._get_connection() as conn:
+            # Get stored message count
+            file_row = conn.execute(
+                "SELECT id, message_count FROM cached_files WHERE file_name = ?",
+                ("count.jsonl",),
+            ).fetchone()
+
+            # Get actual count
+            actual_count = conn.execute(
+                "SELECT COUNT(*) FROM messages WHERE file_id = ?",
+                (file_row["id"],),
+            ).fetchone()[0]
+
+        assert file_row["message_count"] == actual_count
+        assert file_row["message_count"] == len(entries)
+
+
+class TestWALMode:
+    """Tests for WAL journal mode."""
+
+    def test_wal_journal_mode_enabled(self, cache_manager):
+        """Verify WAL mode is active."""
+        with cache_manager._get_connection() as conn:
+            row = conn.execute("PRAGMA journal_mode").fetchone()
+            assert row[0] == "wal"
+
+
+class TestConcurrentAccess:
+    """Tests for concurrent database access."""
+
+    def test_concurrent_readers_dont_block(self, temp_project_dir):
+        """Multiple readers can access simultaneously."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Add some data
+        entry = UserTranscriptEntry(
+            type="user",
+            uuid="user-1",
+            timestamp="2024-01-01T10:00:00Z",
+            sessionId="session-1",
+            version="1.0.0",
+            parentUuid=None,
+            isSidechain=False,
+            userType="external",
+            cwd="/test",
+            message=UserMessage(role="user", content="Test"),
+        )
+
+        jsonl_file = temp_project_dir / "concurrent.jsonl"
+        jsonl_file.write_text(json.dumps(entry.model_dump()), encoding="utf-8")
+        cache_manager.save_cached_entries(jsonl_file, [entry])
+
+        results = []
+        errors = []
+
+        def read_data():
+            try:
+                cm = CacheManager(temp_project_dir, "1.0.0")
+                data = cm.get_cached_project_data()
+                results.append(data is not None)
+            except Exception as e:
+                errors.append(str(e))
+
+        # Start multiple reader threads
+        threads = [threading.Thread(target=read_data) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        assert all(results), "Not all reads succeeded"
+
+
+class TestLargeDatasetPerformance:
+    """Tests for performance with large datasets."""
+
+    def test_query_performance_with_large_dataset(self, temp_project_dir):
+        """Queries complete in reasonable time with large datasets."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create 1000 entries (reduced from 10k for test speed)
+        entries = []
+        for i in range(1000):
+            entry = UserTranscriptEntry(
+                type="user",
+                uuid=f"user-{i}",
+                timestamp=f"2024-01-{(i % 30) + 1:02d}T{i % 24:02d}:00:00Z",
+                sessionId=f"session-{i % 10}",
+                version="1.0.0",
+                parentUuid=None,
+                isSidechain=False,
+                userType="external",
+                cwd="/test",
+                message=UserMessage(role="user", content=f"Message {i}"),
+            )
+            entries.append(entry)
+
+        jsonl_file = temp_project_dir / "large.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        # Time filtered loading
+        start = time.time()
+        loaded = cache_manager.load_cached_entries_filtered(
+            jsonl_file, "2024-01-15", "2024-01-20"
+        )
+        elapsed = time.time() - start
+
+        assert loaded is not None
+        assert elapsed < 2.0, f"Query took too long: {elapsed:.2f}s"
+
+
+class TestSessionBoundaryDetection:
+    """Tests for session boundary correctness."""
+
+    def test_sessions_contain_correct_messages(self, temp_project_dir):
+        """Each session contains only its messages."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create entries for multiple sessions
+        entries = []
+        for session_num in range(3):
+            for msg_num in range(5):
+                entry = UserTranscriptEntry(
+                    type="user",
+                    uuid=f"user-s{session_num}-m{msg_num}",
+                    timestamp=f"2024-01-01T{10 + session_num}:{msg_num * 10:02d}:00Z",
+                    sessionId=f"session-{session_num}",
+                    version="1.0.0",
+                    parentUuid=None,
+                    isSidechain=False,
+                    userType="external",
+                    cwd="/test",
+                    message=UserMessage(
+                        role="user",
+                        content=f"Session {session_num} message {msg_num}",
+                    ),
+                )
+                entries.append(entry)
+
+        jsonl_file = temp_project_dir / "sessions.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        # Verify each session has exactly 5 messages
+        with cache_manager._get_connection() as conn:
+            for session_num in range(3):
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM messages WHERE project_id = ? AND session_id = ?",
+                    (cache_manager._project_id, f"session-{session_num}"),
+                ).fetchone()[0]
+                assert count == 5, (
+                    f"Session {session_num} has {count} messages, expected 5"
+                )
+
+
+class TestCacheStatsAccuracy:
+    """Tests for cache statistics accuracy."""
+
+    def test_cache_stats_match_actual_counts(
+        self, temp_project_dir, sample_user_entry, sample_assistant_entry
+    ):
+        """get_cache_stats() returns accurate data."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        entries = [sample_user_entry, sample_assistant_entry]
+        jsonl_file = temp_project_dir / "stats.jsonl"
+        jsonl_file.write_text(
+            "\n".join(json.dumps(e.model_dump()) for e in entries),
+            encoding="utf-8",
+        )
+        cache_manager.save_cached_entries(jsonl_file, entries)
+
+        # Update aggregates
+        cache_manager.update_project_aggregates(
+            total_message_count=2,
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=10,
+            total_cache_read_tokens=5,
+            earliest_timestamp="2024-01-01T10:00:00Z",
+            latest_timestamp="2024-01-01T10:01:00Z",
+        )
+
+        cache_manager.update_session_cache(
+            {
+                "session-1": SessionCacheData(
+                    session_id="session-1",
+                    summary=None,
+                    first_timestamp="2024-01-01T10:00:00Z",
+                    last_timestamp="2024-01-01T10:01:00Z",
+                    message_count=2,
+                    first_user_message="Hello, world!",
+                )
+            }
+        )
+
+        stats = cache_manager.get_cache_stats()
+
+        assert stats["cache_enabled"] is True
+        assert stats["cached_files_count"] == 1
+        assert stats["total_cached_messages"] == 2
+        assert stats["total_sessions"] == 1
+
+
+class TestWorkingDirectoryQuery:
+    """Tests for working directory queries."""
+
+    def test_get_working_directories_returns_distinct_cwds(self, temp_project_dir):
+        """get_working_directories() returns unique values."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        # Create sessions with duplicate cwds
+        cache_manager.update_session_cache(
+            {
+                "session-1": SessionCacheData(
+                    session_id="session-1",
+                    summary=None,
+                    first_timestamp="2024-01-01T10:00:00Z",
+                    last_timestamp="2024-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    cwd="/path/to/project",
+                ),
+                "session-2": SessionCacheData(
+                    session_id="session-2",
+                    summary=None,
+                    first_timestamp="2024-01-02T10:00:00Z",
+                    last_timestamp="2024-01-02T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    cwd="/path/to/project",  # Same cwd
+                ),
+                "session-3": SessionCacheData(
+                    session_id="session-3",
+                    summary=None,
+                    first_timestamp="2024-01-03T10:00:00Z",
+                    last_timestamp="2024-01-03T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    cwd="/different/path",
+                ),
+            }
+        )
+
+        cwds = cache_manager.get_working_directories()
+
+        # Should be deduplicated
+        assert len(cwds) == 2
+        assert set(cwds) == {"/path/to/project", "/different/path"}
+
+
+class TestFileModificationDetection:
+    """Tests for file modification time detection."""
+
+    def test_mtime_change_invalidates_cache(self, temp_project_dir, sample_user_entry):
+        """Changing file mtime marks cache as stale."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        jsonl_file = temp_project_dir / "mtime.jsonl"
+        jsonl_file.write_text(
+            json.dumps(sample_user_entry.model_dump()), encoding="utf-8"
+        )
+        cache_manager.save_cached_entries(jsonl_file, [sample_user_entry])
+
+        # Verify cache is valid
+        assert cache_manager.is_file_cached(jsonl_file) is True
+
+        # Wait and touch file to change mtime
+        time.sleep(1.1)
+        jsonl_file.write_text(
+            json.dumps(sample_user_entry.model_dump()) + "\n", encoding="utf-8"
+        )
+
+        # Cache should be invalidated
+        assert cache_manager.is_file_cached(jsonl_file) is False
+
+
+class TestMigrationIntegrity:
+    """Tests for migration system integrity."""
+
+    def test_migration_checksum_stored(self, temp_project_dir):
+        """Migration checksums are stored in _schema_version."""
+        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+
+        with cache_manager._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT version, filename, checksum FROM _schema_version"
+            ).fetchall()
+
+        assert len(rows) >= 1
+        for row in rows:
+            assert row["version"] > 0
+            assert row["filename"].endswith(".sql")
+            assert len(row["checksum"]) == 64  # SHA256 hex length
+
+    def test_migration_applied_only_once(self, temp_project_dir):
+        """Migrations are not re-applied on subsequent runs."""
+        # First run
+        cm1 = CacheManager(temp_project_dir, "1.0.0")
+
+        with cm1._get_connection() as conn:
+            initial_count = conn.execute(
+                "SELECT COUNT(*) FROM _schema_version"
+            ).fetchone()[0]
+
+        # Second run
+        cm2 = CacheManager(temp_project_dir, "1.0.0")
+
+        with cm2._get_connection() as conn:
+            final_count = conn.execute(
+                "SELECT COUNT(*) FROM _schema_version"
+            ).fetchone()[0]
+
+        assert initial_count == final_count

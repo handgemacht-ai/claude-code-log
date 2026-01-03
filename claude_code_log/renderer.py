@@ -2303,3 +2303,18 @@ def get_renderer(format: str, image_export_mode: Optional[str] = None) -> Render
         mode = image_export_mode or "referenced"
         return MarkdownRenderer(image_export_mode=mode)
     raise ValueError(f"Unsupported format: {format}")
+
+
+def is_html_outdated(html_file_path: Path) -> bool:
+    """Check if an HTML file is outdated based on its version comment.
+
+    This is a convenience function that uses the HtmlRenderer's is_outdated method.
+
+    Returns:
+        True if the file should be regenerated (missing version, different version, or file doesn't exist).
+        False if the file is current.
+    """
+    from .html.renderer import HtmlRenderer
+
+    renderer = HtmlRenderer()
+    return renderer.is_outdated(html_file_path)

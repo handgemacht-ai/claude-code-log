@@ -5,7 +5,6 @@ import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
-from datetime import datetime
 
 import pytest
 from click.testing import CliRunner
@@ -96,9 +95,9 @@ class TestCacheIntegrationCLI:
         result1 = runner.invoke(main, [str(project_dir)])
         assert result1.exit_code == 0
 
-        # Check if cache was created
-        cache_dir = project_dir / "cache"
-        assert cache_dir.exists()
+        # Check if SQLite cache was created at parent level
+        cache_db = project_dir.parent / "cache.db"
+        assert cache_db.exists()
 
         # Clear the cache
         runner.invoke(main, [str(project_dir), "--clear-cache"])
@@ -107,12 +106,14 @@ class TestCacheIntegrationCLI:
         result2 = runner.invoke(main, [str(project_dir), "--no-cache"])
         assert result2.exit_code == 0
 
-        # Cache should not be created
-        cache_files = list(cache_dir.glob("*.json")) if cache_dir.exists() else []
-        assert len(cache_files) == 0
+        # Cache should be empty (project should not be populated)
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert cached_data.total_message_count == 0
 
     def test_cli_clear_cache_flag(self, setup_test_project):
-        """Test --clear-cache flag removes cache files."""
+        """Test --clear-cache flag clears cache data."""
         project_dir = setup_test_project
 
         runner = CliRunner()
@@ -121,19 +122,21 @@ class TestCacheIntegrationCLI:
         result1 = runner.invoke(main, [str(project_dir)])
         assert result1.exit_code == 0
 
-        # Verify cache exists
-        cache_dir = project_dir / "cache"
-        assert cache_dir.exists()
-        cache_files = list(cache_dir.glob("*.json"))
-        assert len(cache_files) > 0
+        # Verify cache exists with data
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert cached_data.total_message_count > 0
 
         # Clear cache
         result2 = runner.invoke(main, [str(project_dir), "--clear-cache"])
         assert result2.exit_code == 0
 
-        # Verify cache is cleared
-        cache_files = list(cache_dir.glob("*.json")) if cache_dir.exists() else []
-        assert len(cache_files) == 0
+        # Verify cache is cleared (no files or sessions)
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert len(cached_data.cached_files) == 0
 
     def test_cli_all_projects_caching(self, temp_projects_dir, sample_jsonl_data):
         """Test caching with --all-projects flag."""
@@ -143,7 +146,7 @@ class TestCacheIntegrationCLI:
             project_dir.mkdir()
 
             jsonl_file = project_dir / f"session-{i}.jsonl"
-            with open(jsonl_file, "w") as f:
+            with open(jsonl_file, "w", encoding="utf-8") as f:
                 for entry in sample_jsonl_data:
                     # Modify session ID for each project
                     entry_copy = entry.copy()
@@ -157,14 +160,17 @@ class TestCacheIntegrationCLI:
         result = runner.invoke(main, [str(temp_projects_dir), "--all-projects"])
         assert result.exit_code == 0
 
-        # Verify cache created for each project
+        # Verify SQLite cache database created at projects level
+        cache_db = temp_projects_dir / "cache.db"
+        assert cache_db.exists()
+
+        # Verify cache data exists for each project
         for i in range(3):
             project_dir = temp_projects_dir / f"project-{i}"
-            cache_dir = project_dir / "cache"
-            assert cache_dir.exists()
-
-            cache_files = list(cache_dir.glob("*.json"))
-            assert len(cache_files) >= 1  # At least index.json
+            cache_manager = CacheManager(project_dir, "1.0.0")
+            cached_data = cache_manager.get_cached_project_data()
+            assert cached_data is not None
+            assert len(cached_data.cached_files) >= 1
 
     def test_cli_date_filtering_with_cache(self, setup_test_project):
         """Test date filtering works correctly with caching."""
@@ -195,11 +201,15 @@ class TestCacheIntegrationConverter:
         output1 = convert_jsonl_to_html(input_path=project_dir, use_cache=True)
         assert output1.exists()
 
-        # Verify cache was created
-        cache_dir = project_dir / "cache"
-        assert cache_dir.exists()
-        cache_files = list(cache_dir.glob("*.json"))
-        assert len(cache_files) >= 1
+        # Verify SQLite cache was created
+        cache_db = project_dir.parent / "cache.db"
+        assert cache_db.exists()
+
+        # Verify cache has data
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert len(cached_data.cached_files) >= 1
 
         # Second conversion (should use cache)
         output2 = convert_jsonl_to_html(input_path=project_dir, use_cache=True)
@@ -213,11 +223,11 @@ class TestCacheIntegrationConverter:
         output = convert_jsonl_to_html(input_path=project_dir, use_cache=False)
         assert output.exists()
 
-        # Cache should not be created
-        cache_dir = project_dir / "cache"
-        if cache_dir.exists():
-            cache_files = list(cache_dir.glob("*.json"))
-            assert len(cache_files) == 0
+        # SQLite db may still exist from fixture setup, but project data should be empty
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert cached_data.total_message_count == 0
 
     def test_process_projects_hierarchy_with_cache(
         self, temp_projects_dir, sample_jsonl_data
@@ -229,7 +239,7 @@ class TestCacheIntegrationConverter:
             project_dir.mkdir()
 
             jsonl_file = project_dir / f"session-{i}.jsonl"
-            with open(jsonl_file, "w") as f:
+            with open(jsonl_file, "w", encoding="utf-8") as f:
                 for entry in sample_jsonl_data:
                     entry_copy = entry.copy()
                     if "sessionId" in entry_copy:
@@ -242,11 +252,17 @@ class TestCacheIntegrationConverter:
         )
         assert output1.exists()
 
-        # Verify caches were created
+        # Verify SQLite cache database was created
+        cache_db = temp_projects_dir / "cache.db"
+        assert cache_db.exists()
+
+        # Verify cache data exists for each project
         for i in range(2):
             project_dir = temp_projects_dir / f"project-{i}"
-            cache_dir = project_dir / "cache"
-            assert cache_dir.exists()
+            cache_manager = CacheManager(project_dir, "1.0.0")
+            cached_data = cache_manager.get_cached_project_data()
+            assert cached_data is not None
+            assert len(cached_data.cached_files) >= 1
 
         # Second processing (should use cache)
         output2 = process_projects_hierarchy(
@@ -306,7 +322,7 @@ class TestCachePerformanceIntegration:
             )
 
         jsonl_file = project_dir / "large-session.jsonl"
-        with open(jsonl_file, "w") as f:
+        with open(jsonl_file, "w", encoding="utf-8") as f:
             for entry in large_jsonl_data:
                 f.write(json.dumps(entry) + "\n")
 
@@ -415,19 +431,10 @@ class TestCacheEdgeCases:
         # Create cache with old version
         with patch("claude_code_log.cache.get_library_version", return_value="1.0.0"):
             cache_manager_old = CacheManager(project_dir, "1.0.0")
-            # Create some dummy cache data
-            from claude_code_log.cache import ProjectCache
-
-            old_cache = ProjectCache(
-                version="1.0.0",
-                cache_created=datetime.now().isoformat(),
-                last_updated=datetime.now().isoformat(),
-                project_path=str(project_dir),
-                cached_files={},
-                sessions={},
-            )
-            with open(cache_manager_old.index_file, "w") as f:
-                json.dump(old_cache.model_dump(), f)
+            # Verify project was created in SQLite database
+            cached_data = cache_manager_old.get_cached_project_data()
+            assert cached_data is not None
+            assert cached_data.version == "1.0.0"
 
         # Process with new version (should handle version mismatch)
         with patch("claude_code_log.cache.get_library_version", return_value="2.0.0"):

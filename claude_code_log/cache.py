@@ -1,14 +1,29 @@
 #!/usr/bin/env python3
-"""Cache management for Claude Code Log to improve performance."""
+"""SQLite-based cache management for Claude Code Log."""
 
 import json
-from pathlib import Path
-from typing import Any, Optional, cast
+import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
-from pydantic import BaseModel
-from packaging import version
+from pathlib import Path
+from typing import Any, Dict, Generator, List, Optional
 
-from .models import TranscriptEntry
+from packaging import version
+from pydantic import BaseModel
+
+from .migrations.runner import run_migrations
+from .models import (
+    AssistantTranscriptEntry,
+    QueueOperationTranscriptEntry,
+    SummaryTranscriptEntry,
+    SystemTranscriptEntry,
+    TranscriptEntry,
+    UserTranscriptEntry,
+    parse_transcript_entry,
+)
+
+
+# ========== Data Models ==========
 
 
 class CachedFileInfo(BaseModel):
@@ -35,6 +50,38 @@ class SessionCacheData(BaseModel):
     total_output_tokens: int = 0
     total_cache_creation_tokens: int = 0
     total_cache_read_tokens: int = 0
+
+
+class HtmlCacheEntry(BaseModel):
+    """Information about a generated HTML file."""
+
+    html_path: str  # e.g., "session-abc123.html" or "combined_transcripts.html"
+    generated_at: str  # ISO timestamp when HTML was generated
+    source_session_id: Optional[str] = (
+        None  # session_id for individual files, None for combined
+    )
+    message_count: int = 0  # for sanity checking
+    library_version: str  # which version generated it
+
+
+class PageCacheData(BaseModel):
+    """Information about a paginated combined transcript page."""
+
+    page_number: int
+    html_path: str  # e.g., "combined_transcripts.html" or "combined_transcripts_2.html"
+    page_size_config: int  # the --page-size value used
+    message_count: int  # total messages on this page
+    session_ids: List[str]  # sessions on this page, in order
+    first_session_id: str
+    last_session_id: str
+    first_timestamp: Optional[str] = None
+    last_timestamp: Optional[str] = None
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cache_creation_tokens: int = 0
+    total_cache_read_tokens: int = 0
+    generated_at: str  # ISO timestamp when page was generated
+    library_version: str
 
 
 class ProjectCache(BaseModel):
@@ -66,412 +113,16 @@ class ProjectCache(BaseModel):
     latest_timestamp: str = ""
 
 
-class CacheManager:
-    """Manages cache operations for a project directory."""
-
-    def __init__(self, project_path: Path, library_version: str):
-        """Initialize cache manager for a project.
-
-        Args:
-            project_path: Path to the project directory containing JSONL files
-            library_version: Current version of the library for cache invalidation
-        """
-        self.project_path = project_path
-        self.library_version = library_version
-        self.cache_dir = project_path / "cache"
-        self.index_file = self.cache_dir / "index.json"
-
-        # Ensure cache directory exists
-        self.cache_dir.mkdir(exist_ok=True)
-
-        # Load existing cache index if available
-        self._project_cache: Optional[ProjectCache] = None
-        self._load_project_cache()
-
-    def _load_project_cache(self) -> None:
-        """Load the project cache index from disk."""
-        if self.index_file.exists():
-            try:
-                with open(self.index_file, "r", encoding="utf-8") as f:
-                    cache_data = json.load(f)
-                self._project_cache = ProjectCache.model_validate(cache_data)
-
-                # Check if cache version is compatible with current library version
-                if not self._is_cache_version_compatible(self._project_cache.version):
-                    print(
-                        f"Cache version incompatible: {self._project_cache.version} -> {self.library_version}, invalidating cache"
-                    )
-                    self.clear_cache()
-                    self._project_cache = None
-            except Exception as e:
-                print(f"Warning: Failed to load cache index, will rebuild: {e}")
-                self._project_cache = None
-
-        # Initialize empty cache if none exists
-        if self._project_cache is None:
-            self._project_cache = ProjectCache(
-                version=self.library_version,
-                cache_created=datetime.now().isoformat(),
-                last_updated=datetime.now().isoformat(),
-                project_path=str(self.project_path),
-                cached_files={},
-                sessions={},
-            )
-
-    def _save_project_cache(self) -> None:
-        """Save the project cache index to disk."""
-        if self._project_cache is None:
-            return
-
-        self._project_cache.last_updated = datetime.now().isoformat()
-
-        with open(self.index_file, "w", encoding="utf-8") as f:
-            json.dump(self._project_cache.model_dump(), f, indent=2)
-
-    def _get_cache_file_path(self, jsonl_path: Path) -> Path:
-        """Get the cache file path for a given JSONL file."""
-        return self.cache_dir / f"{jsonl_path.stem}.json"
-
-    def is_file_cached(self, jsonl_path: Path) -> bool:
-        """Check if a JSONL file has a valid cache entry."""
-        if self._project_cache is None:
-            return False
-
-        file_key = jsonl_path.name
-        if file_key not in self._project_cache.cached_files:
-            return False
-
-        # Check if source file exists and modification time matches
-        if not jsonl_path.exists():
-            return False
-
-        cached_info = self._project_cache.cached_files[file_key]
-        source_mtime = jsonl_path.stat().st_mtime
-
-        # Cache is valid if modification times match and cache file exists
-        cache_file = self._get_cache_file_path(jsonl_path)
-        return (
-            abs(source_mtime - cached_info.source_mtime) < 1.0 and cache_file.exists()
-        )
-
-    def load_cached_entries(self, jsonl_path: Path) -> Optional[list[TranscriptEntry]]:
-        """Load cached transcript entries for a JSONL file."""
-        if not self.is_file_cached(jsonl_path):
-            return None
-
-        cache_file = self._get_cache_file_path(jsonl_path)
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                cache_data = json.load(f)
-
-            # Expect timestamp-keyed format - flatten all entries
-            entries_data: list[dict[str, Any]] = []
-            for timestamp_entries in cache_data.values():
-                if isinstance(timestamp_entries, list):
-                    # Type cast to ensure Pyright knows this is list[dict[str, Any]]
-                    entries_data.extend(cast(list[dict[str, Any]], timestamp_entries))
-
-            # Deserialize back to TranscriptEntry objects
-            from .factories import create_transcript_entry
-
-            entries = [
-                create_transcript_entry(entry_dict) for entry_dict in entries_data
-            ]
-            return entries
-        except Exception as e:
-            print(f"Warning: Failed to load cached entries from {cache_file}: {e}")
-            return None
-
-    def load_cached_entries_filtered(
-        self, jsonl_path: Path, from_date: Optional[str], to_date: Optional[str]
-    ) -> Optional[list[TranscriptEntry]]:
-        """Load cached entries with efficient timestamp-based filtering."""
-        if not self.is_file_cached(jsonl_path):
-            return None
-
-        cache_file = self._get_cache_file_path(jsonl_path)
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                cache_data = json.load(f)
-
-            # If no date filtering needed, fall back to regular loading
-            if not from_date and not to_date:
-                return self.load_cached_entries(jsonl_path)
-
-            # Parse date filters
-            from .parser import parse_timestamp
-            import dateparser
-
-            from_dt = None
-            to_dt = None
-
-            if from_date:
-                from_dt = dateparser.parse(from_date)
-                if from_dt and (
-                    from_date in ["today", "yesterday"] or "days ago" in from_date
-                ):
-                    from_dt = from_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-
-            if to_date:
-                to_dt = dateparser.parse(to_date)
-                if to_dt:
-                    if to_date in ["today", "yesterday"] or "days ago" in to_date:
-                        to_dt = to_dt.replace(
-                            hour=23, minute=59, second=59, microsecond=999999
-                        )
-                    else:
-                        # For simple date strings like "2023-01-01", set to end of day
-                        to_dt = to_dt.replace(
-                            hour=23, minute=59, second=59, microsecond=999999
-                        )
-
-            # Filter entries by timestamp
-            filtered_entries_data: list[dict[str, Any]] = []
-
-            for timestamp_key, timestamp_entries in cache_data.items():
-                if timestamp_key == "_no_timestamp":
-                    # Always include entries without timestamps (like summaries)
-                    if isinstance(timestamp_entries, list):
-                        # Type cast to ensure Pyright knows this is list[dict[str, Any]]
-                        filtered_entries_data.extend(
-                            cast(list[dict[str, Any]], timestamp_entries)
-                        )
-                else:
-                    # Check if timestamp falls within range
-                    message_dt = parse_timestamp(timestamp_key)
-                    if message_dt:
-                        # Convert to naive datetime for comparison
-                        if message_dt.tzinfo:
-                            message_dt = message_dt.replace(tzinfo=None)
-
-                        # Apply date filtering
-                        if from_dt and message_dt < from_dt:
-                            continue
-                        if to_dt and message_dt > to_dt:
-                            continue
-
-                    if isinstance(timestamp_entries, list):
-                        # Type cast to ensure Pyright knows this is list[dict[str, Any]]
-                        filtered_entries_data.extend(
-                            cast(list[dict[str, Any]], timestamp_entries)
-                        )
-
-            # Deserialize filtered entries
-            from .factories import create_transcript_entry
-
-            entries = [
-                create_transcript_entry(entry_dict)
-                for entry_dict in filtered_entries_data
-            ]
-            return entries
-        except Exception as e:
-            print(
-                f"Warning: Failed to load filtered cached entries from {cache_file}: {e}"
-            )
-            return None
-
-    def save_cached_entries(
-        self, jsonl_path: Path, entries: list[TranscriptEntry]
-    ) -> None:
-        """Save parsed transcript entries to cache with timestamp-based structure."""
-        cache_file = self._get_cache_file_path(jsonl_path)
-
-        try:
-            # Create timestamp-keyed cache structure for efficient date filtering
-            cache_data: dict[str, Any] = {}
-
-            for entry in entries:
-                # Get timestamp - use empty string as fallback for entries without timestamps
-                timestamp = (
-                    getattr(entry, "timestamp", "")
-                    if hasattr(entry, "timestamp")
-                    else ""
-                )
-                if not timestamp:
-                    # Use a special key for entries without timestamps (like summaries)
-                    timestamp = "_no_timestamp"
-
-                # Store entry data under timestamp
-                if timestamp not in cache_data:
-                    cache_data[timestamp] = []
-
-                cache_data[timestamp].append(entry.model_dump())
-
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump(cache_data, f, indent=2)
-
-            # Update cache index
-            if self._project_cache is not None:
-                source_mtime = jsonl_path.stat().st_mtime
-                cached_mtime = cache_file.stat().st_mtime
-
-                # Extract session IDs from entries
-                session_ids: list[str] = []
-                for entry in entries:
-                    if hasattr(entry, "sessionId"):
-                        session_id = getattr(entry, "sessionId", "")
-                        if session_id:
-                            session_ids.append(session_id)
-                session_ids = list(set(session_ids))  # Remove duplicates
-
-                self._project_cache.cached_files[jsonl_path.name] = CachedFileInfo(
-                    file_path=str(jsonl_path),
-                    source_mtime=source_mtime,
-                    cached_mtime=cached_mtime,
-                    message_count=len(entries),
-                    session_ids=session_ids,
-                )
-
-                self._save_project_cache()
-        except Exception as e:
-            print(f"Warning: Failed to save cached entries to {cache_file}: {e}")
-
-    def update_session_cache(self, session_data: dict[str, SessionCacheData]) -> None:
-        """Update cached session information."""
-        if self._project_cache is None:
-            return
-
-        self._project_cache.sessions.update(
-            {session_id: data for session_id, data in session_data.items()}
-        )
-        self._save_project_cache()
-
-    def update_project_aggregates(
-        self,
-        total_message_count: int,
-        total_input_tokens: int,
-        total_output_tokens: int,
-        total_cache_creation_tokens: int,
-        total_cache_read_tokens: int,
-        earliest_timestamp: str,
-        latest_timestamp: str,
-    ) -> None:
-        """Update project-level aggregate information."""
-        if self._project_cache is None:
-            return
-
-        self._project_cache.total_message_count = total_message_count
-        self._project_cache.total_input_tokens = total_input_tokens
-        self._project_cache.total_output_tokens = total_output_tokens
-        self._project_cache.total_cache_creation_tokens = total_cache_creation_tokens
-        self._project_cache.total_cache_read_tokens = total_cache_read_tokens
-        self._project_cache.earliest_timestamp = earliest_timestamp
-        self._project_cache.latest_timestamp = latest_timestamp
-
-        self._save_project_cache()
-
-    def update_working_directories(self, working_directories: list[str]) -> None:
-        """Update the list of working directories associated with this project."""
-        if self._project_cache is None:
-            return
-
-        self._project_cache.working_directories = working_directories
-        self._save_project_cache()
-
-    def get_modified_files(self, jsonl_files: list[Path]) -> list[Path]:
-        """Get list of JSONL files that need to be reprocessed."""
-        modified_files: list[Path] = []
-
-        for jsonl_file in jsonl_files:
-            if not self.is_file_cached(jsonl_file):
-                modified_files.append(jsonl_file)
-
-        return modified_files
-
-    def get_cached_project_data(self) -> Optional[ProjectCache]:
-        """Get the cached project data if available."""
-        return self._project_cache
-
-    def clear_cache(self) -> None:
-        """Clear all cache files and reset the project cache."""
-        if self.cache_dir.exists():
-            for cache_file in self.cache_dir.glob("*.json"):
-                if cache_file.name != "index.json":  # Don't delete the index file here
-                    try:
-                        cache_file.unlink()
-                    except Exception as e:
-                        print(f"Warning: Failed to delete cache file {cache_file}: {e}")
-
-        if self.index_file.exists():
-            try:
-                self.index_file.unlink()
-            except Exception as e:
-                print(f"Warning: Failed to delete cache index {self.index_file}: {e}")
-
-        # Reset the project cache
-        self._project_cache = ProjectCache(
-            version=self.library_version,
-            cache_created=datetime.now().isoformat(),
-            last_updated=datetime.now().isoformat(),
-            project_path=str(self.project_path),
-            cached_files={},
-            sessions={},
-        )
-
-    def _is_cache_version_compatible(self, cache_version: str) -> bool:
-        """Check if a cache version is compatible with the current library version.
-
-        This uses a compatibility matrix to determine if cache invalidation is needed.
-        Only breaking changes require cache invalidation, not every version bump.
-        """
-        if cache_version == self.library_version:
-            return True
-
-        # Define compatibility rules
-        # Format: "cache_version": "minimum_library_version_required"
-        # If cache version is older than the minimum required, it needs invalidation
-        breaking_changes: dict[str, str] = {
-            # 0.9.0 introduced _compact_ide_tags_for_preview() which transforms
-            # first_user_message to use emoji indicators instead of raw IDE tags
-            "0.8.0": "0.9.0",
-        }
-
-        cache_ver = version.parse(cache_version)
-        current_ver = version.parse(self.library_version)
-
-        # Check if cache version requires invalidation due to breaking changes
-        for breaking_version_pattern, min_required in breaking_changes.items():
-            min_required_ver = version.parse(min_required)
-
-            # If current version is at or above the minimum required for this breaking change
-            if current_ver >= min_required_ver:
-                # Check if cache version is affected by this breaking change
-                if breaking_version_pattern.endswith(".x"):
-                    # Pattern like "0.2.x" matches any 0.2.* version
-                    major_minor = breaking_version_pattern[:-2]
-                    if str(cache_ver).startswith(major_minor):
-                        return False
-                else:
-                    # Exact version or version comparison
-                    breaking_ver = version.parse(breaking_version_pattern)
-                    if cache_ver <= breaking_ver:
-                        return False
-
-        # If no breaking changes affect this cache version, it's compatible
-        return True
-
-    def get_cache_stats(self) -> dict[str, Any]:
-        """Get cache statistics for reporting."""
-        if self._project_cache is None:
-            return {"cache_enabled": False}
-
-        return {
-            "cache_enabled": True,
-            "cached_files_count": len(self._project_cache.cached_files),
-            "total_cached_messages": self._project_cache.total_message_count,
-            "total_sessions": len(self._project_cache.sessions),
-            "cache_created": self._project_cache.cache_created,
-            "last_updated": self._project_cache.last_updated,
-        }
+# ========== Helper Functions ==========
 
 
 def get_library_version() -> str:
     """Get the current library version from package metadata or pyproject.toml."""
     # First try to get version from installed package metadata
     try:
-        from importlib.metadata import version
+        from importlib.metadata import version as get_version
 
-        return version("claude-code-log")
+        return get_version("claude-code-log")
     except Exception:
         # Package not installed or other error, continue to file-based detection
         pass
@@ -509,3 +160,1036 @@ def get_library_version() -> str:
         pass
 
     return "unknown"
+
+
+# ========== Cache Manager ==========
+
+
+class CacheManager:
+    """SQLite-based cache manager for Claude Code Log."""
+
+    def __init__(self, project_path: Path, library_version: str):
+        """Initialise cache manager for a project.
+
+        Args:
+            project_path: Path to the project directory containing JSONL files
+            library_version: Current version of the library for cache invalidation
+        """
+        self.project_path = project_path
+        self.library_version = library_version
+
+        # Database at parent level (projects_dir/cache.db)
+        self.db_path = project_path.parent / "cache.db"
+
+        # Initialise database and ensure project exists
+        self._init_database()
+        self._project_id: Optional[int] = None
+        self._ensure_project_exists()
+
+    @contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Get a database connection with proper settings."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def _init_database(self) -> None:
+        """Create schema if needed using migration runner."""
+        # Run any pending migrations
+        run_migrations(self.db_path)
+
+    def _ensure_project_exists(self) -> None:
+        """Ensure project record exists and get its ID."""
+        project_path_str = str(self.project_path)
+
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT id, version FROM projects WHERE project_path = ?",
+                (project_path_str,),
+            ).fetchone()
+
+            if row:
+                self._project_id = row["id"]
+                cached_version = row["version"]
+
+                # Check version compatibility
+                if not self._is_cache_version_compatible(cached_version):
+                    print(
+                        f"Cache version incompatible: {cached_version} -> {self.library_version}, invalidating cache"
+                    )
+                    self._clear_project_data(conn)
+                    self._project_id = self._create_project(conn)
+            else:
+                self._project_id = self._create_project(conn)
+
+            conn.commit()
+
+    def _create_project(self, conn: sqlite3.Connection) -> int:
+        """Create a new project record."""
+        now = datetime.now().isoformat()
+        cursor = conn.execute(
+            """
+            INSERT INTO projects (project_path, version, cache_created, last_updated)
+            VALUES (?, ?, ?, ?)
+            """,
+            (str(self.project_path), self.library_version, now, now),
+        )
+        return cursor.lastrowid or 0
+
+    def _clear_project_data(self, conn: sqlite3.Connection) -> None:
+        """Clear all data for the current project."""
+        if self._project_id is None:
+            return
+
+        # Cascade delete will handle messages and files
+        conn.execute("DELETE FROM projects WHERE id = ?", (self._project_id,))
+
+    def _update_last_updated(self, conn: sqlite3.Connection) -> None:
+        """Update the last_updated timestamp for the project."""
+        if self._project_id is None:
+            return
+
+        conn.execute(
+            "UPDATE projects SET last_updated = ? WHERE id = ?",
+            (datetime.now().isoformat(), self._project_id),
+        )
+
+    def _serialize_entry(self, entry: TranscriptEntry, file_id: int) -> Dict[str, Any]:
+        """Convert TranscriptEntry to dict for SQLite insertion."""
+        base: Dict[str, Any] = {
+            "project_id": self._project_id,
+            "file_id": file_id,
+            "type": entry.type,
+            "timestamp": getattr(entry, "timestamp", None),
+            "session_id": getattr(entry, "sessionId", None),
+            "_uuid": getattr(entry, "uuid", None),
+            "_parent_uuid": getattr(entry, "parentUuid", None),
+            "_is_sidechain": 1 if getattr(entry, "isSidechain", False) else 0,
+            "_user_type": getattr(entry, "userType", None),
+            "_cwd": getattr(entry, "cwd", None),
+            "_version": getattr(entry, "version", None),
+            "_is_meta": (
+                1
+                if getattr(entry, "isMeta", None) is True
+                else (0 if getattr(entry, "isMeta", None) is False else None)
+            ),
+            "_agent_id": getattr(entry, "agentId", None),
+            "_request_id": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "cache_creation_tokens": None,
+            "cache_read_tokens": None,
+            "_leaf_uuid": None,
+            "_level": None,
+            "_operation": None,
+            "content": json.dumps(entry.model_dump()),
+        }
+
+        # Extract flattened usage for assistant messages
+        if isinstance(entry, AssistantTranscriptEntry):
+            base["_request_id"] = entry.requestId
+            if entry.message and entry.message.usage:
+                usage = entry.message.usage
+                base["input_tokens"] = usage.input_tokens
+                base["output_tokens"] = usage.output_tokens
+                base["cache_creation_tokens"] = usage.cache_creation_input_tokens
+                base["cache_read_tokens"] = usage.cache_read_input_tokens
+
+        # User entry specific
+        if isinstance(entry, UserTranscriptEntry):
+            if entry.agentId:
+                base["_agent_id"] = entry.agentId
+
+        # Summary specific
+        if isinstance(entry, SummaryTranscriptEntry):
+            base["_leaf_uuid"] = entry.leafUuid
+
+        # System specific
+        if isinstance(entry, SystemTranscriptEntry):
+            base["_level"] = entry.level
+
+        # Queue-operation specific
+        if isinstance(entry, QueueOperationTranscriptEntry):
+            base["_operation"] = entry.operation
+
+        return base
+
+    def _deserialize_entry(self, row: sqlite3.Row) -> TranscriptEntry:
+        """Convert SQLite row back to TranscriptEntry."""
+        content_dict = json.loads(row["content"])
+        return parse_transcript_entry(content_dict)
+
+    def _get_file_id(self, jsonl_path: Path) -> Optional[int]:
+        """Get the file ID for a JSONL file."""
+        if self._project_id is None:
+            return None
+
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM cached_files WHERE project_id = ? AND file_name = ?",
+                (self._project_id, jsonl_path.name),
+            ).fetchone()
+
+        return row["id"] if row else None
+
+    def is_file_cached(self, jsonl_path: Path) -> bool:
+        """Check if a JSONL file has a valid cache entry."""
+        if self._project_id is None:
+            return False
+
+        if not jsonl_path.exists():
+            return False
+
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT source_mtime FROM cached_files WHERE project_id = ? AND file_name = ?",
+                (self._project_id, jsonl_path.name),
+            ).fetchone()
+
+        if not row:
+            return False
+
+        source_mtime = jsonl_path.stat().st_mtime
+        cached_mtime = row["source_mtime"]
+
+        # Cache is valid if modification times match (within 1 second tolerance)
+        return abs(source_mtime - cached_mtime) < 1.0
+
+    def load_cached_entries(self, jsonl_path: Path) -> Optional[List[TranscriptEntry]]:
+        """Load cached transcript entries for a JSONL file."""
+        if not self.is_file_cached(jsonl_path):
+            return None
+
+        file_id = self._get_file_id(jsonl_path)
+        if file_id is None:
+            return None
+
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT content FROM messages WHERE file_id = ? ORDER BY timestamp NULLS LAST",
+                (file_id,),
+            ).fetchall()
+
+        return [self._deserialize_entry(row) for row in rows]
+
+    def load_cached_entries_filtered(
+        self, jsonl_path: Path, from_date: Optional[str], to_date: Optional[str]
+    ) -> Optional[List[TranscriptEntry]]:
+        """Load cached entries with SQL-based timestamp filtering."""
+        if not self.is_file_cached(jsonl_path):
+            return None
+
+        # If no date filtering needed, fall back to regular loading
+        if not from_date and not to_date:
+            return self.load_cached_entries(jsonl_path)
+
+        file_id = self._get_file_id(jsonl_path)
+        if file_id is None:
+            return None
+
+        # Parse dates
+        import dateparser
+
+        from_dt = None
+        to_dt = None
+
+        if from_date:
+            from_dt = dateparser.parse(from_date)
+            if from_dt and (
+                from_date in ["today", "yesterday"] or "days ago" in from_date
+            ):
+                from_dt = from_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if to_date:
+            to_dt = dateparser.parse(to_date)
+            if to_dt:
+                if to_date in ["today", "yesterday"] or "days ago" in to_date:
+                    to_dt = to_dt.replace(
+                        hour=23, minute=59, second=59, microsecond=999999
+                    )
+                else:
+                    to_dt = to_dt.replace(
+                        hour=23, minute=59, second=59, microsecond=999999
+                    )
+
+        # Build query with SQL-based filtering
+        sql = "SELECT content FROM messages WHERE file_id = ?"
+        params: List[Any] = [file_id]
+
+        if from_dt:
+            # Include entries with NULL timestamp (like summaries) OR within date range
+            sql += " AND (timestamp IS NULL OR timestamp >= ?)"
+            params.append(from_dt.isoformat())
+
+        if to_dt:
+            sql += " AND (timestamp IS NULL OR timestamp <= ?)"
+            params.append(to_dt.isoformat())
+
+        sql += " ORDER BY timestamp NULLS LAST"
+
+        with self._get_connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+
+        return [self._deserialize_entry(row) for row in rows]
+
+    def save_cached_entries(
+        self, jsonl_path: Path, entries: List[TranscriptEntry]
+    ) -> None:
+        """Save parsed transcript entries to cache."""
+        if self._project_id is None:
+            return
+
+        source_mtime = jsonl_path.stat().st_mtime
+        cached_mtime = datetime.now().timestamp()
+
+        with self._get_connection() as conn:
+            # Insert or update file record
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO cached_files
+                (project_id, file_name, file_path, source_mtime, cached_mtime, message_count)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self._project_id,
+                    jsonl_path.name,
+                    str(jsonl_path),
+                    source_mtime,
+                    cached_mtime,
+                    len(entries),
+                ),
+            )
+
+            # Get the file ID
+            row = conn.execute(
+                "SELECT id FROM cached_files WHERE project_id = ? AND file_name = ?",
+                (self._project_id, jsonl_path.name),
+            ).fetchone()
+            file_id = row["id"]
+
+            # Delete existing messages for this file
+            conn.execute("DELETE FROM messages WHERE file_id = ?", (file_id,))
+
+            # Insert all entries in a batch
+            for entry in entries:
+                serialized = self._serialize_entry(entry, file_id)
+                conn.execute(
+                    """
+                    INSERT INTO messages (
+                        project_id, file_id, type, timestamp, session_id,
+                        _uuid, _parent_uuid, _is_sidechain, _user_type, _cwd, _version,
+                        _is_meta, _agent_id, _request_id,
+                        input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+                        _leaf_uuid, _level, _operation, content
+                    ) VALUES (
+                        :project_id, :file_id, :type, :timestamp, :session_id,
+                        :_uuid, :_parent_uuid, :_is_sidechain, :_user_type, :_cwd, :_version,
+                        :_is_meta, :_agent_id, :_request_id,
+                        :input_tokens, :output_tokens, :cache_creation_tokens, :cache_read_tokens,
+                        :_leaf_uuid, :_level, :_operation, :content
+                    )
+                    """,
+                    serialized,
+                )
+
+            self._update_last_updated(conn)
+            conn.commit()
+
+    def update_session_cache(self, session_data: Dict[str, SessionCacheData]) -> None:
+        """Update cached session information."""
+        if self._project_id is None:
+            return
+
+        with self._get_connection() as conn:
+            for session_id, data in session_data.items():
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO sessions (
+                        project_id, session_id, summary, first_timestamp, last_timestamp,
+                        message_count, first_user_message, cwd,
+                        total_input_tokens, total_output_tokens,
+                        total_cache_creation_tokens, total_cache_read_tokens
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        self._project_id,
+                        session_id,
+                        data.summary,
+                        data.first_timestamp,
+                        data.last_timestamp,
+                        data.message_count,
+                        data.first_user_message,
+                        data.cwd,
+                        data.total_input_tokens,
+                        data.total_output_tokens,
+                        data.total_cache_creation_tokens,
+                        data.total_cache_read_tokens,
+                    ),
+                )
+
+            self._update_last_updated(conn)
+            conn.commit()
+
+    def update_project_aggregates(
+        self,
+        total_message_count: int,
+        total_input_tokens: int,
+        total_output_tokens: int,
+        total_cache_creation_tokens: int,
+        total_cache_read_tokens: int,
+        earliest_timestamp: str,
+        latest_timestamp: str,
+    ) -> None:
+        """Update project-level aggregate information."""
+        if self._project_id is None:
+            return
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE projects SET
+                    total_message_count = ?,
+                    total_input_tokens = ?,
+                    total_output_tokens = ?,
+                    total_cache_creation_tokens = ?,
+                    total_cache_read_tokens = ?,
+                    earliest_timestamp = ?,
+                    latest_timestamp = ?,
+                    last_updated = ?
+                WHERE id = ?
+                """,
+                (
+                    total_message_count,
+                    total_input_tokens,
+                    total_output_tokens,
+                    total_cache_creation_tokens,
+                    total_cache_read_tokens,
+                    earliest_timestamp,
+                    latest_timestamp,
+                    datetime.now().isoformat(),
+                    self._project_id,
+                ),
+            )
+            conn.commit()
+
+    def get_working_directories(self) -> List[str]:
+        """Get list of working directories associated with this project.
+
+        Queries distinct cwd values from sessions table.
+        """
+        if self._project_id is None:
+            return []
+
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT cwd FROM sessions WHERE project_id = ? AND cwd IS NOT NULL",
+                (self._project_id,),
+            ).fetchall()
+
+        return [row["cwd"] for row in rows]
+
+    def get_modified_files(self, jsonl_files: List[Path]) -> List[Path]:
+        """Get list of JSONL files that need to be reprocessed."""
+        return [
+            jsonl_file
+            for jsonl_file in jsonl_files
+            if not self.is_file_cached(jsonl_file)
+        ]
+
+    def get_cached_project_data(self) -> Optional[ProjectCache]:
+        """Get the cached project data if available."""
+        if self._project_id is None:
+            return None
+
+        with self._get_connection() as conn:
+            # Get project data
+            project_row = conn.execute(
+                "SELECT * FROM projects WHERE id = ?", (self._project_id,)
+            ).fetchone()
+
+            if not project_row:
+                return None
+
+            # Get cached files
+            file_rows = conn.execute(
+                "SELECT * FROM cached_files WHERE project_id = ?", (self._project_id,)
+            ).fetchall()
+
+            cached_files: Dict[str, CachedFileInfo] = {}
+            for row in file_rows:
+                # Get session IDs for this file from messages
+                session_rows = conn.execute(
+                    "SELECT DISTINCT session_id FROM messages WHERE file_id = ? AND session_id IS NOT NULL",
+                    (row["id"],),
+                ).fetchall()
+                session_ids = [r["session_id"] for r in session_rows]
+
+                cached_files[row["file_name"]] = CachedFileInfo(
+                    file_path=row["file_path"],
+                    source_mtime=row["source_mtime"],
+                    cached_mtime=row["cached_mtime"],
+                    message_count=row["message_count"],
+                    session_ids=session_ids,
+                )
+
+            # Get sessions
+            session_rows = conn.execute(
+                "SELECT * FROM sessions WHERE project_id = ?", (self._project_id,)
+            ).fetchall()
+
+            sessions: Dict[str, SessionCacheData] = {}
+            for row in session_rows:
+                sessions[row["session_id"]] = SessionCacheData(
+                    session_id=row["session_id"],
+                    summary=row["summary"],
+                    first_timestamp=row["first_timestamp"],
+                    last_timestamp=row["last_timestamp"],
+                    message_count=row["message_count"],
+                    first_user_message=row["first_user_message"],
+                    cwd=row["cwd"],
+                    total_input_tokens=row["total_input_tokens"],
+                    total_output_tokens=row["total_output_tokens"],
+                    total_cache_creation_tokens=row["total_cache_creation_tokens"],
+                    total_cache_read_tokens=row["total_cache_read_tokens"],
+                )
+
+        return ProjectCache(
+            version=project_row["version"],
+            cache_created=project_row["cache_created"],
+            last_updated=project_row["last_updated"],
+            project_path=project_row["project_path"],
+            cached_files=cached_files,
+            total_message_count=project_row["total_message_count"],
+            total_input_tokens=project_row["total_input_tokens"],
+            total_output_tokens=project_row["total_output_tokens"],
+            total_cache_creation_tokens=project_row["total_cache_creation_tokens"],
+            total_cache_read_tokens=project_row["total_cache_read_tokens"],
+            sessions=sessions,
+            working_directories=self.get_working_directories(),
+            earliest_timestamp=project_row["earliest_timestamp"],
+            latest_timestamp=project_row["latest_timestamp"],
+        )
+
+    def clear_cache(self) -> None:
+        """Clear all cache data for this project."""
+        if self._project_id is None:
+            return
+
+        with self._get_connection() as conn:
+            self._clear_project_data(conn)
+            self._project_id = self._create_project(conn)
+            conn.commit()
+
+    def _is_cache_version_compatible(self, cache_version: str) -> bool:
+        """Check if a cache version is compatible with the current library version."""
+        if cache_version == self.library_version:
+            return True
+
+        # Define compatibility rules
+        breaking_changes: dict[str, str] = {
+            # Example: "0.3.3": "0.3.4" means cache from 0.3.3 needs invalidation if lib is >= 0.3.4
+        }
+
+        cache_ver = version.parse(cache_version)
+        current_ver = version.parse(self.library_version)
+
+        for breaking_version_pattern, min_required in breaking_changes.items():
+            min_required_ver = version.parse(min_required)
+
+            if current_ver >= min_required_ver:
+                if breaking_version_pattern.endswith(".x"):
+                    major_minor = breaking_version_pattern[:-2]
+                    if str(cache_ver).startswith(major_minor):
+                        return False
+                else:
+                    breaking_ver = version.parse(breaking_version_pattern)
+                    if cache_ver <= breaking_ver:
+                        return False
+
+        return True
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics for reporting."""
+        if self._project_id is None:
+            return {"cache_enabled": False}
+
+        with self._get_connection() as conn:
+            project_row = conn.execute(
+                "SELECT * FROM projects WHERE id = ?", (self._project_id,)
+            ).fetchone()
+
+            file_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM cached_files WHERE project_id = ?",
+                (self._project_id,),
+            ).fetchone()
+
+            session_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM sessions WHERE project_id = ?",
+                (self._project_id,),
+            ).fetchone()
+
+        if not project_row:
+            return {"cache_enabled": False}
+
+        return {
+            "cache_enabled": True,
+            "cached_files_count": file_count["cnt"] if file_count else 0,
+            "total_cached_messages": project_row["total_message_count"],
+            "total_sessions": session_count["cnt"] if session_count else 0,
+            "cache_created": project_row["cache_created"],
+            "last_updated": project_row["last_updated"],
+        }
+
+    # ========== HTML Cache Methods ==========
+
+    def get_html_cache(self, html_path: str) -> Optional[HtmlCacheEntry]:
+        """Get HTML cache entry for a given path."""
+        if self._project_id is None:
+            return None
+
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """SELECT html_path, generated_at, source_session_id, message_count, library_version
+                   FROM html_cache
+                   WHERE project_id = ? AND html_path = ?""",
+                (self._project_id, html_path),
+            ).fetchone()
+
+        if not row:
+            return None
+
+        return HtmlCacheEntry(
+            html_path=row["html_path"],
+            generated_at=row["generated_at"],
+            source_session_id=row["source_session_id"],
+            message_count=row["message_count"] or 0,
+            library_version=row["library_version"],
+        )
+
+    def update_html_cache(
+        self,
+        html_path: str,
+        session_id: Optional[str],
+        message_count: int,
+    ) -> None:
+        """Update or insert HTML cache entry."""
+        if self._project_id is None:
+            return
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """INSERT INTO html_cache
+                   (project_id, html_path, generated_at, source_session_id, message_count, library_version)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(project_id, html_path)
+                   DO UPDATE SET
+                       generated_at = excluded.generated_at,
+                       source_session_id = excluded.source_session_id,
+                       message_count = excluded.message_count,
+                       library_version = excluded.library_version""",
+                (
+                    self._project_id,
+                    html_path,
+                    datetime.now().isoformat(),
+                    session_id,
+                    message_count,
+                    self.library_version,
+                ),
+            )
+            conn.commit()
+
+    def is_html_stale(
+        self, html_path: str, session_id: Optional[str] = None
+    ) -> tuple[bool, str]:
+        """Check if HTML file needs regeneration.
+
+        Args:
+            html_path: Path to HTML file (e.g., "session-abc123.html")
+            session_id: Session ID for individual session files, None for combined
+
+        Returns:
+            Tuple of (is_stale: bool, reason: str)
+        """
+        from .renderer import is_html_outdated
+
+        if self._project_id is None:
+            return True, "no_cache"
+
+        # Get existing HTML cache entry
+        html_cache = self.get_html_cache(html_path)
+        if html_cache is None:
+            return True, "not_cached"
+
+        # Check library version in cache
+        if html_cache.library_version != self.library_version:
+            return True, "version_mismatch"
+
+        # Check if file exists and has correct version
+        actual_file = self.project_path / html_path
+        if not actual_file.exists():
+            return True, "file_missing"
+        if is_html_outdated(actual_file):
+            return True, "file_version_mismatch"
+
+        with self._get_connection() as conn:
+            if session_id is not None:
+                # For individual session HTML: check if session message count changed
+                row = conn.execute(
+                    """SELECT message_count FROM sessions
+                       WHERE project_id = ? AND session_id = ?""",
+                    (self._project_id, session_id),
+                ).fetchone()
+
+                if not row:
+                    return True, "session_not_found"
+
+                # Compare message counts
+                if row["message_count"] != html_cache.message_count:
+                    return True, "session_updated"
+            else:
+                # For combined transcript: check if total message count changed
+                # This is more reliable than timestamp comparison, which can
+                # trigger false positives when cache metadata is updated
+                row = conn.execute(
+                    """SELECT total_message_count FROM projects
+                       WHERE id = ?""",
+                    (self._project_id,),
+                ).fetchone()
+
+                if row and row["total_message_count"] != html_cache.message_count:
+                    return True, "project_updated"
+
+        return False, "up_to_date"
+
+    def get_stale_sessions(self) -> List[tuple[str, str]]:
+        """Get list of sessions that need HTML regeneration.
+
+        Returns:
+            List of (session_id, reason) tuples for sessions needing regeneration
+        """
+        if self._project_id is None:
+            return []
+
+        stale_sessions: List[tuple[str, str]] = []
+
+        with self._get_connection() as conn:
+            # Get all sessions
+            session_rows = conn.execute(
+                """SELECT session_id, last_timestamp FROM sessions
+                   WHERE project_id = ?""",
+                (self._project_id,),
+            ).fetchall()
+
+            for row in session_rows:
+                session_id = row["session_id"]
+                html_path = f"session-{session_id}.html"
+
+                is_stale, reason = self.is_html_stale(html_path, session_id)
+                if is_stale:
+                    stale_sessions.append((session_id, reason))
+
+        return stale_sessions
+
+    # ========== Page Cache Methods (Pagination) ==========
+
+    def get_page_size_config(self) -> Optional[int]:
+        """Get the configured page size from the most recent page, if any."""
+        if self._project_id is None:
+            return None
+
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """SELECT page_size_config FROM html_pages
+                   WHERE project_id = ?
+                   ORDER BY page_number ASC
+                   LIMIT 1""",
+                (self._project_id,),
+            ).fetchone()
+
+        return row["page_size_config"] if row else None
+
+    def get_page_data(self, page_number: int) -> Optional[PageCacheData]:
+        """Get cache data for a specific page."""
+        if self._project_id is None:
+            return None
+
+        with self._get_connection() as conn:
+            # Get page info
+            page_row = conn.execute(
+                """SELECT * FROM html_pages
+                   WHERE project_id = ? AND page_number = ?""",
+                (self._project_id, page_number),
+            ).fetchone()
+
+            if not page_row:
+                return None
+
+            # Get sessions for this page
+            session_rows = conn.execute(
+                """SELECT session_id FROM page_sessions
+                   WHERE page_id = ?
+                   ORDER BY session_order ASC""",
+                (page_row["id"],),
+            ).fetchall()
+
+            session_ids = [row["session_id"] for row in session_rows]
+
+        return PageCacheData(
+            page_number=page_row["page_number"],
+            html_path=page_row["html_path"],
+            page_size_config=page_row["page_size_config"],
+            message_count=page_row["message_count"],
+            session_ids=session_ids,
+            first_session_id=page_row["first_session_id"],
+            last_session_id=page_row["last_session_id"],
+            first_timestamp=page_row["first_timestamp"],
+            last_timestamp=page_row["last_timestamp"],
+            total_input_tokens=page_row["total_input_tokens"] or 0,
+            total_output_tokens=page_row["total_output_tokens"] or 0,
+            total_cache_creation_tokens=page_row["total_cache_creation_tokens"] or 0,
+            total_cache_read_tokens=page_row["total_cache_read_tokens"] or 0,
+            generated_at=page_row["generated_at"],
+            library_version=page_row["library_version"],
+        )
+
+    def get_all_pages(self) -> List[PageCacheData]:
+        """Get all cached pages for this project."""
+        if self._project_id is None:
+            return []
+
+        pages: List[PageCacheData] = []
+        with self._get_connection() as conn:
+            page_rows = conn.execute(
+                """SELECT * FROM html_pages
+                   WHERE project_id = ?
+                   ORDER BY page_number ASC""",
+                (self._project_id,),
+            ).fetchall()
+
+            for page_row in page_rows:
+                session_rows = conn.execute(
+                    """SELECT session_id FROM page_sessions
+                       WHERE page_id = ?
+                       ORDER BY session_order ASC""",
+                    (page_row["id"],),
+                ).fetchall()
+
+                session_ids = [row["session_id"] for row in session_rows]
+
+                pages.append(
+                    PageCacheData(
+                        page_number=page_row["page_number"],
+                        html_path=page_row["html_path"],
+                        page_size_config=page_row["page_size_config"],
+                        message_count=page_row["message_count"],
+                        session_ids=session_ids,
+                        first_session_id=page_row["first_session_id"],
+                        last_session_id=page_row["last_session_id"],
+                        first_timestamp=page_row["first_timestamp"],
+                        last_timestamp=page_row["last_timestamp"],
+                        total_input_tokens=page_row["total_input_tokens"] or 0,
+                        total_output_tokens=page_row["total_output_tokens"] or 0,
+                        total_cache_creation_tokens=page_row[
+                            "total_cache_creation_tokens"
+                        ]
+                        or 0,
+                        total_cache_read_tokens=page_row["total_cache_read_tokens"]
+                        or 0,
+                        generated_at=page_row["generated_at"],
+                        library_version=page_row["library_version"],
+                    )
+                )
+
+        return pages
+
+    def update_page_cache(
+        self,
+        page_number: int,
+        html_path: str,
+        page_size_config: int,
+        session_ids: List[str],
+        message_count: int,
+        first_timestamp: Optional[str],
+        last_timestamp: Optional[str],
+        total_input_tokens: int,
+        total_output_tokens: int,
+        total_cache_creation_tokens: int,
+        total_cache_read_tokens: int,
+    ) -> None:
+        """Update or insert page cache entry."""
+        if self._project_id is None or not session_ids:
+            return
+
+        with self._get_connection() as conn:
+            # Insert or update page
+            conn.execute(
+                """INSERT INTO html_pages
+                   (project_id, page_number, html_path, page_size_config, message_count,
+                    first_session_id, last_session_id, first_timestamp, last_timestamp,
+                    total_input_tokens, total_output_tokens,
+                    total_cache_creation_tokens, total_cache_read_tokens,
+                    generated_at, library_version)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(project_id, page_number)
+                   DO UPDATE SET
+                       html_path = excluded.html_path,
+                       page_size_config = excluded.page_size_config,
+                       message_count = excluded.message_count,
+                       first_session_id = excluded.first_session_id,
+                       last_session_id = excluded.last_session_id,
+                       first_timestamp = excluded.first_timestamp,
+                       last_timestamp = excluded.last_timestamp,
+                       total_input_tokens = excluded.total_input_tokens,
+                       total_output_tokens = excluded.total_output_tokens,
+                       total_cache_creation_tokens = excluded.total_cache_creation_tokens,
+                       total_cache_read_tokens = excluded.total_cache_read_tokens,
+                       generated_at = excluded.generated_at,
+                       library_version = excluded.library_version""",
+                (
+                    self._project_id,
+                    page_number,
+                    html_path,
+                    page_size_config,
+                    message_count,
+                    session_ids[0],
+                    session_ids[-1],
+                    first_timestamp,
+                    last_timestamp,
+                    total_input_tokens,
+                    total_output_tokens,
+                    total_cache_creation_tokens,
+                    total_cache_read_tokens,
+                    datetime.now().isoformat(),
+                    self.library_version,
+                ),
+            )
+
+            # Get the page ID
+            row = conn.execute(
+                """SELECT id FROM html_pages
+                   WHERE project_id = ? AND page_number = ?""",
+                (self._project_id, page_number),
+            ).fetchone()
+            page_id = row["id"]
+
+            # Delete existing session mappings
+            conn.execute("DELETE FROM page_sessions WHERE page_id = ?", (page_id,))
+
+            # Insert session mappings
+            for order, session_id in enumerate(session_ids):
+                conn.execute(
+                    """INSERT INTO page_sessions (page_id, session_id, session_order)
+                       VALUES (?, ?, ?)""",
+                    (page_id, session_id, order),
+                )
+
+            conn.commit()
+
+    def is_page_stale(
+        self, page_number: int, page_size_config: int
+    ) -> tuple[bool, str]:
+        """Check if a page needs regeneration.
+
+        Args:
+            page_number: The page number to check
+            page_size_config: The current page size configuration
+
+        Returns:
+            Tuple of (is_stale: bool, reason: str)
+        """
+        from .renderer import is_html_outdated
+
+        if self._project_id is None:
+            return True, "no_cache"
+
+        page_data = self.get_page_data(page_number)
+        if page_data is None:
+            return True, "not_cached"
+
+        # Check if page size config changed
+        if page_data.page_size_config != page_size_config:
+            return True, "page_size_changed"
+
+        # Check library version
+        if page_data.library_version != self.library_version:
+            return True, "version_mismatch"
+
+        # Check if HTML file exists and has correct version
+        actual_file = self.project_path / page_data.html_path
+        if not actual_file.exists():
+            return True, "file_missing"
+        if is_html_outdated(actual_file):
+            return True, "file_version_mismatch"
+
+        # Check if any session on this page has changed
+        with self._get_connection() as conn:
+            for session_id in page_data.session_ids:
+                row = conn.execute(
+                    """SELECT message_count FROM sessions
+                       WHERE project_id = ? AND session_id = ?""",
+                    (self._project_id, session_id),
+                ).fetchone()
+
+                if not row:
+                    return True, "session_missing"
+
+                # We need to check if session content changed
+                # For now, just check if session exists
+
+        return False, "up_to_date"
+
+    def invalidate_all_pages(self) -> List[str]:
+        """Delete all page cache entries for this project.
+
+        Returns:
+            List of HTML file paths that were invalidated (for cleanup)
+        """
+        if self._project_id is None:
+            return []
+
+        html_paths: List[str] = []
+
+        with self._get_connection() as conn:
+            # Get all page paths before deleting
+            rows = conn.execute(
+                """SELECT html_path FROM html_pages WHERE project_id = ?""",
+                (self._project_id,),
+            ).fetchall()
+            html_paths = [row["html_path"] for row in rows]
+
+            # Delete all pages (cascade deletes page_sessions)
+            conn.execute(
+                "DELETE FROM html_pages WHERE project_id = ?", (self._project_id,)
+            )
+            conn.commit()
+
+        return html_paths
+
+    def get_page_count(self) -> int:
+        """Get the number of cached pages for this project."""
+        if self._project_id is None:
+            return 0
+
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """SELECT COUNT(*) as cnt FROM html_pages WHERE project_id = ?""",
+                (self._project_id,),
+            ).fetchone()
+
+        return row["cnt"] if row else 0
+
+
+__all__ = [
+    "CacheManager",
+    "CachedFileInfo",
+    "HtmlCacheEntry",
+    "PageCacheData",
+    "ProjectCache",
+    "SessionCacheData",
+    "get_library_version",
+]

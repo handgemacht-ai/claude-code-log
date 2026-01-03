@@ -521,11 +521,9 @@ class SessionBrowser(App[Optional[str]]):
         )
 
         # Get project name using shared logic
-        working_directories = None
+        working_directories: List[str] = []
         try:
-            project_cache = self.cache_manager.get_cached_project_data()
-            if project_cache and project_cache.working_directories:
-                working_directories = project_cache.working_directories
+            working_directories = self.cache_manager.get_working_directories()
         except Exception:
             # Fall back to directory name if cache fails
             pass

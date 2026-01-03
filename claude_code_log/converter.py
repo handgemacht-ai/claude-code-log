@@ -3,6 +3,7 @@
 
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 import traceback
 from typing import Optional, Any, TYPE_CHECKING
@@ -17,7 +18,6 @@ from .utils import (
     get_project_display_name,
     should_use_as_session_starter,
     create_session_preview,
-    extract_working_directories,
     get_warmup_session_ids,
 )
 from .cache import CacheManager, SessionCacheData, get_library_version
@@ -403,6 +403,306 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
     return deduplicated
 
 
+@dataclass
+class GenerationStats:
+    """Track statistics for HTML generation across a project."""
+
+    # Cache statistics
+    files_loaded_from_cache: int = 0
+    files_updated: int = 0
+
+    # HTML generation statistics
+    sessions_total: int = 0
+    sessions_regenerated: int = 0
+    combined_regenerated: bool = False
+
+    # Timing (seconds)
+    cache_time: float = 0.0
+    render_time: float = 0.0
+    total_time: float = 0.0
+
+    # Errors/warnings collected during processing
+    warnings: List[str] = field(default_factory=lambda: [])
+    errors: List[str] = field(default_factory=lambda: [])
+
+    def add_warning(self, msg: str) -> None:
+        """Add a warning message."""
+        self.warnings.append(msg)
+
+    def add_error(self, msg: str) -> None:
+        """Add an error message."""
+        self.errors.append(msg)
+
+    def summary(self, project_name: str) -> str:
+        """Generate a concise summary line for this project."""
+        parts: List[str] = [f"Project: {project_name}"]
+
+        # Cache info
+        cache_parts: List[str] = []
+        if self.files_loaded_from_cache > 0:
+            cache_parts.append(f"{self.files_loaded_from_cache} cached")
+        if self.files_updated > 0:
+            cache_parts.append(f"{self.files_updated} updated")
+        if cache_parts:
+            parts.append(f"  Cache: {', '.join(cache_parts)}")
+
+        # HTML info
+        html_parts: List[str] = []
+        if self.sessions_total > 0:
+            html_parts.append(
+                f"{self.sessions_regenerated}/{self.sessions_total} sessions"
+            )
+        if self.combined_regenerated:
+            html_parts.append("combined")
+        if html_parts:
+            parts.append(f"  HTML: {', '.join(html_parts)} regenerated")
+        elif self.sessions_total > 0:
+            parts.append("  HTML: up to date")
+
+        # Timing
+        if self.total_time > 0:
+            time_str = f"  Time: {self.total_time:.1f}s"
+            if self.cache_time > 0 or self.render_time > 0:
+                time_str += (
+                    f" (cache: {self.cache_time:.1f}s, render: {self.render_time:.1f}s)"
+                )
+            parts.append(time_str)
+
+        return "\n".join(parts)
+
+
+def _get_page_html_path(page_number: int) -> str:
+    """Get the HTML filename for a given page number.
+
+    Page 1 is combined_transcripts.html, page 2+ are combined_transcripts_N.html
+    """
+    if page_number == 1:
+        return "combined_transcripts.html"
+    return f"combined_transcripts_{page_number}.html"
+
+
+def _assign_sessions_to_pages(
+    sessions: Dict[str, SessionCacheData], page_size: int
+) -> List[List[str]]:
+    """Assign sessions to pages, never splitting sessions across pages.
+
+    Args:
+        sessions: Dict mapping session_id to SessionCacheData
+        page_size: Maximum messages per page (overflow allowed to keep sessions intact)
+
+    Returns:
+        List of pages, each containing a list of session_ids
+    """
+    pages: List[List[str]] = []
+    current_page: List[str] = []
+    current_count = 0
+
+    # Sort sessions chronologically by first_timestamp
+    sorted_sessions = sorted(sessions.values(), key=lambda s: s.first_timestamp or "")
+
+    for session in sorted_sessions:
+        # Add session to current page (never split sessions)
+        current_page.append(session.session_id)
+        current_count += session.message_count
+
+        # If page now exceeds limit, close it and start fresh
+        if current_count > page_size:
+            pages.append(current_page)
+            current_page = []
+            current_count = 0
+
+    # Don't forget the last page
+    if current_page:
+        pages.append(current_page)
+
+    return pages
+
+
+def _generate_paginated_html(
+    messages: List[TranscriptEntry],
+    output_dir: Path,
+    title: str,
+    page_size: int,
+    cache_manager: "CacheManager",
+    session_data: Dict[str, SessionCacheData],
+    working_directories: List[str],
+    silent: bool = False,
+) -> Path:
+    """Generate paginated HTML files for combined transcript.
+
+    Args:
+        messages: All messages (deduplicated)
+        output_dir: Directory to write HTML files
+        title: Base title for the pages
+        page_size: Maximum messages per page
+        cache_manager: Cache manager for the project
+        session_data: Session metadata from cache
+        working_directories: Working directories for project display name
+        silent: Suppress verbose output
+
+    Returns:
+        Path to the first page (combined_transcripts.html)
+    """
+    from .renderer import generate_html, format_timestamp
+
+    # Check if page size changed - if so, invalidate all pages
+    cached_page_size = cache_manager.get_page_size_config()
+    if cached_page_size is not None and cached_page_size != page_size:
+        if not silent:
+            print(
+                f"Page size changed from {cached_page_size} to {page_size}, regenerating all pages"
+            )
+        old_paths = cache_manager.invalidate_all_pages()
+        # Delete old page files
+        for html_path in old_paths:
+            page_file = output_dir / html_path
+            if page_file.exists():
+                page_file.unlink()
+
+    # Assign sessions to pages
+    pages: List[List[str]] = _assign_sessions_to_pages(session_data, page_size)
+
+    if not pages:
+        # No sessions, generate empty page
+        pages = [[]]
+
+    # Clean up orphan pages if page count decreased
+    old_page_count = cache_manager.get_page_count()
+    new_page_count = len(pages)
+    if old_page_count > new_page_count:
+        for orphan_page_num in range(new_page_count + 1, old_page_count + 1):
+            orphan_path = output_dir / _get_page_html_path(orphan_page_num)
+            if orphan_path.exists():
+                orphan_path.unlink()
+
+    # Group messages by session for fast lookup
+    messages_by_session: Dict[str, List[TranscriptEntry]] = {}
+    for msg in messages:
+        session_id = getattr(msg, "sessionId", None)
+        if session_id:
+            if session_id not in messages_by_session:
+                messages_by_session[session_id] = []
+            messages_by_session[session_id].append(msg)
+
+    first_page_path = output_dir / _get_page_html_path(1)
+
+    # Generate each page
+    for page_num, page_session_ids in enumerate(pages, start=1):
+        html_path = _get_page_html_path(page_num)
+        page_file = output_dir / html_path
+
+        # Check if page is stale
+        is_stale, reason = cache_manager.is_page_stale(page_num, page_size)
+
+        if not is_stale and page_file.exists():
+            if not silent:
+                print(f"Page {page_num} is current, skipping regeneration")
+            continue
+
+        if not silent:
+            print(f"Generating page {page_num} ({reason})...")
+
+        # Collect messages for this page
+        page_messages: List[TranscriptEntry] = []
+        for session_id in page_session_ids:
+            if session_id in messages_by_session:
+                page_messages.extend(messages_by_session[session_id])
+
+        # Calculate page stats
+        page_message_count = len(page_messages)
+        first_timestamp = None
+        last_timestamp = None
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cache_creation_tokens = 0
+        total_cache_read_tokens = 0
+
+        for session_id in page_session_ids:
+            if session_id in session_data:
+                s = session_data[session_id]
+                if s.first_timestamp and (
+                    first_timestamp is None or s.first_timestamp < first_timestamp
+                ):
+                    first_timestamp = s.first_timestamp
+                if s.last_timestamp and (
+                    last_timestamp is None or s.last_timestamp > last_timestamp
+                ):
+                    last_timestamp = s.last_timestamp
+                total_input_tokens += s.total_input_tokens
+                total_output_tokens += s.total_output_tokens
+                total_cache_creation_tokens += s.total_cache_creation_tokens
+                total_cache_read_tokens += s.total_cache_read_tokens
+
+        # Build page_info for navigation
+        has_prev = page_num > 1
+        # Pre-enable next link if this page exceeds threshold (anticipating future pages)
+        # or if there are more pages
+        page_exceeds_threshold = page_message_count > page_size
+        has_next = page_num < len(pages) or page_exceeds_threshold
+
+        page_info = {
+            "page_number": page_num,
+            "prev_link": _get_page_html_path(page_num - 1) if has_prev else None,
+            "next_link": _get_page_html_path(page_num + 1) if has_next else None,
+        }
+
+        # Build page_stats
+        date_range = ""
+        if first_timestamp and last_timestamp:
+            first_fmt = format_timestamp(first_timestamp)
+            last_fmt = format_timestamp(last_timestamp)
+            if first_fmt == last_fmt:
+                date_range = first_fmt
+            else:
+                date_range = f"{first_fmt} - {last_fmt}"
+        elif first_timestamp:
+            date_range = format_timestamp(first_timestamp)
+
+        token_parts: List[str] = []
+        if total_input_tokens:
+            token_parts.append(f"Input: {total_input_tokens:,}")
+        if total_output_tokens:
+            token_parts.append(f"Output: {total_output_tokens:,}")
+        if total_cache_creation_tokens:
+            token_parts.append(f"Cache Create: {total_cache_creation_tokens:,}")
+        if total_cache_read_tokens:
+            token_parts.append(f"Cache Read: {total_cache_read_tokens:,}")
+        token_summary = " | ".join(token_parts) if token_parts else None
+
+        page_stats = {
+            "message_count": page_message_count,
+            "date_range": date_range,
+            "token_summary": token_summary,
+        }
+
+        # Generate HTML for this page
+        page_title = f"{title} - Page {page_num}" if page_num > 1 else title
+        html_content = generate_html(
+            page_messages,
+            page_title,
+            page_info=page_info,
+            page_stats=page_stats,
+        )
+        page_file.write_text(html_content, encoding="utf-8")
+
+        # Update cache
+        cache_manager.update_page_cache(
+            page_number=page_num,
+            html_path=html_path,
+            page_size_config=page_size,
+            session_ids=page_session_ids,
+            message_count=page_message_count,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            total_input_tokens=total_input_tokens,
+            total_output_tokens=total_output_tokens,
+            total_cache_creation_tokens=total_cache_creation_tokens,
+            total_cache_read_tokens=total_cache_read_tokens,
+        )
+
+    return first_page_path
+
+
 def convert_jsonl_to_html(
     input_path: Path,
     output_path: Optional[Path] = None,
@@ -411,6 +711,7 @@ def convert_jsonl_to_html(
     generate_individual_sessions: bool = True,
     use_cache: bool = True,
     silent: bool = False,
+    page_size: int = 2000,
 ) -> Path:
     """Convert JSONL transcript(s) to HTML file(s).
 
@@ -466,6 +767,10 @@ def convert_jsonl_to(
             print(f"Warning: Failed to initialize cache manager: {e}")
 
     ext = get_file_extension(format)
+
+    # Initialize working_directories for both branches (used by pagination in directory mode)
+    working_directories: List[str] = []
+
     if input_path.is_file():
         # Single file mode - cache only available for directory mode
         if output_path is None:
@@ -483,13 +788,37 @@ def convert_jsonl_to(
             input_path, cache_manager, from_date, to_date, silent
         )
 
+        # Phase 1b: Early exit if nothing needs regeneration
+        # Skip expensive message loading if all HTML is up to date
+        if (
+            cache_manager is not None
+            and not cache_was_updated
+            and from_date is None
+            and to_date is None
+        ):
+            # Check if combined HTML is stale
+            combined_stale, _ = cache_manager.is_html_stale(output_path.name, None)
+            if not combined_stale and not is_html_outdated(output_path):
+                # Check if any session HTML is stale
+                stale_sessions = cache_manager.get_stale_sessions()
+                if not stale_sessions or not generate_individual_sessions:
+                    # Nothing needs regeneration - skip loading
+                    if not silent:
+                        print(
+                            f"All HTML files are current for {input_path.name}, "
+                            "skipping regeneration"
+                        )
+                    return output_path
+
         # Phase 2: Load messages (will use fresh cache when available)
         messages = load_directory_transcripts(
             input_path, cache_manager, from_date, to_date, silent
         )
 
-        # Extract working directories directly from parsed messages
-        working_directories = extract_working_directories(messages)
+        # Get working directories from cache
+        working_directories = (
+            cache_manager.get_working_directories() if cache_manager else []
+        )
 
         project_title = get_project_display_name(input_path.name, working_directories)
         title = f"Claude Transcripts - {project_title}"
@@ -513,26 +842,77 @@ def convert_jsonl_to(
     # Generate combined output file (check if regeneration needed)
     assert output_path is not None
     renderer = get_renderer(format, image_export_mode)
-    should_regenerate = (
-        renderer.is_outdated(output_path)
-        or from_date is not None
-        or to_date is not None
-        or not output_path.exists()
-        or (
-            input_path.is_dir() and cache_was_updated
-        )  # Regenerate if JSONL files changed
-    )
 
-    if should_regenerate:
-        # For referenced images, pass the output directory
-        output_dir = output_path.parent
-        content = renderer.generate(messages, title, output_dir=output_dir)
-        assert content is not None
-        output_path.write_text(content, encoding="utf-8")
-    else:
-        print(
-            f"{format.upper()} file {output_path.name} is current, skipping regeneration"
+    # Decide whether to use pagination (HTML only, directory mode, no date filter)
+    use_pagination = False
+    cached_data = cache_manager.get_cached_project_data() if cache_manager else None
+    total_message_count = (
+        cached_data.total_message_count if cached_data else len(messages)
+    )
+    existing_page_count = cache_manager.get_page_count() if cache_manager else 0
+
+    if (
+        format == "html"
+        and cache_manager is not None
+        and input_path.is_dir()
+        and from_date is None
+        and to_date is None
+    ):
+        # Use pagination if total messages exceed page_size or there are existing pages
+        use_pagination = total_message_count > page_size or existing_page_count > 1
+
+    if use_pagination:
+        # Use paginated HTML generation
+        assert cache_manager is not None  # Ensured by use_pagination condition
+        session_data = cached_data.sessions if cached_data else {}
+        output_path = _generate_paginated_html(
+            messages,
+            input_path,
+            title,
+            page_size,
+            cache_manager,
+            session_data,
+            working_directories,
+            silent=silent,
         )
+    else:
+        # Use single-file generation for small projects or filtered views
+        # Use incremental regeneration via html_cache when available
+        if cache_manager is not None and input_path.is_dir():
+            is_stale, _reason = cache_manager.is_html_stale(output_path.name, None)
+            should_regenerate = (
+                is_stale
+                or renderer.is_outdated(output_path)
+                or from_date is not None
+                or to_date is not None
+                or not output_path.exists()
+            )
+        else:
+            # Fallback: old logic for single file mode or no cache
+            should_regenerate = (
+                renderer.is_outdated(output_path)
+                or from_date is not None
+                or to_date is not None
+                or not output_path.exists()
+                or (input_path.is_dir() and cache_was_updated)
+            )
+
+        if should_regenerate:
+            # For referenced images, pass the output directory
+            output_dir = output_path.parent
+            content = renderer.generate(messages, title, output_dir=output_dir)
+            assert content is not None
+            output_path.write_text(content, encoding="utf-8")
+
+            # Update html_cache for combined transcript (HTML only)
+            if format == "html" and cache_manager is not None:
+                cache_manager.update_html_cache(
+                    output_path.name, None, total_message_count
+                )
+        elif not silent:
+            print(
+                f"{format.upper()} file {output_path.name} is current, skipping regeneration"
+            )
 
     # Generate individual session files if requested and in directory mode
     if generate_individual_sessions and input_path.is_dir():
@@ -545,9 +925,43 @@ def convert_jsonl_to(
             cache_manager,
             cache_was_updated,
             image_export_mode,
+            silent=silent,
         )
 
     return output_path
+
+
+def has_cache_changes(
+    project_dir: Path,
+    cache_manager: Optional[CacheManager],
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> bool:
+    """Check if cache needs updating (fast mtime comparison only).
+
+    Returns True if there are modified files or cache is stale.
+    Does NOT load any messages - that's deferred to ensure_fresh_cache.
+    """
+    if cache_manager is None:
+        return True  # No cache means we need to process
+
+    jsonl_files = list(project_dir.glob("*.jsonl"))
+    if not jsonl_files:
+        return False
+
+    # Get cached project data
+    cached_project_data = cache_manager.get_cached_project_data()
+
+    # Check various invalidation conditions
+    modified_files = cache_manager.get_modified_files(jsonl_files)
+
+    return (
+        cached_project_data is None
+        or from_date is not None
+        or to_date is not None
+        or bool(modified_files)
+        or (cached_project_data.total_message_count == 0 and bool(jsonl_files))
+    )
 
 
 def ensure_fresh_cache(
@@ -557,7 +971,11 @@ def ensure_fresh_cache(
     to_date: Optional[str] = None,
     silent: bool = False,
 ) -> bool:
-    """Ensure cache is fresh and populated. Returns True if cache was updated."""
+    """Ensure cache is fresh and populated. Returns True if cache was updated.
+
+    This does the heavy lifting of loading and parsing files.
+    Call has_cache_changes() first for a fast check.
+    """
     if cache_manager is None:
         return False
 
@@ -744,11 +1162,6 @@ def _update_cache_with_session_data(
     # Update cache with filtered session data
     cache_manager.update_session_cache(sessions_cache_data)
 
-    # Update cache with working directories (from filtered sessions)
-    cache_manager.update_working_directories(
-        extract_working_directories(list(sessions_cache_data.values()))
-    )
-
     # Update cache with project aggregates
     cache_manager.update_project_aggregates(
         total_message_count=total_message_count,
@@ -874,8 +1287,13 @@ def _generate_individual_session_files(
     cache_manager: Optional["CacheManager"] = None,
     cache_was_updated: bool = False,
     image_export_mode: Optional[str] = None,
-) -> None:
-    """Generate individual files for each session in the specified format."""
+    silent: bool = False,
+) -> int:
+    """Generate individual files for each session in the specified format.
+
+    Returns:
+        Number of sessions regenerated
+    """
     ext = get_file_extension(format)
     # Pre-compute warmup sessions to exclude them
     warmup_session_ids = get_warmup_session_ids(messages)
@@ -890,19 +1308,23 @@ def _generate_individual_session_files(
 
     # Get session data from cache for better titles
     session_data: dict[str, Any] = {}
-    working_directories = None
+    working_directories: list[str] = []
     if cache_manager is not None:
         project_cache = cache_manager.get_cached_project_data()
         if project_cache:
             session_data = {s.session_id: s for s in project_cache.sessions.values()}
-            # Get working directories for project title
-            if project_cache.working_directories:
-                working_directories = project_cache.working_directories
+        # Get working directories for project title
+        working_directories = cache_manager.get_working_directories()
+
+    # Only generate HTML for sessions that are tracked in the sessions table
+    # (filters out warmup-only and sessions without user messages)
+    session_ids = session_ids & set(session_data.keys())
 
     project_title = get_project_display_name(output_dir.name, working_directories)
 
     # Get renderer once outside the loop
     renderer = get_renderer(format, image_export_mode)
+    regenerated_count = 0
 
     # Generate HTML file for each session
     for session_id in session_ids:
@@ -937,15 +1359,29 @@ def _generate_individual_session_files(
 
         # Check if session file needs regeneration
         session_file_path = output_dir / f"session-{session_id}.{ext}"
+        session_file_name = f"session-{session_id}.{ext}"
 
-        # Only regenerate if outdated, doesn't exist, or date filtering is active
-        should_regenerate_session = (
-            renderer.is_outdated(session_file_path)
-            or from_date is not None
-            or to_date is not None
-            or not session_file_path.exists()
-            or cache_was_updated  # Regenerate if JSONL files changed
-        )
+        # Use incremental regeneration: check per-session staleness via html_cache
+        if cache_manager is not None and format == "html":
+            is_stale, _reason = cache_manager.is_html_stale(
+                session_file_name, session_id
+            )
+            should_regenerate_session = (
+                is_stale
+                or renderer.is_outdated(session_file_path)
+                or from_date is not None
+                or to_date is not None
+                or not session_file_path.exists()
+            )
+        else:
+            # Fallback without cache or non-HTML formats
+            should_regenerate_session = (
+                renderer.is_outdated(session_file_path)
+                or from_date is not None
+                or to_date is not None
+                or not session_file_path.exists()
+                or cache_was_updated
+            )
 
         if should_regenerate_session:
             # Generate session content
@@ -955,10 +1391,31 @@ def _generate_individual_session_files(
             assert session_content is not None
             # Write session file
             session_file_path.write_text(session_content, encoding="utf-8")
-        else:
+            regenerated_count += 1
+
+            # Update html_cache to track this generation (HTML only)
+            if cache_manager is not None and format == "html":
+                # Use message count from cache (pre-deduplication) to match
+                # the count used in is_html_stale()
+                if session_id in session_data:
+                    session_message_count = session_data[session_id].message_count
+                else:
+                    # Fallback: count from messages list (less accurate due to dedup)
+                    session_message_count = sum(
+                        1
+                        for m in messages
+                        if hasattr(m, "sessionId")
+                        and getattr(m, "sessionId") == session_id
+                    )
+                cache_manager.update_html_cache(
+                    session_file_name, session_id, session_message_count
+                )
+        elif not silent:
             print(
                 f"Session file {session_file_path.name} is current, skipping regeneration"
             )
+
+    return regenerated_count
 
 
 def process_projects_hierarchy(
@@ -969,8 +1426,26 @@ def process_projects_hierarchy(
     generate_individual_sessions: bool = True,
     output_format: str = "html",
     image_export_mode: Optional[str] = None,
+    silent: bool = True,
+    page_size: int = 2000,
 ) -> Path:
-    """Process the entire ~/.claude/projects/ hierarchy and create linked output files."""
+    """Process the entire ~/.claude/projects/ hierarchy and create linked output files.
+
+    Args:
+        projects_path: Path to the projects directory
+        from_date: Optional date filter start
+        to_date: Optional date filter end
+        use_cache: Whether to use SQLite cache
+        generate_individual_sessions: Whether to generate per-session HTML files
+        output_format: Output format (html, md, markdown)
+        image_export_mode: Image export mode for markdown
+        silent: If True, suppress verbose per-file logging (show summary only)
+        page_size: Maximum messages per page for combined transcript pagination
+    """
+    import time
+
+    start_time = time.time()
+
     if not projects_path.exists():
         raise FileNotFoundError(f"Projects path not found: {projects_path}")
 
@@ -991,7 +1466,19 @@ def process_projects_hierarchy(
     # Process each project directory
     project_summaries: list[dict[str, Any]] = []
     any_cache_updated = False  # Track if any project had cache updates
+
+    # Aggregated stats
+    total_projects = len(project_dirs)
+    projects_with_updates = 0
+    total_sessions = 0
+
+    # Per-project stats for summary output
+    project_stats: List[tuple[str, GenerationStats]] = []
+
     for project_dir in sorted(project_dirs):
+        project_start_time = time.time()
+        stats = GenerationStats()
+
         try:
             # Initialize cache manager for this project
             cache_manager = None
@@ -999,26 +1486,80 @@ def process_projects_hierarchy(
                 try:
                     cache_manager = CacheManager(project_dir, library_version)
                 except Exception as e:
-                    print(f"Warning: Failed to initialize cache for {project_dir}: {e}")
+                    stats.add_warning(f"Failed to initialize cache: {e}")
 
-            # Phase 1: Ensure cache is fresh and populated
-            cache_was_updated = ensure_fresh_cache(
-                project_dir, cache_manager, from_date, to_date
+            # Phase 1: Fast check if anything needs updating (mtime comparison only)
+            jsonl_files = list(project_dir.glob("*.jsonl"))
+            modified_files = (
+                cache_manager.get_modified_files(jsonl_files) if cache_manager else []
             )
-            if cache_was_updated:
-                any_cache_updated = True
+            stale_sessions = cache_manager.get_stale_sessions() if cache_manager else []
+            output_path = project_dir / "combined_transcripts.html"
+            # Check combined_stale using the appropriate cache:
+            # - Paginated projects store data in html_pages table (via save_page_cache)
+            # - Non-paginated projects store data in html_cache table (via update_html_cache)
+            if cache_manager is not None:
+                existing_page_count = cache_manager.get_page_count()
+                if existing_page_count > 0:
+                    # Paginated project: check page 1 staleness
+                    combined_stale = cache_manager.is_page_stale(1, page_size)[0]
+                else:
+                    # Non-paginated project: check html_cache
+                    combined_stale = cache_manager.is_html_stale(
+                        output_path.name, None
+                    )[0]
+            else:
+                combined_stale = True
 
-            # Phase 2: Generate output for this project (optionally individual session files)
-            output_path = convert_jsonl_to(
-                output_format,
-                project_dir,
-                None,
-                from_date,
-                to_date,
-                generate_individual_sessions,
-                use_cache,
-                image_export_mode=image_export_mode,
+            # Determine if we need to do any work
+            needs_work = (
+                bool(modified_files)
+                or bool(stale_sessions)
+                or combined_stale
+                or not output_path.exists()
             )
+
+            if not needs_work:
+                # Fast path: nothing to do, just collect stats for index
+                stats.files_loaded_from_cache = len(jsonl_files)
+                stats.total_time = time.time() - project_start_time
+                # Show progress
+                print(f"  {project_dir.name}: cached ({stats.total_time:.1f}s)")
+            else:
+                # Slow path: update cache and regenerate output
+                stats.files_updated = len(modified_files) if modified_files else 0
+                stats.files_loaded_from_cache = len(jsonl_files) - stats.files_updated
+                stats.sessions_regenerated = len(stale_sessions)
+
+                # Track if cache was updated (for index regeneration)
+                if modified_files:
+                    any_cache_updated = True
+                    projects_with_updates += 1
+
+                # Generate output for this project (handles cache updates internally)
+                output_path = convert_jsonl_to(
+                    output_format,
+                    project_dir,
+                    None,
+                    from_date,
+                    to_date,
+                    generate_individual_sessions,
+                    use_cache,
+                    silent=silent,
+                    image_export_mode=image_export_mode,
+                    page_size=page_size,
+                )
+
+                # Track timing
+                stats.total_time = time.time() - project_start_time
+                # Show progress
+                progress_parts: List[str] = []
+                if stats.files_updated > 0:
+                    progress_parts.append(f"{stats.files_updated} files updated")
+                if stats.sessions_regenerated > 0:
+                    progress_parts.append(f"{stats.sessions_regenerated} sessions")
+                detail = ", ".join(progress_parts) if progress_parts else "regenerated"
+                print(f"  {project_dir.name}: {detail} ({stats.total_time:.1f}s)")
 
             # Get project info for index - use cached data if available
             # Exclude agent files (they are loaded via session references)
@@ -1036,6 +1577,8 @@ def process_projects_hierarchy(
             if cache_manager is not None:
                 cached_project_data = cache_manager.get_cached_project_data()
                 if cached_project_data is not None:
+                    # Track total sessions for stats
+                    stats.sessions_total = len(cached_project_data.sessions)
                     # Use cached aggregation data
                     project_summaries.append(
                         {
@@ -1051,7 +1594,7 @@ def process_projects_hierarchy(
                             "total_cache_read_tokens": cached_project_data.total_cache_read_tokens,
                             "latest_timestamp": cached_project_data.latest_timestamp,
                             "earliest_timestamp": cached_project_data.earliest_timestamp,
-                            "working_directories": cached_project_data.working_directories,
+                            "working_directories": cache_manager.get_working_directories(),
                             "sessions": [
                                 {
                                     "id": session_data.session_id,
@@ -1073,6 +1616,8 @@ def process_projects_hierarchy(
                             ],
                         }
                     )
+                    # Add project stats
+                    project_stats.append((project_dir.name, stats))
                     continue
 
             # Fallback for when cache is not available (should be rare)
@@ -1080,8 +1625,11 @@ def process_projects_hierarchy(
                 f"Warning: No cached data available for {project_dir.name}, using fallback processing"
             )
             messages = load_directory_transcripts(
-                project_dir, cache_manager, from_date, to_date
+                project_dir, cache_manager, from_date, to_date, silent=silent
             )
+            # Ensure cache is populated with session data (including working directories)
+            if cache_manager:
+                _update_cache_with_session_data(cache_manager, messages)
             if from_date or to_date:
                 messages = filter_messages_by_date(messages, from_date, to_date)
 
@@ -1153,12 +1701,20 @@ def process_projects_hierarchy(
                     "total_cache_read_tokens": total_cache_read_tokens,
                     "latest_timestamp": latest_timestamp,
                     "earliest_timestamp": earliest_timestamp,
-                    "working_directories": extract_working_directories(messages),
+                    "working_directories": cache_manager.get_working_directories()
+                    if cache_manager
+                    else [],
                     "sessions": sessions_data,
                 }
             )
+            # Track session count in stats for fallback path
+            stats.sessions_total = len(sessions_data)
+            project_stats.append((project_dir.name, stats))
+
         except Exception as e:
             prev_project = project_summaries[-1] if project_summaries else "(none)"
+            stats.add_error(str(e))
+            project_stats.append((project_dir.name, stats))
             print(
                 f"Warning: Failed to process {project_dir}: {e}\n"
                 f"Previous (in alphabetical order) project before error: {prev_project}"
@@ -1170,13 +1726,38 @@ def process_projects_hierarchy(
     ext = get_file_extension(output_format)
     index_path = projects_path / f"index.{ext}"
     renderer = get_renderer(output_format, image_export_mode)
+    index_regenerated = False
     if renderer.is_outdated(index_path) or from_date or to_date or any_cache_updated:
         index_content = renderer.generate_projects_index(
             project_summaries, from_date, to_date
         )
         assert index_content is not None
         index_path.write_text(index_content, encoding="utf-8")
-    else:
+        index_regenerated = True
+    elif not silent:
         print(f"Index {ext.upper()} is current, skipping regeneration")
+
+    # Count total sessions from project summaries
+    for summary in project_summaries:
+        total_sessions += len(summary.get("sessions", []))
+
+    # Print summary
+    elapsed = time.time() - start_time
+
+    # Print any errors/warnings that occurred
+    for project_name, stats in project_stats:
+        for warning in stats.warnings:
+            print(f"  Warning ({project_name}): {warning}")
+        for error in stats.errors:
+            print(f"  Error ({project_name}): {error}")
+
+    # Global summary
+    summary_parts: List[str] = []
+    summary_parts.append(f"Processed {total_projects} projects in {elapsed:.1f}s")
+    if projects_with_updates > 0:
+        summary_parts.append(f"  {projects_with_updates} projects updated")
+    if index_regenerated:
+        summary_parts.append("  Index regenerated")
+    print("\n".join(summary_parts))
 
     return index_path

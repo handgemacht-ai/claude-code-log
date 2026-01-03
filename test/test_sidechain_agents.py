@@ -18,13 +18,19 @@ def test_agent_insertion():
         # Write main transcript
         main_file = tmpdir_path / "main.jsonl"
         main_file.write_text(
-            (Path(__file__).parent / "test_data" / "sidechain_main.jsonl").read_text()
+            (Path(__file__).parent / "test_data" / "sidechain_main.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
         # Write agent transcript (must match agentId in main file)
         agent_file = tmpdir_path / "agent-e1c84ba5.jsonl"
         agent_file.write_text(
-            (Path(__file__).parent / "test_data" / "sidechain_agent.jsonl").read_text()
+            (Path(__file__).parent / "test_data" / "sidechain_agent.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
         # Load transcript with agent insertion (agent files discovered automatically)
@@ -58,12 +64,18 @@ def test_deduplication_task_result_vs_sidechain():
         # Write deduplication test data
         main_file = tmpdir_path / "main.jsonl"
         main_file.write_text(
-            (Path(__file__).parent / "test_data" / "dedup_main.jsonl").read_text()
+            (Path(__file__).parent / "test_data" / "dedup_main.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
         agent_file = tmpdir_path / "agent-e1c84ba5.jsonl"
         agent_file.write_text(
-            (Path(__file__).parent / "test_data" / "dedup_agent.jsonl").read_text()
+            (Path(__file__).parent / "test_data" / "dedup_agent.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
         # Load and render (agent files discovered automatically)
@@ -91,13 +103,15 @@ def test_no_deduplication_when_content_different():
         main_file.write_text(
             '{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"e:\\\\test","sessionId":"test-3","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"text","text":"Do something"}]},"uuid":"d-0","timestamp":"2025-01-15T12:00:00.000Z"}\n'
             '{"parentUuid":"d-0","isSidechain":false,"userType":"external","cwd":"e:\\\\test","sessionId":"test-3","version":"2.0.46","gitBranch":"main","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01test1","type":"message","role":"assistant","content":[{"type":"tool_use","id":"task-3","name":"Task","input":{"prompt":"Do it"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":20}},"requestId":"req_01test1","type":"assistant","uuid":"d-1","timestamp":"2025-01-15T12:00:05.000Z"}\n'
-            '{"parentUuid":"d-1","isSidechain":false,"userType":"external","cwd":"e:\\\\test","sessionId":"test-3","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-3","content":"Done A"}]},"uuid":"d-2","timestamp":"2025-01-15T12:00:15.000Z","toolUseResult":{"agentId":"ghi789","content":"Done A"},"agentId":"ghi789"}\n'
+            '{"parentUuid":"d-1","isSidechain":false,"userType":"external","cwd":"e:\\\\test","sessionId":"test-3","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-3","content":"Done A"}]},"uuid":"d-2","timestamp":"2025-01-15T12:00:15.000Z","toolUseResult":{"agentId":"ghi789","content":"Done A"},"agentId":"ghi789"}\n',
+            encoding="utf-8",
         )
 
         agent_file = tmpdir_path / "agent-ghi789.jsonl"
         agent_file.write_text(
             '{"parentUuid":null,"isSidechain":true,"userType":"external","cwd":"e:\\\\test","sessionId":"test-3","version":"2.0.46","gitBranch":"main","agentId":"ghi789","type":"user","message":{"role":"user","content":[{"type":"text","text":"Do it"}]},"uuid":"agent-d-0","timestamp":"2025-01-15T12:00:06.000Z"}\n'
-            '{"parentUuid":"agent-d-0","isSidechain":true,"userType":"external","cwd":"e:\\\\test","sessionId":"test-3","version":"2.0.46","gitBranch":"main","agentId":"ghi789","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01testagent1","type":"message","role":"assistant","content":[{"type":"text","text":"Done B"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":10}},"requestId":"req_01testagent1","type":"assistant","uuid":"agent-d-1","timestamp":"2025-01-15T12:00:14.000Z"}\n'
+            '{"parentUuid":"agent-d-0","isSidechain":true,"userType":"external","cwd":"e:\\\\test","sessionId":"test-3","version":"2.0.46","gitBranch":"main","agentId":"ghi789","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01testagent1","type":"message","role":"assistant","content":[{"type":"text","text":"Done B"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":10}},"requestId":"req_01testagent1","type":"assistant","uuid":"agent-d-1","timestamp":"2025-01-15T12:00:14.000Z"}\n',
+            encoding="utf-8",
         )
 
         messages = load_transcript(main_file)
@@ -116,12 +130,18 @@ def test_agent_messages_marked_as_sidechain():
 
         main_file = tmpdir_path / "main.jsonl"
         main_file.write_text(
-            (Path(__file__).parent / "test_data" / "sidechain_main.jsonl").read_text()
+            (Path(__file__).parent / "test_data" / "sidechain_main.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
         agent_file = tmpdir_path / "agent-e1c84ba5.jsonl"
         agent_file.write_text(
-            (Path(__file__).parent / "test_data" / "sidechain_agent.jsonl").read_text()
+            (Path(__file__).parent / "test_data" / "sidechain_agent.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
         messages = load_transcript(main_file)
@@ -153,7 +173,8 @@ def test_sidechain_tool_results_rendered():
         main_file.write_text(
             '{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-tool-results","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"text","text":"Search for files"}]},"uuid":"u-0","timestamp":"2025-01-15T14:00:00.000Z"}\n'
             '{"parentUuid":"u-0","isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-tool-results","version":"2.0.46","gitBranch":"main","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_main","type":"message","role":"assistant","content":[{"type":"tool_use","id":"task-glob","name":"Task","input":{"prompt":"Find test files"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req_main","type":"assistant","uuid":"a-0","timestamp":"2025-01-15T14:00:05.000Z"}\n'
-            '{"parentUuid":"a-0","isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-tool-results","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-glob","content":"Found files: test.py"}]},"uuid":"u-1","timestamp":"2025-01-15T14:00:20.000Z","toolUseResult":{"agentId":"glob-agent","content":"Found files: test.py"},"agentId":"glob-agent"}\n'
+            '{"parentUuid":"a-0","isSidechain":false,"userType":"external","cwd":"/workspace","sessionId":"test-tool-results","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-glob","content":"Found files: test.py"}]},"uuid":"u-1","timestamp":"2025-01-15T14:00:20.000Z","toolUseResult":{"agentId":"glob-agent","content":"Found files: test.py"},"agentId":"glob-agent"}\n',
+            encoding="utf-8",
         )
 
         # Create agent file with tool use (Glob) and its result
@@ -166,7 +187,8 @@ def test_sidechain_tool_results_rendered():
             # Tool result comes in a sidechain user message - THIS SHOULD BE RENDERED
             '{"parentUuid":"agent-a-0","isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-tool-results","version":"2.0.46","gitBranch":"main","agentId":"glob-agent","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"glob-123","content":"/workspace/test.py"}]},"uuid":"agent-u-1","timestamp":"2025-01-15T14:00:10.000Z"}\n'
             # Final assistant message
-            '{"parentUuid":"agent-u-1","isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-tool-results","version":"2.0.46","gitBranch":"main","agentId":"glob-agent","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_agent_final","type":"message","role":"assistant","content":[{"type":"text","text":"Found files: test.py"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":60,"output_tokens":15}},"requestId":"req_agent_final","type":"assistant","uuid":"agent-a-1","timestamp":"2025-01-15T14:00:15.000Z"}\n'
+            '{"parentUuid":"agent-u-1","isSidechain":true,"userType":"external","cwd":"/workspace","sessionId":"test-tool-results","version":"2.0.46","gitBranch":"main","agentId":"glob-agent","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_agent_final","type":"message","role":"assistant","content":[{"type":"text","text":"Found files: test.py"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":60,"output_tokens":15}},"requestId":"req_agent_final","type":"assistant","uuid":"agent-a-1","timestamp":"2025-01-15T14:00:15.000Z"}\n',
+            encoding="utf-8",
         )
 
         messages = load_transcript(main_file)
@@ -260,17 +282,20 @@ def test_multiple_agent_invocations():
             '{"parentUuid":"d-0","isSidechain":false,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01","type":"message","role":"assistant","content":[{"type":"tool_use","id":"task-4a","name":"Task","input":{"prompt":"First task"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req_01","type":"assistant","uuid":"d-1","timestamp":"2025-01-15T13:00:05.000Z"}\n'
             '{"parentUuid":"d-1","isSidechain":false,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-4a","content":"First done"}]},"uuid":"d-2","timestamp":"2025-01-15T13:00:15.000Z","toolUseResult":{"status":"completed","agentId":"first","content":[{"type":"text","text":"First done"}]},"agentId":"first"}\n'
             '{"parentUuid":"d-2","isSidechain":false,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_02","type":"message","role":"assistant","content":[{"type":"tool_use","id":"task-4b","name":"Task","input":{"prompt":"Second task"}}],"stop_reason":"tool_use","stop_sequence":null,"usage":{"input_tokens":150,"output_tokens":60}},"requestId":"req_02","type":"assistant","uuid":"d-3","timestamp":"2025-01-15T13:00:20.000Z"}\n'
-            '{"parentUuid":"d-3","isSidechain":false,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-4b","content":"Second done"}]},"uuid":"d-4","timestamp":"2025-01-15T13:00:30.000Z","toolUseResult":{"status":"completed","agentId":"second","content":[{"type":"text","text":"Second done"}]},"agentId":"second"}\n'
+            '{"parentUuid":"d-3","isSidechain":false,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task-4b","content":"Second done"}]},"uuid":"d-4","timestamp":"2025-01-15T13:00:30.000Z","toolUseResult":{"status":"completed","agentId":"second","content":[{"type":"text","text":"Second done"}]},"agentId":"second"}\n',
+            encoding="utf-8",
         )
 
         (tmpdir_path / "agent-first.jsonl").write_text(
             '{"parentUuid":null,"isSidechain":true,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","agentId":"first","type":"user","message":{"role":"user","content":[{"type":"text","text":"First task"}]},"uuid":"agent-d-0","timestamp":"2025-01-15T13:00:06.000Z"}\n'
-            '{"parentUuid":"agent-d-0","isSidechain":true,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","agentId":"first","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_agent_01","type":"message","role":"assistant","content":[{"type":"text","text":"First done"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":50,"output_tokens":25}},"requestId":"req_agent_01","type":"assistant","uuid":"agent-d-1","timestamp":"2025-01-15T13:00:14.000Z"}\n'
+            '{"parentUuid":"agent-d-0","isSidechain":true,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","agentId":"first","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_agent_01","type":"message","role":"assistant","content":[{"type":"text","text":"First done"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":50,"output_tokens":25}},"requestId":"req_agent_01","type":"assistant","uuid":"agent-d-1","timestamp":"2025-01-15T13:00:14.000Z"}\n',
+            encoding="utf-8",
         )
 
         (tmpdir_path / "agent-second.jsonl").write_text(
             '{"parentUuid":null,"isSidechain":true,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","agentId":"second","type":"user","message":{"role":"user","content":[{"type":"text","text":"Second task"}]},"uuid":"agent2-d-0","timestamp":"2025-01-15T13:00:21.000Z"}\n'
-            '{"parentUuid":"agent2-d-0","isSidechain":true,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","agentId":"second","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_agent_02","type":"message","role":"assistant","content":[{"type":"text","text":"Second done"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":55,"output_tokens":30}},"requestId":"req_agent_02","type":"assistant","uuid":"agent2-d-1","timestamp":"2025-01-15T13:00:29.000Z"}\n'
+            '{"parentUuid":"agent2-d-0","isSidechain":true,"userType":"external","cwd":"/workspace/test","sessionId":"test-4","version":"2.0.46","gitBranch":"main","agentId":"second","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_agent_02","type":"message","role":"assistant","content":[{"type":"text","text":"Second done"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":55,"output_tokens":30}},"requestId":"req_agent_02","type":"assistant","uuid":"agent2-d-1","timestamp":"2025-01-15T13:00:29.000Z"}\n',
+            encoding="utf-8",
         )
 
         messages = load_transcript(main_file)

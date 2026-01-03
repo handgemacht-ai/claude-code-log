@@ -183,7 +183,9 @@ class TestProjectHierarchyProcessing:
                 content=f"test message {suffix}",
                 session_id=f"session{suffix}",
             )
-            (project_dir / "test.jsonl").write_text(json.dumps(entry) + "\n")
+            (project_dir / "test.jsonl").write_text(
+                json.dumps(entry) + "\n", encoding="utf-8"
+            )
 
         # Process all projects
         process_projects_hierarchy(temp_projects_copy)
@@ -243,13 +245,9 @@ class TestCLIWithProjectsDir:
         )
         assert result.exit_code == 0
 
-        # Verify caches were created
-        cache_exists = False
-        for project_dir in temp_projects_copy.iterdir():
-            if project_dir.is_dir() and (project_dir / "cache").exists():
-                cache_exists = True
-                break
-        assert cache_exists, "Cache should exist after processing"
+        # Verify SQLite cache was created
+        cache_db = temp_projects_copy / "cache.db"
+        assert cache_db.exists(), "SQLite cache should exist after processing"
 
         # Clear caches
         result = runner.invoke(
@@ -265,18 +263,8 @@ class TestCLIWithProjectsDir:
         assert result.exit_code == 0
         assert "clear" in result.output.lower()
 
-        # Verify all cache files were actually deleted
-        remaining_cache_files: list[Path] = []
-        for project_dir in temp_projects_copy.iterdir():
-            if not project_dir.is_dir():
-                continue
-            cache_dir = project_dir / "cache"
-            if cache_dir.exists():
-                remaining_cache_files.extend(cache_dir.glob("*.json"))
-
-        assert not remaining_cache_files, (
-            f"Cache files should be deleted but found: {remaining_cache_files}"
-        )
+        # Verify SQLite database was deleted
+        assert not cache_db.exists(), "SQLite cache database should be deleted"
 
     def test_clear_html_with_projects_dir(self, temp_projects_copy: Path) -> None:
         """Test HTML clearing with custom projects directory."""
@@ -430,17 +418,19 @@ class TestCacheWithRealData:
         """Test cache is created correctly for all projects."""
         process_projects_hierarchy(temp_projects_copy)
 
+        # Verify SQLite cache database was created
+        cache_db = temp_projects_copy / "cache.db"
+        assert cache_db.exists(), "SQLite cache database should exist"
+
         for project_dir in temp_projects_copy.iterdir():
             if not project_dir.is_dir() or not list(project_dir.glob("*.jsonl")):
                 continue
 
-            cache_file = project_dir / "cache" / "index.json"
-            assert cache_file.exists(), f"Cache index missing for {project_dir.name}"
-
-            # Verify cache structure
-            cache_data = json.loads(cache_file.read_text())
-            assert "version" in cache_data
-            assert "sessions" in cache_data
+            cache_manager = CacheManager(project_dir, get_library_version())
+            cached_data = cache_manager.get_cached_project_data()
+            assert cached_data is not None, f"Cache missing for {project_dir.name}"
+            assert cached_data.version is not None
+            assert isinstance(cached_data.sessions, dict)
 
     def test_cache_invalidation_on_modification(self, temp_projects_copy: Path) -> None:
         """Test cache detects file modifications."""
@@ -459,12 +449,14 @@ class TestCacheWithRealData:
 
         # Modify a file
         test_file = jsonl_files[0]
-        original_content = test_file.read_text()
+        original_content = test_file.read_text(encoding="utf-8")
         entry = make_valid_user_entry(
             content="test modification",
             session_id="test-modification",
         )
-        test_file.write_text(original_content + "\n" + json.dumps(entry) + "\n")
+        test_file.write_text(
+            original_content + "\n" + json.dumps(entry) + "\n", encoding="utf-8"
+        )
 
         # Check if modification is detected
         modified = cache_manager.get_modified_files(list(project_dir.glob("*.jsonl")))
@@ -478,11 +470,11 @@ class TestCacheWithRealData:
 
         convert_jsonl_to_html(project_dir)
 
-        cache_file = project_dir / "cache" / "index.json"
-        cache_data = json.loads(cache_file.read_text())
+        cache_manager = CacheManager(project_dir, get_library_version())
+        cached_data = cache_manager.get_cached_project_data()
 
-        assert "version" in cache_data
-        assert cache_data["version"] == get_library_version()
+        assert cached_data is not None
+        assert cached_data.version == get_library_version()
 
 
 @pytest.mark.integration
@@ -506,7 +498,9 @@ class TestGitWorktreeScenarios:
                 content=f"worktree test {suffix}",
                 session_id=f"session{suffix}",
             )
-            (project_dir / "test.jsonl").write_text(json.dumps(entry) + "\n")
+            (project_dir / "test.jsonl").write_text(
+                json.dumps(entry) + "\n", encoding="utf-8"
+            )
 
         # Process all
         process_projects_hierarchy(temp_projects_copy)
@@ -671,15 +665,15 @@ class TestCacheHTMLPersistence:
             pytest.skip("Cache not generated by fixture")
 
         # Corrupt version in cache
-        cache_data = json.loads(cache_index.read_text())
+        cache_data = json.loads(cache_index.read_text(encoding="utf-8"))
         cache_data["version"] = "0.0.0-fake"
-        cache_index.write_text(json.dumps(cache_data))
+        cache_index.write_text(json.dumps(cache_data), encoding="utf-8")
 
         # Process should rebuild cache
         convert_jsonl_to_html(project)
 
         # Cache should have correct version now
-        new_cache_data = json.loads(cache_index.read_text())
+        new_cache_data = json.loads(cache_index.read_text(encoding="utf-8"))
         assert new_cache_data["version"] == get_library_version()
 
     def test_missing_cache_files_regenerated(self, projects_with_cache: Path) -> None:
@@ -761,7 +755,7 @@ class TestIncrementalJSONLUpdates:
             content="New message added",
             session_id="test-incremental",
         )
-        with open(jsonl_file, "a") as f:
+        with open(jsonl_file, "a", encoding="utf-8") as f:
             f.write("\n" + json.dumps(entry) + "\n")
 
         time.sleep(0.01)
@@ -796,7 +790,7 @@ class TestIncrementalJSONLUpdates:
             content="Another new message",
             session_id="test-incremental",
         )
-        with open(jsonl_file, "a") as f:
+        with open(jsonl_file, "a", encoding="utf-8") as f:
             f.write("\n" + json.dumps(entry) + "\n")
 
         time.sleep(0.01)
@@ -825,7 +819,7 @@ class TestIncrementalJSONLUpdates:
             content=unique_content,
             session_id="test-content-check",
         )
-        with open(jsonl_file, "a") as f:
+        with open(jsonl_file, "a", encoding="utf-8") as f:
             f.write("\n" + json.dumps(entry) + "\n")
 
         convert_jsonl_to_html(project)
@@ -848,7 +842,7 @@ class TestAddingNewJSONLFiles:
         if not cache_index.exists():
             pytest.skip("Cache not generated by fixture")
 
-        original_cache = json.loads(cache_index.read_text())
+        original_cache = json.loads(cache_index.read_text(encoding="utf-8"))
         original_session_count = len(original_cache.get("sessions", {}))
 
         # Add new JSONL file
@@ -857,12 +851,12 @@ class TestAddingNewJSONLFiles:
             content="First message in new file",
             session_id="brand-new-session",
         )
-        new_file.write_text(json.dumps(entry) + "\n")
+        new_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
 
         convert_jsonl_to_html(project)
 
         # Cache should include new session
-        new_cache = json.loads(cache_index.read_text())
+        new_cache = json.loads(cache_index.read_text(encoding="utf-8"))
         assert len(new_cache.get("sessions", {})) > original_session_count
 
     def test_new_session_html_generated(self, projects_with_cache: Path) -> None:
@@ -877,7 +871,7 @@ class TestAddingNewJSONLFiles:
             content="Message for new session",
             session_id=new_session_id,
         )
-        new_file.write_text(json.dumps(entry) + "\n")
+        new_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
 
         convert_jsonl_to_html(project)
 
@@ -905,7 +899,7 @@ class TestAddingNewJSONLFiles:
             content="Extra session message",
             session_id="extra-session",
         )
-        new_file.write_text(json.dumps(entry) + "\n")
+        new_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
 
         time.sleep(0.01)
 
@@ -963,7 +957,7 @@ class TestCLIOutputOption:
             pytest.skip("JSSoundRecorder test data not available")
 
         custom_output = temp_projects_copy / "overwrite_test.html"
-        custom_output.write_text("original content")
+        custom_output.write_text("original content", encoding="utf-8")
 
         result = runner.invoke(main, [str(project), "-o", str(custom_output)])
 
@@ -1127,7 +1121,7 @@ class TestIndexHTMLRegeneration:
             content="Trigger index update",
             session_id="index-test",
         )
-        with open(jsonl_file, "a") as f:
+        with open(jsonl_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
         time.sleep(0.01)
@@ -1198,13 +1192,13 @@ class TestErrorHandlingRealistic:
             pytest.skip("Cache not generated by fixture")
 
         # Corrupt the cache index
-        cache_index.write_text("{invalid json")
+        cache_index.write_text("{invalid json", encoding="utf-8")
 
         # Should recover and reprocess
         convert_jsonl_to_html(project)
 
         # Cache should be valid again
-        cache_data = json.loads(cache_index.read_text())
+        cache_data = json.loads(cache_index.read_text(encoding="utf-8"))
         assert "version" in cache_data
 
     def test_missing_cache_directory_handled(self, projects_with_cache: Path) -> None:
@@ -1510,7 +1504,7 @@ class TestLargeProjectHandling:
                 session_id=f"stress-{i}",
                 timestamp=f"2024-12-{10 + i % 20:02d}T10:00:00Z",
             )
-            session_file.write_text(json.dumps(entry) + "\n")
+            session_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
 
         # Should handle many files without error
         convert_jsonl_to_html(project)
@@ -1526,7 +1520,7 @@ class TestLargeProjectHandling:
         large_file = project / "large-session.jsonl"
 
         # Create file with 500 messages
-        with open(large_file, "w") as f:
+        with open(large_file, "w", encoding="utf-8") as f:
             for i in range(500):
                 timestamp = f"2024-12-15T{10 + (i // 60):02d}:{i % 60:02d}:00Z"
                 content = f"Message number {i} with some content"
