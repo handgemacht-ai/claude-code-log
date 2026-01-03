@@ -5,7 +5,7 @@ import os
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Any, ClassVar, Optional, cast
+from typing import Any, ClassVar, List, Optional, cast
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType

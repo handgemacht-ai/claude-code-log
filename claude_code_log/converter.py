@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 import traceback
-from typing import Optional, Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import dateparser
 
@@ -31,7 +31,7 @@ from .models import (
     UserTranscriptEntry,
     ToolResultContent,
 )
-from .renderer import get_renderer
+from .renderer import get_renderer, is_html_outdated
 
 
 def get_file_extension(format: str) -> str:
@@ -149,7 +149,16 @@ def load_transcript(
     messages: list[TranscriptEntry] = []
     agent_ids: set[str] = set()  # Collect agentId references while parsing
 
-    with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
+    try:
+        f = open(jsonl_path, "r", encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        # Handle race condition: file may have been deleted between glob and open
+        # (e.g., Claude Code session cleanup)
+        if not silent:
+            print(f"Warning: File not found (may have been deleted): {jsonl_path}")
+        return []
+
+    with f:
         if not silent:
             print(f"Processing {jsonl_path}...")
         for line_no, line in enumerate(f, 1):  # Start counting from 1
@@ -543,7 +552,8 @@ def _generate_paginated_html(
     Returns:
         Path to the first page (combined_transcripts.html)
     """
-    from .renderer import generate_html, format_timestamp
+    from .html.renderer import generate_html
+    from .utils import format_timestamp
 
     # Check if page size changed - if so, invalidate all pages
     cached_page_size = cache_manager.get_page_size_config()
@@ -726,6 +736,7 @@ def convert_jsonl_to_html(
         generate_individual_sessions,
         use_cache,
         silent,
+        page_size=page_size,
     )
 
 
@@ -739,6 +750,7 @@ def convert_jsonl_to(
     use_cache: bool = True,
     silent: bool = False,
     image_export_mode: Optional[str] = None,
+    page_size: int = 2000,
 ) -> Path:
     """Convert JSONL transcript(s) to the specified format.
 
@@ -752,6 +764,7 @@ def convert_jsonl_to(
         use_cache: Whether to use caching.
         silent: Whether to suppress output.
         image_export_mode: Image export mode ("placeholder", "embedded", "referenced").
+        page_size: Maximum messages per page for combined transcript pagination.
             If None, uses format default (embedded for HTML, referenced for Markdown).
     """
     if not input_path.exists():

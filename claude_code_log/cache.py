@@ -11,6 +11,7 @@ from typing import Any, Dict, Generator, List, Optional
 from packaging import version
 from pydantic import BaseModel
 
+from .factories import create_transcript_entry
 from .migrations.runner import run_migrations
 from .models import (
     AssistantTranscriptEntry,
@@ -19,7 +20,6 @@ from .models import (
     SystemTranscriptEntry,
     TranscriptEntry,
     UserTranscriptEntry,
-    parse_transcript_entry,
 )
 
 
@@ -322,7 +322,7 @@ class CacheManager:
     def _deserialize_entry(self, row: sqlite3.Row) -> TranscriptEntry:
         """Convert SQLite row back to TranscriptEntry."""
         content_dict = json.loads(row["content"])
-        return parse_transcript_entry(content_dict)
+        return create_transcript_entry(content_dict)
 
     def _get_file_id(self, jsonl_path: Path) -> Optional[int]:
         """Get the file ID for a JSONL file."""
@@ -692,7 +692,9 @@ class CacheManager:
 
         # Define compatibility rules
         breaking_changes: dict[str, str] = {
-            # Example: "0.3.3": "0.3.4" means cache from 0.3.3 needs invalidation if lib is >= 0.3.4
+            # 0.9.0 introduced _compact_ide_tags_for_preview() which transforms
+            # first_user_message to use emoji indicators instead of raw IDE tags
+            "0.8.0": "0.9.0",
         }
 
         cache_ver = version.parse(cache_version)

@@ -12,14 +12,14 @@ import pytest
 
 from claude_code_log.cache import CacheManager, SessionCacheData
 from claude_code_log.models import (
-    AssistantMessage,
+    AssistantMessageModel,
     AssistantTranscriptEntry,
     TextContent,
     ThinkingContent,
     ToolResultContent,
     ToolUseContent,
     UsageInfo,
-    UserMessage,
+    UserMessageModel,
     UserTranscriptEntry,
 )
 
@@ -52,7 +52,9 @@ def sample_user_entry():
         isSidechain=False,
         userType="external",
         cwd="/test/path",
-        message=UserMessage(role="user", content="Hello, world!"),
+        message=UserMessageModel(
+            role="user", content=[TextContent(type="text", text="Hello, world!")]
+        ),
     )
 
 
@@ -70,7 +72,7 @@ def sample_assistant_entry():
         userType="assistant",
         cwd="/test/path",
         requestId="req-123",
-        message=AssistantMessage(
+        message=AssistantMessageModel(
             id="msg-123",
             type="message",
             role="assistant",
@@ -200,7 +202,7 @@ class TestTokenSumVerification:
                 userType="assistant",
                 cwd="/test/path",
                 requestId=f"req-{i}",
-                message=AssistantMessage(
+                message=AssistantMessageModel(
                     id=f"msg-{i}",
                     type="message",
                     role="assistant",
@@ -304,7 +306,7 @@ class TestSerializationRoundTrip:
                 userType="assistant",
                 cwd="/test",
                 requestId="req-1",
-                message=AssistantMessage(
+                message=AssistantMessageModel(
                     id="msg-tool",
                     type="message",
                     role="assistant",
@@ -330,7 +332,7 @@ class TestSerializationRoundTrip:
                 isSidechain=False,
                 userType="tool_result",
                 cwd="/test",
-                message=UserMessage(
+                message=UserMessageModel(
                     role="user",
                     content=[
                         ToolResultContent(
@@ -353,7 +355,7 @@ class TestSerializationRoundTrip:
                 userType="assistant",
                 cwd="/test",
                 requestId="req-2",
-                message=AssistantMessage(
+                message=AssistantMessageModel(
                     id="msg-thinking",
                     type="message",
                     role="assistant",
@@ -476,7 +478,9 @@ class TestTimestampOrdering:
                 isSidechain=False,
                 userType="external",
                 cwd="/test",
-                message=UserMessage(role="user", content=f"Message {i}"),
+                message=UserMessageModel(
+                    role="user", content=[TextContent(type="text", text=f"Message {i}")]
+                ),
             )
             entries.append(entry)
 
@@ -518,7 +522,7 @@ class TestNullTokenHandling:
                 userType="assistant",
                 cwd="/test",
                 requestId="req-1",
-                message=AssistantMessage(
+                message=AssistantMessageModel(
                     id="msg-1",
                     type="message",
                     role="assistant",
@@ -538,7 +542,9 @@ class TestNullTokenHandling:
                 isSidechain=False,
                 userType="external",
                 cwd="/test",
-                message=UserMessage(role="user", content="No tokens"),
+                message=UserMessageModel(
+                    role="user", content=[TextContent(type="text", text="No tokens")]
+                ),
             ),
         ]
 
@@ -629,7 +635,9 @@ class TestConcurrentAccess:
             isSidechain=False,
             userType="external",
             cwd="/test",
-            message=UserMessage(role="user", content="Test"),
+            message=UserMessageModel(
+                role="user", content=[TextContent(type="text", text="Test")]
+            ),
         )
 
         jsonl_file = temp_project_dir / "concurrent.jsonl"
@@ -678,7 +686,9 @@ class TestLargeDatasetPerformance:
                 isSidechain=False,
                 userType="external",
                 cwd="/test",
-                message=UserMessage(role="user", content=f"Message {i}"),
+                message=UserMessageModel(
+                    role="user", content=[TextContent(type="text", text=f"Message {i}")]
+                ),
             )
             entries.append(entry)
 
@@ -721,9 +731,14 @@ class TestSessionBoundaryDetection:
                     isSidechain=False,
                     userType="external",
                     cwd="/test",
-                    message=UserMessage(
+                    message=UserMessageModel(
                         role="user",
-                        content=f"Session {session_num} message {msg_num}",
+                        content=[
+                            TextContent(
+                                type="text",
+                                text=f"Session {session_num} message {msg_num}",
+                            )
+                        ],
                     ),
                 )
                 entries.append(entry)

@@ -478,8 +478,19 @@ class HtmlRenderer(Renderer):
         title: Optional[str] = None,
         combined_transcript_link: Optional[str] = None,
         output_dir: Optional[Path] = None,
+        page_info: Optional[dict[str, Any]] = None,
+        page_stats: Optional[dict[str, Any]] = None,
     ) -> str:
-        """Generate HTML from transcript messages."""
+        """Generate HTML from transcript messages.
+
+        Args:
+            messages: List of transcript entries to render.
+            title: Optional title for the output.
+            combined_transcript_link: Optional link to combined transcript.
+            output_dir: Optional output directory for referenced images.
+            page_info: Optional pagination info (page_number, prev_link, next_link).
+            page_stats: Optional page statistics (message_count, date_range, token_summary).
+        """
         import time
 
         t_start = time.time()
@@ -516,6 +527,8 @@ class HtmlRenderer(Renderer):
                     css_class_from_message=css_class_from_message,
                     get_message_emoji=get_message_emoji,
                     is_session_header=is_session_header,
+                    page_info=page_info,
+                    page_stats=page_stats,
                 )
             )
 
@@ -592,12 +605,27 @@ def generate_html(
     messages: list[TranscriptEntry],
     title: Optional[str] = None,
     combined_transcript_link: Optional[str] = None,
+    page_info: Optional[dict[str, Any]] = None,
+    page_stats: Optional[dict[str, Any]] = None,
 ) -> str:
     """Generate HTML from transcript messages using Jinja2 templates.
 
     This is a convenience function that delegates to HtmlRenderer.generate.
+
+    Args:
+        messages: List of transcript entries to render.
+        title: Optional title for the output.
+        combined_transcript_link: Optional link to combined transcript.
+        page_info: Optional pagination info (page_number, prev_link, next_link).
+        page_stats: Optional page statistics (message_count, date_range, token_summary).
     """
-    return HtmlRenderer().generate(messages, title, combined_transcript_link)
+    return HtmlRenderer().generate(
+        messages,
+        title,
+        combined_transcript_link,
+        page_info=page_info,
+        page_stats=page_stats,
+    )
 
 
 def generate_session_html(

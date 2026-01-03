@@ -148,7 +148,46 @@ def test_queue_operation_type_support():
         test_file_path.unlink()
 
 
+def test_load_transcript_missing_file_returns_empty_list(capsys):
+    """Test that load_transcript handles missing files gracefully.
+
+    This handles the race condition where a file exists when globbed but
+    is deleted before being read (e.g., Claude Code session cleanup).
+    """
+    nonexistent_file = Path("/tmp/nonexistent-session-abc123.jsonl")
+    # Ensure it doesn't exist
+    if nonexistent_file.exists():
+        nonexistent_file.unlink()
+
+    # Should return empty list, not raise FileNotFoundError
+    messages = load_transcript(nonexistent_file)
+    assert messages == [], f"Expected empty list, got {messages}"
+
+    # Should print a warning
+    captured = capsys.readouterr()
+    assert "Warning: File not found" in captured.out
+    assert str(nonexistent_file) in captured.out
+
+    print("✓ Test passed: Missing file returns empty list with warning")
+
+
+def test_load_transcript_missing_file_silent_mode():
+    """Test that load_transcript handles missing files in silent mode."""
+    nonexistent_file = Path("/tmp/nonexistent-session-xyz789.jsonl")
+    # Ensure it doesn't exist
+    if nonexistent_file.exists():
+        nonexistent_file.unlink()
+
+    # Should return empty list without printing
+    messages = load_transcript(nonexistent_file, silent=True)
+    assert messages == [], f"Expected empty list, got {messages}"
+
+    print("✓ Test passed: Missing file in silent mode returns empty list")
+
+
 if __name__ == "__main__":
     test_summary_type_support()
     test_queue_operation_type_support()
+    test_load_transcript_missing_file_returns_empty_list(None)  # type: ignore
+    test_load_transcript_missing_file_silent_mode()
     print("\n✅ All message type tests passed!")
