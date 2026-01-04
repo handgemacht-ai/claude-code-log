@@ -1042,9 +1042,21 @@ class TestTimelineBrowser:
 
         page.goto(f"file://{temp_file}")
 
-        # Wait for page to load and timestamp conversion to occur
+        # Wait for page to load
         page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(500)  # Give time for JavaScript to run
+
+        # Wait for JavaScript timestamp conversion to complete
+        # The conversion adds timezone info in parentheses, e.g., "(UTC)" or "(PST)"
+        # Using wait_for_function instead of fixed timeout for deterministic behaviour
+        page.wait_for_function(
+            """
+            () => {
+                const ts = document.querySelector('.timestamp[data-timestamp]');
+                return ts && ts.textContent.includes('(');
+            }
+            """,
+            timeout=5000,
+        )
 
         # Check that timestamp elements have data-timestamp attributes
         timestamp_elements = page.locator(".timestamp[data-timestamp]")
