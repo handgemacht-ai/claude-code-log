@@ -548,3 +548,140 @@ class TestPaginationIntegration:
         )
         assert "messages" in page1_content.lower()
         assert "Page 1" in page1_content or "page-navigation" in page1_content
+
+
+class TestNextLinkInPlaceUpdate:
+    """Tests for in-place next link updates."""
+
+    def test_enable_next_link_removes_last_page_class(self, temp_project_dir):
+        """_enable_next_link_on_previous_page should remove last-page class."""
+        from claude_code_log.converter import (
+            _enable_next_link_on_previous_page,
+            _get_page_html_path,
+        )
+
+        # Create a page with hidden next link
+        page_path = temp_project_dir / _get_page_html_path(1)
+        page_path.write_text(
+            """
+        <!-- PAGINATION_NEXT_LINK_START -->
+        <a href="combined_transcripts_2.html" class="page-nav-link next last-page">Next →</a>
+        <!-- PAGINATION_NEXT_LINK_END -->
+        """,
+            encoding="utf-8",
+        )
+
+        result = _enable_next_link_on_previous_page(temp_project_dir, 1)
+
+        assert result is True
+        content = page_path.read_text(encoding="utf-8")
+        assert "last-page" not in content
+        assert 'class="page-nav-link next"' in content
+
+    def test_enable_next_link_no_op_if_already_visible(self, temp_project_dir):
+        """_enable_next_link_on_previous_page should not modify if already visible."""
+        from claude_code_log.converter import (
+            _enable_next_link_on_previous_page,
+            _get_page_html_path,
+        )
+
+        page_path = temp_project_dir / _get_page_html_path(1)
+        original_content = """
+        <!-- PAGINATION_NEXT_LINK_START -->
+        <a href="combined_transcripts_2.html" class="page-nav-link next">Next →</a>
+        <!-- PAGINATION_NEXT_LINK_END -->
+        """
+        page_path.write_text(original_content, encoding="utf-8")
+
+        result = _enable_next_link_on_previous_page(temp_project_dir, 1)
+
+        assert result is False
+        assert page_path.read_text(encoding="utf-8") == original_content
+
+    def test_enable_next_link_handles_missing_file(self, temp_project_dir):
+        """_enable_next_link_on_previous_page should handle missing files gracefully."""
+        from claude_code_log.converter import _enable_next_link_on_previous_page
+
+        result = _enable_next_link_on_previous_page(temp_project_dir, 99)
+
+        assert result is False
+
+    def test_enable_next_link_handles_invalid_page_number(self, temp_project_dir):
+        """_enable_next_link_on_previous_page should handle invalid page numbers."""
+        from claude_code_log.converter import _enable_next_link_on_previous_page
+
+        result = _enable_next_link_on_previous_page(temp_project_dir, 0)
+        assert result is False
+
+        result = _enable_next_link_on_previous_page(temp_project_dir, -1)
+        assert result is False
+
+
+class TestPaginationNextLinkVisibility:
+    """Integration tests for next link visibility across pages."""
+
+    def test_single_page_has_hidden_next_link(self, temp_project_dir):
+        """Single page should have next link with last-page class when pagination is enabled."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create a session with enough messages to trigger pagination
+        # but only enough to fit on one page
+        jsonl_file = temp_project_dir / "session1.jsonl"
+        messages = _create_session_messages("session1", 15, "2023-01-01")
+        with open(jsonl_file, "w", encoding="utf-8") as f:
+            for msg in messages:
+                f.write(json.dumps(msg) + "\n")
+
+        # Use page_size=10 to trigger pagination (15 messages > 10)
+        # This will result in a single page since session can't be split
+        convert_jsonl_to_html(temp_project_dir, page_size=10, silent=True)
+
+        content = (temp_project_dir / "combined_transcripts.html").read_text(
+            encoding="utf-8"
+        )
+        assert "last-page" in content
+        assert "PAGINATION_NEXT_LINK_START" in content
+
+    def test_multi_page_first_has_visible_next_link(self, temp_project_dir):
+        """First page of multi-page should have visible next link (no last-page class)."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create sessions that will span 2 pages
+        for i, session_id in enumerate(["s1", "s2"]):
+            jsonl_file = temp_project_dir / f"{session_id}.jsonl"
+            messages = _create_session_messages(session_id, 20, f"2023-01-0{i + 1}")
+            with open(jsonl_file, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+        convert_jsonl_to_html(temp_project_dir, page_size=15, silent=True)
+
+        # Page 1 should have visible next link (not last page)
+        page1 = (temp_project_dir / "combined_transcripts.html").read_text(
+            encoding="utf-8"
+        )
+        assert "PAGINATION_NEXT_LINK_START" in page1
+        # Should NOT have last-page class on its next link
+        # The pattern should be: class="page-nav-link next" without last-page
+        assert 'class="page-nav-link next"' in page1 or 'next "' not in page1
+
+    def test_multi_page_last_has_hidden_next_link(self, temp_project_dir):
+        """Last page of multi-page should have hidden next link (with last-page class)."""
+        from claude_code_log.converter import convert_jsonl_to_html
+
+        # Create sessions that will span 2 pages
+        for i, session_id in enumerate(["s1", "s2"]):
+            jsonl_file = temp_project_dir / f"{session_id}.jsonl"
+            messages = _create_session_messages(session_id, 20, f"2023-01-0{i + 1}")
+            with open(jsonl_file, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+        convert_jsonl_to_html(temp_project_dir, page_size=15, silent=True)
+
+        # Page 2 should have hidden next link (is last page)
+        page2 = (temp_project_dir / "combined_transcripts_2.html").read_text(
+            encoding="utf-8"
+        )
+        assert "PAGINATION_NEXT_LINK_START" in page2
+        assert "last-page" in page2

@@ -43,9 +43,9 @@
             {% if page_info.prev_link %}
             <a href="{{ page_info.prev_link }}" class="page-nav-link prev">← Previous</a>
             {% endif %}
-            {% if page_info.next_link %}
-            <a href="{{ page_info.next_link }}" class="page-nav-link next">Next →</a>
-            {% endif %}
+            <!-- PAGINATION_NEXT_LINK_START -->
+            <a href="{{ page_info.next_link }}" class="page-nav-link next{% if page_info.is_last_page %} last-page{% endif %}">Next →</a>
+            <!-- PAGINATION_NEXT_LINK_END -->
         </div>
     </div>
     {% endif %}

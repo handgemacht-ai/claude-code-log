@@ -490,6 +490,50 @@ def _get_page_html_path(page_number: int) -> str:
     return f"combined_transcripts_{page_number}.html"
 
 
+# Regex pattern to match and update the next link marker block
+_NEXT_LINK_PATTERN = re.compile(
+    r'(<!-- PAGINATION_NEXT_LINK_START -->.*?class="page-nav-link next) last-page(".*?<!-- PAGINATION_NEXT_LINK_END -->)',
+    re.DOTALL,
+)
+
+
+def _enable_next_link_on_previous_page(output_dir: Path, page_number: int) -> bool:
+    """Enable the next link on a previous page by removing the last-page class.
+
+    When a new page is created, the previous page's "Next" link (which was hidden
+    with the last-page CSS class) needs to be revealed. This function performs
+    an in-place edit to remove that class.
+
+    Args:
+        output_dir: Directory containing the HTML files
+        page_number: The page number whose next link should be enabled
+
+    Returns:
+        True if the file was modified, False otherwise
+    """
+    if page_number < 1:
+        return False
+
+    page_path = output_dir / _get_page_html_path(page_number)
+    if not page_path.exists():
+        return False
+
+    content = page_path.read_text(encoding="utf-8")
+
+    # Check if there's a last-page class to remove
+    if "last-page" not in content:
+        return False
+
+    # Replace the pattern to remove last-page class
+    new_content, count = _NEXT_LINK_PATTERN.subn(r"\1\2", content)
+
+    if count > 0:
+        page_path.write_text(new_content, encoding="utf-8")
+        return True
+
+    return False
+
+
 def _assign_sessions_to_pages(
     sessions: Dict[str, SessionCacheData], page_size: int
 ) -> List[List[str]]:
@@ -645,16 +689,18 @@ def _generate_paginated_html(
 
         # Build page_info for navigation
         has_prev = page_num > 1
-        # Pre-enable next link if this page exceeds threshold (anticipating future pages)
-        # or if there are more pages
-        page_exceeds_threshold = page_message_count > page_size
-        has_next = page_num < len(pages) or page_exceeds_threshold
+        is_last_page = page_num == len(pages)
 
         page_info = {
             "page_number": page_num,
             "prev_link": _get_page_html_path(page_num - 1) if has_prev else None,
-            "next_link": _get_page_html_path(page_num + 1) if has_next else None,
+            "next_link": _get_page_html_path(page_num + 1),  # Always provide
+            "is_last_page": is_last_page,
         }
+
+        # Enable previous page's next link when creating a new page
+        if page_num > 1:
+            _enable_next_link_on_previous_page(output_dir, page_num - 1)
 
         # Build page_stats
         date_range = ""

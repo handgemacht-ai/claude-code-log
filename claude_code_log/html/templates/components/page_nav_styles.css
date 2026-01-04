@@ -72,3 +72,8 @@
 .page-nav-link.next::after {
     content: '';
 }
+
+/* Hide next link on last page (will be revealed via in-place editing when new page is created) */
+.page-nav-link.next.last-page {
+    display: none;
+}
