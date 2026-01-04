@@ -1548,11 +1548,29 @@ def process_projects_hierarchy(
                     stats.add_warning(f"Failed to initialize cache: {e}")
 
             # Phase 1: Fast check if anything needs updating (mtime comparison only)
-            jsonl_files = list(project_dir.glob("*.jsonl"))
+            # Exclude agent files - they are loaded via session references, not directly
+            jsonl_files = [
+                f
+                for f in project_dir.glob("*.jsonl")
+                if not f.name.startswith("agent-")
+            ]
+            # Valid session IDs are from existing JSONL files (file stem = session ID)
+            valid_session_ids = {f.stem for f in jsonl_files}
             modified_files = (
                 cache_manager.get_modified_files(jsonl_files) if cache_manager else []
             )
-            stale_sessions = cache_manager.get_stale_sessions() if cache_manager else []
+            # Pass valid_session_ids to skip archived sessions (JSONL deleted)
+            stale_sessions = (
+                cache_manager.get_stale_sessions(valid_session_ids)
+                if cache_manager
+                else []
+            )
+            # Count archived sessions (cached but JSONL deleted)
+            archived_count = (
+                cache_manager.get_archived_session_count(valid_session_ids)
+                if cache_manager
+                else 0
+            )
             output_path = project_dir / "combined_transcripts.html"
             # Check combined_stale using the appropriate cache:
             # - Paginated projects store data in html_pages table (via save_page_cache)
@@ -1578,12 +1596,19 @@ def process_projects_hierarchy(
                 or not output_path.exists()
             )
 
+            # Build archived suffix for output (shown on both cached and work paths)
+            archived_suffix = (
+                f", {archived_count} archived" if archived_count > 0 else ""
+            )
+
             if not needs_work:
                 # Fast path: nothing to do, just collect stats for index
                 stats.files_loaded_from_cache = len(jsonl_files)
                 stats.total_time = time.time() - project_start_time
                 # Show progress
-                print(f"  {project_dir.name}: cached ({stats.total_time:.1f}s)")
+                print(
+                    f"  {project_dir.name}: cached{archived_suffix} ({stats.total_time:.1f}s)"
+                )
             else:
                 # Slow path: update cache and regenerate output
                 stats.files_updated = len(modified_files) if modified_files else 0
@@ -1618,7 +1643,9 @@ def process_projects_hierarchy(
                 if stats.sessions_regenerated > 0:
                     progress_parts.append(f"{stats.sessions_regenerated} sessions")
                 detail = ", ".join(progress_parts) if progress_parts else "regenerated"
-                print(f"  {project_dir.name}: {detail} ({stats.total_time:.1f}s)")
+                print(
+                    f"  {project_dir.name}: {detail}{archived_suffix} ({stats.total_time:.1f}s)"
+                )
 
             # Get project info for index - use cached data if available
             # Exclude agent files (they are loaded via session references)

@@ -868,8 +868,15 @@ class CacheManager:
 
         return False, "up_to_date"
 
-    def get_stale_sessions(self) -> List[tuple[str, str]]:
+    def get_stale_sessions(
+        self, valid_session_ids: Optional[set[str]] = None
+    ) -> List[tuple[str, str]]:
         """Get list of sessions that need HTML regeneration.
+
+        Args:
+            valid_session_ids: If provided, only check sessions in this set.
+                Sessions not in this set are considered "archived" (JSONL deleted)
+                and are skipped to avoid perpetual staleness.
 
         Returns:
             List of (session_id, reason) tuples for sessions needing regeneration
@@ -889,6 +896,14 @@ class CacheManager:
 
             for row in session_rows:
                 session_id = row["session_id"]
+
+                # Skip archived sessions (JSONL deleted but cache remains)
+                if (
+                    valid_session_ids is not None
+                    and session_id not in valid_session_ids
+                ):
+                    continue
+
                 html_path = f"session-{session_id}.html"
 
                 is_stale, reason = self.is_html_stale(html_path, session_id)
@@ -896,6 +911,30 @@ class CacheManager:
                     stale_sessions.append((session_id, reason))
 
         return stale_sessions
+
+    def get_archived_session_count(self, valid_session_ids: set[str]) -> int:
+        """Count sessions in cache whose JSONL files have been deleted.
+
+        These are preserved for potential future archiving/restore features.
+
+        Args:
+            valid_session_ids: Set of session IDs that currently exist in source data
+
+        Returns:
+            Number of archived (orphan) sessions
+        """
+        if self._project_id is None:
+            return 0
+
+        with self._get_connection() as conn:
+            cached_rows = conn.execute(
+                "SELECT session_id FROM sessions WHERE project_id = ?",
+                (self._project_id,),
+            ).fetchall()
+
+            return sum(
+                1 for row in cached_rows if row["session_id"] not in valid_session_ids
+            )
 
     # ========== Page Cache Methods (Pagination) ==========
 
