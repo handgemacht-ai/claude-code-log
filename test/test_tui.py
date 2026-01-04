@@ -87,11 +87,23 @@ def temp_project_dir():
             },
         ]
 
-        # Write test data to JSONL file
-        jsonl_file = project_path / "test-transcript.jsonl"
-        with open(jsonl_file, "w", encoding="utf-8") as f:
+        # Write test data to JSONL files - one per session (matching real-world usage)
+        # Session 123 entries
+        session_123_file = project_path / "session-123.jsonl"
+        with open(session_123_file, "w", encoding="utf-8") as f:
             for entry in test_data:
-                f.write(json.dumps(entry) + "\n")
+                if entry.get("sessionId") == "session-123":
+                    f.write(json.dumps(entry) + "\n")
+
+        # Session 456 entries (includes summary)
+        session_456_file = project_path / "session-456.jsonl"
+        with open(session_456_file, "w", encoding="utf-8") as f:
+            for entry in test_data:
+                if (
+                    entry.get("sessionId") == "session-456"
+                    or entry.get("type") == "summary"
+                ):
+                    f.write(json.dumps(entry) + "\n")
 
         yield project_path
 
@@ -907,3 +919,58 @@ class TestIntegration:
                 stats = cast(Label, app.query_one("#stats"))
                 stats_text = str(stats.content)
                 assert "Sessions:[/bold] 0" in stats_text
+
+    @pytest.mark.asyncio
+    async def test_archived_project_loads_in_archived_mode(self):
+        """Test that an archived project (no JSONL files) loads sessions in archived mode."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+
+            # Create empty JSONL file to initialize
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.touch()
+
+            # Create app with is_archived=True (simulating archived project)
+            app = SessionBrowser(project_path, is_archived=True)
+
+            # Mock the cache manager to return some sessions
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    summary="Archived session",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=5,
+                    first_user_message="Hello from archived",
+                    total_input_tokens=100,
+                    total_output_tokens=200,
+                ),
+            }
+
+            with (
+                patch.object(
+                    app.cache_manager, "get_cached_project_data"
+                ) as mock_cache,
+            ):
+                mock_cache.return_value = Mock(
+                    sessions=mock_session_data,
+                    working_directories=[str(project_path)],
+                )
+
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    # Manually call load_sessions (since mocking)
+                    app.load_sessions()
+
+                    # Should be in archived view mode
+                    assert app.view_mode == "archived"
+
+                    # Sessions should be in archived_sessions, not sessions
+                    assert len(app.archived_sessions) > 0
+                    assert len(app.sessions) == 0
+
+                    # Stats should show ARCHIVED
+                    stats = cast(Label, app.query_one("#stats"))
+                    stats_text = str(stats.content)
+                    assert "ARCHIVED" in stats_text

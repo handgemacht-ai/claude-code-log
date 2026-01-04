@@ -440,3 +440,424 @@ class TestCacheEdgeCases:
         with patch("claude_code_log.cache.get_library_version", return_value="2.0.0"):
             output = convert_jsonl_to_html(input_path=project_dir, use_cache=True)
             assert output.exists()
+
+
+class TestArchivedSessionsIntegration:
+    """Test archived sessions functionality - sessions cached but JSONL deleted."""
+
+    def test_get_archived_sessions_after_file_deletion(
+        self, temp_projects_dir, sample_jsonl_data
+    ):
+        """Test that sessions become archived when JSONL files are deleted."""
+        project_dir = temp_projects_dir / "archived-test"
+        project_dir.mkdir()
+
+        # Create JSONL file with session data
+        jsonl_file = project_dir / "session-1.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Verify session is in cache
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert "session-1" in cached_data.sessions
+
+        # Delete the JSONL file
+        jsonl_file.unlink()
+
+        # Now session-1 should be archived (no valid session IDs)
+        valid_session_ids: set[str] = set()  # No JSONL files left
+        archived = cache_manager.get_archived_sessions(valid_session_ids)
+
+        assert "session-1" in archived
+        assert archived["session-1"].message_count > 0
+        assert archived["session-1"].first_timestamp == "2023-01-01T10:00:00Z"
+
+    def test_get_archived_sessions_with_some_files_remaining(
+        self, temp_projects_dir, sample_jsonl_data
+    ):
+        """Test archived sessions when only some JSONL files are deleted."""
+        project_dir = temp_projects_dir / "partial-archived"
+        project_dir.mkdir()
+
+        # Create two session files
+        for session_id in ["session-1", "session-2"]:
+            jsonl_file = project_dir / f"{session_id}.jsonl"
+            with open(jsonl_file, "w") as f:
+                for entry in sample_jsonl_data:
+                    entry_copy = entry.copy()
+                    if "sessionId" in entry_copy:
+                        entry_copy["sessionId"] = session_id
+                    f.write(json.dumps(entry_copy) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Delete only session-1
+        (project_dir / "session-1.jsonl").unlink()
+
+        # session-2 should be valid, session-1 should be archived
+        valid_session_ids = {"session-2"}
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        archived = cache_manager.get_archived_sessions(valid_session_ids)
+
+        assert "session-1" in archived
+        assert "session-2" not in archived
+
+    def test_export_session_to_jsonl(self, temp_projects_dir, sample_jsonl_data):
+        """Test exporting session messages for JSONL restoration."""
+        project_dir = temp_projects_dir / "export-test"
+        project_dir.mkdir()
+
+        # Create JSONL file
+        jsonl_file = project_dir / "session-1.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Export messages from cache
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        exported_messages = cache_manager.export_session_to_jsonl("session-1")
+
+        # Should have exported messages (not summary which has no sessionId)
+        assert len(exported_messages) >= 2  # user + assistant messages
+
+        # Each message should be valid JSON
+        for msg_json in exported_messages:
+            parsed = json.loads(msg_json)
+            assert "type" in parsed
+            assert parsed["sessionId"] == "session-1"
+
+    def test_load_session_entries_for_rendering(
+        self, temp_projects_dir, sample_jsonl_data
+    ):
+        """Test loading session entries from cache for HTML/Markdown rendering."""
+        project_dir = temp_projects_dir / "load-entries-test"
+        project_dir.mkdir()
+
+        # Create JSONL file
+        jsonl_file = project_dir / "session-1.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Load entries from cache
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        entries = cache_manager.load_session_entries("session-1")
+
+        # Should have TranscriptEntry objects
+        assert len(entries) >= 2
+
+        # Check that entries are proper types
+        entry_types = [e.type for e in entries]
+        assert "user" in entry_types
+        assert "assistant" in entry_types
+
+    def test_full_archive_and_restore_workflow(
+        self, temp_projects_dir, sample_jsonl_data
+    ):
+        """Test the full workflow: cache -> delete -> archive -> restore."""
+        project_dir = temp_projects_dir / "full-workflow"
+        project_dir.mkdir()
+
+        # Step 1: Create JSONL file and cache it
+        original_file = project_dir / "session-1.jsonl"
+        with open(original_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Verify cache populated
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        original_message_count = cached_data.sessions["session-1"].message_count
+
+        # Step 2: Delete the JSONL file
+        original_file.unlink()
+        assert not original_file.exists()
+
+        # Step 3: Verify session is now archived
+        archived = cache_manager.get_archived_sessions(set())
+        assert "session-1" in archived
+
+        # Step 4: Restore the session from cache
+        exported_messages = cache_manager.export_session_to_jsonl("session-1")
+        restored_file = project_dir / "session-1.jsonl"
+        with open(restored_file, "w") as f:
+            for msg in exported_messages:
+                f.write(msg + "\n")
+
+        # Step 5: Verify the restored file exists and session is no longer archived
+        assert restored_file.exists()
+
+        valid_session_ids = {"session-1"}
+        archived_after_restore = cache_manager.get_archived_sessions(valid_session_ids)
+        assert "session-1" not in archived_after_restore
+
+        # Step 6: Verify restored content is valid by re-processing
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+        cached_data = cache_manager.get_cached_project_data()
+        # Message count should be preserved
+        assert cached_data is not None
+        assert cached_data.sessions["session-1"].message_count == original_message_count
+
+    def test_archived_session_count_in_converter(
+        self, temp_projects_dir, sample_jsonl_data, capsys
+    ):
+        """Test that archived session count is reported in converter output."""
+        project_dir = temp_projects_dir / "count-test"
+        project_dir.mkdir()
+
+        # Create two sessions so one remains after deletion
+        for session_id in ["session-1", "session-2"]:
+            jsonl_file = project_dir / f"{session_id}.jsonl"
+            with open(jsonl_file, "w") as f:
+                for entry in sample_jsonl_data:
+                    entry_copy = entry.copy()
+                    if "sessionId" in entry_copy:
+                        entry_copy["sessionId"] = session_id
+                    f.write(json.dumps(entry_copy) + "\n")
+
+        # Process to cache (as part of all-projects hierarchy)
+        process_projects_hierarchy(projects_path=temp_projects_dir, use_cache=True)
+
+        # Delete only session-1, keeping session-2 so project is still found
+        (project_dir / "session-1.jsonl").unlink()
+
+        # Process again - should report archived sessions
+        process_projects_hierarchy(
+            projects_path=temp_projects_dir, use_cache=True, silent=False
+        )
+
+        captured = capsys.readouterr()
+        # Output should mention archived sessions
+        assert "archived" in captured.out.lower()
+
+    def test_load_entries_preserves_message_order(
+        self, temp_projects_dir, sample_jsonl_data
+    ):
+        """Test that loaded entries preserve chronological order."""
+        project_dir = temp_projects_dir / "order-test"
+        project_dir.mkdir()
+
+        # Create JSONL file
+        jsonl_file = project_dir / "session-1.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Load entries from cache
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        entries = cache_manager.load_session_entries("session-1")
+
+        # Filter to entries with timestamps and extract them
+        timestamps: list[str] = []
+        for e in entries:
+            if hasattr(e, "timestamp") and e.timestamp:
+                timestamps.append(str(e.timestamp))
+
+        # Verify chronological order (ISO timestamps are lexicographically sortable)
+        assert timestamps == sorted(timestamps)
+
+    def test_export_empty_session_returns_empty_list(self, temp_projects_dir):
+        """Test that exporting a non-existent session returns empty list."""
+        project_dir = temp_projects_dir / "empty-export"
+        project_dir.mkdir()
+
+        # Create a dummy JSONL to initialize the project
+        jsonl_file = project_dir / "dummy.jsonl"
+        jsonl_file.write_text("{}\n")
+
+        cache_manager = CacheManager(project_dir, "1.0.0")
+
+        # Export non-existent session
+        exported = cache_manager.export_session_to_jsonl("non-existent-session")
+        assert exported == []
+
+        # Load entries for non-existent session
+        entries = cache_manager.load_session_entries("non-existent-session")
+        assert entries == []
+
+    def test_export_session_produces_compact_json(
+        self, temp_projects_dir, sample_jsonl_data
+    ):
+        """Test that exported JSONL has compact JSON format (no spaces after separators)."""
+        project_dir = temp_projects_dir / "compact-json-test"
+        project_dir.mkdir()
+
+        # Create JSONL file
+        jsonl_file = project_dir / "session-1.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Export messages
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        exported_messages = cache_manager.export_session_to_jsonl("session-1")
+
+        # Each message should be compact JSON (no spaces after : or ,)
+        for msg_json in exported_messages:
+            # Should not have ": " (colon-space) pattern except in string values
+            # Check by ensuring re-serialization produces same result
+            parsed = json.loads(msg_json)
+            compact_reserialized = json.dumps(parsed, separators=(",", ":"))
+            assert msg_json == compact_reserialized, (
+                f"JSON should be compact format.\n"
+                f"Got: {msg_json[:100]}...\n"
+                f"Expected: {compact_reserialized[:100]}..."
+            )
+
+    def test_delete_session_from_cache(self, temp_projects_dir, sample_jsonl_data):
+        """Test deleting a session from cache."""
+        project_dir = temp_projects_dir / "delete-session-test"
+        project_dir.mkdir()
+
+        # Create JSONL file
+        jsonl_file = project_dir / "session-1.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Verify session exists in cache
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert "session-1" in cached_data.sessions
+
+        # Delete the session
+        result = cache_manager.delete_session("session-1")
+        assert result is True
+
+        # Verify session is gone from cache
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+        assert "session-1" not in cached_data.sessions
+
+        # Export should return empty
+        exported = cache_manager.export_session_to_jsonl("session-1")
+        assert exported == []
+
+    def test_delete_nonexistent_session(self, temp_projects_dir):
+        """Test deleting a session that doesn't exist returns False."""
+        project_dir = temp_projects_dir / "delete-nonexistent"
+        project_dir.mkdir()
+
+        # Create a dummy JSONL to initialize the project
+        jsonl_file = project_dir / "dummy.jsonl"
+        jsonl_file.write_text("{}\n")
+
+        cache_manager = CacheManager(project_dir, "1.0.0")
+
+        # Delete non-existent session
+        result = cache_manager.delete_session("non-existent-session")
+        assert result is False
+
+    def test_delete_project_from_cache(self, temp_projects_dir, sample_jsonl_data):
+        """Test deleting an entire project from cache."""
+        project_dir = temp_projects_dir / "delete-project-test"
+        project_dir.mkdir()
+
+        # Create JSONL file
+        jsonl_file = project_dir / "session-1.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in sample_jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+
+        # Process to populate cache
+        convert_jsonl_to_html(input_path=project_dir, use_cache=True)
+
+        # Verify project exists in cache
+        cache_manager = CacheManager(project_dir, "1.0.0")
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is not None
+
+        # Delete the project
+        result = cache_manager.delete_project()
+        assert result is True
+
+        # Cache manager should no longer have valid project ID
+        cached_data = cache_manager.get_cached_project_data()
+        assert cached_data is None
+
+
+class TestGetAllCachedProjects:
+    """Tests for get_all_cached_projects() function."""
+
+    def test_get_all_cached_projects_finds_active_and_archived(
+        self, temp_projects_dir, sample_jsonl_data
+    ):
+        """Test finding both active and archived projects."""
+        from claude_code_log.cache import get_all_cached_projects
+
+        # Create two projects - one active, one that will be archived
+        active_dir = temp_projects_dir / "active-project"
+        active_dir.mkdir()
+        archived_dir = temp_projects_dir / "archived-project"
+        archived_dir.mkdir()
+
+        # Create JSONL files in both
+        for proj_dir in [active_dir, archived_dir]:
+            jsonl_file = proj_dir / "session-1.jsonl"
+            with open(jsonl_file, "w") as f:
+                for entry in sample_jsonl_data:
+                    f.write(json.dumps(entry) + "\n")
+
+        # Process both projects to populate cache
+        convert_jsonl_to_html(input_path=active_dir, use_cache=True)
+        convert_jsonl_to_html(input_path=archived_dir, use_cache=True)
+
+        # Delete JSONL from "archived" project to simulate archival
+        (archived_dir / "session-1.jsonl").unlink()
+
+        # Get all cached projects
+        projects = get_all_cached_projects(temp_projects_dir)
+
+        # Should find both projects
+        project_paths = {p[0] for p in projects}
+        assert str(active_dir) in project_paths
+        assert str(archived_dir) in project_paths
+
+        # Check is_archived flag
+        for project_path, is_archived in projects:
+            if project_path == str(active_dir):
+                assert is_archived is False
+            elif project_path == str(archived_dir):
+                assert is_archived is True
+
+    def test_get_all_cached_projects_empty_dir(self, temp_projects_dir):
+        """Test get_all_cached_projects with no cache."""
+        from claude_code_log.cache import get_all_cached_projects
+
+        # No cache.db exists
+        projects = get_all_cached_projects(temp_projects_dir)
+        assert projects == []
+
+    def test_get_all_cached_projects_nonexistent_dir(self, tmp_path):
+        """Test get_all_cached_projects with nonexistent directory."""
+        from claude_code_log.cache import get_all_cached_projects
+
+        nonexistent = tmp_path / "does-not-exist"
+        projects = get_all_cached_projects(nonexistent)
+        assert projects == []

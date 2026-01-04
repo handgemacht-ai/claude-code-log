@@ -20,7 +20,12 @@ from .utils import (
     create_session_preview,
     get_warmup_session_ids,
 )
-from .cache import CacheManager, SessionCacheData, get_library_version
+from .cache import (
+    CacheManager,
+    SessionCacheData,
+    get_all_cached_projects,
+    get_library_version,
+)
 from .parser import parse_timestamp
 from .factories import create_transcript_entry
 from .models import (
@@ -1477,6 +1482,49 @@ def _generate_individual_session_files(
     return regenerated_count
 
 
+def _get_cleanup_period_days() -> Optional[int]:
+    """Read cleanupPeriodDays from Claude Code settings.
+
+    Checks ~/.claude/settings.json for the cleanupPeriodDays setting.
+
+    Returns:
+        The configured cleanup period in days, or None if not set/readable.
+    """
+    import json
+
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if not settings_path.exists():
+        return None
+
+    try:
+        with open(settings_path, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+        return settings.get("cleanupPeriodDays")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _print_archived_sessions_note(total_archived: int) -> None:
+    """Print a note about archived sessions and how to restore them.
+
+    Args:
+        total_archived: Total number of archived sessions across all projects.
+    """
+    cleanup_days = _get_cleanup_period_days()
+    cleanup_info = (
+        f" (cleanupPeriodDays: {cleanup_days})"
+        if cleanup_days is not None
+        else " (cleanupPeriodDays: 30 default)"
+    )
+
+    print(
+        f"\nNote: {total_archived} archived session(s) found{cleanup_info}.\n"
+        "  These sessions were cached before their JSONL files were deleted.\n"
+        "  To restore them or adjust cleanup settings, see:\n"
+        "  https://github.com/daaain/claude-code-log/blob/main/dev-docs/restoring-archived-sessions.md"
+    )
+
+
 def process_projects_hierarchy(
     projects_path: Path,
     from_date: Optional[str] = None,
@@ -1514,7 +1562,16 @@ def process_projects_hierarchy(
         if child.is_dir() and list(child.glob("*.jsonl")):
             project_dirs.append(child)
 
-    if not project_dirs:
+    # Find archived projects (projects in cache but without JSONL files)
+    archived_project_dirs: list[Path] = []
+    if use_cache:
+        cached_projects = get_all_cached_projects(projects_path)
+        active_project_paths = {str(p) for p in project_dirs}
+        for project_path_str, is_archived in cached_projects:
+            if is_archived and project_path_str not in active_project_paths:
+                archived_project_dirs.append(Path(project_path_str))
+
+    if not project_dirs and not archived_project_dirs:
         raise FileNotFoundError(
             f"No project directories with JSONL files found in {projects_path}"
         )
@@ -1530,6 +1587,7 @@ def process_projects_hierarchy(
     total_projects = len(project_dirs)
     projects_with_updates = 0
     total_sessions = 0
+    total_archived = 0
 
     # Per-project stats for summary output
     project_stats: List[tuple[str, GenerationStats]] = []
@@ -1571,6 +1629,7 @@ def process_projects_hierarchy(
                 if cache_manager
                 else 0
             )
+            total_archived += archived_count
             output_path = project_dir / "combined_transcripts.html"
             # Check combined_stale using the appropriate cache:
             # - Paginated projects store data in html_pages table (via save_page_cache)
@@ -1681,6 +1740,7 @@ def process_projects_hierarchy(
                             "latest_timestamp": cached_project_data.latest_timestamp,
                             "earliest_timestamp": cached_project_data.earliest_timestamp,
                             "working_directories": cache_manager.get_working_directories(),
+                            "is_archived": False,
                             "sessions": [
                                 {
                                     "id": session_data.session_id,
@@ -1790,6 +1850,7 @@ def process_projects_hierarchy(
                     "working_directories": cache_manager.get_working_directories()
                     if cache_manager
                     else [],
+                    "is_archived": False,
                     "sessions": sessions_data,
                 }
             )
@@ -1807,6 +1868,66 @@ def process_projects_hierarchy(
                 f"\n{traceback.format_exc()}"
             )
             continue
+
+    # Process archived projects (projects in cache but without JSONL files)
+    archived_project_count = 0
+    for archived_dir in sorted(archived_project_dirs):
+        try:
+            # Initialize cache manager for archived project
+            cache_manager = CacheManager(archived_dir, library_version)
+            cached_project_data = cache_manager.get_cached_project_data()
+
+            if cached_project_data is None:
+                continue
+
+            archived_project_count += 1
+            print(
+                f"  {archived_dir.name}: [ARCHIVED] ({len(cached_project_data.sessions)} sessions)"
+            )
+
+            # Add archived project to summaries
+            project_summaries.append(
+                {
+                    "name": archived_dir.name,
+                    "path": archived_dir,
+                    "html_file": f"{archived_dir.name}/combined_transcripts.html",
+                    "jsonl_count": 0,
+                    "message_count": cached_project_data.total_message_count,
+                    "last_modified": 0.0,
+                    "total_input_tokens": cached_project_data.total_input_tokens,
+                    "total_output_tokens": cached_project_data.total_output_tokens,
+                    "total_cache_creation_tokens": cached_project_data.total_cache_creation_tokens,
+                    "total_cache_read_tokens": cached_project_data.total_cache_read_tokens,
+                    "latest_timestamp": cached_project_data.latest_timestamp,
+                    "earliest_timestamp": cached_project_data.earliest_timestamp,
+                    "working_directories": cache_manager.get_working_directories(),
+                    "is_archived": True,
+                    "sessions": [
+                        {
+                            "id": session_data.session_id,
+                            "summary": session_data.summary,
+                            "timestamp_range": format_timestamp_range(
+                                session_data.first_timestamp,
+                                session_data.last_timestamp,
+                            ),
+                            "first_timestamp": session_data.first_timestamp,
+                            "last_timestamp": session_data.last_timestamp,
+                            "message_count": session_data.message_count,
+                            "first_user_message": session_data.first_user_message
+                            or "[No user message found in session.]",
+                        }
+                        for session_data in cached_project_data.sessions.values()
+                        if session_data.first_user_message
+                        and session_data.first_user_message != "Warmup"
+                    ],
+                }
+            )
+        except Exception as e:
+            print(f"Warning: Failed to process archived project {archived_dir}: {e}")
+            continue
+
+    # Update total projects count to include archived
+    total_projects = len(project_dirs) + archived_project_count
 
     # Generate index (always regenerate if outdated)
     ext = get_file_extension(output_format)
@@ -1845,5 +1966,9 @@ def process_projects_hierarchy(
     if index_regenerated:
         summary_parts.append("  Index regenerated")
     print("\n".join(summary_parts))
+
+    # Show archived sessions note if any exist
+    if total_archived > 0:
+        _print_archived_sessions_note(total_archived)
 
     return index_path

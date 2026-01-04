@@ -41,7 +41,7 @@ class ProjectSelector(App[Path]):
         border: solid $primary;
         margin-bottom: 1;
     }
-    
+
     DataTable {
         height: auto;
     }
@@ -58,13 +58,20 @@ class ProjectSelector(App[Path]):
     )
     projects: list[Path]
     matching_projects: list[Path]
+    archived_projects: set[Path]
 
-    def __init__(self, projects: list[Path], matching_projects: list[Path]):
+    def __init__(
+        self,
+        projects: list[Path],
+        matching_projects: list[Path],
+        archived_projects: Optional[set[Path]] = None,
+    ):
         """Initialize the project selector."""
         super().__init__()
         self.theme = "gruvbox"
         self.projects = projects
         self.matching_projects = matching_projects
+        self.archived_projects = archived_projects or set()
 
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
@@ -105,18 +112,21 @@ class ProjectSelector(App[Path]):
 
         # Add rows
         for project_path in self.projects:
+            is_archived = project_path in self.archived_projects
             try:
                 cache_manager = CacheManager(project_path, get_library_version())
                 project_cache = cache_manager.get_cached_project_data()
 
                 if not project_cache or not project_cache.sessions:
-                    try:
-                        ensure_fresh_cache(project_path, cache_manager, silent=True)
-                        # Reload cache after ensuring it's fresh
-                        project_cache = cache_manager.get_cached_project_data()
-                    except Exception:
-                        # If cache building fails, continue with empty cache
-                        project_cache = None
+                    if not is_archived:
+                        # Only try to build cache for non-archived projects
+                        try:
+                            ensure_fresh_cache(project_path, cache_manager, silent=True)
+                            # Reload cache after ensuring it's fresh
+                            project_cache = cache_manager.get_cached_project_data()
+                        except Exception:
+                            # If cache building fails, continue with empty cache
+                            project_cache = None
 
                 # Get project info
                 session_count = (
@@ -132,6 +142,10 @@ class ProjectSelector(App[Path]):
                 if project_path in self.matching_projects:
                     project_display = f"→ {project_display[2:]}"
 
+                # Add archived indicator
+                if is_archived:
+                    project_display = f"{project_display} [ARCHIVED]"
+
                 table.add_row(
                     project_display,
                     str(session_count),
@@ -141,6 +155,8 @@ class ProjectSelector(App[Path]):
                 project_display = f"  {project_path.name}"
                 if project_path in self.matching_projects:
                     project_display = f"→ {project_display[2:]}"
+                if is_archived:
+                    project_display = f"{project_display} [ARCHIVED]"
 
                 table.add_row(
                     project_display,
@@ -163,6 +179,10 @@ class ProjectSelector(App[Path]):
                 # Remove the arrow indicator if present
                 if project_display.startswith("→"):
                     project_display = project_display[1:].strip()
+
+                # Remove the archived indicator if present
+                if project_display.endswith(" [ARCHIVED]"):
+                    project_display = project_display[:-11].strip()
 
                 # Find the matching project path
                 for project_path in self.projects:
@@ -309,6 +329,84 @@ class MarkdownViewerScreen(ModalScreen[None]):
         self.dismiss(result)
 
 
+class DeleteConfirmScreen(ModalScreen[bool]):
+    """Modal screen for confirming session deletion."""
+
+    CSS = """
+    DeleteConfirmScreen {
+        align: center middle;
+    }
+
+    #delete-container {
+        width: 60;
+        height: auto;
+        border: solid $error;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #delete-title {
+        text-align: center;
+        text-style: bold;
+        color: $error;
+        margin-bottom: 1;
+    }
+
+    #delete-message {
+        margin-bottom: 1;
+    }
+
+    #delete-warning {
+        color: $warning;
+        margin-bottom: 1;
+    }
+
+    #delete-buttons {
+        layout: horizontal;
+        align: center middle;
+        height: auto;
+    }
+    """
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("y", "confirm", "Yes, delete"),
+        Binding("n", "cancel", "No, cancel"),
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, session_id: str, is_archived: bool = False) -> None:
+        super().__init__()
+        self.session_id = session_id
+        self.is_archived = is_archived
+
+    def compose(self) -> ComposeResult:
+        with Container(id="delete-container"):
+            yield Static("Delete Session from Cache", id="delete-title")
+            yield Static(
+                f"Session: {self.session_id[:8]}...",
+                id="delete-message",
+            )
+            if self.is_archived:
+                yield Static(
+                    "This is an archived session with no JSONL file.\n"
+                    "Deletion is PERMANENT and cannot be undone!",
+                    id="delete-warning",
+                )
+            else:
+                yield Static(
+                    "The JSONL file will remain.\n"
+                    "The session can be restored from the file.",
+                    id="delete-warning",
+                )
+            yield Static("Press [y] to delete or [n] to cancel", id="delete-buttons")
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class SessionBrowser(App[Optional[str]]):
     """Interactive TUI for browsing and managing Claude Code Log sessions."""
 
@@ -349,6 +447,7 @@ class SessionBrowser(App[Optional[str]]):
     TITLE = "Claude Code Log - Session Browser"
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit", "Quit"),
+        Binding("a", "toggle_view_mode", "Toggle Archived"),
         Binding("h", "export_selected", "Open HTML page"),
         Binding("m", "export_markdown", "Open Markdown"),
         Binding("v", "view_markdown", "View Markdown"),
@@ -357,6 +456,8 @@ class SessionBrowser(App[Optional[str]]):
         Binding("M", "force_export_markdown", "Force Markdown", show=False),
         Binding("V", "force_view_markdown", "Force View", show=False),
         Binding("c", "resume_selected", "Resume in Claude Code"),
+        Binding("r", "restore_jsonl", "Restore JSONL"),
+        Binding("d", "delete_from_cache", "Delete from Cache"),
         Binding("e", "toggle_expanded", "Toggle Expanded View"),
         Binding("p", "back_to_projects", "Open Project Selector"),
         Binding("?", "toggle_help", "Help"),
@@ -364,17 +465,21 @@ class SessionBrowser(App[Optional[str]]):
 
     selected_session_id: reactive[Optional[str]] = reactive(cast(Optional[str], None))
     is_expanded: reactive[bool] = reactive(False)
+    view_mode: reactive[str] = reactive("current")  # "current" or "archived"
     project_path: Path
     cache_manager: CacheManager
     sessions: dict[str, SessionCacheData]
+    archived_sessions: dict[str, SessionCacheData]
 
-    def __init__(self, project_path: Path):
+    def __init__(self, project_path: Path, is_archived: bool = False):
         """Initialize the session browser with a project path."""
         super().__init__()
         self.theme = "gruvbox"
         self.project_path = project_path
+        self.is_archived_project = is_archived
         self.cache_manager = CacheManager(project_path, get_library_version())
         self.sessions = {}
+        self.archived_sessions = {}
 
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
@@ -407,8 +512,34 @@ class SessionBrowser(App[Optional[str]]):
 
     def load_sessions(self) -> None:
         """Load session information from cache or build cache if needed."""
+        # For archived projects, just load from cache (no JSONL files to check)
+        if self.is_archived_project:
+            project_cache = self.cache_manager.get_cached_project_data()
+            if project_cache and project_cache.sessions:
+                # All sessions are "archived" for fully archived projects
+                self.sessions = {}
+                self.archived_sessions = project_cache.sessions
+                # Automatically switch to archived view mode
+                self.view_mode = "archived"
+            else:
+                self.sessions = {}
+                self.archived_sessions = {}
+            # Update UI
+            try:
+                self.populate_table()
+                self.update_stats()
+            except Exception:
+                pass
+            return
+
         # Check if we need to rebuild cache by checking for modified files
-        jsonl_files = list(self.project_path.glob("*.jsonl"))
+        # Exclude agent files - they are loaded via session references
+        jsonl_files = [
+            f
+            for f in self.project_path.glob("*.jsonl")
+            if not f.name.startswith("agent-")
+        ]
+        valid_session_ids = {f.stem for f in jsonl_files}
         modified_files = self.cache_manager.get_modified_files(jsonl_files)
 
         # Get cached project data
@@ -433,6 +564,24 @@ class SessionBrowser(App[Optional[str]]):
             except Exception:
                 # Don't show notification during startup - just return
                 return
+
+        # Only compute archived sessions if there are JSONL files to compare against
+        # (in test environments, there may be cached sessions but no JSONL files)
+        if valid_session_ids:
+            # Load archived sessions (cached but JSONL deleted)
+            self.archived_sessions = self.cache_manager.get_archived_sessions(
+                valid_session_ids
+            )
+
+            # Filter current sessions to only those with existing JSONL files
+            self.sessions = {
+                sid: data
+                for sid, data in self.sessions.items()
+                if sid in valid_session_ids
+            }
+        else:
+            # No JSONL files to compare - treat all sessions as current
+            self.archived_sessions = {}
 
         # Only update UI if we're in app context
         try:
@@ -473,9 +622,14 @@ class SessionBrowser(App[Optional[str]]):
         table.add_column("Messages", width=messages_width)
         table.add_column("Tokens", width=tokens_width)
 
+        # Select sessions based on view mode
+        display_sessions = (
+            self.archived_sessions if self.view_mode == "archived" else self.sessions
+        )
+
         # Sort sessions by start time (newest first)
         sorted_sessions = sorted(
-            self.sessions.items(), key=lambda x: x[1].first_timestamp, reverse=True
+            display_sessions.items(), key=lambda x: x[1].first_timestamp, reverse=True
         )
 
         # Add rows
@@ -514,10 +668,15 @@ class SessionBrowser(App[Optional[str]]):
 
     def update_stats(self) -> None:
         """Update the project statistics display."""
-        total_sessions = len(self.sessions)
-        total_messages = sum(s.message_count for s in self.sessions.values())
+        # Use appropriate session dict based on view mode
+        display_sessions = (
+            self.archived_sessions if self.view_mode == "archived" else self.sessions
+        )
+        total_sessions = len(display_sessions)
+        total_messages = sum(s.message_count for s in display_sessions.values())
         total_tokens = sum(
-            s.total_input_tokens + s.total_output_tokens for s in self.sessions.values()
+            s.total_input_tokens + s.total_output_tokens
+            for s in display_sessions.values()
         )
 
         # Get project name using shared logic
@@ -533,16 +692,20 @@ class SessionBrowser(App[Optional[str]]):
         )
 
         # Find date range
-        if self.sessions:
+        if display_sessions:
             timestamps = [
-                s.first_timestamp for s in self.sessions.values() if s.first_timestamp
+                s.first_timestamp
+                for s in display_sessions.values()
+                if s.first_timestamp
             ]
             earliest = min(timestamps) if timestamps else ""
             latest = (
                 max(
-                    s.last_timestamp for s in self.sessions.values() if s.last_timestamp
+                    s.last_timestamp
+                    for s in display_sessions.values()
+                    if s.last_timestamp
                 )
-                if self.sessions
+                if display_sessions
                 else ""
             )
 
@@ -560,8 +723,22 @@ class SessionBrowser(App[Optional[str]]):
         # Create spaced layout: Project (left), Sessions info (center), Date range (right)
         terminal_width = self.size.width
 
+        # View mode indicator with counts
+        if self.view_mode == "archived":
+            mode_indicator = (
+                f"[bold yellow]ARCHIVED[/bold yellow] ({len(self.archived_sessions)})"
+            )
+        else:
+            archived_count = len(self.archived_sessions)
+            if archived_count > 0:
+                mode_indicator = (
+                    f"[bold green]CURRENT[/bold green] ({archived_count} archived)"
+                )
+            else:
+                mode_indicator = "[bold green]CURRENT[/bold green]"
+
         # Project section (left aligned)
-        project_section = f"[bold]Project:[/bold] {project_name}"
+        project_section = f"[bold]Project:[/bold] {project_name} {mode_indicator}"
 
         # Sessions info section (center)
         sessions_section = f"[bold]Sessions:[/bold] {total_sessions:,} | [bold]Messages:[/bold] {total_messages:,} | [bold]Tokens:[/bold] {total_tokens:,}"
@@ -631,8 +808,13 @@ class SessionBrowser(App[Optional[str]]):
             if row_data:
                 # Extract session ID from the first column (now just first 8 chars)
                 session_id_display = str(row_data[0])
-                # Find the full session ID
-                for full_session_id in self.sessions.keys():
+                # Find the full session ID in the appropriate dict
+                display_sessions = (
+                    self.archived_sessions
+                    if self.view_mode == "archived"
+                    else self.sessions
+                )
+                for full_session_id in display_sessions.keys():
                     if full_session_id.startswith(session_id_display):
                         self.selected_session_id = full_session_id
                         break
@@ -764,14 +946,18 @@ class SessionBrowser(App[Optional[str]]):
 
     def _update_expanded_content(self) -> None:
         """Update the expanded content for the currently selected session."""
+        # Use appropriate session dict based on view mode
+        display_sessions = (
+            self.archived_sessions if self.view_mode == "archived" else self.sessions
+        )
         if (
             not self.selected_session_id
-            or self.selected_session_id not in self.sessions
+            or self.selected_session_id not in display_sessions
         ):
             return
 
         expanded_content = self.query_one("#expanded-content", Static)
-        session_data = self.sessions[self.selected_session_id]
+        session_data = display_sessions[self.selected_session_id]
 
         # Build expanded content
         content_parts: list[str] = []
@@ -841,16 +1027,24 @@ class SessionBrowser(App[Optional[str]]):
         if not needs_regeneration:
             return session_file
 
-        # Load messages from JSONL files
+        # Load messages - from cache for archived sessions, from JSONL otherwise
         try:
-            messages = load_directory_transcripts(
-                self.project_path, self.cache_manager, silent=True
-            )
+            is_archived = session_id in self.archived_sessions
+            if is_archived:
+                # Load from cache for archived sessions
+                messages = self.cache_manager.load_session_entries(session_id)
+            else:
+                # Load from JSONL files for current sessions
+                messages = load_directory_transcripts(
+                    self.project_path, self.cache_manager, silent=True
+                )
             if not messages:
                 return None
 
-            # Build session title
-            session_data = self.sessions.get(session_id)
+            # Build session title - check both dicts
+            session_data = self.sessions.get(session_id) or self.archived_sessions.get(
+                session_id
+            )
             project_cache = self.cache_manager.get_cached_project_data()
             project_name = get_project_display_name(
                 self.project_path.name,
@@ -911,15 +1105,161 @@ class SessionBrowser(App[Optional[str]]):
             "- Use arrow keys to select sessions\n"
             "- Expanded content updates automatically when visible\n\n"
             "Actions:\n"
+            "- a: Toggle between current and archived sessions\n"
             "- e: Toggle expanded view for session\n"
             "- h: Open selected session's HTML page\n"
             "- m: Open selected session's Markdown file (in browser)\n"
             "- v: View Markdown in embedded viewer\n"
-            "- c: Resume selected session in Claude Code\n"
+            "- c: Resume selected session in Claude Code (current only)\n"
+            "- r: Restore archived session to JSONL (archived only)\n"
             "- p: Open project selector\n"
             "- q: Quit\n\n"
         )
         self.notify(help_text, timeout=10)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Conditionally enable/disable actions based on view mode."""
+        # Resume is only available in current mode
+        if action == "resume_selected" and self.view_mode == "archived":
+            return False
+        # Restore is only available in archived mode
+        if action == "restore_jsonl" and self.view_mode == "current":
+            return False
+        return True
+
+    def action_toggle_view_mode(self) -> None:
+        """Toggle between current and archived session views."""
+        if self.view_mode == "current":
+            if not self.archived_sessions:
+                self.notify("No archived sessions found", severity="warning")
+                return
+            self.view_mode = "archived"
+        else:
+            self.view_mode = "current"
+
+        # Clear selection and refresh
+        self.selected_session_id = None
+        self.populate_table()
+        self.update_stats()
+
+        # Hide expanded content when switching modes
+        if self.is_expanded:
+            expanded_content = self.query_one("#expanded-content", Static)
+            self.is_expanded = False
+            expanded_content.set_styles("display: none;")
+            expanded_content.update("")
+
+    def action_restore_jsonl(self) -> None:
+        """Restore the selected archived session to a JSONL file."""
+        if self.view_mode != "archived":
+            self.notify(
+                "Restore is only available in archived mode", severity="warning"
+            )
+            return
+
+        if not self.selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+
+        if self.selected_session_id not in self.archived_sessions:
+            self.notify(
+                "Selected session not found in archived sessions", severity="error"
+            )
+            return
+
+        try:
+            # Export messages from cache
+            messages = self.cache_manager.export_session_to_jsonl(
+                self.selected_session_id
+            )
+            if not messages:
+                self.notify("No messages found for session", severity="error")
+                return
+
+            # Write to JSONL file
+            output_path = self.project_path / f"{self.selected_session_id}.jsonl"
+            with open(output_path, "w", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(msg + "\n")
+
+            self.notify(
+                f"Restored {len(messages)} messages to {output_path.name}",
+                severity="information",
+            )
+
+            # Ask user if they want to switch to current view
+            self._prompt_switch_to_current()
+
+        except Exception as e:
+            self.notify(f"Error restoring session: {e}", severity="error")
+
+    def _prompt_switch_to_current(self) -> None:
+        """Refresh sessions after restore and switch to current view."""
+        # If this was a fully archived project, it's no longer archived
+        # since we just restored a JSONL file
+        if self.is_archived_project:
+            self.is_archived_project = False
+
+        # Reload sessions - this will now detect the restored JSONL file
+        self.load_sessions()
+
+        # Switch to current view mode to show the restored session
+        if self.view_mode == "archived":
+            self.view_mode = "current"
+            self.populate_table()
+            self.update_stats()
+
+        self.notify(
+            "Session restored! Switched to current sessions.",
+            timeout=5,
+        )
+
+    def action_delete_from_cache(self) -> None:
+        """Delete the selected session from the cache."""
+        if not self.selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+
+        # Check if session exists in either current or archived sessions
+        if (
+            self.selected_session_id not in self.sessions
+            and self.selected_session_id not in self.archived_sessions
+        ):
+            self.notify("Selected session not found", severity="error")
+            return
+
+        # Determine if this is an archived session (no JSONL to fall back on)
+        is_archived_session = self.selected_session_id in self.archived_sessions
+
+        # Push confirmation screen
+        self.push_screen(
+            DeleteConfirmScreen(
+                session_id=self.selected_session_id,
+                is_archived=is_archived_session,
+            ),
+            callback=self._on_delete_confirm,
+        )
+
+    def _on_delete_confirm(self, confirmed: Optional[bool]) -> None:
+        """Handle deletion confirmation result."""
+        if not confirmed or not self.selected_session_id:
+            return
+
+        try:
+            # Delete from cache
+            success = self.cache_manager.delete_session(self.selected_session_id)
+            if success:
+                self.notify(
+                    f"Session {self.selected_session_id[:8]} deleted from cache",
+                    severity="information",
+                )
+                # Clear selection and reload
+                self.selected_session_id = None
+                self.load_sessions()
+            else:
+                self.notify("Failed to delete session from cache", severity="error")
+        except Exception as e:
+            self.notify(f"Error deleting session: {e}", severity="error")
 
     def action_back_to_projects(self) -> None:
         """Navigate to the project selector."""
@@ -932,14 +1272,16 @@ class SessionBrowser(App[Optional[str]]):
 
 
 def run_project_selector(
-    projects: list[Path], matching_projects: list[Path]
+    projects: list[Path],
+    matching_projects: list[Path],
+    archived_projects: Optional[set[Path]] = None,
 ) -> Optional[Path]:
     """Run the project selector TUI and return the selected project path."""
     if not projects:
         print("Error: No projects provided")
         return None
 
-    app = ProjectSelector(projects, matching_projects)
+    app = ProjectSelector(projects, matching_projects, archived_projects)
     try:
         return app.run()
     except KeyboardInterrupt:
@@ -948,9 +1290,20 @@ def run_project_selector(
         return None
 
 
-def run_session_browser(project_path: Path) -> Optional[str]:
+def run_session_browser(project_path: Path, is_archived: bool = False) -> Optional[str]:
     """Run the session browser TUI for the given project path."""
     if not project_path.exists():
+        # For archived projects, the directory may not exist but cache may
+        if is_archived:
+            # Try to load from cache
+            try:
+                cache_manager = CacheManager(project_path, get_library_version())
+                project_cache = cache_manager.get_cached_project_data()
+                if project_cache and project_cache.sessions:
+                    app = SessionBrowser(project_path, is_archived=True)
+                    return app.run()
+            except Exception:
+                pass
         print(f"Error: Project path {project_path} does not exist")
         return None
 
@@ -961,10 +1314,20 @@ def run_session_browser(project_path: Path) -> Optional[str]:
     # Check if there are any JSONL files
     jsonl_files = list(project_path.glob("*.jsonl"))
     if not jsonl_files:
+        # For archived projects, check if we have cached sessions
+        if is_archived:
+            try:
+                cache_manager = CacheManager(project_path, get_library_version())
+                project_cache = cache_manager.get_cached_project_data()
+                if project_cache and project_cache.sessions:
+                    app = SessionBrowser(project_path, is_archived=True)
+                    return app.run()
+            except Exception:
+                pass
         print(f"Error: No JSONL transcript files found in {project_path}")
         return None
 
-    app = SessionBrowser(project_path)
+    app = SessionBrowser(project_path, is_archived=is_archived)
     try:
         return app.run()
     except KeyboardInterrupt:

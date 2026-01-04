@@ -59,10 +59,14 @@
 
     <div class='project-list'>
         {% for project in projects %}
-        <div class='project-card'>
+        <div class='project-card{% if project.is_archived %} archived{% endif %}'>
             <div class='project-name'>
                 <a href='{{ project.html_file }}'>{{ project.display_name }}</a>
+                {% if project.is_archived %}
+                <span class="archived-badge">Archived</span>
+                {% else %}
                 <span class="transcript-link-hint">(← open combined transcript)</span>
+                {% endif %}
             </div>
             <div class='project-stats'>
                 <div class='stat'>📁 {{ project.jsonl_count }} transcript files</div>
