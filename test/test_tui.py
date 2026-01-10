@@ -13,7 +13,7 @@ from textual.css.query import NoMatches
 from textual.widgets import DataTable, Label
 
 from claude_code_log.cache import CacheManager, SessionCacheData
-from claude_code_log.tui import SessionBrowser, run_session_browser
+from claude_code_log.tui import ProjectSelector, SessionBrowser, run_session_browser
 
 
 @pytest.fixture
@@ -921,8 +921,8 @@ class TestIntegration:
                 assert "Sessions:[/bold] 0" in stats_text
 
     @pytest.mark.asyncio
-    async def test_archived_project_loads_in_archived_mode(self):
-        """Test that an archived project (no JSONL files) loads sessions in archived mode."""
+    async def test_archived_project_loads_archived_sessions(self):
+        """Test that an archived project (no JSONL files) loads sessions in archived_sessions."""
         with tempfile.TemporaryDirectory() as temp_dir:
             project_path = Path(temp_dir)
 
@@ -963,14 +963,973 @@ class TestIntegration:
                     # Manually call load_sessions (since mocking)
                     app.load_sessions()
 
-                    # Should be in archived view mode
-                    assert app.view_mode == "archived"
-
                     # Sessions should be in archived_sessions, not sessions
                     assert len(app.archived_sessions) > 0
                     assert len(app.sessions) == 0
 
-                    # Stats should show ARCHIVED
+                    # Stats should show "archived" count
                     stats = cast(Label, app.query_one("#stats"))
                     stats_text = str(stats.content)
-                    assert "ARCHIVED" in stats_text
+                    assert "archived" in stats_text.lower()
+
+
+@pytest.mark.tui
+class TestUnifiedSessionList:
+    """Tests for the unified session list showing both current and archived sessions."""
+
+    @pytest.mark.asyncio
+    async def test_unified_list_shows_both_current_and_archived(self):
+        """Test that both current and archived sessions appear in the same list."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-current.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            current_session = {
+                "session-current": SessionCacheData(
+                    session_id="session-current",
+                    first_timestamp="2025-01-02T10:00:00Z",
+                    last_timestamp="2025-01-02T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Current session",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+            archived_session = {
+                "session-archived": SessionCacheData(
+                    session_id="session-archived",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Archived session",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = current_session
+                app.archived_sessions = archived_session
+                app.populate_table()
+
+                # Get the table
+                table = cast(DataTable, app.query_one("#sessions-table"))
+
+                # Should have 2 rows (both sessions in one list)
+                assert table.row_count == 2
+
+    @pytest.mark.asyncio
+    async def test_unified_list_sorted_by_timestamp_newest_first(self):
+        """Test that sessions are sorted by timestamp with newest first."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-old.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            # Create sessions with different timestamps
+            old_session = {
+                "session-old": SessionCacheData(
+                    session_id="session-old",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Old session",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+            new_archived_session = {
+                "session-new": SessionCacheData(
+                    session_id="session-new",
+                    first_timestamp="2025-01-03T10:00:00Z",
+                    last_timestamp="2025-01-03T10:01:00Z",
+                    message_count=1,
+                    first_user_message="New archived session",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = old_session
+                app.archived_sessions = new_archived_session
+                app.populate_table()
+
+                table = cast(DataTable, app.query_one("#sessions-table"))
+
+                # Get first row - should be the newest (archived) session
+                first_row = table.get_row_at(0)
+                # Session ID column shows first 8 chars
+                assert str(first_row[0]).startswith("session-")
+                # Title should have [ARCHIVED] prefix since newest is archived
+                assert "[ARCHIVED]" in str(first_row[1])
+
+    @pytest.mark.asyncio
+    async def test_archived_sessions_have_archived_indicator(self):
+        """Test that archived sessions display [ARCHIVED] indicator in title."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-current.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            current_session = {
+                "session-current": SessionCacheData(
+                    session_id="session-current",
+                    first_timestamp="2025-01-02T10:00:00Z",
+                    last_timestamp="2025-01-02T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Current session message",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+            archived_session = {
+                "session-archived": SessionCacheData(
+                    session_id="session-archived",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Archived session message",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = current_session
+                app.archived_sessions = archived_session
+                app.populate_table()
+
+                table = cast(DataTable, app.query_one("#sessions-table"))
+
+                # Check both rows
+                found_archived_indicator = False
+                found_current_without_indicator = False
+
+                for row_idx in range(table.row_count):
+                    row = table.get_row_at(row_idx)
+                    title = str(row[1])
+                    if "[ARCHIVED]" in title:
+                        found_archived_indicator = True
+                        assert "Archived session message" in title
+                    else:
+                        found_current_without_indicator = True
+                        assert "Current session message" in title
+
+                assert found_archived_indicator, (
+                    "Archived session should have [ARCHIVED] indicator"
+                )
+                assert found_current_without_indicator, (
+                    "Current session should not have [ARCHIVED] indicator"
+                )
+
+    @pytest.mark.asyncio
+    async def test_stats_show_combined_totals(self):
+        """Test that stats display combined totals from both current and archived sessions."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-current.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            current_session = {
+                "session-current": SessionCacheData(
+                    session_id="session-current",
+                    first_timestamp="2025-01-02T10:00:00Z",
+                    last_timestamp="2025-01-02T10:01:00Z",
+                    message_count=5,
+                    first_user_message="Current",
+                    total_input_tokens=100,
+                    total_output_tokens=200,
+                ),
+            }
+            archived_session = {
+                "session-archived": SessionCacheData(
+                    session_id="session-archived",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=3,
+                    first_user_message="Archived",
+                    total_input_tokens=50,
+                    total_output_tokens=100,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = current_session
+                app.archived_sessions = archived_session
+                app.update_stats()
+
+                stats = cast(Label, app.query_one("#stats"))
+                stats_text = str(stats.content)
+
+                # Should show combined sessions count (2)
+                assert "Sessions:[/bold] 2" in stats_text
+                # Should show combined messages count (5 + 3 = 8)
+                assert "Messages:[/bold] 8" in stats_text
+                # Should show combined tokens (100+200+50+100 = 450)
+                assert "Tokens:[/bold] 450" in stats_text
+                # Should indicate archived count
+                assert "1 archived" in stats_text
+
+
+@pytest.mark.tui
+class TestArchiveConfirmScreen:
+    """Tests for archive confirmation via the archive action."""
+
+    @pytest.mark.asyncio
+    async def test_archive_confirm_y_key_deletes_file(self):
+        """Test confirming archive with 'y' key deletes the JSONL file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = mock_session_data
+                app.selected_session_id = "session-123"
+
+                assert jsonl_file.exists()
+
+                # Trigger archive (opens modal)
+                await pilot.press("a")
+                await pilot.pause(0.1)
+
+                # Confirm with 'y'
+                await pilot.press("y")
+                await pilot.pause(0.1)
+
+                assert not jsonl_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_archive_confirm_enter_key_deletes_file(self):
+        """Test confirming archive with Enter key deletes the JSONL file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = mock_session_data
+                app.selected_session_id = "session-123"
+
+                assert jsonl_file.exists()
+
+                # Trigger archive (opens modal)
+                await pilot.press("a")
+                await pilot.pause(0.1)
+
+                # Confirm with Enter
+                await pilot.press("enter")
+                await pilot.pause(0.1)
+
+                assert not jsonl_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_archive_cancel_n_key_keeps_file(self):
+        """Test cancelling archive with 'n' key keeps the JSONL file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = mock_session_data
+                app.selected_session_id = "session-123"
+
+                # Trigger archive (opens modal)
+                await pilot.press("a")
+                await pilot.pause(0.1)
+
+                # Cancel with 'n'
+                await pilot.press("n")
+                await pilot.pause(0.1)
+
+                # File should still exist
+                assert jsonl_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_archive_cancel_escape_key_keeps_file(self):
+        """Test cancelling archive with Escape key keeps the JSONL file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                app.sessions = mock_session_data
+                app.selected_session_id = "session-123"
+
+                # Trigger archive (opens modal)
+                await pilot.press("a")
+                await pilot.pause(0.1)
+
+                # Cancel with Escape
+                await pilot.press("escape")
+                await pilot.pause(0.1)
+
+                # File should still exist
+                assert jsonl_file.exists()
+
+
+@pytest.mark.tui
+class TestDeleteConfirmScreen:
+    """Tests for delete confirmation with smart options."""
+
+    @pytest.mark.asyncio
+    async def test_delete_current_session_cache_only_keeps_jsonl(self):
+        """Test delete with 'c' (cache only) keeps JSONL file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            with patch.object(
+                app.cache_manager, "delete_session", return_value=True
+            ) as mock_delete:
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    app.sessions = mock_session_data
+                    app.selected_session_id = "session-123"
+
+                    # Trigger delete (opens modal)
+                    await pilot.press("d")
+                    await pilot.pause(0.1)
+
+                    # Choose cache only with 'c'
+                    await pilot.press("c")
+                    await pilot.pause(0.1)
+
+                    # JSONL should still exist
+                    assert jsonl_file.exists()
+                    mock_delete.assert_called_once_with("session-123")
+
+    @pytest.mark.asyncio
+    async def test_delete_current_session_both_deletes_jsonl(self):
+        """Test delete with 'b' (both) deletes JSONL file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            with patch.object(
+                app.cache_manager, "delete_session", return_value=True
+            ) as mock_delete:
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    app.sessions = mock_session_data
+                    app.selected_session_id = "session-123"
+
+                    assert jsonl_file.exists()
+
+                    # Trigger delete (opens modal)
+                    await pilot.press("d")
+                    await pilot.pause(0.1)
+
+                    # Choose both with 'b'
+                    await pilot.press("b")
+                    await pilot.pause(0.1)
+
+                    # JSONL should be deleted
+                    assert not jsonl_file.exists()
+                    mock_delete.assert_called_once_with("session-123")
+
+    @pytest.mark.asyncio
+    async def test_delete_archived_session_with_enter_key(self):
+        """Test deleting archived session with Enter key."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_archived_data = {
+                "session-archived": SessionCacheData(
+                    session_id="session-archived",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            with patch.object(
+                app.cache_manager, "delete_session", return_value=True
+            ) as mock_delete:
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    app.sessions = {}
+                    app.archived_sessions = mock_archived_data
+                    app.selected_session_id = "session-archived"
+
+                    # Trigger delete (opens modal)
+                    await pilot.press("d")
+                    await pilot.pause(0.1)
+
+                    # Confirm with Enter (for archived sessions)
+                    await pilot.press("enter")
+                    await pilot.pause(0.1)
+
+                    mock_delete.assert_called_once_with("session-archived")
+
+    @pytest.mark.asyncio
+    async def test_delete_cancel_n_key(self):
+        """Test cancelling delete with 'n' key."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            with patch.object(
+                app.cache_manager, "delete_session", return_value=True
+            ) as mock_delete:
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    app.sessions = mock_session_data
+                    app.selected_session_id = "session-123"
+
+                    # Trigger delete (opens modal)
+                    await pilot.press("d")
+                    await pilot.pause(0.1)
+
+                    # Cancel with 'n'
+                    await pilot.press("n")
+                    await pilot.pause(0.1)
+
+                    # Should not have deleted
+                    mock_delete.assert_not_called()
+                    assert jsonl_file.exists()
+
+
+@pytest.mark.tui
+class TestArchiveActionEdgeCases:
+    """Edge case tests for the archive session action."""
+
+    @pytest.mark.asyncio
+    async def test_archive_action_no_selection(self):
+        """Test archive action with no session selected shows warning."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Ensure no session is selected
+                app.selected_session_id = None
+
+                # Try to archive - should notify warning
+                await pilot.press("a")
+                await pilot.pause(0.1)
+
+                # No modal should be pushed (we can't easily check notifications)
+                # but at least verify no crash occurred
+
+    @pytest.mark.asyncio
+    async def test_archive_action_on_archived_session_shows_warning(self):
+        """Test archive action on already archived session shows warning."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            mock_session_data = {
+                "session-archived": SessionCacheData(
+                    session_id="session-archived",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Set up archived session
+                app.archived_sessions = mock_session_data
+                app.sessions = {}
+                app.selected_session_id = "session-archived"
+
+                # Try to archive - should notify warning (already archived)
+                await pilot.press("a")
+                await pilot.pause(0.1)
+
+
+@pytest.mark.tui
+class TestDeleteActionEdgeCases:
+    """Edge case tests for the delete session action."""
+
+    @pytest.mark.asyncio
+    async def test_delete_action_no_selection(self):
+        """Test delete action with no session selected shows warning."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir)
+            jsonl_file = project_path / "session-123.jsonl"
+            jsonl_file.write_text('{"type":"user"}\n', encoding="utf-8")
+
+            app = SessionBrowser(project_path)
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Ensure no session is selected
+                app.selected_session_id = None
+
+                # Try to delete - should notify warning
+                await pilot.press("d")
+                await pilot.pause(0.1)
+
+
+@pytest.mark.tui
+class TestRestoreWithMkdir:
+    """Tests for restore action creating directory if needed."""
+
+    @pytest.mark.asyncio
+    async def test_restore_creates_directory_if_missing(self):
+        """Test that restore creates the project directory if it was deleted."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "deleted_project"
+            # Don't create the directory - it should be created on restore
+
+            app = SessionBrowser(project_path, is_archived=True)
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            with (
+                patch.object(
+                    app.cache_manager,
+                    "export_session_to_jsonl",
+                    return_value=['{"type":"user"}'],
+                ),
+                patch.object(
+                    app.cache_manager, "get_cached_project_data"
+                ) as mock_cache,
+                patch.object(
+                    app.cache_manager, "get_archived_sessions", return_value={}
+                ),
+            ):
+                mock_cache.return_value = Mock(
+                    sessions=mock_session_data,
+                    working_directories=[str(project_path)],
+                )
+
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    # Set up archived session
+                    app.archived_sessions = mock_session_data
+                    app.selected_session_id = "session-123"
+
+                    # Directory should not exist
+                    assert not project_path.exists()
+
+                    # Trigger restore
+                    app.action_restore_jsonl()
+                    await pilot.pause(0.1)
+
+                    # Directory should now exist
+                    assert project_path.exists()
+
+                    # JSONL file should be created
+                    assert (project_path / "session-123.jsonl").exists()
+
+
+@pytest.mark.tui
+class TestProjectSelector:
+    """Tests for the ProjectSelector TUI."""
+
+    @pytest.mark.asyncio
+    async def test_enter_key_selects_project(self):
+        """Test that Enter key selects the highlighted project."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project1 = Path(temp_dir) / "project1"
+            project1.mkdir()
+            (project1 / "session-1.jsonl").write_text('{"type":"user"}\n')
+
+            project2 = Path(temp_dir) / "project2"
+            project2.mkdir()
+            (project2 / "session-2.jsonl").write_text('{"type":"user"}\n')
+
+            app = ProjectSelector(
+                projects=[project1, project2],
+                matching_projects=[],
+                archived_projects=set(),
+            )
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Select first project and press Enter
+                await pilot.press("enter")
+                await pilot.pause(0.1)
+
+    @pytest.mark.asyncio
+    async def test_escape_key_quits(self):
+        """Test that Escape key quits the application."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project1 = Path(temp_dir) / "project1"
+            project1.mkdir()
+
+            app = ProjectSelector(
+                projects=[project1],
+                matching_projects=[],
+                archived_projects=set(),
+            )
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Press Escape to quit
+                await pilot.press("escape")
+                await pilot.pause(0.1)
+
+    @pytest.mark.asyncio
+    async def test_archive_project_action(self):
+        """Test archiving a project deletes JSONL files."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "project1"
+            project_path.mkdir()
+            jsonl1 = project_path / "session-1.jsonl"
+            jsonl2 = project_path / "session-2.jsonl"
+            jsonl1.write_text('{"type":"user"}\n')
+            jsonl2.write_text('{"type":"user"}\n')
+
+            app = ProjectSelector(
+                projects=[project_path],
+                matching_projects=[],
+                archived_projects=set(),
+            )
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Select the project
+                app.selected_project_path = project_path
+
+                # Both JSONL files should exist
+                assert jsonl1.exists()
+                assert jsonl2.exists()
+
+                # Press 'a' to archive and then confirm
+                await pilot.press("a")
+                await pilot.pause(0.1)
+                await pilot.press("y")
+                await pilot.pause(0.1)
+
+                # JSONL files should be deleted
+                assert not jsonl1.exists()
+                assert not jsonl2.exists()
+
+                # Project should now be in archived set
+                assert project_path in app.archived_projects
+
+    @pytest.mark.asyncio
+    async def test_archive_project_already_archived_shows_warning(self):
+        """Test archiving an already archived project shows warning."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "project1"
+            project_path.mkdir()
+
+            app = ProjectSelector(
+                projects=[project_path],
+                matching_projects=[],
+                archived_projects={project_path},  # Already archived
+            )
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Select the archived project
+                app.selected_project_path = project_path
+
+                # Try to archive - should show warning
+                await pilot.press("a")
+                await pilot.pause(0.1)
+
+    @pytest.mark.asyncio
+    async def test_delete_project_cache_only(self):
+        """Test deleting project cache only keeps JSONL files."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "project1"
+            project_path.mkdir()
+            jsonl = project_path / "session-1.jsonl"
+            jsonl.write_text('{"type":"user"}\n')
+
+            app = ProjectSelector(
+                projects=[project_path],
+                matching_projects=[],
+                archived_projects=set(),
+            )
+
+            with patch.object(CacheManager, "clear_cache"):
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    # Select the project
+                    app.selected_project_path = project_path
+
+                    # Press 'd' to delete and choose cache only
+                    await pilot.press("d")
+                    await pilot.pause(0.1)
+                    await pilot.press("c")  # Cache only
+                    await pilot.pause(0.1)
+
+                    # JSONL file should still exist
+                    assert jsonl.exists()
+
+    @pytest.mark.asyncio
+    async def test_delete_project_both(self):
+        """Test deleting project cache and JSONL files."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "project1"
+            project_path.mkdir()
+            jsonl = project_path / "session-1.jsonl"
+            jsonl.write_text('{"type":"user"}\n')
+
+            app = ProjectSelector(
+                projects=[project_path],
+                matching_projects=[],
+                archived_projects=set(),
+            )
+
+            with patch.object(CacheManager, "clear_cache"):
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    # Select the project
+                    app.selected_project_path = project_path
+
+                    assert jsonl.exists()
+
+                    # Press 'd' to delete and choose both
+                    await pilot.press("d")
+                    await pilot.pause(0.1)
+                    await pilot.press("b")  # Both
+                    await pilot.pause(0.1)
+
+                    # JSONL file should be deleted
+                    assert not jsonl.exists()
+
+    @pytest.mark.asyncio
+    async def test_restore_project_creates_directory(self):
+        """Test restoring a project creates directory if missing."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "deleted_project"
+            # Don't create the directory
+
+            mock_session_data = {
+                "session-123": SessionCacheData(
+                    session_id="session-123",
+                    first_timestamp="2025-01-01T10:00:00Z",
+                    last_timestamp="2025-01-01T10:01:00Z",
+                    message_count=1,
+                    first_user_message="Test",
+                    total_input_tokens=10,
+                    total_output_tokens=10,
+                ),
+            }
+
+            app = ProjectSelector(
+                projects=[project_path],
+                matching_projects=[],
+                archived_projects={project_path},  # Archived project
+            )
+
+            with (
+                patch.object(CacheManager, "get_cached_project_data") as mock_cache,
+                patch.object(
+                    CacheManager,
+                    "export_session_to_jsonl",
+                    return_value=['{"type":"user"}'],
+                ),
+            ):
+                mock_cache.return_value = Mock(sessions=mock_session_data)
+
+                async with app.run_test() as pilot:
+                    await pilot.pause(0.2)
+
+                    # Select the project
+                    app.selected_project_path = project_path
+
+                    # Directory should not exist
+                    assert not project_path.exists()
+
+                    # Press 'r' to restore and confirm
+                    await pilot.press("r")
+                    await pilot.pause(0.1)
+                    await pilot.press("y")
+                    await pilot.pause(0.1)
+
+                    # Directory should now exist
+                    assert project_path.exists()
+
+    @pytest.mark.asyncio
+    async def test_restore_project_not_archived_shows_warning(self):
+        """Test restoring a non-archived project shows warning."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_path = Path(temp_dir) / "project1"
+            project_path.mkdir()
+            (project_path / "session-1.jsonl").write_text('{"type":"user"}\n')
+
+            app = ProjectSelector(
+                projects=[project_path],
+                matching_projects=[],
+                archived_projects=set(),  # Not archived
+            )
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.2)
+
+                # Select the non-archived project
+                app.selected_project_path = project_path
+
+                # Try to restore - should show warning
+                await pilot.press("r")
+                await pilot.pause(0.1)
