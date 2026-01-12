@@ -2,6 +2,7 @@
 """SQLite-based cache management for Claude Code Log."""
 
 import json
+import os
 import sqlite3
 import zlib
 from contextlib import contextmanager
@@ -163,24 +164,54 @@ def get_library_version() -> str:
     return "unknown"
 
 
+# ========== Cache Path Configuration ==========
+
+
+def get_cache_db_path(projects_dir: Path) -> Path:
+    """Get cache database path, respecting CLAUDE_CODE_LOG_CACHE_PATH env var.
+
+    Priority: CLAUDE_CODE_LOG_CACHE_PATH env var > default location.
+
+    Args:
+        projects_dir: Path to the projects directory (e.g., ~/.claude/projects)
+
+    Returns:
+        Path to the SQLite cache database.
+    """
+    env_path = os.getenv("CLAUDE_CODE_LOG_CACHE_PATH")
+    if env_path:
+        return Path(env_path)
+    return projects_dir / "claude-code-log-cache.db"
+
+
 # ========== Cache Manager ==========
 
 
 class CacheManager:
     """SQLite-based cache manager for Claude Code Log."""
 
-    def __init__(self, project_path: Path, library_version: str):
+    def __init__(
+        self,
+        project_path: Path,
+        library_version: str,
+        db_path: Optional[Path] = None,
+    ):
         """Initialise cache manager for a project.
 
         Args:
             project_path: Path to the project directory containing JSONL files
             library_version: Current version of the library for cache invalidation
+            db_path: Optional explicit path to the cache database. If not provided,
+                uses CLAUDE_CODE_LOG_CACHE_PATH env var or default location.
         """
         self.project_path = project_path
         self.library_version = library_version
 
-        # Database at parent level (projects_dir/claude-code-log-cache.db)
-        self.db_path = project_path.parent / "claude-code-log-cache.db"
+        # Priority: explicit db_path > env var > default location
+        if db_path:
+            self.db_path = db_path
+        else:
+            self.db_path = get_cache_db_path(project_path.parent)
 
         # Initialise database and ensure project exists
         self._init_database()
@@ -1395,7 +1426,10 @@ class CacheManager:
         return True
 
 
-def get_all_cached_projects(projects_dir: Path) -> List[tuple[str, bool]]:
+def get_all_cached_projects(
+    projects_dir: Path,
+    db_path: Optional[Path] = None,
+) -> List[tuple[str, bool]]:
     """Get all projects from cache, indicating which are archived.
 
     This is a standalone function that queries the cache database directly
@@ -1404,19 +1438,26 @@ def get_all_cached_projects(projects_dir: Path) -> List[tuple[str, bool]]:
 
     Args:
         projects_dir: Path to the projects directory (e.g., ~/.claude/projects)
+        db_path: Optional explicit path to the cache database. If not provided,
+            uses CLAUDE_CODE_LOG_CACHE_PATH env var or default location.
 
     Returns:
         List of (project_path, is_archived) tuples.
         is_archived is True if the project has no JSONL files but exists in cache.
     """
-    db_path = projects_dir / "claude-code-log-cache.db"
-    if not db_path.exists():
+    # Priority: explicit db_path > env var > default location
+    if db_path:
+        actual_db_path = db_path
+    else:
+        actual_db_path = get_cache_db_path(projects_dir)
+
+    if not actual_db_path.exists():
         return []
 
     result: List[tuple[str, bool]] = []
 
     try:
-        conn = sqlite3.connect(db_path, timeout=30.0)
+        conn = sqlite3.connect(actual_db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         try:
             rows = conn.execute(
@@ -1450,5 +1491,6 @@ __all__ = [
     "ProjectCache",
     "SessionCacheData",
     "get_all_cached_projects",
+    "get_cache_db_path",
     "get_library_version",
 ]

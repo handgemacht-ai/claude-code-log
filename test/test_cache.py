@@ -702,3 +702,91 @@ class TestCacheErrorHandling:
                 cache_dir.chmod(0o755)
             except OSError:
                 pass
+
+
+class TestCachePathEnvVar:
+    """Test CLAUDE_CODE_LOG_CACHE_PATH environment variable."""
+
+    def test_default_path_without_env_var(self, tmp_path):
+        """Test default cache path when env var is not set."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        cache = CacheManager(project_dir, "1.0.0")
+
+        # Default should be parent/claude-code-log-cache.db
+        expected_path = tmp_path / "claude-code-log-cache.db"
+        assert cache.db_path == expected_path
+        assert expected_path.exists()
+
+    def test_env_var_overrides_default(self, tmp_path, monkeypatch):
+        """Test that CLAUDE_CODE_LOG_CACHE_PATH overrides default location."""
+        custom_db = tmp_path / "custom-cache.db"
+        monkeypatch.setenv("CLAUDE_CODE_LOG_CACHE_PATH", str(custom_db))
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        cache = CacheManager(project_dir, "1.0.0")
+        assert cache.db_path == custom_db
+        assert custom_db.exists()
+
+    def test_explicit_db_path_overrides_env_var(self, tmp_path, monkeypatch):
+        """Test that explicit db_path takes precedence over env var."""
+        env_db = tmp_path / "env-cache.db"
+        explicit_db = tmp_path / "explicit-cache.db"
+        monkeypatch.setenv("CLAUDE_CODE_LOG_CACHE_PATH", str(env_db))
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        cache = CacheManager(project_dir, "1.0.0", db_path=explicit_db)
+        assert cache.db_path == explicit_db
+        assert explicit_db.exists()
+        assert not env_db.exists()
+
+    def test_get_all_cached_projects_respects_env_var(self, tmp_path, monkeypatch):
+        """Test that get_all_cached_projects uses env var."""
+        from claude_code_log.cache import get_all_cached_projects
+
+        custom_db = tmp_path / "custom-cache.db"
+        monkeypatch.setenv("CLAUDE_CODE_LOG_CACHE_PATH", str(custom_db))
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+
+        # Create a project and cache it
+        project_dir = projects_dir / "test-project"
+        project_dir.mkdir()
+        cache = CacheManager(project_dir, "1.0.0")  # Uses env var
+        assert cache.db_path == custom_db
+
+        # get_all_cached_projects should also use the env var
+        projects = get_all_cached_projects(projects_dir)
+        assert len(projects) == 1
+        assert projects[0][0] == str(project_dir)
+
+    def test_get_all_cached_projects_explicit_db_path(self, tmp_path, monkeypatch):
+        """Test that get_all_cached_projects explicit db_path overrides env var."""
+        from claude_code_log.cache import get_all_cached_projects
+
+        env_db = tmp_path / "env-cache.db"
+        explicit_db = tmp_path / "explicit-cache.db"
+        monkeypatch.setenv("CLAUDE_CODE_LOG_CACHE_PATH", str(env_db))
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        project_dir = projects_dir / "test-project"
+        project_dir.mkdir()
+
+        # Create cache using explicit path
+        cache = CacheManager(project_dir, "1.0.0", db_path=explicit_db)
+        assert cache.db_path == explicit_db
+
+        # get_all_cached_projects with explicit path should find it
+        projects = get_all_cached_projects(projects_dir, db_path=explicit_db)
+        assert len(projects) == 1
+
+        # get_all_cached_projects without explicit path uses env var (empty db)
+        projects_env = get_all_cached_projects(projects_dir)
+        assert len(projects_env) == 0  # env_db doesn't have any projects
