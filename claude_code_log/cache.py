@@ -492,11 +492,17 @@ class CacheManager:
 
         with self._get_connection() as conn:
             # Insert or update file record
+            # Use ON CONFLICT to preserve file ID and avoid cascade deletes on messages
             conn.execute(
                 """
-                INSERT OR REPLACE INTO cached_files
+                INSERT INTO cached_files
                 (project_id, file_name, file_path, source_mtime, cached_mtime, message_count)
                 VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, file_name) DO UPDATE SET
+                    file_path = excluded.file_path,
+                    source_mtime = excluded.source_mtime,
+                    cached_mtime = excluded.cached_mtime,
+                    message_count = excluded.message_count
                 """,
                 (
                     self._project_id,
@@ -552,12 +558,23 @@ class CacheManager:
             for session_id, data in session_data.items():
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO sessions (
+                    INSERT INTO sessions (
                         project_id, session_id, summary, first_timestamp, last_timestamp,
                         message_count, first_user_message, cwd,
                         total_input_tokens, total_output_tokens,
                         total_cache_creation_tokens, total_cache_read_tokens
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(project_id, session_id) DO UPDATE SET
+                        summary = excluded.summary,
+                        first_timestamp = excluded.first_timestamp,
+                        last_timestamp = excluded.last_timestamp,
+                        message_count = excluded.message_count,
+                        first_user_message = excluded.first_user_message,
+                        cwd = excluded.cwd,
+                        total_input_tokens = excluded.total_input_tokens,
+                        total_output_tokens = excluded.total_output_tokens,
+                        total_cache_creation_tokens = excluded.total_cache_creation_tokens,
+                        total_cache_read_tokens = excluded.total_cache_read_tokens
                     """,
                     (
                         self._project_id,
@@ -1301,18 +1318,30 @@ class CacheManager:
 
         # Check if any session on this page has changed
         with self._get_connection() as conn:
-            for session_id in page_data.session_ids:
-                row = conn.execute(
-                    """SELECT message_count FROM sessions
-                       WHERE project_id = ? AND session_id = ?""",
-                    (self._project_id, session_id),
-                ).fetchone()
+            # Build placeholders for IN clause
+            placeholders = ",".join("?" for _ in page_data.session_ids)
+            params = [self._project_id, *page_data.session_ids]
 
-                if not row:
-                    return True, "session_missing"
+            row = conn.execute(
+                f"""SELECT COUNT(*) as session_count,
+                           COALESCE(SUM(message_count), 0) as total_messages,
+                           MAX(last_timestamp) as max_timestamp
+                    FROM sessions
+                    WHERE project_id = ? AND session_id IN ({placeholders})""",
+                params,
+            ).fetchone()
 
-                # We need to check if session content changed
-                # For now, just check if session exists
+            # Check if any sessions are missing
+            if row["session_count"] != len(page_data.session_ids):
+                return True, "session_missing"
+
+            # Check if message count changed
+            if row["total_messages"] != page_data.message_count:
+                return True, "message_count_changed"
+
+            # Check if last timestamp changed (session content updated)
+            if row["max_timestamp"] != page_data.last_timestamp:
+                return True, "timestamp_changed"
 
         return False, "up_to_date"
 

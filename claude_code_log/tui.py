@@ -273,22 +273,46 @@ class ProjectSelector(App[Path]):
             return
 
         project_path = self.selected_project_path
-        archived_count = 0
+
+        # Collect all JSONL files first
+        jsonl_files = list(project_path.glob("*.jsonl"))
+        if not jsonl_files:
+            self.notify("No sessions to archive", severity="warning")
+            return
+
+        # Track successes and failures
+        succeeded: list[str] = []
+        failed: list[tuple[str, str]] = []  # (filename, error message)
 
         # Delete all JSONL files in the project
-        for jsonl_file in project_path.glob("*.jsonl"):
+        for jsonl_file in jsonl_files:
             try:
                 jsonl_file.unlink()
-                archived_count += 1
+                succeeded.append(jsonl_file.name)
             except Exception as e:
-                self.notify(
-                    f"Failed to delete {jsonl_file.name}: {e}", severity="error"
-                )
+                failed.append((jsonl_file.name, str(e)))
 
-        if archived_count > 0:
-            self.notify(f"Archived {archived_count} sessions")
-            # Add to archived projects set
+        # Report results clearly
+        total = len(jsonl_files)
+        if failed:
+            # Show detailed failure information
+            failed_names = ", ".join(f[0] for f in failed[:3])
+            if len(failed) > 3:
+                failed_names += f" and {len(failed) - 3} more"
+            self.notify(
+                f"Archive incomplete: {len(succeeded)}/{total} sessions deleted. "
+                f"Failed: {failed_names}",
+                severity="error",
+            )
+        else:
+            self.notify(f"Archived {len(succeeded)} sessions")
+
+        # Only mark as fully archived if ALL files were deleted
+        if not failed and succeeded:
             self.archived_projects.add(project_path)
+
+        # Always refresh to show current state
+        if succeeded:
             self.populate_table()
 
     def action_delete_project(self) -> None:
@@ -318,13 +342,29 @@ class ProjectSelector(App[Path]):
         cache_manager.clear_cache()
 
         # If deleting both, also delete JSONL files
+        file_delete_failed = False
         if result == "both":
-            for jsonl_file in project_path.glob("*.jsonl"):
-                try:
-                    jsonl_file.unlink()
-                except Exception as e:
+            jsonl_files = list(project_path.glob("*.jsonl"))
+            if jsonl_files:
+                succeeded: list[str] = []
+                failed: list[tuple[str, str]] = []
+
+                for jsonl_file in jsonl_files:
+                    try:
+                        jsonl_file.unlink()
+                        succeeded.append(jsonl_file.name)
+                    except Exception as e:
+                        failed.append((jsonl_file.name, str(e)))
+
+                if failed:
+                    file_delete_failed = True
+                    failed_names = ", ".join(f[0] for f in failed[:3])
+                    if len(failed) > 3:
+                        failed_names += f" and {len(failed) - 3} more"
                     self.notify(
-                        f"Failed to delete {jsonl_file.name}: {e}", severity="error"
+                        f"Cache deleted but {len(failed)}/{len(jsonl_files)} "
+                        f"session files failed to delete: {failed_names}",
+                        severity="error",
                     )
 
         # Remove from projects list
@@ -335,7 +375,8 @@ class ProjectSelector(App[Path]):
         if project_path in self.archived_projects:
             self.archived_projects.discard(project_path)
 
-        self.notify(f"Deleted project: {project_path.name}")
+        if not file_delete_failed:
+            self.notify(f"Deleted project: {project_path.name}")
         self.selected_project_path = None
         self.populate_table()
 
@@ -371,26 +412,56 @@ class ProjectSelector(App[Path]):
         # Ensure project directory exists
         project_path.mkdir(parents=True, exist_ok=True)
 
-        restored_count = 0
-        for session_id in project_cache.sessions:
-            jsonl_path = project_path / f"{session_id}.jsonl"
-            if not jsonl_path.exists():
-                try:
-                    messages = cache_manager.export_session_to_jsonl(session_id)
-                    if messages:
-                        with open(jsonl_path, "w", encoding="utf-8") as f:
-                            for msg in messages:
-                                f.write(msg + "\n")
-                        restored_count += 1
-                except Exception as e:
-                    self.notify(
-                        f"Failed to restore {session_id}: {e}", severity="error"
-                    )
+        # Identify sessions that need restoration (don't already exist as files)
+        sessions_to_restore = [
+            session_id
+            for session_id in project_cache.sessions
+            if not (project_path / f"{session_id}.jsonl").exists()
+        ]
 
-        if restored_count > 0:
-            self.notify(f"Restored {restored_count} sessions")
-            # Remove from archived projects set
+        if not sessions_to_restore:
+            self.notify("All sessions already exist as files", severity="warning")
+            return
+
+        # Track successes and failures
+        succeeded: list[str] = []
+        failed: list[tuple[str, str]] = []  # (session_id, error message)
+
+        for session_id in sessions_to_restore:
+            jsonl_path = project_path / f"{session_id}.jsonl"
+            try:
+                messages = cache_manager.export_session_to_jsonl(session_id)
+                if messages:
+                    with open(jsonl_path, "w", encoding="utf-8") as f:
+                        for msg in messages:
+                            f.write(msg + "\n")
+                    succeeded.append(session_id)
+                else:
+                    failed.append((session_id, "No messages found in cache"))
+            except Exception as e:
+                failed.append((session_id, str(e)))
+
+        # Report results clearly
+        total = len(sessions_to_restore)
+        if failed:
+            # Show detailed failure information
+            failed_ids = ", ".join(f[0][:8] for f in failed[:3])  # Truncate UUIDs
+            if len(failed) > 3:
+                failed_ids += f" and {len(failed) - 3} more"
+            self.notify(
+                f"Restore incomplete: {len(succeeded)}/{total} sessions restored. "
+                f"Failed: {failed_ids}",
+                severity="error",
+            )
+        else:
+            self.notify(f"Restored {len(succeeded)} sessions")
+
+        # Only mark as fully restored if ALL sessions were restored
+        if not failed and succeeded:
             self.archived_projects.discard(project_path)
+
+        # Always refresh to show current state
+        if succeeded:
             self.populate_table()
 
 

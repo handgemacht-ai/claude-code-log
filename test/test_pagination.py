@@ -273,6 +273,158 @@ class TestPageCacheMethods:
         assert is_stale is True
         assert "page_size" in reason.lower() or "size" in reason.lower()
 
+    def test_is_page_stale_session_missing(self, cache_manager, temp_project_dir):
+        """is_page_stale should return True when a session is missing from sessions table."""
+        # Create page cache entry referencing session "s1"
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+        # Create the HTML file so it passes the file existence check
+        (temp_project_dir / "combined_transcripts.html").write_text("<html></html>")
+
+        # Don't add session "s1" to sessions table - it should be detected as missing
+        # Mock is_html_outdated to skip HTML version check (tested separately)
+        with patch("claude_code_log.renderer.is_html_outdated", return_value=False):
+            is_stale, reason = cache_manager.is_page_stale(1, 5000)
+        assert is_stale is True
+        assert "session_missing" in reason
+
+    def test_is_page_stale_message_count_changed(self, cache_manager, temp_project_dir):
+        """is_page_stale should return True when session message count has changed."""
+        # Create page cache entry with message_count=1000
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,  # Page expects 1000 messages
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+        # Create the HTML file
+        (temp_project_dir / "combined_transcripts.html").write_text("<html></html>")
+
+        # Add session with different message count
+        cache_manager.update_session_cache(
+            {
+                "s1": SessionCacheData(
+                    session_id="s1",
+                    message_count=1500,  # Different from page's 1000
+                    first_timestamp="2023-01-01T10:00:00Z",
+                    last_timestamp="2023-01-01T11:00:00Z",
+                    first_user_message="Test",
+                    total_input_tokens=100,
+                    total_output_tokens=50,
+                    total_cache_creation_tokens=0,
+                    total_cache_read_tokens=0,
+                )
+            }
+        )
+
+        # Mock is_html_outdated to skip HTML version check (tested separately)
+        with patch("claude_code_log.renderer.is_html_outdated", return_value=False):
+            is_stale, reason = cache_manager.is_page_stale(1, 5000)
+        assert is_stale is True
+        assert "message_count" in reason
+
+    def test_is_page_stale_timestamp_changed(self, cache_manager, temp_project_dir):
+        """is_page_stale should return True when session last_timestamp has changed."""
+        # Create page cache entry
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",  # Page expects this timestamp
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+        # Create the HTML file
+        (temp_project_dir / "combined_transcripts.html").write_text("<html></html>")
+
+        # Add session with same message_count but different last_timestamp
+        cache_manager.update_session_cache(
+            {
+                "s1": SessionCacheData(
+                    session_id="s1",
+                    message_count=1000,  # Same as page
+                    first_timestamp="2023-01-01T10:00:00Z",
+                    last_timestamp="2023-01-01T12:00:00Z",  # Different timestamp
+                    first_user_message="Test",
+                    total_input_tokens=100,
+                    total_output_tokens=50,
+                    total_cache_creation_tokens=0,
+                    total_cache_read_tokens=0,
+                )
+            }
+        )
+
+        # Mock is_html_outdated to skip HTML version check (tested separately)
+        with patch("claude_code_log.renderer.is_html_outdated", return_value=False):
+            is_stale, reason = cache_manager.is_page_stale(1, 5000)
+        assert is_stale is True
+        assert "timestamp" in reason
+
+    def test_is_page_stale_up_to_date(self, cache_manager, temp_project_dir):
+        """is_page_stale should return False when page matches session data."""
+        # Create page cache entry
+        cache_manager.update_page_cache(
+            page_number=1,
+            html_path="combined_transcripts.html",
+            page_size_config=5000,
+            session_ids=["s1"],
+            message_count=1000,
+            first_timestamp="2023-01-01T10:00:00Z",
+            last_timestamp="2023-01-01T11:00:00Z",
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_cache_creation_tokens=0,
+            total_cache_read_tokens=0,
+        )
+        # Create the HTML file
+        (temp_project_dir / "combined_transcripts.html").write_text("<html></html>")
+
+        # Add session with matching data
+        cache_manager.update_session_cache(
+            {
+                "s1": SessionCacheData(
+                    session_id="s1",
+                    message_count=1000,  # Same as page
+                    first_timestamp="2023-01-01T10:00:00Z",
+                    last_timestamp="2023-01-01T11:00:00Z",  # Same as page
+                    first_user_message="Test",
+                    total_input_tokens=100,
+                    total_output_tokens=50,
+                    total_cache_creation_tokens=0,
+                    total_cache_read_tokens=0,
+                )
+            }
+        )
+
+        # Mock is_html_outdated to skip HTML version check (tested separately)
+        with patch("claude_code_log.renderer.is_html_outdated", return_value=False):
+            is_stale, reason = cache_manager.is_page_stale(1, 5000)
+        assert is_stale is False
+        assert "up_to_date" in reason
+
     def test_invalidate_all_pages(self, cache_manager):
         """invalidate_all_pages should remove all page cache entries."""
         cache_manager.update_page_cache(
