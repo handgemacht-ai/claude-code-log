@@ -3,7 +3,6 @@
 
 import json
 import sqlite3
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -24,19 +23,13 @@ from claude_code_log.models import (
 )
 
 
-@pytest.fixture
-def temp_project_dir():
-    """Create a temporary project directory."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        project_dir = Path(temp_dir) / "test-project"
-        project_dir.mkdir()
-        yield project_dir
+# Use conftest.py fixtures: isolated_cache_dir, isolated_db_path, isolated_cache_manager
 
 
 @pytest.fixture
-def cache_manager(temp_project_dir):
-    """Create a cache manager for testing."""
-    return CacheManager(temp_project_dir, "1.0.0")
+def cache_manager(isolated_cache_dir: Path, isolated_db_path: Path) -> CacheManager:
+    """Create a cache manager with explicit db_path for test isolation."""
+    return CacheManager(isolated_cache_dir, "1.0.0", db_path=isolated_db_path)
 
 
 @pytest.fixture
@@ -92,13 +85,19 @@ class TestCascadeDelete:
     """Tests for cascade delete behaviour."""
 
     def test_cascade_delete_project_removes_all_nested_records(
-        self, temp_project_dir, sample_user_entry, sample_assistant_entry
+        self,
+        isolated_cache_dir,
+        isolated_db_path,
+        sample_user_entry,
+        sample_assistant_entry,
     ):
         """Deleting project cascades to files, messages, sessions."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create a JSONL file with entries
-        jsonl_file = temp_project_dir / "test.jsonl"
+        jsonl_file = isolated_cache_dir / "test.jsonl"
         jsonl_file.write_text(
             json.dumps(sample_user_entry.model_dump())
             + "\n"
@@ -180,10 +179,12 @@ class TestTokenSumVerification:
     """Tests for token sum calculations."""
 
     def test_session_token_totals_match_message_sums(
-        self, temp_project_dir, sample_assistant_entry
+        self, isolated_cache_dir, isolated_db_path, sample_assistant_entry
     ):
         """Session token totals equal sum of message tokens."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create multiple assistant entries with known token values
         entries = []
@@ -219,7 +220,7 @@ class TestTokenSumVerification:
             total_output += 50 + i * 5
 
         # Save entries
-        jsonl_file = temp_project_dir / "test.jsonl"
+        jsonl_file = isolated_cache_dir / "test.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -288,9 +289,13 @@ class TestForeignKeyConstraints:
 class TestSerializationRoundTrip:
     """Tests for message serialization/deserialization."""
 
-    def test_complex_message_types_roundtrip_correctly(self, temp_project_dir):
+    def test_complex_message_types_roundtrip_correctly(
+        self, isolated_cache_dir, isolated_db_path
+    ):
         """Tool use, images, thinking content survive JSON serialization."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create entries with complex content types
         entries = [
@@ -372,7 +377,7 @@ class TestSerializationRoundTrip:
         ]
 
         # Save entries
-        jsonl_file = temp_project_dir / "complex.jsonl"
+        jsonl_file = isolated_cache_dir / "complex.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -453,9 +458,13 @@ class TestIndexUniquenessConstraints:
 class TestTimestampOrdering:
     """Tests for message timestamp ordering."""
 
-    def test_messages_ordered_by_timestamp(self, temp_project_dir, sample_user_entry):
+    def test_messages_ordered_by_timestamp(
+        self, isolated_cache_dir, isolated_db_path, sample_user_entry
+    ):
         """Messages retrieved in timestamp order."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create entries with out-of-order timestamps
         entries = []
@@ -484,7 +493,7 @@ class TestTimestampOrdering:
             )
             entries.append(entry)
 
-        jsonl_file = temp_project_dir / "order.jsonl"
+        jsonl_file = isolated_cache_dir / "order.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -504,9 +513,13 @@ class TestTimestampOrdering:
 class TestNullTokenHandling:
     """Tests for NULL token value handling."""
 
-    def test_null_tokens_handled_in_aggregates(self, temp_project_dir):
+    def test_null_tokens_handled_in_aggregates(
+        self, isolated_cache_dir, isolated_db_path
+    ):
         """NULL token values don't corrupt sums."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create mix of entries with and without tokens
         entries = [
@@ -548,7 +561,7 @@ class TestNullTokenHandling:
             ),
         ]
 
-        jsonl_file = temp_project_dir / "mixed.jsonl"
+        jsonl_file = isolated_cache_dir / "mixed.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -577,13 +590,19 @@ class TestMessageFileRelationship:
     """Tests for message-file relationships."""
 
     def test_cached_file_message_count_matches_actual(
-        self, temp_project_dir, sample_user_entry, sample_assistant_entry
+        self,
+        isolated_cache_dir,
+        isolated_db_path,
+        sample_user_entry,
+        sample_assistant_entry,
     ):
         """message_count column matches COUNT(*) FROM messages."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         entries = [sample_user_entry, sample_assistant_entry]
-        jsonl_file = temp_project_dir / "count.jsonl"
+        jsonl_file = isolated_cache_dir / "count.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -620,9 +639,11 @@ class TestWALMode:
 class TestConcurrentAccess:
     """Tests for concurrent database access."""
 
-    def test_concurrent_readers_dont_block(self, temp_project_dir):
+    def test_concurrent_readers_dont_block(self, isolated_cache_dir, isolated_db_path):
         """Multiple readers can access simultaneously."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Add some data
         entry = UserTranscriptEntry(
@@ -640,7 +661,7 @@ class TestConcurrentAccess:
             ),
         )
 
-        jsonl_file = temp_project_dir / "concurrent.jsonl"
+        jsonl_file = isolated_cache_dir / "concurrent.jsonl"
         jsonl_file.write_text(json.dumps(entry.model_dump()), encoding="utf-8")
         cache_manager.save_cached_entries(jsonl_file, [entry])
 
@@ -649,7 +670,7 @@ class TestConcurrentAccess:
 
         def read_data():
             try:
-                cm = CacheManager(temp_project_dir, "1.0.0")
+                cm = CacheManager(isolated_cache_dir, "1.0.0", db_path=isolated_db_path)
                 data = cm.get_cached_project_data()
                 results.append(data is not None)
             except Exception as e:
@@ -669,9 +690,13 @@ class TestConcurrentAccess:
 class TestLargeDatasetPerformance:
     """Tests for performance with large datasets."""
 
-    def test_query_performance_with_large_dataset(self, temp_project_dir):
+    def test_query_performance_with_large_dataset(
+        self, isolated_cache_dir, isolated_db_path
+    ):
         """Queries complete in reasonable time with large datasets."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create 1000 entries (reduced from 10k for test speed)
         entries = []
@@ -692,7 +717,7 @@ class TestLargeDatasetPerformance:
             )
             entries.append(entry)
 
-        jsonl_file = temp_project_dir / "large.jsonl"
+        jsonl_file = isolated_cache_dir / "large.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -713,9 +738,13 @@ class TestLargeDatasetPerformance:
 class TestSessionBoundaryDetection:
     """Tests for session boundary correctness."""
 
-    def test_sessions_contain_correct_messages(self, temp_project_dir):
+    def test_sessions_contain_correct_messages(
+        self, isolated_cache_dir, isolated_db_path
+    ):
         """Each session contains only its messages."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create entries for multiple sessions
         entries = []
@@ -743,7 +772,7 @@ class TestSessionBoundaryDetection:
                 )
                 entries.append(entry)
 
-        jsonl_file = temp_project_dir / "sessions.jsonl"
+        jsonl_file = isolated_cache_dir / "sessions.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -766,13 +795,19 @@ class TestCacheStatsAccuracy:
     """Tests for cache statistics accuracy."""
 
     def test_cache_stats_match_actual_counts(
-        self, temp_project_dir, sample_user_entry, sample_assistant_entry
+        self,
+        isolated_cache_dir,
+        isolated_db_path,
+        sample_user_entry,
+        sample_assistant_entry,
     ):
         """get_cache_stats() returns accurate data."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         entries = [sample_user_entry, sample_assistant_entry]
-        jsonl_file = temp_project_dir / "stats.jsonl"
+        jsonl_file = isolated_cache_dir / "stats.jsonl"
         jsonl_file.write_text(
             "\n".join(json.dumps(e.model_dump()) for e in entries),
             encoding="utf-8",
@@ -814,9 +849,13 @@ class TestCacheStatsAccuracy:
 class TestWorkingDirectoryQuery:
     """Tests for working directory queries."""
 
-    def test_get_working_directories_returns_distinct_cwds(self, temp_project_dir):
+    def test_get_working_directories_returns_distinct_cwds(
+        self, isolated_cache_dir, isolated_db_path
+    ):
         """get_working_directories() returns unique values."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         # Create sessions with duplicate cwds
         cache_manager.update_session_cache(
@@ -861,11 +900,15 @@ class TestWorkingDirectoryQuery:
 class TestFileModificationDetection:
     """Tests for file modification time detection."""
 
-    def test_mtime_change_invalidates_cache(self, temp_project_dir, sample_user_entry):
+    def test_mtime_change_invalidates_cache(
+        self, isolated_cache_dir, isolated_db_path, sample_user_entry
+    ):
         """Changing file mtime marks cache as stale."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
-        jsonl_file = temp_project_dir / "mtime.jsonl"
+        jsonl_file = isolated_cache_dir / "mtime.jsonl"
         jsonl_file.write_text(
             json.dumps(sample_user_entry.model_dump()), encoding="utf-8"
         )
@@ -887,9 +930,11 @@ class TestFileModificationDetection:
 class TestMigrationIntegrity:
     """Tests for migration system integrity."""
 
-    def test_migration_checksum_stored(self, temp_project_dir):
+    def test_migration_checksum_stored(self, isolated_cache_dir, isolated_db_path):
         """Migration checksums are stored in _schema_version."""
-        cache_manager = CacheManager(temp_project_dir, "1.0.0")
+        cache_manager = CacheManager(
+            isolated_cache_dir, "1.0.0", db_path=isolated_db_path
+        )
 
         with cache_manager._get_connection() as conn:
             rows = conn.execute(
@@ -902,10 +947,10 @@ class TestMigrationIntegrity:
             assert row["filename"].endswith(".sql")
             assert len(row["checksum"]) == 64  # SHA256 hex length
 
-    def test_migration_applied_only_once(self, temp_project_dir):
+    def test_migration_applied_only_once(self, isolated_cache_dir, isolated_db_path):
         """Migrations are not re-applied on subsequent runs."""
         # First run
-        cm1 = CacheManager(temp_project_dir, "1.0.0")
+        cm1 = CacheManager(isolated_cache_dir, "1.0.0", db_path=isolated_db_path)
 
         with cm1._get_connection() as conn:
             initial_count = conn.execute(
@@ -913,7 +958,7 @@ class TestMigrationIntegrity:
             ).fetchone()[0]
 
         # Second run
-        cm2 = CacheManager(temp_project_dir, "1.0.0")
+        cm2 = CacheManager(isolated_cache_dir, "1.0.0", db_path=isolated_db_path)
 
         with cm2._get_connection() as conn:
             final_count = conn.execute(

@@ -1,13 +1,54 @@
 """Pytest configuration and shared fixtures."""
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Generator
 
 import pytest
+
+if TYPE_CHECKING:
+    from claude_code_log.cache import CacheManager
 
 from test.snapshot_serializers import (
     NormalisedHTMLSerializer,
     NormalisedMarkdownSerializer,
 )
+
+
+# ========== Cache Test Fixtures ==========
+# These fixtures use explicit db_path for true test isolation,
+# enabling parallel test execution without database conflicts.
+
+
+@pytest.fixture
+def isolated_cache_dir(tmp_path: Path) -> Path:
+    """Create an isolated project directory with explicit db_path.
+
+    This fixture ensures each test gets its own SQLite database,
+    enabling full parallel execution with pytest-xdist.
+    """
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    return project_dir
+
+
+@pytest.fixture
+def isolated_db_path(tmp_path: Path) -> Path:
+    """Return an isolated database path for cache tests."""
+    return tmp_path / "test-cache.db"
+
+
+@pytest.fixture
+def isolated_cache_manager(
+    isolated_cache_dir: Path, isolated_db_path: Path
+) -> Generator["CacheManager", None, None]:
+    """Create a CacheManager with explicit db_path for test isolation.
+
+    This fixture is preferred over the older temp_project_dir pattern
+    as it guarantees database isolation for parallel test execution.
+    """
+    from claude_code_log.cache import CacheManager
+
+    yield CacheManager(isolated_cache_dir, "1.0.0-test", db_path=isolated_db_path)
 
 
 @pytest.fixture

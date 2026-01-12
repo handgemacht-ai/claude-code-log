@@ -2,8 +2,8 @@
 """Integration tests for cache functionality with CLI and converter."""
 
 import json
-import tempfile
 from pathlib import Path
+from typing import Generator
 from unittest.mock import patch
 
 import pytest
@@ -14,13 +14,39 @@ from claude_code_log.converter import convert_jsonl_to_html, process_projects_hi
 from claude_code_log.cache import CacheManager
 
 
+class ProjectSetup:
+    """Container for test project setup data."""
+
+    def __init__(self, projects_dir: Path, db_path: Path):
+        self.projects_dir = projects_dir
+        self.db_path = db_path
+
+
 @pytest.fixture
-def temp_projects_dir():
-    """Create a temporary projects directory structure."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        projects_dir = Path(temp_dir) / "projects"
-        projects_dir.mkdir()
-        yield projects_dir
+def temp_projects_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[ProjectSetup, None, None]:
+    """Create a temporary projects directory structure with isolated cache.
+
+    Uses CLAUDE_CODE_LOG_CACHE_PATH env var for cache isolation,
+    enabling parallel test execution with pytest-xdist.
+
+    Returns ProjectSetup with both projects_dir and db_path.
+    """
+    projects_dir = tmp_path / "projects"
+    projects_dir.mkdir()
+
+    # Set env var to isolate cache for this test
+    isolated_db = tmp_path / "test-cache.db"
+    monkeypatch.setenv("CLAUDE_CODE_LOG_CACHE_PATH", str(isolated_db))
+
+    yield ProjectSetup(projects_dir, isolated_db)
+
+
+@pytest.fixture
+def temp_projects_dir(temp_projects_setup: ProjectSetup) -> Path:
+    """Backward-compatible fixture returning just the projects dir."""
+    return temp_projects_setup.projects_dir
 
 
 @pytest.fixture
@@ -67,10 +93,57 @@ def sample_jsonl_data():
     ]
 
 
+class ProjectWithCache:
+    """Container for test project with cache info.
+
+    Implements Path-like interface for backward compatibility with tests
+    that pass this directly to functions expecting Path objects.
+    """
+
+    def __init__(self, project_dir: Path, db_path: Path):
+        self.project_dir = project_dir
+        self.db_path = db_path
+
+    # Path-like interface for backward compatibility
+    def __fspath__(self) -> str:
+        return str(self.project_dir)
+
+    def __str__(self) -> str:
+        return str(self.project_dir)
+
+    def __truediv__(self, other: str) -> Path:
+        return self.project_dir / other
+
+    @property
+    def parent(self) -> Path:
+        return self.project_dir.parent
+
+    def exists(self) -> bool:
+        return self.project_dir.exists()
+
+    def is_dir(self) -> bool:
+        return self.project_dir.is_dir()
+
+    def is_file(self) -> bool:
+        return self.project_dir.is_file()
+
+    def glob(self, pattern: str):
+        return self.project_dir.glob(pattern)
+
+    def iterdir(self):
+        return self.project_dir.iterdir()
+
+    @property
+    def name(self) -> str:
+        return self.project_dir.name
+
+
 @pytest.fixture
-def setup_test_project(temp_projects_dir, sample_jsonl_data):
+def setup_test_project(
+    temp_projects_setup: ProjectSetup, sample_jsonl_data
+) -> ProjectWithCache:
     """Set up a test project with JSONL files."""
-    project_dir = temp_projects_dir / "test-project"
+    project_dir = temp_projects_setup.projects_dir / "test-project"
     project_dir.mkdir()
 
     # Create JSONL file
@@ -79,15 +152,16 @@ def setup_test_project(temp_projects_dir, sample_jsonl_data):
         for entry in sample_jsonl_data:
             f.write(json.dumps(entry) + "\n")
 
-    return project_dir
+    return ProjectWithCache(project_dir, temp_projects_setup.db_path)
 
 
 class TestCacheIntegrationCLI:
     """Test cache integration with CLI commands."""
 
-    def test_cli_no_cache_flag(self, setup_test_project):
+    def test_cli_no_cache_flag(self, setup_test_project: ProjectWithCache):
         """Test --no-cache flag disables caching."""
-        project_dir = setup_test_project
+        project_dir = setup_test_project.project_dir
+        db_path = setup_test_project.db_path
 
         runner = CliRunner()
 
@@ -95,9 +169,8 @@ class TestCacheIntegrationCLI:
         result1 = runner.invoke(main, [str(project_dir)])
         assert result1.exit_code == 0
 
-        # Check if SQLite cache was created at parent level
-        cache_db = project_dir.parent / "claude-code-log-cache.db"
-        assert cache_db.exists()
+        # Check if SQLite cache was created at the isolated location
+        assert db_path.exists()
 
         # Clear the cache
         runner.invoke(main, [str(project_dir), "--clear-cache"])
@@ -107,7 +180,7 @@ class TestCacheIntegrationCLI:
         assert result2.exit_code == 0
 
         # Cache should be empty (project should not be populated)
-        cache_manager = CacheManager(project_dir, "1.0.0")
+        cache_manager = CacheManager(project_dir, "1.0.0", db_path=db_path)
         cached_data = cache_manager.get_cached_project_data()
         assert cached_data is not None
         assert cached_data.total_message_count == 0
@@ -138,8 +211,13 @@ class TestCacheIntegrationCLI:
         assert cached_data is not None
         assert len(cached_data.cached_files) == 0
 
-    def test_cli_all_projects_caching(self, temp_projects_dir, sample_jsonl_data):
+    def test_cli_all_projects_caching(
+        self, temp_projects_setup: ProjectSetup, sample_jsonl_data
+    ):
         """Test caching with --all-projects flag."""
+        temp_projects_dir = temp_projects_setup.projects_dir
+        db_path = temp_projects_setup.db_path
+
         # Create multiple projects
         for i in range(3):
             project_dir = temp_projects_dir / f"project-{i}"
@@ -160,14 +238,13 @@ class TestCacheIntegrationCLI:
         result = runner.invoke(main, [str(temp_projects_dir), "--all-projects"])
         assert result.exit_code == 0
 
-        # Verify SQLite cache database created at projects level
-        cache_db = temp_projects_dir / "claude-code-log-cache.db"
-        assert cache_db.exists()
+        # Verify SQLite cache database created at isolated location
+        assert db_path.exists()
 
         # Verify cache data exists for each project
         for i in range(3):
             project_dir = temp_projects_dir / f"project-{i}"
-            cache_manager = CacheManager(project_dir, "1.0.0")
+            cache_manager = CacheManager(project_dir, "1.0.0", db_path=db_path)
             cached_data = cache_manager.get_cached_project_data()
             assert cached_data is not None
             assert len(cached_data.cached_files) >= 1
@@ -193,20 +270,22 @@ class TestCacheIntegrationCLI:
 class TestCacheIntegrationConverter:
     """Test cache integration with converter functions."""
 
-    def test_convert_jsonl_to_html_with_cache(self, setup_test_project):
+    def test_convert_jsonl_to_html_with_cache(
+        self, setup_test_project: ProjectWithCache
+    ):
         """Test converter uses cache when available."""
-        project_dir = setup_test_project
+        project_dir = setup_test_project.project_dir
+        db_path = setup_test_project.db_path
 
         # First conversion (populate cache)
         output1 = convert_jsonl_to_html(input_path=project_dir, use_cache=True)
         assert output1.exists()
 
-        # Verify SQLite cache was created
-        cache_db = project_dir.parent / "claude-code-log-cache.db"
-        assert cache_db.exists()
+        # Verify SQLite cache was created at isolated location
+        assert db_path.exists()
 
         # Verify cache has data
-        cache_manager = CacheManager(project_dir, "1.0.0")
+        cache_manager = CacheManager(project_dir, "1.0.0", db_path=db_path)
         cached_data = cache_manager.get_cached_project_data()
         assert cached_data is not None
         assert len(cached_data.cached_files) >= 1
@@ -230,9 +309,12 @@ class TestCacheIntegrationConverter:
         assert cached_data.total_message_count == 0
 
     def test_process_projects_hierarchy_with_cache(
-        self, temp_projects_dir, sample_jsonl_data
+        self, temp_projects_setup: ProjectSetup, sample_jsonl_data
     ):
         """Test project hierarchy processing uses cache effectively."""
+        temp_projects_dir = temp_projects_setup.projects_dir
+        db_path = temp_projects_setup.db_path
+
         # Create multiple projects
         for i in range(2):
             project_dir = temp_projects_dir / f"project-{i}"
@@ -252,14 +334,13 @@ class TestCacheIntegrationConverter:
         )
         assert output1.exists()
 
-        # Verify SQLite cache database was created
-        cache_db = temp_projects_dir / "claude-code-log-cache.db"
-        assert cache_db.exists()
+        # Verify SQLite cache database was created at isolated location
+        assert db_path.exists()
 
         # Verify cache data exists for each project
         for i in range(2):
             project_dir = temp_projects_dir / f"project-{i}"
-            cache_manager = CacheManager(project_dir, "1.0.0")
+            cache_manager = CacheManager(project_dir, "1.0.0", db_path=db_path)
             cached_data = cache_manager.get_cached_project_data()
             assert cached_data is not None
             assert len(cached_data.cached_files) >= 1

@@ -17,7 +17,12 @@ from .converter import (
     get_file_extension,
     process_projects_hierarchy,
 )
-from .cache import CacheManager, get_all_cached_projects, get_library_version
+from .cache import (
+    CacheManager,
+    get_all_cached_projects,
+    get_cache_db_path,
+    get_library_version,
+)
 
 
 def get_default_projects_dir() -> Path:
@@ -302,8 +307,8 @@ def _clear_caches(input_path: Path, all_projects: bool) -> None:
             # Clear cache for all project directories
             click.echo("Clearing caches for all projects...")
 
-            # Delete the shared SQLite cache database
-            cache_db = input_path / "claude-code-log-cache.db"
+            # Delete the SQLite cache database (respects CLAUDE_CODE_LOG_CACHE_PATH env var)
+            cache_db = get_cache_db_path(input_path)
             if cache_db.exists():
                 try:
                     cache_db.unlink()
