@@ -4,7 +4,7 @@
 import os
 import webbrowser
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, ClassVar, List, Optional, cast
 
 from textual.app import App, ComposeResult
@@ -465,8 +465,43 @@ class ProjectSelector(App[Path]):
             self.populate_table()
 
 
+class SafeMarkdownViewer(MarkdownViewer):
+    """MarkdownViewer that handles link clicks safely.
+
+    Intercepts link clicks to prevent crashes from file/external links
+    while still allowing anchor navigation for ToC.
+    """
+
+    async def go(self, location: str | PurePath) -> None:
+        """Navigate to a new location - intercept non-anchor links.
+
+        Override parent's go() method to handle links appropriately:
+        - Anchor links (#section): allow default scrolling
+        - HTTP/HTTPS URLs: open in browser
+        - Relative file links: show warning (not supported)
+        """
+        location_str = str(location)
+
+        if location_str.startswith("#"):
+            # Anchor link - allow default scroll behaviour
+            await super().go(location)
+        elif location_str.startswith(("http://", "https://")):
+            # External URL - open in browser
+            webbrowser.open(location_str)
+            self.notify(f"Opening in browser: {location_str[:50]}...")
+        else:
+            # Relative file link - not supported in embedded viewer
+            self.notify(
+                "File links not supported in embedded viewer",
+                severity="warning",
+            )
+
+
 class MarkdownViewerScreen(ModalScreen[None]):
     """Modal screen for viewing Markdown content with table of contents."""
+
+    # Character-based pagination - ~50KB per page for good scroll performance
+    PAGE_SIZE_CHARS = 50_000
 
     CSS = """
     MarkdownViewerScreen {
@@ -498,6 +533,14 @@ class MarkdownViewerScreen(ModalScreen[None]):
         max-width: 60;
     }
 
+    #pagination-controls {
+        dock: top;
+        height: 1;
+        background: $warning;
+        color: $text;
+        text-align: center;
+    }
+
     #md-footer {
         dock: bottom;
         height: 1;
@@ -510,20 +553,89 @@ class MarkdownViewerScreen(ModalScreen[None]):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("escape", "dismiss", "Close", show=True),
         Binding("q", "dismiss", "Close", show=False),
+        Binding("t", "toggle_toc", "Toggle ToC"),
+        Binding("n", "next_page", "Next page"),
+        Binding("right", "next_page", "Next page", show=False),
+        Binding("p", "prev_page", "Prev page"),
+        Binding("left", "prev_page", "Prev page", show=False),
     ]
 
     def __init__(self, content: str, title: str = "Markdown Viewer") -> None:
         super().__init__()
         self.md_content = content
         self.md_title = title
+        self._pages = self._split_into_pages(content)
+        self._current_page = 0
+        self._is_paginated = len(self._pages) > 1
+
+    def _split_into_pages(self, content: str) -> list[str]:
+        """Split markdown content into pages by character count.
+
+        Splits at section boundaries (## ) when possible to avoid
+        cutting mid-section, but will split within sections if
+        a single section exceeds PAGE_SIZE_CHARS.
+        """
+        import re
+
+        if len(content) <= self.PAGE_SIZE_CHARS:
+            return [content]
+
+        pages: list[str] = []
+        current_page = ""
+
+        # Split by level 2 headings, keeping the delimiter
+        sections = re.split(r"(\n(?=## ))", content)
+
+        for section in sections:
+            if not section:
+                continue
+
+            # If adding this section exceeds page size
+            if len(current_page) + len(section) > self.PAGE_SIZE_CHARS:
+                # If current page has content, save it
+                if current_page.strip():
+                    pages.append(current_page)
+                    current_page = ""
+
+                # If section itself exceeds page size, split it by lines
+                if len(section) > self.PAGE_SIZE_CHARS:
+                    lines = section.split("\n")
+                    for line in lines:
+                        if len(current_page) + len(line) + 1 > self.PAGE_SIZE_CHARS:
+                            if current_page.strip():
+                                pages.append(current_page)
+                            current_page = line + "\n"
+                        else:
+                            current_page += line + "\n"
+                else:
+                    current_page = section
+            else:
+                current_page += section
+
+        # Don't forget the last page
+        if current_page.strip():
+            pages.append(current_page)
+
+        return pages if pages else [content]
 
     def compose(self) -> ComposeResult:
         with Container(id="md-container"):
             yield Static(self.md_title, id="md-header")
-            yield MarkdownViewer(
-                self.md_content, id="md-viewer", show_table_of_contents=True
+            if self._is_paginated:
+                yield Static(
+                    f"Page {self._current_page + 1}/{len(self._pages)} | "
+                    "← or p: prev | → or n: next",
+                    id="pagination-controls",
+                )
+            yield SafeMarkdownViewer(
+                self._pages[self._current_page],
+                id="md-viewer",
+                show_table_of_contents=True,
             )
-            yield Static("Press ESC or q to close | t: toggle ToC", id="md-footer")
+            footer_text = "Press ESC or q to close | t: toggle ToC"
+            if self._is_paginated:
+                footer_text += " | n/p: navigate pages"
+            yield Static(footer_text, id="md-footer")
 
     def on_mount(self) -> None:
         """Customize ToC tree after mount."""
@@ -585,6 +697,50 @@ class MarkdownViewerScreen(ModalScreen[None]):
 
     async def action_dismiss(self, result: None = None) -> None:
         self.dismiss(result)
+
+    def action_toggle_toc(self) -> None:
+        """Toggle table of contents visibility."""
+        viewer = self.query_one("#md-viewer", MarkdownViewer)
+        viewer.show_table_of_contents = not viewer.show_table_of_contents
+
+    def action_next_page(self) -> None:
+        """Navigate to next page (if paginated)."""
+        if not self._is_paginated:
+            return
+        if self._current_page < len(self._pages) - 1:
+            self._current_page += 1
+            if self.is_mounted:
+                self._update_viewer_content()
+
+    def action_prev_page(self) -> None:
+        """Navigate to previous page (if paginated)."""
+        if not self._is_paginated:
+            return
+        if self._current_page > 0:
+            self._current_page -= 1
+            if self.is_mounted:
+                self._update_viewer_content()
+
+    def _update_viewer_content(self) -> None:
+        """Update the markdown viewer with current page content."""
+        try:
+            # Update pagination controls
+            controls = self.query_one("#pagination-controls", Static)
+            controls.update(
+                f"Page {self._current_page + 1}/{len(self._pages)} | ← or p: prev | → or n: next"
+            )
+
+            # Update the markdown content directly
+            viewer = self.query_one("#md-viewer", SafeMarkdownViewer)
+            viewer.document.update(self._pages[self._current_page])
+
+            # Scroll to top of content
+            viewer.scroll_home(animate=False)
+
+            # Re-customize ToC after content loads
+            self.call_later(self._customize_toc_tree)
+        except Exception as e:
+            self.notify(f"Error updating page: {e}", severity="error")
 
 
 class ArchiveConfirmScreen(ModalScreen[bool]):

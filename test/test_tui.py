@@ -1933,3 +1933,329 @@ class TestProjectSelector:
                 # Try to restore - should show warning
                 await pilot.press("r")
                 await pilot.pause(0.1)
+
+
+@pytest.mark.tui
+class TestMarkdownViewerScreen:
+    """Tests for the MarkdownViewerScreen modal."""
+
+    @pytest.mark.asyncio
+    async def test_toc_toggle_binding_exists(self):
+        """Test that 't' key binding exists for ToC toggle."""
+        from claude_code_log.tui import MarkdownViewerScreen
+
+        binding_keys = [
+            b.key if hasattr(b, "key") else b[0] for b in MarkdownViewerScreen.BINDINGS
+        ]
+        assert "t" in binding_keys, "Should have 't' binding for ToC toggle"
+
+    @pytest.mark.asyncio
+    async def test_toc_toggle_action_toggles_visibility(self):
+        """Test that pressing 't' toggles ToC visibility."""
+        from claude_code_log.tui import MarkdownViewerScreen
+        from textual.app import App
+        from textual.widgets import MarkdownViewer
+
+        content = "# Heading 1\n\nSome content\n\n## Heading 2\n\nMore content"
+        screen = MarkdownViewerScreen(content, "Test Title")
+
+        class TestApp(App):
+            def compose(self):
+                yield from []
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            app.push_screen(screen)
+            await pilot.pause(0.3)
+
+            viewer = screen.query_one("#md-viewer", MarkdownViewer)
+
+            # Initial state: ToC visible
+            assert viewer.show_table_of_contents is True
+
+            # Press 't' to toggle
+            await pilot.press("t")
+            await pilot.pause(0.1)
+
+            # ToC should now be hidden
+            assert viewer.show_table_of_contents is False
+
+            # Press 't' again
+            await pilot.press("t")
+            await pilot.pause(0.1)
+
+            # ToC should be visible again
+            assert viewer.show_table_of_contents is True
+
+    @pytest.mark.asyncio
+    async def test_safe_markdown_viewer_overrides_go(self):
+        """Test that SafeMarkdownViewer overrides the go method."""
+        from claude_code_log.tui import SafeMarkdownViewer
+        from textual.widgets import MarkdownViewer
+
+        # SafeMarkdownViewer should have its own go method
+        assert "go" in SafeMarkdownViewer.__dict__, "Should override go method"
+        # And it should be different from the parent
+        assert SafeMarkdownViewer.go is not MarkdownViewer.go
+
+    @pytest.mark.asyncio
+    async def test_file_link_click_does_not_crash(self):
+        """Test that clicking file link shows notification instead of crashing."""
+        from claude_code_log.tui import MarkdownViewerScreen, SafeMarkdownViewer
+        from textual.app import App
+        from textual.widgets.markdown import Markdown
+
+        content = "# Test\n\n[Back to combined](combined_transcripts.md)"
+        screen = MarkdownViewerScreen(content, "Link Test")
+
+        class TestApp(App):
+            def compose(self):
+                yield from []
+
+        app = TestApp()
+        notifications = []
+
+        async with app.run_test() as pilot:
+            app.push_screen(screen)
+            await pilot.pause(0.3)
+
+            # Track notifications on the viewer (where they're called from)
+            viewer = screen.query_one("#md-viewer", SafeMarkdownViewer)
+            original_notify = viewer.notify
+
+            def tracking_notify(
+                message: str,
+                *,
+                title: str = "",
+                severity: str = "information",
+                timeout: float | None = None,
+                markup: bool = True,
+            ) -> None:
+                notifications.append(str(message))
+                original_notify(
+                    message,
+                    title=title,
+                    severity=severity,  # type: ignore[arg-type]
+                    timeout=timeout,
+                    markup=markup,
+                )
+
+            viewer.notify = tracking_notify  # type: ignore[method-assign]
+
+            # Simulate link click by posting the event
+            markdown_widget = viewer.query_one(Markdown)
+            markdown_widget.post_message(
+                Markdown.LinkClicked(markdown_widget, "combined_transcripts.md")
+            )
+            await pilot.pause(0.2)
+
+            # Should not crash - screen still mounted
+            assert screen.is_mounted
+            # Should have shown a notification
+            assert len(notifications) > 0
+            assert any("not supported" in n.lower() for n in notifications)
+
+    @pytest.mark.asyncio
+    async def test_http_link_opens_browser(self):
+        """Test that HTTP links open in browser."""
+        from claude_code_log.tui import MarkdownViewerScreen, SafeMarkdownViewer
+        from textual.app import App
+        from textual.widgets.markdown import Markdown
+
+        content = "# Test\n\n[Example](https://example.com)"
+        screen = MarkdownViewerScreen(content, "Link Test")
+
+        class TestApp(App):
+            def compose(self):
+                yield from []
+
+        app = TestApp()
+
+        with patch("claude_code_log.tui.webbrowser.open") as mock_open:
+            async with app.run_test() as pilot:
+                app.push_screen(screen)
+                await pilot.pause(0.3)
+
+                viewer = screen.query_one("#md-viewer", SafeMarkdownViewer)
+                markdown_widget = viewer.query_one(Markdown)
+                markdown_widget.post_message(
+                    Markdown.LinkClicked(markdown_widget, "https://example.com")
+                )
+                await pilot.pause(0.2)
+
+                # Should be called at least once (may be called twice due to event propagation)
+                mock_open.assert_called_with("https://example.com")
+                assert mock_open.call_count >= 1
+
+
+@pytest.mark.tui
+class TestMarkdownViewerPagination:
+    """Tests for pagination in MarkdownViewerScreen."""
+
+    @pytest.mark.asyncio
+    async def test_pagination_constants_defined(self):
+        """Test that pagination constants exist."""
+        from claude_code_log.tui import MarkdownViewerScreen
+
+        assert hasattr(MarkdownViewerScreen, "PAGE_SIZE_CHARS"), (
+            "Should have PAGE_SIZE_CHARS constant"
+        )
+        assert MarkdownViewerScreen.PAGE_SIZE_CHARS > 0
+
+    @pytest.mark.asyncio
+    async def test_small_content_no_pagination(self):
+        """Test that small content loads without pagination controls."""
+        from claude_code_log.tui import MarkdownViewerScreen
+        from textual.app import App
+
+        small_content = "# Small\n\nJust a bit of content."
+        screen = MarkdownViewerScreen(small_content, "Small Test")
+
+        class TestApp(App):
+            def compose(self):
+                yield from []
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            app.push_screen(screen)
+            await pilot.pause(0.3)
+
+            # Should NOT have pagination controls
+            try:
+                screen.query_one("#pagination-controls")
+                assert False, "Small content should not show pagination controls"
+            except NoMatches:
+                pass  # Expected - no pagination for small content
+
+    @pytest.mark.asyncio
+    async def test_large_content_shows_pagination(self):
+        """Test that large content shows pagination controls."""
+        from claude_code_log.tui import MarkdownViewerScreen
+        from textual.app import App
+
+        # Generate content larger than PAGE_SIZE_CHARS to trigger pagination
+        # Use line breaks so the algorithm can split properly
+        page_size = MarkdownViewerScreen.PAGE_SIZE_CHARS
+        line = "Content line with some text here.\n"
+        num_lines = int(page_size * 2.5 / len(line))
+        large_content = "# Large Session\n\n" + (line * num_lines)
+
+        screen = MarkdownViewerScreen(large_content, "Large Test")
+
+        # Screen should be paginated (test without UI for speed)
+        assert screen._is_paginated
+        assert len(screen._pages) >= 2
+
+        class TestApp(App):
+            def compose(self):
+                yield from []
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            app.push_screen(screen)
+            await pilot.pause(0.5)
+
+            # Should have pagination controls
+            controls = screen.query_one("#pagination-controls")
+            assert controls is not None
+
+    @pytest.mark.asyncio
+    async def test_pagination_bindings_exist(self):
+        """Test that pagination key bindings exist."""
+        from claude_code_log.tui import MarkdownViewerScreen
+
+        binding_keys = [
+            b.key if hasattr(b, "key") else b[0] for b in MarkdownViewerScreen.BINDINGS
+        ]
+        assert "n" in binding_keys, "Should have 'n' binding for next page"
+        assert "p" in binding_keys, "Should have 'p' binding for previous page"
+        assert "right" in binding_keys, (
+            "Should have 'right' arrow binding for next page"
+        )
+        assert "left" in binding_keys, "Should have 'left' arrow binding for prev page"
+
+    @pytest.mark.asyncio
+    async def test_next_page_action_updates_state(self):
+        """Test that action_next_page advances internal page state."""
+        from claude_code_log.tui import MarkdownViewerScreen
+
+        # Generate content larger than PAGE_SIZE_CHARS (creates 3+ pages)
+        # Use line breaks so the algorithm can split properly
+        page_size = MarkdownViewerScreen.PAGE_SIZE_CHARS
+        line = "Content line with some text here.\n"
+        num_lines = int(page_size * 2.5 / len(line))
+        large_content = "# Large Session\n\n" + (line * num_lines)
+
+        screen = MarkdownViewerScreen(large_content, "Pagination Test")
+
+        # Initial page should be 0
+        assert screen._current_page == 0
+        assert screen._is_paginated
+        assert len(screen._pages) >= 3, f"Expected 3+ pages, got {len(screen._pages)}"
+
+        # Call action directly (bypass UI)
+        screen.action_next_page()
+        assert screen._current_page == 1
+
+        screen.action_next_page()
+        assert screen._current_page == 2
+
+    @pytest.mark.asyncio
+    async def test_prev_page_action_updates_state(self):
+        """Test that action_prev_page goes to previous page."""
+        from claude_code_log.tui import MarkdownViewerScreen
+
+        # Generate content larger than PAGE_SIZE_CHARS (creates 3+ pages)
+        # Use line breaks so the algorithm can split properly
+        page_size = MarkdownViewerScreen.PAGE_SIZE_CHARS
+        line = "Content line with some text here.\n"
+        num_lines = int(page_size * 2.5 / len(line))
+        large_content = "# Large Session\n\n" + (line * num_lines)
+
+        screen = MarkdownViewerScreen(large_content, "Pagination Test")
+
+        # Verify we have enough pages
+        assert len(screen._pages) >= 3, f"Expected 3+ pages, got {len(screen._pages)}"
+
+        # Go forward first
+        screen.action_next_page()
+        screen.action_next_page()
+        assert screen._current_page == 2
+
+        # Now go back
+        screen.action_prev_page()
+        assert screen._current_page == 1
+
+        screen.action_prev_page()
+        assert screen._current_page == 0
+
+    @pytest.mark.asyncio
+    async def test_page_boundaries_respected(self):
+        """Test can't go past first or last page."""
+        from claude_code_log.tui import MarkdownViewerScreen
+
+        # Generate content larger than PAGE_SIZE_CHARS
+        # Use line breaks so the algorithm can split properly
+        page_size = MarkdownViewerScreen.PAGE_SIZE_CHARS
+        line = "Content line with some text here.\n"
+        num_lines = int(page_size * 2.5 / len(line))
+        large_content = "# Large Session\n\n" + (line * num_lines)
+
+        screen = MarkdownViewerScreen(large_content, "Pagination Test")
+
+        # On first page, prev should stay on first page
+        assert screen._current_page == 0
+        screen.action_prev_page()
+        assert screen._current_page == 0
+
+        # Go to last page
+        total_pages = len(screen._pages)
+        for _ in range(total_pages + 5):  # Call more than needed
+            screen.action_next_page()
+
+        # Should be on last page, not beyond
+        assert screen._current_page == total_pages - 1
+
+        # Try to go beyond last page
+        screen.action_next_page()
+        assert screen._current_page == total_pages - 1
