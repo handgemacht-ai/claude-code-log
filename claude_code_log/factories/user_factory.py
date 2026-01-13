@@ -445,7 +445,7 @@ def create_user_message(
     for item in content_list:
         # Check for text content
         if hasattr(item, "text"):
-            item_text: str = getattr(item, "text")  # type: ignore[assignment]
+            item_text: str = getattr(item, "text")
 
             if ide_content := create_ide_notification_content(item_text):
                 # Add IDE notification item first
@@ -462,6 +462,6 @@ def create_user_message(
             items.append(item)
         elif hasattr(item, "source") and getattr(item, "type", None) == "image":
             # Duck-typed image content - convert to our Pydantic model
-            items.append(ImageContent.model_validate(item.model_dump()))  # type: ignore[union-attr]
+            items.append(ImageContent.model_validate(item.model_dump()))
 
     return UserTextMessage(items=items, meta=meta)

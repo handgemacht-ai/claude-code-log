@@ -1531,7 +1531,7 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
             content = message.content
             message_content = content if isinstance(content, list) else []
         else:
-            message_content = message.message.content  # type: ignore[union-attr]
+            message_content = message.message.content
 
         text_content = extract_text_content(message_content)
 
@@ -1735,16 +1735,16 @@ def _render_messages(
             )
             effective_type = "user"
         else:
-            message_content = message.message.content  # type: ignore
+            message_content = message.message.content
             meta = create_meta(message)
             effective_type = message_type
 
         # Chunk content: regular items (text/image) accumulate, special items (tool/thinking) separate
         if isinstance(message_content, list):
-            chunks = chunk_message_content(message_content)  # type: ignore[arg-type]
+            chunks = chunk_message_content(message_content)
         else:
             # String content - wrap in list with single TextContent
-            content_str: str = message_content.strip() if message_content else ""  # type: ignore[union-attr]
+            content_str: str = message_content.strip() if message_content else ""
             if content_str:
                 chunks: list[ContentChunk] = [
                     [TextContent(type="text", text=content_str)]  # pyright: ignore[reportUnknownArgumentType]

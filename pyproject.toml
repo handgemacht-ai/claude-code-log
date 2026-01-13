@@ -54,6 +54,10 @@ markers = [
     "benchmark: Performance benchmarks that output to GitHub Job Summary",
 ]
 
+[tool.ty.environment]
+# Use custom stubs for untyped libraries
+extra-paths = ["stubs"]
+
 [tool.pyright]
 # Pyright configuration with strict settings
 include = ["claude_code_log"]           # TODO: , "test"
@@ -112,7 +116,7 @@ dev = [
     "pytest-xdist[psutil]>=3.6.1",
     "pyright>=1.1.350",
     "vulture>=2.14",
-    "ty>=0.0.1a12",
+    "ty>=0.0.11",
     "pytest-playwright>=0.7.0",
     "syrupy>=5.0.0",
 ]

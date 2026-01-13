@@ -200,10 +200,12 @@ def escape_html(text: str) -> str:
 
 def _create_pygments_plugin() -> Any:
     """Create a mistune plugin that uses Pygments for code block syntax highlighting."""
-    from pygments import highlight  # type: ignore[reportUnknownVariableType]
-    from pygments.lexers import get_lexer_by_name, TextLexer  # type: ignore[reportUnknownVariableType]
-    from pygments.formatters import HtmlFormatter  # type: ignore[reportUnknownVariableType]
-    from pygments.util import ClassNotFound  # type: ignore[reportUnknownVariableType]
+    from pygments import highlight
+    from pygments.lexer import Lexer
+    from pygments.lexers import get_lexer_by_name, TextLexer
+    from pygments.formatter import Formatter
+    from pygments.formatters import HtmlFormatter
+    from pygments.util import ClassNotFound
 
     def plugin_pygments(md: Any) -> None:
         """Plugin to add Pygments syntax highlighting to code blocks."""
@@ -214,19 +216,21 @@ def _create_pygments_plugin() -> Any:
             if info:
                 # Language hint provided, use Pygments
                 lang = info.split()[0] if info else ""
+                # Default to plain text lexer
+                lexer: Lexer = TextLexer()
                 try:
-                    lexer = get_lexer_by_name(lang, stripall=False)  # type: ignore[reportUnknownVariableType]
+                    lexer = get_lexer_by_name(lang, stripall=False)
                 except ClassNotFound:
-                    lexer = TextLexer()  # type: ignore[reportUnknownVariableType]
+                    pass  # Already have default
 
-                formatter = HtmlFormatter(  # type: ignore[reportUnknownVariableType]
+                formatter: Formatter = HtmlFormatter(
                     linenos=False,  # No line numbers in markdown code blocks
                     cssclass="highlight",
                     wrapcode=True,
                 )
                 # Track Pygments timing if enabled
                 with timing_stat("_pygments_timings"):
-                    return str(highlight(code, lexer, formatter))  # type: ignore[reportUnknownArgumentType]
+                    return str(highlight(code, lexer, formatter))
             else:
                 # No language hint, use default rendering
                 return original_render(code, info)
@@ -438,5 +442,7 @@ def get_template_environment() -> Environment:
         autoescape=select_autoescape(["html", "xml"]),
     )
     # Add custom filters/functions
-    env.globals["starts_with_emoji"] = starts_with_emoji  # type: ignore[index]
+    # Cast to Any to bypass Jinja2's overly strict globals type
+    globals_dict: Any = env.globals
+    globals_dict["starts_with_emoji"] = starts_with_emoji
     return env

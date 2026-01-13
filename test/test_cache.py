@@ -695,7 +695,7 @@ class TestCacheErrorHandling:
                 assert cache_manager is not None
             except PermissionError:
                 # If we get permission errors, just skip this test
-                return pytest.skip("Cannot test permissions on this system")  # type: ignore[misc]
+                pytest.skip("Cannot test permissions on this system")
         finally:
             # Restore permissions
             try:

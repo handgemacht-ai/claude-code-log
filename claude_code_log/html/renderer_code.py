@@ -12,10 +12,12 @@ import os
 import re
 from typing import Callable, Optional
 
-from pygments import highlight  # type: ignore[reportUnknownVariableType]
-from pygments.lexers import TextLexer, get_lexer_by_name, get_all_lexers  # type: ignore[reportUnknownVariableType]
-from pygments.formatters import HtmlFormatter  # type: ignore[reportUnknownVariableType]
-from pygments.util import ClassNotFound  # type: ignore[reportUnknownVariableType]
+from pygments import highlight
+from pygments.lexer import Lexer
+from pygments.lexers import TextLexer, get_lexer_by_name, get_all_lexers
+from pygments.formatter import Formatter
+from pygments.formatters import HtmlFormatter
+from pygments.util import ClassNotFound
 
 from ..renderer_timings import timing_stat
 
@@ -49,7 +51,7 @@ def _init_lexer_caches() -> tuple[dict[str, str], dict[str, str]]:
     extension_cache: dict[str, str] = {}
 
     # Use public API: get_all_lexers() returns (name, aliases, patterns, mimetypes) tuples
-    for name, aliases, patterns, mimetypes in get_all_lexers():  # type: ignore[reportUnknownVariableType]
+    for _name, aliases, patterns, _mimetypes in get_all_lexers():
         if aliases and patterns:
             # Use first alias as the lexer name
             lexer_alias = aliases[0]
@@ -93,6 +95,9 @@ def highlight_code_with_pygments(
     # Get basename for matching (patterns are like "*.py")
     basename = os.path.basename(file_path).lower()
 
+    # Default to plain text lexer
+    lexer: Lexer = TextLexer()
+
     try:
         # OPTIMIZATION: Try fast extension lookup first (O(1) dict lookup)
         lexer_alias = None
@@ -107,18 +112,16 @@ def highlight_code_with_pygments(
                     lexer_alias = lex_alias
                     break
 
-        # Get lexer or use TextLexer as fallback
+        # Get lexer based on file extension
         # Note: stripall=False preserves leading whitespace (important for code indentation)
         if lexer_alias:
-            lexer = get_lexer_by_name(lexer_alias, stripall=False)  # type: ignore[reportUnknownVariableType]
-        else:
-            lexer = TextLexer()  # type: ignore[reportUnknownVariableType]
+            lexer = get_lexer_by_name(lexer_alias, stripall=False)
     except ClassNotFound:
-        # Fall back to plain text lexer
-        lexer = TextLexer()  # type: ignore[reportUnknownVariableType]
+        # Fall back to plain text lexer (already set as default)
+        pass
 
     # Create formatter with line numbers in table format
-    formatter = HtmlFormatter(  # type: ignore[reportUnknownVariableType]
+    formatter: Formatter = HtmlFormatter(
         linenos="table" if show_linenos else False,
         cssclass="highlight",
         wrapcode=True,
@@ -127,7 +130,7 @@ def highlight_code_with_pygments(
 
     # Highlight the code with timing if enabled
     with timing_stat("_pygments_timings"):
-        return str(highlight(code, lexer, formatter))  # type: ignore[reportUnknownArgumentType]
+        return str(highlight(code, lexer, formatter))
 
 
 def truncate_highlighted_preview(highlighted_html: str, max_lines: int) -> str:

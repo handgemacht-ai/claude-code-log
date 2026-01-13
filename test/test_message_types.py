@@ -4,6 +4,8 @@
 import json
 import tempfile
 from pathlib import Path
+
+from pytest import CaptureFixture
 from claude_code_log.converter import load_transcript
 from claude_code_log.html.renderer import generate_html
 from claude_code_log.models import QueueOperationTranscriptEntry
@@ -148,7 +150,7 @@ def test_queue_operation_type_support():
         test_file_path.unlink()
 
 
-def test_load_transcript_missing_file_returns_empty_list(capsys):
+def test_load_transcript_missing_file_returns_empty_list(capsys: CaptureFixture[str]):
     """Test that load_transcript handles missing files gracefully.
 
     This handles the race condition where a file exists when globbed but
@@ -188,6 +190,6 @@ def test_load_transcript_missing_file_silent_mode():
 if __name__ == "__main__":
     test_summary_type_support()
     test_queue_operation_type_support()
-    test_load_transcript_missing_file_returns_empty_list(None)  # type: ignore
+    # test_load_transcript_missing_file_returns_empty_list requires pytest's capsys fixture
     test_load_transcript_missing_file_silent_mode()
     print("\n✅ All message type tests passed!")

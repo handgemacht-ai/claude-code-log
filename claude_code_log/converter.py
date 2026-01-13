@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 import traceback
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, cast
 
 import dateparser
 
@@ -190,7 +190,7 @@ def load_transcript(
                             isinstance(tool_use_result, dict)
                             and "agentId" in tool_use_result
                         ):
-                            agent_id_value = tool_use_result.get("agentId")  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
+                            agent_id_value = cast(Any, tool_use_result).get("agentId")
                             if isinstance(agent_id_value, str):
                                 agent_ids.add(agent_id_value)
                                 # Copy agentId to top level for Pydantic to preserve
