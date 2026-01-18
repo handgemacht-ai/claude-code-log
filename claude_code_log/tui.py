@@ -111,7 +111,7 @@ class ProjectSelector(App[Path]):
         table.clear(columns=True)
 
         # Add columns
-        table.add_column("Project", width=self.size.width - 13)
+        table.add_column("Project", width=max(20, self.size.width - 13))
         table.add_column("Sessions", width=10)
 
         # Add rows
@@ -1515,7 +1515,7 @@ class SessionBrowser(App[Optional[str]]):
             elif short_format:
                 return dt.strftime("%m-%d %H:%M")
             else:
-                return dt.strftime("%m-%d %H:%M")
+                return dt.strftime("%Y-%m-%d %H:%M")
         except (ValueError, AttributeError):
             return "Unknown"
 

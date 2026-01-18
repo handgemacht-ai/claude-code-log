@@ -560,9 +560,15 @@ class TestSessionBrowser:
         """Test timestamp formatting."""
         app = SessionBrowser(temp_project_dir)
 
-        # Test valid timestamp
+        # Test valid timestamp (default long format includes year)
         formatted = app.format_timestamp("2025-01-01T10:00:00Z")
-        assert formatted == "01-01 10:00"
+        assert formatted == "2025-01-01 10:00"
+
+        # Test short format (no year)
+        formatted_short = app.format_timestamp(
+            "2025-01-01T10:00:00Z", short_format=True
+        )
+        assert formatted_short == "01-01 10:00"
 
         # Test date only
         formatted_date = app.format_timestamp("2025-01-01T10:00:00Z", date_only=True)
@@ -1691,11 +1697,15 @@ class TestProjectSelector:
         with tempfile.TemporaryDirectory() as temp_dir:
             project1 = Path(temp_dir) / "project1"
             project1.mkdir()
-            (project1 / "session-1.jsonl").write_text('{"type":"user"}\n')
+            (project1 / "session-1.jsonl").write_text(
+                '{"type":"user"}\n', encoding="utf-8"
+            )
 
             project2 = Path(temp_dir) / "project2"
             project2.mkdir()
-            (project2 / "session-2.jsonl").write_text('{"type":"user"}\n')
+            (project2 / "session-2.jsonl").write_text(
+                '{"type":"user"}\n', encoding="utf-8"
+            )
 
             app = ProjectSelector(
                 projects=[project1, project2],
@@ -1738,8 +1748,8 @@ class TestProjectSelector:
             project_path.mkdir()
             jsonl1 = project_path / "session-1.jsonl"
             jsonl2 = project_path / "session-2.jsonl"
-            jsonl1.write_text('{"type":"user"}\n')
-            jsonl2.write_text('{"type":"user"}\n')
+            jsonl1.write_text('{"type":"user"}\n', encoding="utf-8")
+            jsonl2.write_text('{"type":"user"}\n', encoding="utf-8")
 
             app = ProjectSelector(
                 projects=[project_path],
@@ -1800,7 +1810,7 @@ class TestProjectSelector:
             project_path = Path(temp_dir) / "project1"
             project_path.mkdir()
             jsonl = project_path / "session-1.jsonl"
-            jsonl.write_text('{"type":"user"}\n')
+            jsonl.write_text('{"type":"user"}\n', encoding="utf-8")
 
             app = ProjectSelector(
                 projects=[project_path],
@@ -1831,7 +1841,7 @@ class TestProjectSelector:
             project_path = Path(temp_dir) / "project1"
             project_path.mkdir()
             jsonl = project_path / "session-1.jsonl"
-            jsonl.write_text('{"type":"user"}\n')
+            jsonl.write_text('{"type":"user"}\n', encoding="utf-8")
 
             app = ProjectSelector(
                 projects=[project_path],
@@ -1916,7 +1926,9 @@ class TestProjectSelector:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_path = Path(temp_dir) / "project1"
             project_path.mkdir()
-            (project_path / "session-1.jsonl").write_text('{"type":"user"}\n')
+            (project_path / "session-1.jsonl").write_text(
+                '{"type":"user"}\n', encoding="utf-8"
+            )
 
             app = ProjectSelector(
                 projects=[project_path],
