@@ -1212,9 +1212,9 @@ class SessionBrowser(App[Optional[str]]):
         """Initialize the session browser with a project path."""
         super().__init__()
         self.theme = "gruvbox"
-        self.project_path = project_path
+        self.project_path = project_path.resolve()
         self.is_archived_project = is_archived
-        self.cache_manager = CacheManager(project_path, get_library_version())
+        self.cache_manager = CacheManager(self.project_path, get_library_version())
         self.sessions = {}
         self.archived_sessions = {}
 
