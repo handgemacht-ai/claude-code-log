@@ -1123,7 +1123,10 @@ class CacheManager:
     # ========== Page Cache Methods (Pagination) ==========
 
     def get_page_size_config(self) -> Optional[int]:
-        """Get the configured page size from the most recent page, if any."""
+        """Get the configured page size, if any pages exist.
+
+        All pages in a project share the same page_size_config value.
+        """
         if self._project_id is None:
             return None
 
@@ -1131,7 +1134,6 @@ class CacheManager:
             row = conn.execute(
                 """SELECT page_size_config FROM html_pages
                    WHERE project_id = ?
-                   ORDER BY page_number ASC
                    LIMIT 1""",
                 (self._project_id,),
             ).fetchone()
