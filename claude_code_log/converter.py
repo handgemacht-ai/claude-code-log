@@ -1027,7 +1027,17 @@ def convert_jsonl_to(
         assert cache_manager is not None  # Ensured by use_pagination condition
         # Use cached session data if available, otherwise build from messages
         if cached_data is not None:
-            session_data = cached_data.sessions
+            warmup_session_ids = get_warmup_session_ids(messages)
+            current_session_ids: set[str] = set()
+            for message in messages:
+                session_id = getattr(message, "sessionId", "")
+                if session_id and session_id not in warmup_session_ids:
+                    current_session_ids.add(session_id)
+            session_data = {
+                session_id: session_cache
+                for session_id, session_cache in cached_data.sessions.items()
+                if session_id in current_session_ids
+            }
         else:
             session_data = _build_session_data_from_messages(messages)
         output_path = _generate_paginated_html(

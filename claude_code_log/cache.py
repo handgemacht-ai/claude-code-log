@@ -4,6 +4,7 @@
 import json
 import logging
 import os
+import re
 import sqlite3
 import zlib
 from contextlib import contextmanager
@@ -294,13 +295,50 @@ class CacheManager:
             (datetime.now().isoformat(), self._project_id),
         )
 
+    def _normalize_timestamp(self, timestamp: Optional[str]) -> Optional[str]:
+        """Normalize timestamp to consistent format for reliable string comparison.
+
+        Converts various ISO 8601 formats to a canonical form:
+        - Strips fractional seconds (e.g., '.875368')
+        - Normalizes timezone to 'Z' suffix
+
+        This ensures lexicographic string comparison works correctly in SQL queries.
+        Without normalization, '2023-01-01T10:00:00.5Z' < '2023-01-01T10:00:00Z'
+        because '.' < 'Z' in ASCII, even though the first is 500ms later.
+
+        Args:
+            timestamp: ISO 8601 timestamp string, or None
+
+        Returns:
+            Normalized timestamp in 'YYYY-MM-DDTHH:MM:SSZ' format, or None
+        """
+        if timestamp is None:
+            return None
+
+        # Pattern matches: YYYY-MM-DDTHH:MM:SS followed by optional fractional seconds
+        # and timezone (Z or +HH:MM or +HH or +HHMM)
+        match = re.match(
+            r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"  # Base datetime
+            r"(?:\.\d+)?"  # Optional fractional seconds (discard)
+            r"(?:Z|[+-]\d{2}:?\d{0,2})?$",  # Optional timezone
+            timestamp,
+        )
+
+        if match:
+            # Return just the base datetime with Z suffix
+            return match.group(1) + "Z"
+
+        # If pattern doesn't match, return original (shouldn't happen with valid data)
+        return timestamp
+
     def _serialize_entry(self, entry: TranscriptEntry, file_id: int) -> Dict[str, Any]:
         """Convert TranscriptEntry to dict for SQLite insertion."""
+        raw_timestamp = getattr(entry, "timestamp", None)
         base: Dict[str, Any] = {
             "project_id": self._project_id,
             "file_id": file_id,
             "type": entry.type,
-            "timestamp": getattr(entry, "timestamp", None),
+            "timestamp": self._normalize_timestamp(raw_timestamp),
             "session_id": getattr(entry, "sessionId", None),
             "_uuid": getattr(entry, "uuid", None),
             "_parent_uuid": getattr(entry, "parentUuid", None),
