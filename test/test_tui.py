@@ -115,7 +115,8 @@ class TestSessionBrowser:
     def test_init(self, temp_project_dir):
         """Test SessionBrowser initialization."""
         app = SessionBrowser(temp_project_dir)
-        assert app.project_path == temp_project_dir
+        # SessionBrowser resolves path, so compare resolved paths
+        assert app.project_path == temp_project_dir.resolve()
         assert isinstance(app.cache_manager, CacheManager)
         assert app.sessions == {}
         assert app.selected_session_id is None
