@@ -554,6 +554,8 @@ class MarkdownViewerScreen(ModalScreen[None]):
         Binding("escape", "dismiss", "Close", show=True),
         Binding("q", "dismiss", "Close", show=False),
         Binding("t", "toggle_toc", "Toggle ToC"),
+        Binding("tab", "switch_focus", "Switch focus", show=False, priority=True),
+        Binding("shift+tab", "switch_focus", "Switch focus", show=False, priority=True),
         Binding("n", "next_page", "Next page"),
         Binding("right", "next_page", "Next page", show=False),
         Binding("p", "prev_page", "Prev page"),
@@ -698,10 +700,65 @@ class MarkdownViewerScreen(ModalScreen[None]):
     async def action_dismiss(self, result: None = None) -> None:
         self.dismiss(result)
 
+    def on_key(self, event: Any) -> None:
+        """Intercept Tab keys to handle focus switching without scroll."""
+        if event.key in ("tab", "shift+tab"):
+            event.prevent_default()
+            event.stop()
+            self.action_switch_focus()
+
+    def _focus_viewer_content(self, viewer: SafeMarkdownViewer) -> None:
+        """Focus the viewer's document content without scrolling."""
+        # MarkdownViewer is a container; focus its document widget
+        try:
+            viewer.document.focus(scroll_visible=False)
+        except Exception:
+            viewer.focus(scroll_visible=False)
+
     def action_toggle_toc(self) -> None:
-        """Toggle table of contents visibility."""
-        viewer = self.query_one("#md-viewer", MarkdownViewer)
-        viewer.show_table_of_contents = not viewer.show_table_of_contents
+        """Toggle table of contents visibility, preserving scroll position."""
+        viewer = self.query_one("#md-viewer", SafeMarkdownViewer)
+        scroll_y = viewer.scroll_y
+        will_show_toc = not viewer.show_table_of_contents
+        viewer.show_table_of_contents = will_show_toc
+
+        def restore_and_focus() -> None:
+            viewer.scroll_to(y=scroll_y, animate=False)
+            if will_show_toc:
+                # Focus the Tree inside TOC when showing
+                try:
+                    toc = viewer.table_of_contents
+                    tree = cast("Tree[Any]", toc.query_one(Tree))
+                    tree.focus(scroll_visible=False)
+                except Exception:
+                    pass
+            else:
+                # Focus the document content when hiding TOC
+                self._focus_viewer_content(viewer)
+
+        self.call_later(restore_and_focus)
+
+    def action_switch_focus(self) -> None:
+        """Switch focus between TOC and content without scrolling."""
+        viewer = self.query_one("#md-viewer", SafeMarkdownViewer)
+        if not viewer.show_table_of_contents:
+            # TOC hidden, just focus the document
+            self._focus_viewer_content(viewer)
+            return
+
+        try:
+            toc = viewer.table_of_contents
+            # Get the Tree widget inside the TOC
+            tree = cast("Tree[Any]", toc.query_one(Tree))
+            if tree.has_focus:
+                # Currently in TOC tree, switch to document
+                self._focus_viewer_content(viewer)
+            else:
+                # Currently in document, switch to TOC tree
+                tree.focus(scroll_visible=False)
+        except Exception as e:
+            self.notify(f"Focus switch error: {e}", severity="warning")
+            self._focus_viewer_content(viewer)
 
     def action_next_page(self) -> None:
         """Navigate to next page (if paginated)."""
