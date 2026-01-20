@@ -472,6 +472,14 @@ class SafeMarkdownViewer(MarkdownViewer):
     while still allowing anchor navigation for ToC.
     """
 
+    # Allow maximizing the viewer (screen will redirect children to this)
+    ALLOW_MAXIMIZE = True
+
+    def on_mount(self) -> None:
+        """Configure document for proper keyboard navigation."""
+        # Enable focus on the document so keys work after focus changes
+        self.document.can_focus = True
+
     async def go(self, location: str | PurePath) -> None:
         """Navigate to a new location - intercept non-anchor links.
 
@@ -699,6 +707,14 @@ class MarkdownViewerScreen(ModalScreen[None]):
 
     async def action_dismiss(self, result: None = None) -> None:
         self.dismiss(result)
+
+    def action_maximize(self) -> None:
+        """Maximize the MarkdownViewer (not individual children)."""
+        try:
+            viewer = self.query_one("#md-viewer", SafeMarkdownViewer)
+            self.maximize(viewer)
+        except Exception:
+            pass
 
     def on_key(self, event: Any) -> None:
         """Intercept Tab keys to handle focus switching without scroll."""
