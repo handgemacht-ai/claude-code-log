@@ -410,7 +410,8 @@ class TestSessionBrowser:
                 app.action_export_selected()
 
                 # Check that browser was opened with the session HTML file
-                expected_file = temp_project_dir / "session-session-123.html"
+                # Use resolved path since SessionBrowser resolves project_path
+                expected_file = temp_project_dir.resolve() / "session-session-123.html"
                 mock_browser.assert_called_once_with(f"file://{expected_file}")
 
     @pytest.mark.asyncio
