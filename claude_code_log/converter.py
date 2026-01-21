@@ -212,13 +212,15 @@ def load_transcript(
                         entry_type
                         in [
                             "file-history-snapshot",  # Internal Claude Code file backup metadata
+                            "progress",  # Real-time progress updates (hook_progress, bash_progress)
                         ]
                     ):
                         # Silently skip internal message types we don't render
                         pass
                     else:
+                        display_line = line[:1000] + "..." if len(line) > 1000 else line
                         print(
-                            f"Line {line_no} of {jsonl_path} is not a recognised message type: {line}"
+                            f"Line {line_no} of {jsonl_path} is not a recognised message type: {display_line}"
                         )
                 except json.JSONDecodeError as e:
                     print(
