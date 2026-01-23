@@ -261,7 +261,7 @@ def load_transcript(
             # Skip if the agent file is the same as the current file (self-reference)
             if agent_file == jsonl_path:
                 continue
-            # Try new subagents directory structure (Claude Code 2.1.17+)
+            # Try new subagents directory structure (Claude Code 2.1.2+)
             if not agent_file.exists():
                 subagent_file = (
                     parent_dir

@@ -399,7 +399,7 @@ def test_task_output_structured_content_markdown():
 
 
 def test_subagents_directory_structure():
-    """Test that agent files are loaded from {session}/subagents/ directory (Claude Code 2.1.17+).
+    """Test that agent files are loaded from {session}/subagents/ directory (Claude Code 2.1.2+).
 
     The new directory structure is:
       session-uuid.jsonl
