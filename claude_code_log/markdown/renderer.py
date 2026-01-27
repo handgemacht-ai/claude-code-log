@@ -649,7 +649,11 @@ class MarkdownRenderer(Renderer):
         return "\n".join(parts)
 
     def format_WebFetchOutput(self, output: WebFetchOutput, _: TemplateMessage) -> str:
-        """Format → metadata line + collapsible 'Result' with blockquoted content."""
+        """Format → metadata line + blockquoted result.
+
+        WebFetch results are AI-generated summaries, not raw content,
+        so a collapsible section isn't needed - use blockquote directly.
+        """
         meta_parts: list[str] = []
         if output.code is not None:
             status = f"{output.code} {output.code_text or ''}".strip()
@@ -667,7 +671,7 @@ class MarkdownRenderer(Renderer):
             else:
                 meta_parts.append(f"{output.duration_ms}ms")
         meta_line = f"*{' · '.join(meta_parts)}*\n\n" if meta_parts else ""
-        return meta_line + self._collapsible("Result", self._quote(output.result))
+        return meta_line + self._quote(output.result)
 
     def format_ToolResultContent(
         self, output: ToolResultContent, message: TemplateMessage

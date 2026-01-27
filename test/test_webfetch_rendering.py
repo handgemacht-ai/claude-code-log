@@ -308,9 +308,10 @@ class TestWebFetchMarkdownRenderer:
         )
         msg = TemplateMessage(tool_result_msg)
         md = renderer.format_WebFetchOutput(output, msg)
-        assert "<details>" in md
-        assert "Result" in md
+        # No collapsible - WebFetch results are summaries, rendered as blockquotes
+        assert "<details>" not in md
         assert "> # Heading" in md  # Blockquoted
+        assert "> \n> Paragraph text" in md
 
     def test_markdown_renderer_format_webfetch_output_with_metadata(self):
         """Test MarkdownRenderer.format_WebFetchOutput includes metadata."""
