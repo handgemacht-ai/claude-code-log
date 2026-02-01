@@ -958,6 +958,11 @@ details summary {
     margin-top: 0;
 }
 
+/* Override centered h1 from global styles for WebFetch content */
+.webfetch-result h1 {
+    text-align: left;
+}
+
 @media (max-width: 1280px) {
     .fold-bar {
         height: auto;
