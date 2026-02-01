@@ -621,7 +621,7 @@
     border-radius: 0;
 }
 
-.header:has(+ .content > details) {
+.header:has(+ .content > details.collapsible-details) {
     margin-left: 1em;
 }
 
