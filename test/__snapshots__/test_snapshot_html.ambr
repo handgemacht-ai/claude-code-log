@@ -2236,7 +2236,7 @@
   
   .fold-bar[data-border-color="assistant"] .fold-bar-section.folded,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-color);
+      border-bottom-color: var(--assistant-dimmed);
   }
   
   .fold-bar[data-border-color="system"] .fold-bar-section.folded {
@@ -2272,7 +2272,7 @@
   
   .fold-bar[data-border-color="thinking"] .fold-bar-section.folded,
   .fold-bar[data-border-color="thinking sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-dimmed);
+      border-bottom-color: var(--assistant-color);
   }
   
   .fold-bar[data-border-color="image"] .fold-bar-section.folded,
@@ -2755,7 +2755,7 @@
       border-radius: 0;
   }
   
-  .header:has(+ .content > details) {
+  .header:has(+ .content > details.collapsible-details) {
       margin-left: 1em;
   }
   
@@ -7163,7 +7163,7 @@
   
   .fold-bar[data-border-color="assistant"] .fold-bar-section.folded,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-color);
+      border-bottom-color: var(--assistant-dimmed);
   }
   
   .fold-bar[data-border-color="system"] .fold-bar-section.folded {
@@ -7199,7 +7199,7 @@
   
   .fold-bar[data-border-color="thinking"] .fold-bar-section.folded,
   .fold-bar[data-border-color="thinking sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-dimmed);
+      border-bottom-color: var(--assistant-color);
   }
   
   .fold-bar[data-border-color="image"] .fold-bar-section.folded,
@@ -7682,7 +7682,7 @@
       border-radius: 0;
   }
   
-  .header:has(+ .content > details) {
+  .header:has(+ .content > details.collapsible-details) {
       margin-left: 1em;
   }
   
@@ -12186,7 +12186,7 @@
   
   .fold-bar[data-border-color="assistant"] .fold-bar-section.folded,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-color);
+      border-bottom-color: var(--assistant-dimmed);
   }
   
   .fold-bar[data-border-color="system"] .fold-bar-section.folded {
@@ -12222,7 +12222,7 @@
   
   .fold-bar[data-border-color="thinking"] .fold-bar-section.folded,
   .fold-bar[data-border-color="thinking sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-dimmed);
+      border-bottom-color: var(--assistant-color);
   }
   
   .fold-bar[data-border-color="image"] .fold-bar-section.folded,
@@ -12705,7 +12705,7 @@
       border-radius: 0;
   }
   
-  .header:has(+ .content > details) {
+  .header:has(+ .content > details.collapsible-details) {
       margin-left: 1em;
   }
   
@@ -17250,7 +17250,7 @@
   
   .fold-bar[data-border-color="assistant"] .fold-bar-section.folded,
   .fold-bar[data-border-color="assistant sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-color);
+      border-bottom-color: var(--assistant-dimmed);
   }
   
   .fold-bar[data-border-color="system"] .fold-bar-section.folded {
@@ -17286,7 +17286,7 @@
   
   .fold-bar[data-border-color="thinking"] .fold-bar-section.folded,
   .fold-bar[data-border-color="thinking sidechain"] .fold-bar-section.folded {
-      border-bottom-color: var(--assistant-dimmed);
+      border-bottom-color: var(--assistant-color);
   }
   
   .fold-bar[data-border-color="image"] .fold-bar-section.folded,
@@ -17769,7 +17769,7 @@
       border-radius: 0;
   }
   
-  .header:has(+ .content > details) {
+  .header:has(+ .content > details.collapsible-details) {
       margin-left: 1em;
   }
   
