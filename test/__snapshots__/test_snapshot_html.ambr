@@ -15137,7 +15137,7 @@
               
           </a>
           
-          <a href='#msg-d-2'
+          <a href='#msg-d-4'
               class='session-link'>
               <div class='session-link-title'>
                   
@@ -15214,7 +15214,7 @@
       
       
       
-      <div class='message assistant d-0 d-1' data-message-id='d-4' id='msg-d-4'>
+      <div class='message assistant d-0 d-1' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -15234,7 +15234,7 @@
       
       
       
-      <div class='message user d-0' data-message-id='d-6' id='msg-d-6'>
+      <div class='message user d-0' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -15251,17 +15251,17 @@
       
       
       <div class="session-divider"></div>
-      <div class='message session-header' data-message-id='d-2' data-session-id='test_session' id='msg-d-2'>
+      <div class='message session-header' data-message-id='d-4' data-session-id='test_session' id='msg-d-4'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
           
-          <div class='fold-bar' data-message-id='d-2' data-border-color='session-header'>
+          <div class='fold-bar' data-message-id='d-4' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-2' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-4' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 4 users' title='Fold (all levels) all 9 descendants'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>4 users</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-2' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-4' data-title-unfolded='Fold (to 1st level) 4 users' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 4 users'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>4 users, 3 assistants, 2 more total</span>
               </div>
@@ -15273,7 +15273,7 @@
       
       
       
-      <div class='message user d-2' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user d-4' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -15285,10 +15285,10 @@
           </div>
           <div class='content'><pre>Hello Claude! Can you help me understand how Python decorators work?</pre></div>
           
-          <div class='fold-bar' data-message-id='d-3' data-border-color='user'>
+          <div class='fold-bar' data-message-id='d-5' data-border-color='user'>
               
               
-              <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-3' data-title-unfolded='Fold 1 assistant' data-title-folded='Unfold (1st level) 1 assistant' title='Fold 1 assistant'>
+              <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-5' data-title-unfolded='Fold 1 assistant' data-title-folded='Unfold (1st level) 1 assistant' title='Fold 1 assistant'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>1 assistant</span>
               </div>
@@ -15300,7 +15300,7 @@
       
       
       
-      <div class='message assistant d-2 d-3' data-message-id='d-5' id='msg-d-5'>
+      <div class='message assistant d-4 d-5' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -15339,7 +15339,7 @@
       
       
       
-      <div class='message user d-2' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user d-4' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -15366,7 +15366,7 @@
       
       
       
-      <div class='message tool_use pair_first d-2 d-7' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use pair_first d-4 d-7' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -15383,7 +15383,7 @@
       
       
       
-      <div class='message tool_result pair_last d-2 d-7' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_result pair_last d-4 d-7' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -15400,7 +15400,7 @@
       
       
       
-      <div class='message assistant d-2 d-7' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant d-4 d-7' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -15432,7 +15432,7 @@
       
       
       
-      <div class='message user d-2' data-message-id='d-11' id='msg-d-11'>
+      <div class='message user d-4' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -15459,7 +15459,7 @@
       
       
       
-      <div class='message tool_use pair_first d-2 d-11' data-message-id='d-12' id='msg-d-12'>
+      <div class='message tool_use pair_first d-4 d-11' data-message-id='d-12' id='msg-d-12'>
           <div class='header'>
               <span title="ID: tool_002">💻 Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -15476,7 +15476,7 @@
       
       
       
-      <div class='message tool_result pair_last d-2 d-11' data-message-id='d-13' id='msg-d-13'>
+      <div class='message tool_result pair_last d-4 d-11' data-message-id='d-13' id='msg-d-13'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -15495,7 +15495,7 @@
       
       
       
-      <div class='message assistant d-2 d-11' data-message-id='d-14' id='msg-d-14'>
+      <div class='message assistant d-4 d-11' data-message-id='d-14' id='msg-d-14'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -15523,7 +15523,7 @@
       
       
       
-      <div class='message user d-2' data-message-id='d-15' id='msg-d-15'>
+      <div class='message user d-4' data-message-id='d-15' id='msg-d-15'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>

@@ -247,8 +247,15 @@ def extract_session_dag_lines(
                 linear = False
                 current = None
 
-        if not linear:
-            # Fall back to timestamp sort
+        if not linear or len(chain) < len(snodes):
+            if len(chain) < len(snodes):
+                logger.warning(
+                    "Session %s: chain covers %d of %d nodes, "
+                    "falling back to timestamp sort",
+                    session_id,
+                    len(chain),
+                    len(snodes),
+                )
             sorted_nodes = sorted(snodes, key=lambda n: n.timestamp)
             chain = [n.uuid for n in sorted_nodes]
 

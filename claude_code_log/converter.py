@@ -31,11 +31,13 @@ from .factories import create_transcript_entry
 from .models import (
     TranscriptEntry,
     AssistantTranscriptEntry,
+    QueueOperationTranscriptEntry,
     SummaryTranscriptEntry,
     SystemTranscriptEntry,
     UserTranscriptEntry,
     ToolResultContent,
 )
+from .dag import build_dag_from_entries, traverse_session_tree
 from .renderer import get_renderer, is_html_outdated
 
 
@@ -331,14 +333,22 @@ def load_directory_transcripts(
         )
         all_messages.extend(messages)
 
-    # Sort all messages chronologically
-    def get_timestamp(entry: TranscriptEntry) -> str:
-        if hasattr(entry, "timestamp"):
-            return entry.timestamp  # type: ignore
-        return ""
+    # Partition: sidechain entries excluded from DAG (Phase C scope)
+    sidechain_entries = [e for e in all_messages if getattr(e, "isSidechain", False)]
+    main_entries = [e for e in all_messages if not getattr(e, "isSidechain", False)]
 
-    all_messages.sort(key=get_timestamp)
-    return all_messages
+    # Build DAG and traverse (entries grouped by session, depth-first)
+    tree = build_dag_from_entries(main_entries)
+    dag_ordered = traverse_session_tree(tree)
+
+    # Re-add summaries/queue-ops (excluded from DAG since they lack uuid)
+    non_dag_entries: list[TranscriptEntry] = [
+        e
+        for e in main_entries
+        if isinstance(e, (SummaryTranscriptEntry, QueueOperationTranscriptEntry))
+    ]
+
+    return dag_ordered + sidechain_entries + non_dag_entries
 
 
 # =============================================================================

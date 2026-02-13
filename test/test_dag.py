@@ -6,13 +6,10 @@ from pathlib import Path
 import pytest
 
 from claude_code_log.dag import (
-    MessageNode,
-    SessionDAGLine,
     SessionTree,
     build_dag,
     build_dag_from_entries,
     build_message_index,
-    build_session_tree,
     extract_session_dag_lines,
     traverse_session_tree,
 )
@@ -633,3 +630,62 @@ class TestExtractSessionDAGLines:
         sessions = extract_session_dag_lines(nodes)
         assert sessions["s1"].uuids == ["a", "b", "c", "d", "e"]
         assert sessions["s2"].uuids == ["f", "g", "h"]
+
+
+# =============================================================================
+# Test: Degenerate parentUuid (all null)
+# =============================================================================
+
+
+class TestDegenerateParentUuid:
+    """Test handling of entries where all parentUuid values are null.
+
+    This is the common case for existing test data and older transcripts
+    that lack parentUuid chains. The DAG should fall back to timestamp sort.
+    """
+
+    @pytest.fixture()
+    def entries(self) -> list[TranscriptEntry]:
+        """Create 5 entries with parentUuid=null, out of timestamp order."""
+        data = [
+            {
+                "type": "user",
+                "timestamp": f"2025-07-01T10:0{i}:00.000Z",
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": f"msg_{i}",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": f"Message {i}"}],
+                },
+            }
+            for i in [3, 1, 4, 0, 2]  # Out of order
+        ]
+        return [create_transcript_entry(d) for d in data]
+
+    def test_all_null_parent_uuid_falls_back_to_timestamp(
+        self, entries: list[TranscriptEntry]
+    ) -> None:
+        """All 5 entries with parentUuid=null should appear in timestamp order."""
+        nodes = build_message_index(entries)
+        build_dag(nodes)
+        sessions = extract_session_dag_lines(nodes)
+
+        dag_line = sessions["s1"]
+        assert len(dag_line.uuids) == 5
+        # Should be sorted by timestamp
+        assert dag_line.uuids == ["msg_0", "msg_1", "msg_2", "msg_3", "msg_4"]
+
+    def test_all_null_traversal_returns_all_entries(
+        self, entries: list[TranscriptEntry]
+    ) -> None:
+        """Traversal should return all 5 entries, none dropped."""
+        tree = build_dag_from_entries(entries)
+        result = traverse_session_tree(tree)
+        assert len(result) == 5
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        assert uuids == ["msg_0", "msg_1", "msg_2", "msg_3", "msg_4"]
