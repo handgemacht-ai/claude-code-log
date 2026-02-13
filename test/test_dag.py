@@ -1,0 +1,635 @@
+"""Tests for the DAG-based message ordering module."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from claude_code_log.dag import (
+    MessageNode,
+    SessionDAGLine,
+    SessionTree,
+    build_dag,
+    build_dag_from_entries,
+    build_message_index,
+    build_session_tree,
+    extract_session_dag_lines,
+    traverse_session_tree,
+)
+from claude_code_log.factories import create_transcript_entry
+from claude_code_log.models import (
+    SummaryTranscriptEntry,
+    TranscriptEntry,
+)
+
+TEST_DATA = Path(__file__).parent / "test_data"
+REAL_PROJECTS = TEST_DATA / "real_projects"
+
+
+def load_entries_from_jsonl(path: Path) -> list[TranscriptEntry]:
+    """Load transcript entries from a JSONL file, skipping unparseable lines."""
+    entries: list[TranscriptEntry] = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            entry_type = data.get("type")
+            if entry_type in (
+                "user",
+                "assistant",
+                "summary",
+                "system",
+                "queue-operation",
+            ):
+                entries.append(create_transcript_entry(data))
+    return entries
+
+
+def load_project_entries(project_dir: Path) -> list[TranscriptEntry]:
+    """Load all entries from a project directory (excluding agent files)."""
+    entries: list[TranscriptEntry] = []
+    for jsonl_file in sorted(project_dir.glob("*.jsonl")):
+        if jsonl_file.name.startswith("agent-"):
+            continue
+        entries.extend(load_entries_from_jsonl(jsonl_file))
+    return entries
+
+
+# =============================================================================
+# Test: Single session (dag_simple.jsonl)
+# =============================================================================
+
+
+class TestSingleSession:
+    """Tests using dag_simple.jsonl: a→b→c→d→e in session s1."""
+
+    @pytest.fixture()
+    def tree(self) -> SessionTree:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        return build_dag_from_entries(entries)
+
+    def test_single_session_one_dagline(self, tree: SessionTree) -> None:
+        assert len(tree.sessions) == 1
+        assert "s1" in tree.sessions
+
+    def test_single_session_chain_order(self, tree: SessionTree) -> None:
+        dag_line = tree.sessions["s1"]
+        assert dag_line.uuids == ["a", "b", "c", "d", "e"]
+
+    def test_single_session_is_root(self, tree: SessionTree) -> None:
+        assert tree.roots == ["s1"]
+
+    def test_single_session_no_junction_points(self, tree: SessionTree) -> None:
+        assert tree.junction_points == {}
+
+    def test_single_session_traversal(self, tree: SessionTree) -> None:
+        result = traverse_session_tree(tree)
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        assert uuids == ["a", "b", "c", "d", "e"]
+
+    def test_single_session_first_timestamp(self, tree: SessionTree) -> None:
+        dag_line = tree.sessions["s1"]
+        assert dag_line.first_timestamp == "2025-07-01T10:00:00.000Z"
+
+    def test_single_session_no_parent(self, tree: SessionTree) -> None:
+        dag_line = tree.sessions["s1"]
+        assert dag_line.parent_session_id is None
+        assert dag_line.attachment_uuid is None
+
+
+# =============================================================================
+# Test: Resume session (dag_resume.jsonl)
+# =============================================================================
+
+
+class TestResumeSession:
+    """Tests using dag_resume.jsonl: s1(a→b→c→d→e), s2(f→g→h) where f.parent=e."""
+
+    @pytest.fixture()
+    def tree(self) -> SessionTree:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_resume.jsonl")
+        return build_dag_from_entries(entries)
+
+    def test_two_sessions(self, tree: SessionTree) -> None:
+        assert len(tree.sessions) == 2
+        assert "s1" in tree.sessions
+        assert "s2" in tree.sessions
+
+    def test_s1_chain(self, tree: SessionTree) -> None:
+        assert tree.sessions["s1"].uuids == ["a", "b", "c", "d", "e"]
+
+    def test_s2_chain(self, tree: SessionTree) -> None:
+        assert tree.sessions["s2"].uuids == ["f", "g", "h"]
+
+    def test_s1_is_root(self, tree: SessionTree) -> None:
+        assert tree.roots == ["s1"]
+
+    def test_s2_parent_is_s1(self, tree: SessionTree) -> None:
+        dag_line = tree.sessions["s2"]
+        assert dag_line.parent_session_id == "s1"
+        assert dag_line.attachment_uuid == "e"
+
+    def test_junction_at_e(self, tree: SessionTree) -> None:
+        assert "e" in tree.junction_points
+        jp = tree.junction_points["e"]
+        assert jp.session_id == "s1"
+        assert jp.target_sessions == ["s2"]
+
+    def test_traversal_order(self, tree: SessionTree) -> None:
+        result = traverse_session_tree(tree)
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        assert uuids == ["a", "b", "c", "d", "e", "f", "g", "h"]
+
+
+# =============================================================================
+# Test: Fork session (dag_fork.jsonl)
+# =============================================================================
+
+
+class TestForkSession:
+    """Tests using dag_fork.jsonl: s1(a→e), s2(f→h from e), s3(i→k from c)."""
+
+    @pytest.fixture()
+    def tree(self) -> SessionTree:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_fork.jsonl")
+        return build_dag_from_entries(entries)
+
+    def test_three_sessions(self, tree: SessionTree) -> None:
+        assert len(tree.sessions) == 3
+
+    def test_s1_chain(self, tree: SessionTree) -> None:
+        assert tree.sessions["s1"].uuids == ["a", "b", "c", "d", "e"]
+
+    def test_s2_chain(self, tree: SessionTree) -> None:
+        assert tree.sessions["s2"].uuids == ["f", "g", "h"]
+
+    def test_s3_chain(self, tree: SessionTree) -> None:
+        assert tree.sessions["s3"].uuids == ["i", "j", "k"]
+
+    def test_only_s1_is_root(self, tree: SessionTree) -> None:
+        assert tree.roots == ["s1"]
+
+    def test_s2_attaches_at_e(self, tree: SessionTree) -> None:
+        dag_line = tree.sessions["s2"]
+        assert dag_line.parent_session_id == "s1"
+        assert dag_line.attachment_uuid == "e"
+
+    def test_s3_attaches_at_c(self, tree: SessionTree) -> None:
+        dag_line = tree.sessions["s3"]
+        assert dag_line.parent_session_id == "s1"
+        assert dag_line.attachment_uuid == "c"
+
+    def test_two_junction_points(self, tree: SessionTree) -> None:
+        assert len(tree.junction_points) == 2
+        assert "c" in tree.junction_points
+        assert "e" in tree.junction_points
+
+    def test_junction_c_targets_s3(self, tree: SessionTree) -> None:
+        jp = tree.junction_points["c"]
+        assert jp.session_id == "s1"
+        assert jp.target_sessions == ["s3"]
+
+    def test_junction_e_targets_s2(self, tree: SessionTree) -> None:
+        jp = tree.junction_points["e"]
+        assert jp.session_id == "s1"
+        assert jp.target_sessions == ["s2"]
+
+    def test_traversal_depth_first(self, tree: SessionTree) -> None:
+        """Depth-first: s1 entries, then at junction c visit s3 (fork),
+        continue s1, then at junction e visit s2 (continue)."""
+        result = traverse_session_tree(tree)
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        # s1: a,b,c → s3: i,j,k → s1: d,e → s2: f,g,h
+        assert uuids == ["a", "b", "c", "i", "j", "k", "d", "e", "f", "g", "h"]
+
+
+# =============================================================================
+# Test: Deduplication
+# =============================================================================
+
+
+class TestDeduplication:
+    """Test that duplicate uuids are resolved by keeping earliest session."""
+
+    def test_dedup_keeps_earliest_session(self) -> None:
+        """Same uuid in two sessions; entry from earlier session wins."""
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        # Manually add a duplicate of uuid "c" with a later session
+        dup_data = {
+            "type": "user",
+            "timestamp": "2025-07-02T10:00:00.000Z",
+            "parentUuid": "b",
+            "isSidechain": False,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s_later",
+            "version": "1.0.0",
+            "uuid": "c",
+            "message": {"role": "user", "content": [{"type": "text", "text": "Dup"}]},
+        }
+        entries.append(create_transcript_entry(dup_data))
+
+        nodes = build_message_index(entries)
+        # "c" should belong to s1 (timestamp 2025-07-01) not s_later (2025-07-02)
+        assert nodes["c"].session_id == "s1"
+
+    def test_dedup_replaces_with_earlier(self) -> None:
+        """If later-loaded entry is from an earlier session, it replaces."""
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        # Add a duplicate of uuid "c" from an EARLIER session
+        dup_data = {
+            "type": "user",
+            "timestamp": "2025-06-30T10:00:00.000Z",
+            "parentUuid": "b",
+            "isSidechain": False,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s_earlier",
+            "version": "1.0.0",
+            "uuid": "c",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Earlier"}],
+            },
+        }
+        entries.append(create_transcript_entry(dup_data))
+
+        nodes = build_message_index(entries)
+        # "c" should now belong to s_earlier
+        assert nodes["c"].session_id == "s_earlier"
+
+
+# =============================================================================
+# Test: Junction Points
+# =============================================================================
+
+
+class TestJunctionPoints:
+    """Detailed junction point tests."""
+
+    def test_no_junctions_single_session(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        tree = build_dag_from_entries(entries)
+        assert len(tree.junction_points) == 0
+
+    def test_single_junction_resume(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_resume.jsonl")
+        tree = build_dag_from_entries(entries)
+        assert len(tree.junction_points) == 1
+        assert "e" in tree.junction_points
+
+    def test_multiple_junctions_fork(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_fork.jsonl")
+        tree = build_dag_from_entries(entries)
+        assert len(tree.junction_points) == 2
+        # Both c and e are junctions
+        assert set(tree.junction_points.keys()) == {"c", "e"}
+
+    def test_junction_target_sessions_ordered_chronologically(self) -> None:
+        """If multiple sessions fork from the same point, targets are ordered."""
+        # Create data where two sessions both fork from the same message
+        base = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        fork1_data = {
+            "type": "user",
+            "timestamp": "2025-07-02T10:00:00.000Z",
+            "parentUuid": "c",
+            "isSidechain": False,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s_fork1",
+            "version": "1.0.0",
+            "uuid": "f1",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Fork 1"}],
+            },
+        }
+        fork2_data = {
+            "type": "user",
+            "timestamp": "2025-07-01T12:00:00.000Z",
+            "parentUuid": "c",
+            "isSidechain": False,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s_fork2",
+            "version": "1.0.0",
+            "uuid": "f2",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Fork 2"}],
+            },
+        }
+        base.append(create_transcript_entry(fork1_data))
+        base.append(create_transcript_entry(fork2_data))
+
+        tree = build_dag_from_entries(base)
+        jp = tree.junction_points["c"]
+        # s_fork2 is earlier (2025-07-01T12:00) than s_fork1 (2025-07-02T10:00)
+        assert jp.target_sessions == ["s_fork2", "s_fork1"]
+
+
+# =============================================================================
+# Test: Traversal Order
+# =============================================================================
+
+
+class TestTraversalOrder:
+    """Test depth-first session tree traversal produces correct order."""
+
+    def test_simple_traversal(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        tree = build_dag_from_entries(entries)
+        result = traverse_session_tree(tree)
+        assert len(result) == 5
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        assert uuids == ["a", "b", "c", "d", "e"]
+
+    def test_resume_traversal(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_resume.jsonl")
+        tree = build_dag_from_entries(entries)
+        result = traverse_session_tree(tree)
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        assert uuids == ["a", "b", "c", "d", "e", "f", "g", "h"]
+
+    def test_fork_traversal(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_fork.jsonl")
+        tree = build_dag_from_entries(entries)
+        result = traverse_session_tree(tree)
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        # Depth-first: at junction c (after emitting c), visit s3 first
+        # then continue s1, at junction e visit s2
+        assert uuids == ["a", "b", "c", "i", "j", "k", "d", "e", "f", "g", "h"]
+
+    def test_traversal_returns_entries(self) -> None:
+        """Verify traversal returns actual TranscriptEntry objects."""
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        tree = build_dag_from_entries(entries)
+        result = traverse_session_tree(tree)
+        for entry in result:
+            assert hasattr(entry, "type")
+            assert hasattr(entry, "uuid")
+
+
+# =============================================================================
+# Test: Real project data
+# =============================================================================
+
+
+EXPERIMENTS_DIR = REAL_PROJECTS / "-src-experiments-claude_p"
+
+
+@pytest.mark.skipif(
+    not EXPERIMENTS_DIR.exists(),
+    reason="Real project test data not available",
+)
+class TestRealProjectExperiments:
+    """Test DAG construction against real project data.
+
+    The -src-experiments-claude_p project has 4 independent sessions
+    with no cross-session references, so should produce 4 root sessions.
+    """
+
+    @pytest.fixture()
+    def tree(self) -> SessionTree:
+        entries = load_project_entries(EXPERIMENTS_DIR)
+        return build_dag_from_entries(entries)
+
+    def test_loads_multiple_sessions(self, tree: SessionTree) -> None:
+        assert len(tree.sessions) >= 4
+
+    def test_all_sessions_are_roots(self, tree: SessionTree) -> None:
+        """Independent sessions should all be roots."""
+        # All sessions with DAG-lines should be root (no cross-refs)
+        for session_id in tree.sessions:
+            dag_line = tree.sessions[session_id]
+            assert dag_line.parent_session_id is None, (
+                f"Session {session_id} unexpectedly has parent "
+                f"{dag_line.parent_session_id}"
+            )
+
+    def test_no_junction_points(self, tree: SessionTree) -> None:
+        """Independent sessions should have no junction points."""
+        assert len(tree.junction_points) == 0
+
+    def test_each_session_has_entries(self, tree: SessionTree) -> None:
+        """Each session's DAG-line should have at least one message."""
+        for session_id, dag_line in tree.sessions.items():
+            assert len(dag_line.uuids) > 0, f"Session {session_id} has empty DAG-line"
+
+    def test_traversal_covers_all_entries(self, tree: SessionTree) -> None:
+        """Traversal should include all entries from all sessions."""
+        total_in_daglines = sum(len(dl.uuids) for dl in tree.sessions.values())
+        result = traverse_session_tree(tree)
+        assert len(result) == total_in_daglines
+
+    def test_sessions_ordered_chronologically(self, tree: SessionTree) -> None:
+        """Root sessions should be ordered by first_timestamp."""
+        timestamps = [tree.sessions[sid].first_timestamp for sid in tree.roots]
+        assert timestamps == sorted(timestamps)
+
+
+# =============================================================================
+# Test: Edge cases
+# =============================================================================
+
+
+class TestOrphanParent:
+    """Test handling of parentUuid pointing to unknown uuid."""
+
+    def test_orphan_treated_as_root(self) -> None:
+        """A session whose first message has parentUuid pointing to
+        an unknown uuid should be treated as a root session."""
+        orphan_data = {
+            "type": "user",
+            "timestamp": "2025-07-01T10:00:00.000Z",
+            "parentUuid": "nonexistent_uuid",
+            "isSidechain": False,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s_orphan",
+            "version": "1.0.0",
+            "uuid": "orphan_a",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Orphan"}],
+            },
+        }
+        entries: list[TranscriptEntry] = [create_transcript_entry(orphan_data)]
+        tree = build_dag_from_entries(entries)
+
+        assert "s_orphan" in tree.sessions
+        assert tree.roots == ["s_orphan"]
+        dag_line = tree.sessions["s_orphan"]
+        assert dag_line.parent_session_id is None
+
+    def test_orphan_with_children(self) -> None:
+        """Orphan node still chains correctly within its session."""
+        data = [
+            {
+                "type": "user",
+                "timestamp": "2025-07-01T10:00:00.000Z",
+                "parentUuid": "nonexistent",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "x",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Start"}],
+                },
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2025-07-01T10:01:00.000Z",
+                "parentUuid": "x",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "y",
+                "requestId": "req_1",
+                "message": {
+                    "id": "y",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-sonnet",
+                    "content": [{"type": "text", "text": "Reply"}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                },
+            },
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        tree = build_dag_from_entries(entries)
+
+        assert tree.sessions["s1"].uuids == ["x", "y"]
+        assert tree.roots == ["s1"]
+
+
+class TestSummaryEntriesSkipped:
+    """Test that SummaryTranscriptEntry entries are excluded from DAG."""
+
+    def test_summary_not_in_nodes(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        # Add a summary entry
+        summary_data = {
+            "type": "summary",
+            "summary": "A test summary",
+            "leafUuid": "e",
+            "timestamp": "2025-07-01T10:05:00.000Z",
+        }
+        entries.append(create_transcript_entry(summary_data))
+
+        nodes = build_message_index(entries)
+        # Summary has no uuid, so it can't be in nodes
+        for node in nodes.values():
+            assert not isinstance(node.entry, SummaryTranscriptEntry)
+
+    def test_summary_not_in_traversal(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        summary_data = {
+            "type": "summary",
+            "summary": "A test summary",
+            "leafUuid": "e",
+            "timestamp": "2025-07-01T10:05:00.000Z",
+        }
+        entries.append(create_transcript_entry(summary_data))
+
+        tree = build_dag_from_entries(entries)
+        result = traverse_session_tree(tree)
+        # Should still be 5 entries (a-e), summary excluded
+        assert len(result) == 5
+        for entry in result:
+            assert not isinstance(entry, SummaryTranscriptEntry)
+
+
+class TestQueueOperationSkipped:
+    """Test that QueueOperationTranscriptEntry entries are excluded from DAG."""
+
+    def test_queue_op_not_in_nodes(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        queue_data = {
+            "type": "queue-operation",
+            "operation": "dequeue",
+            "timestamp": "2025-07-01T09:59:00.000Z",
+            "sessionId": "s1",
+        }
+        entries.append(create_transcript_entry(queue_data))
+
+        nodes = build_message_index(entries)
+        # queue-operation has no uuid field
+        assert len(nodes) == 5  # Only a,b,c,d,e
+
+
+# =============================================================================
+# Test: Individual algorithm steps
+# =============================================================================
+
+
+class TestBuildMessageIndex:
+    """Test build_message_index in isolation."""
+
+    def test_indexes_all_entries(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        nodes = build_message_index(entries)
+        assert set(nodes.keys()) == {"a", "b", "c", "d", "e"}
+
+    def test_preserves_entry_data(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        nodes = build_message_index(entries)
+        assert nodes["a"].session_id == "s1"
+        assert nodes["a"].parent_uuid is None
+        assert nodes["b"].parent_uuid == "a"
+
+    def test_empty_entries(self) -> None:
+        nodes = build_message_index([])
+        assert nodes == {}
+
+
+class TestBuildDAG:
+    """Test build_dag (parent→children links)."""
+
+    def test_children_populated(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        nodes = build_message_index(entries)
+        build_dag(nodes)
+        assert nodes["a"].children_uuids == ["b"]
+        assert nodes["b"].children_uuids == ["c"]
+        assert nodes["e"].children_uuids == []
+
+    def test_root_has_no_parent(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        nodes = build_message_index(entries)
+        build_dag(nodes)
+        assert nodes["a"].parent_uuid is None
+
+    def test_cross_session_children(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_resume.jsonl")
+        nodes = build_message_index(entries)
+        build_dag(nodes)
+        # "e" has child "f" which is in a different session
+        assert "f" in nodes["e"].children_uuids
+
+
+class TestExtractSessionDAGLines:
+    """Test extract_session_dag_lines."""
+
+    def test_single_session_chain(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_simple.jsonl")
+        nodes = build_message_index(entries)
+        build_dag(nodes)
+        sessions = extract_session_dag_lines(nodes)
+        assert sessions["s1"].uuids == ["a", "b", "c", "d", "e"]
+
+    def test_multi_session_chains(self) -> None:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_resume.jsonl")
+        nodes = build_message_index(entries)
+        build_dag(nodes)
+        sessions = extract_session_dag_lines(nodes)
+        assert sessions["s1"].uuids == ["a", "b", "c", "d", "e"]
+        assert sessions["s2"].uuids == ["f", "g", "h"]
