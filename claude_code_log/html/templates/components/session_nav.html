@@ -12,30 +12,34 @@
 
     <div class='session-nav'>
         {% for session in sessions %}
-        <a href='{{ link_prefix }}{% if mode == "expandable" %}session-{{ session.id }}.html{% else %}#msg-d-{{ session.message_index }}{% endif %}'
-            class='session-link{% if session.depth|default(0) > 0 %} session-child{% endif %}'
+        <div class='session-nav-item{% if session.depth|default(0) > 0 %} session-child{% endif %}'
             {% if session.depth|default(0) > 0 %}style='margin-left: {{ session.depth * 24 }}px'{% endif %}>
-            <div class='session-link-title'>
-                {% if session.parent_session_id %}
-                <span class='session-backlink'>&#x21b3; continues from {{ session.parent_session_id[:8] }}</span>
-                {% endif %}
-                {% if session.summary %}
-                {{ session.summary }} •
-                {% endif %}
-                {{ session.id[:8] }}
-            </div>
-            <div class='session-link-meta'>
-                <span class="timestamp"{% if session.first_timestamp %} data-timestamp="{{ session.first_timestamp }}"{% endif %}{% if session.last_timestamp and session.last_timestamp != session.first_timestamp %} data-timestamp-end="{{ session.last_timestamp }}"{% endif %}>{{ session.timestamp_range }}</span> • {{ session.message_count }} messages
-                {% if session.token_summary %}
-                <br>{{ session.token_summary }}
-                {% endif %}
-            </div>
-            {% if session.first_user_message %}
-            <pre class='session-preview'>
-                {{- session.first_user_message|e -}}
-            </pre>
+            {% if session.parent_session_id and mode == "toc" and session.parent_message_index is defined and session.parent_message_index is not none %}
+            <a href='#msg-d-{{ session.parent_message_index }}' class='session-backlink'>&#x21b3; continues from {{ session.parent_session_id[:8] }}</a>
+            {% elif session.parent_session_id %}
+            <span class='session-backlink'>&#x21b3; continues from {{ session.parent_session_id[:8] }}</span>
             {% endif %}
-        </a>
+            <a href='{{ link_prefix }}{% if mode == "expandable" %}session-{{ session.id }}.html{% else %}#msg-d-{{ session.message_index }}{% endif %}'
+                class='session-link'>
+                <div class='session-link-title'>
+                    {% if session.summary %}
+                    {{ session.summary }} •
+                    {% endif %}
+                    {{ session.id[:8] }}
+                </div>
+                <div class='session-link-meta'>
+                    <span class="timestamp"{% if session.first_timestamp %} data-timestamp="{{ session.first_timestamp }}"{% endif %}{% if session.last_timestamp and session.last_timestamp != session.first_timestamp %} data-timestamp-end="{{ session.last_timestamp }}"{% endif %}>{{ session.timestamp_range }}</span> • {{ session.message_count }} messages
+                    {% if session.token_summary %}
+                    <br>{{ session.token_summary }}
+                    {% endif %}
+                </div>
+                {% if session.first_user_message %}
+                <pre class='session-preview'>
+                    {{- session.first_user_message|e -}}
+                </pre>
+                {% endif %}
+            </a>
+        </div>
         {% endfor %}
     </div>
 </div>

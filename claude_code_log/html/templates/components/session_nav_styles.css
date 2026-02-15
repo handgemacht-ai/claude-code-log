@@ -49,8 +49,9 @@
 }
 
 /* Child session hierarchy */
-.session-child {
+.session-nav-item.session-child {
     border-left: 3px solid var(--accent-color, #6c757d);
+    padding-left: 8px;
 }
 
 .session-backlink {
@@ -58,6 +59,12 @@
     color: #6c757d;
     display: block;
     margin-bottom: 2px;
+    text-decoration: none;
+}
+
+a.session-backlink:hover {
+    color: var(--text-secondary);
+    text-decoration: underline;
 }
 
 /* Project-specific session navigation */

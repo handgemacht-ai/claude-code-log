@@ -96,6 +96,32 @@ Where `s1`, `s2`, `s3` are synthesized session header messages.
 - **Backlinks** on session headers: "Continues from message X in Session Y"
   (shown on `s2` and `s3`)
 
+#### Current: `d-{index}` anchors (combined transcript only)
+
+Backlinks use `#msg-d-{N}` anchors which are sequential indices assigned
+during rendering. These are stable within a single render pass (the
+combined transcript is always regenerated whole), but shift when any
+session grows.
+
+This works for the combined transcript because all links and targets are
+on the same page. Individual session pages have independent indices.
+
+#### Future: UUID-based anchors for cross-page linking
+
+Each session's DAG-line can grow independently. If session B grows and
+its page is regenerated, `d-{index}` values shift — breaking any link
+from session A's (cached) page into B.
+
+When cross-session-page links are needed (e.g. session page A links to
+a junction point in session page B), add stable UUID-based anchors:
+
+```html
+<div id="msg-{uuid}" ...>  <!-- stable, never shifts -->
+```
+
+Use `msg-{uuid}` on junction points and attachment messages. Keep
+`msg-d-{N}` for everything else (session nav, timeline, etc.).
+
 ### Deduplication
 
 When session 2 resumes session 1, Claude Code may replay prefix messages

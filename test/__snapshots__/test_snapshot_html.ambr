@@ -298,8 +298,9 @@
   }
   
   /* Child session hierarchy */
-  .session-child {
+  .session-nav-item.session-child {
       border-left: 3px solid var(--accent-color, #6c757d);
+      padding-left: 8px;
   }
   
   .session-backlink {
@@ -307,6 +308,12 @@
       color: #6c757d;
       display: block;
       margin-bottom: 2px;
+      text-decoration: none;
+  }
+  
+  a.session-backlink:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
   }
   
   /* Project-specific session navigation */
@@ -1750,24 +1757,26 @@
   
       <div class='session-nav'>
           
-          <a href='-Users-test-project-alpha/session-session-abc12345.html'
-              class='session-link'
+          <div class='session-nav-item'
               >
-              <div class='session-link-title'>
-                  
-                  
-                  Test session summary •
-                  
-                  session-
-              </div>
-              <div class='session-link-meta'>
-                  <span class="timestamp">2025-01-15 10:00:00</span> • 10 messages
-                  
-              </div>
               
-              <pre class='session-preview'>Hello, this is a test</pre>
-              
-          </a>
+              <a href='-Users-test-project-alpha/session-session-abc12345.html'
+                  class='session-link'>
+                  <div class='session-link-title'>
+                      
+                      Test session summary •
+                      
+                      session-
+                  </div>
+                  <div class='session-link-meta'>
+                      <span class="timestamp">2025-01-15 10:00:00</span> • 10 messages
+                      
+                  </div>
+                  
+                  <pre class='session-preview'>Hello, this is a test</pre>
+                  
+              </a>
+          </div>
           
       </div>
   </div>
@@ -3205,8 +3214,9 @@
   }
   
   /* Child session hierarchy */
-  .session-child {
+  .session-nav-item.session-child {
       border-left: 3px solid var(--accent-color, #6c757d);
+      padding-left: 8px;
   }
   
   .session-backlink {
@@ -3214,6 +3224,12 @@
       color: #6c757d;
       display: block;
       margin-bottom: 2px;
+      text-decoration: none;
+  }
+  
+  a.session-backlink:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
   }
   
   /* Project-specific session navigation */
@@ -8194,8 +8210,9 @@
   }
   
   /* Child session hierarchy */
-  .session-child {
+  .session-nav-item.session-child {
       border-left: 3px solid var(--accent-color, #6c757d);
+      padding-left: 8px;
   }
   
   .session-backlink {
@@ -8203,6 +8220,12 @@
       color: #6c757d;
       display: block;
       margin-bottom: 2px;
+      text-decoration: none;
+  }
+  
+  a.session-backlink:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
   }
   
   /* Project-specific session navigation */
@@ -13279,8 +13302,9 @@
   }
   
   /* Child session hierarchy */
-  .session-child {
+  .session-nav-item.session-child {
       border-left: 3px solid var(--accent-color, #6c757d);
+      padding-left: 8px;
   }
   
   .session-backlink {
@@ -13288,6 +13312,12 @@
       color: #6c757d;
       display: block;
       margin-bottom: 2px;
+      text-decoration: none;
+  }
+  
+  a.session-backlink:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
   }
   
   /* Project-specific session navigation */
@@ -15170,45 +15200,49 @@
   
       <div class='session-nav'>
           
-          <a href='#msg-d-0'
-              class='session-link'
+          <div class='session-nav-item'
               >
-              <div class='session-link-title'>
-                  
-                  
-                  session_
-              </div>
-              <div class='session-link-meta'>
-                  <span class="timestamp" data-timestamp="2025-07-03T15:50:07.874717Z" data-timestamp-end="2025-07-03T15:54:07.874717Z">2025-07-03 15:50:07 - 2025-07-03 15:54:07</span> • 3 messages
-                  
-                  <br>Token usage – Input: 20 | Output: 35
-                  
-              </div>
               
-              <pre class='session-preview'>This is from a different session file to test multi-session handling.</pre>
-              
-          </a>
+              <a href='#msg-d-0'
+                  class='session-link'>
+                  <div class='session-link-title'>
+                      
+                      session_
+                  </div>
+                  <div class='session-link-meta'>
+                      <span class="timestamp" data-timestamp="2025-07-03T15:50:07.874717Z" data-timestamp-end="2025-07-03T15:54:07.874717Z">2025-07-03 15:50:07 - 2025-07-03 15:54:07</span> • 3 messages
+                      
+                      <br>Token usage – Input: 20 | Output: 35
+                      
+                  </div>
+                  
+                  <pre class='session-preview'>This is from a different session file to test multi-session handling.</pre>
+                  
+              </a>
+          </div>
           
-          <a href='#msg-d-4'
-              class='session-link'
+          <div class='session-nav-item'
               >
-              <div class='session-link-title'>
-                  
-                  
-                  User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. •
-                  
-                  test_ses
-              </div>
-              <div class='session-link-meta'>
-                  <span class="timestamp" data-timestamp="2025-07-03T15:50:07.874907Z" data-timestamp-end="2025-07-03T16:10:07.874907Z">2025-07-03 15:50:07 - 2025-07-03 16:10:07</span> • 11 messages
-                  
-                  <br>Token usage – Input: 218 | Output: 445
-                  
-              </div>
               
-              <pre class='session-preview'>Hello Claude! Can you help me understand how Python decorators work?</pre>
-              
-          </a>
+              <a href='#msg-d-4'
+                  class='session-link'>
+                  <div class='session-link-title'>
+                      
+                      User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. •
+                      
+                      test_ses
+                  </div>
+                  <div class='session-link-meta'>
+                      <span class="timestamp" data-timestamp="2025-07-03T15:50:07.874907Z" data-timestamp-end="2025-07-03T16:10:07.874907Z">2025-07-03 15:50:07 - 2025-07-03 16:10:07</span> • 11 messages
+                      
+                      <br>Token usage – Input: 218 | Output: 445
+                      
+                  </div>
+                  
+                  <pre class='session-preview'>Hello Claude! Can you help me understand how Python decorators work?</pre>
+                  
+              </a>
+          </div>
           
       </div>
   </div>
@@ -18409,8 +18443,9 @@
   }
   
   /* Child session hierarchy */
-  .session-child {
+  .session-nav-item.session-child {
       border-left: 3px solid var(--accent-color, #6c757d);
+      padding-left: 8px;
   }
   
   .session-backlink {
@@ -18418,6 +18453,12 @@
       color: #6c757d;
       display: block;
       margin-bottom: 2px;
+      text-decoration: none;
+  }
+  
+  a.session-backlink:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
   }
   
   /* Project-specific session navigation */

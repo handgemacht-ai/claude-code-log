@@ -774,6 +774,10 @@ def prepare_session_navigation(
 
         # Get hierarchy data
         hier = (session_hierarchy or {}).get(session_id, {})
+        parent_sid = hier.get("parent_session_id")
+        parent_message_index = (
+            ctx.session_first_message.get(parent_sid) if parent_sid else None
+        )
 
         session_nav.append(
             {
@@ -788,7 +792,8 @@ def prepare_session_navigation(
                 if session_info["first_user_message"] != ""
                 else "[No user message found in session.]",
                 "token_summary": token_summary,
-                "parent_session_id": hier.get("parent_session_id"),
+                "parent_session_id": parent_sid,
+                "parent_message_index": parent_message_index,
                 "depth": hier.get("depth", 0),
             }
         )
@@ -1844,6 +1849,9 @@ def _render_messages(
             )
             hier = (session_hierarchy or {}).get(session_id, {})
             parent_sid = hier.get("parent_session_id")
+            parent_msg_idx = (
+                ctx.session_first_message.get(parent_sid) if parent_sid else None
+            )
             session_header_content = SessionHeaderMessage(
                 session_header_meta,
                 title=session_title,
@@ -1853,6 +1861,7 @@ def _render_messages(
                 parent_session_summary=(session_summaries or {}).get(parent_sid)
                 if parent_sid
                 else None,
+                parent_message_index=parent_msg_idx,
                 depth=hier.get("depth", 0),
                 attachment_uuid=hier.get("attachment_uuid"),
             )

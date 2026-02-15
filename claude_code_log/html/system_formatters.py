@@ -91,10 +91,18 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
     if content.parent_session_id:
         parent_label = content.parent_session_summary or content.parent_session_id[:8]
         escaped_parent = html.escape(parent_label)
-        return (
-            f'<span class="session-backlink">&#x21b3; continues from '
-            f"{escaped_parent}</span>{escaped_title}"
-        )
+        if content.parent_message_index is not None:
+            link = (
+                f'<a href="#msg-d-{content.parent_message_index}" '
+                f'class="session-backlink">&#x21b3; continues from '
+                f"{escaped_parent}</a>"
+            )
+        else:
+            link = (
+                f'<span class="session-backlink">&#x21b3; continues from '
+                f"{escaped_parent}</span>"
+            )
+        return f"{link}{escaped_title}"
     return escaped_title
 
 

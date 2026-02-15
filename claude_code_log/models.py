@@ -664,6 +664,7 @@ class SessionHeaderMessage(MessageContent):
     summary: Optional[str] = None
     parent_session_id: Optional[str] = None
     parent_session_summary: Optional[str] = None
+    parent_message_index: Optional[int] = None  # d-{N} index for backlink
     depth: int = 0  # 0 = root, 1 = child, etc.
     attachment_uuid: Optional[str] = None
 
