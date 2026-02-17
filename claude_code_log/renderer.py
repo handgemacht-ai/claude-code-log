@@ -839,6 +839,23 @@ def prepare_session_navigation(
 
     # Add branch pseudo-sessions from hierarchy
     if session_hierarchy:
+        # Collect first user message preview for each branch
+        branch_previews: dict[str, str] = {}
+        for msg in ctx.messages:
+            rsid = msg.render_session_id
+            if rsid in branch_previews or not isinstance(msg.content, UserTextMessage):
+                continue
+            hier = session_hierarchy.get(rsid, {})
+            if hier.get("is_branch"):
+                # Extract text from UserTextMessage items
+                preview_parts = []
+                for item in msg.content.items:
+                    if hasattr(item, "text"):
+                        preview_parts.append(item.text)
+                preview = " ".join(preview_parts).strip()
+                if preview:
+                    branch_previews[rsid] = create_session_preview(preview)
+
         # Group branches by their junction point (attachment_uuid)
         junction_branches: dict[str, list[dict[str, Any]]] = {}
         for sid, hier in session_hierarchy.items():
@@ -906,7 +923,10 @@ def prepare_session_navigation(
                     "first_timestamp": "",
                     "last_timestamp": "",
                     "message_count": 0,
-                    "first_user_message": f"Branch {branch_sid.split('@')[-1][:8]}",
+                    "first_user_message": branch_previews.get(
+                        branch_sid,
+                        f"Branch {branch_sid.split('@')[-1][:8]}",
+                    ),
                     "token_summary": "",
                     "parent_session_id": parent_sid,
                     "parent_message_index": fork_msg_idx,
@@ -1944,7 +1964,20 @@ def _render_messages(
                     parent_msg_idx = ctx.session_first_message.get(parent_sid)
                 original_sid = b_hier.get("original_session_id", message.sessionId)
                 branch_summary = (session_summaries or {}).get(original_sid)
-                branch_title = f"Branch • {branch_sid.split('@')[-1][:8]}"
+                # Extract preview from the branch's first user message
+                branch_preview = ""
+                if as_user_entry(message):
+                    branch_text = extract_text_content(message.message.content)
+                    if branch_text:
+                        branch_preview = create_session_preview(branch_text)
+                # Truncate for header title (keep full preview for nav)
+                if branch_preview:
+                    short = branch_preview[:80]
+                    if len(branch_preview) > 80:
+                        short += "..."
+                    branch_title = f"Branch • {short}"
+                else:
+                    branch_title = f"Branch • {branch_sid.split('@')[-1][:8]}"
 
                 branch_header_meta = MessageMeta(
                     session_id=branch_sid,
