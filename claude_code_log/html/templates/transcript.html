@@ -99,7 +99,7 @@
     {% for message, message_title, html_content, formatted_timestamp in messages %}
     {% if is_session_header(message) %}
     <div class="session-divider"></div>
-    <div class='message session-header' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}' id='msg-{{ message.message_id }}'>
+    <div class='message session-header{% if message.is_branch_header %} branch-header{% endif %}' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>Session: {{ html_content|safe }}</div>
         {% if message.has_children %}
         <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='session-header'>

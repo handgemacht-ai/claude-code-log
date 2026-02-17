@@ -565,6 +565,11 @@
     font-size: 1.2em;
 }
 
+/* Branch headers (within-session forks) — visually subordinate */
+.session-header.branch-header {
+    margin-left: 2em;
+}
+
 .session-subtitle {
     font-size: 0.9em;
     color: var(--text-muted);

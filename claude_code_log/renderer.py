@@ -208,6 +208,11 @@ class TemplateMessage:
         return isinstance(self.content, SessionHeaderMessage)
 
     @property
+    def is_branch_header(self) -> bool:
+        """Check if this is a branch (within-session fork) header."""
+        return isinstance(self.content, SessionHeaderMessage) and self.content.is_branch
+
+    @property
     def has_children(self) -> bool:
         """Check if this message has any children."""
         return bool(self.children)
@@ -758,6 +763,48 @@ def prepare_session_summaries(messages: list[TranscriptEntry]) -> dict[str, str]
     return session_summaries
 
 
+def _fork_point_preview(fork_msg: "TemplateMessage", ctx: RenderingContext) -> str:
+    """Get a meaningful preview for a fork point message.
+
+    If the fork point is a system hook (common with /rewind), walk up
+    to the parent message to find more descriptive content.
+    """
+    msg = fork_msg
+    # Walk up past system hooks to find a meaningful message
+    for _ in range(3):  # limit walk depth
+        if not isinstance(
+            msg.content, (SystemMessage, HookSummaryMessage, SessionHeaderMessage)
+        ):
+            break
+        # Find parent by looking at parent_uuid
+        parent_uuid = msg.meta.parent_uuid
+        if not parent_uuid:
+            break
+        parent = next((m for m in ctx.messages if m.meta.uuid == parent_uuid), None)
+        if parent is None:
+            break
+        msg = parent
+
+    # Extract text from the found message
+    content = msg.content
+    if isinstance(content, AssistantTextMessage):
+        parts = [item.text for item in content.items if hasattr(item, "text")]
+        text = " ".join(parts).strip()
+    elif isinstance(content, UserTextMessage):
+        parts = [item.text for item in content.items if hasattr(item, "text")]
+        text = " ".join(parts).strip()
+    else:
+        return ""
+
+    if not text:
+        return ""
+    # Truncate for nav display
+    short = text[:80]
+    if len(text) > 80:
+        short += "..."
+    return short
+
+
 def prepare_session_navigation(
     sessions: dict[str, dict[str, Any]],
     session_order: list[str],
@@ -885,13 +932,24 @@ def prepare_session_navigation(
             ):
                 insert_pos += 1
 
-            # Fork point nav item
+            # Fork point nav item — find the junction message and a
+            # meaningful preview (walk up past system hooks to find it)
             fork_msg_idx = ctx.session_first_message.get(parent_sid)
-            # Try to find the junction message index from the attachment uuid
+            fork_preview = ""
+            fork_msg = None
             for msg in ctx.messages:
                 if msg.meta.uuid == attachment_uuid and msg.message_index is not None:
                     fork_msg_idx = msg.message_index
+                    fork_msg = msg
                     break
+            if fork_msg is not None:
+                fork_preview = _fork_point_preview(fork_msg, ctx)
+
+            fork_label = (
+                f"Fork point • {fork_preview}"
+                if fork_preview
+                else f"Fork point ({len(branches)} branches)"
+            )
 
             fork_nav = {
                 "id": f"fork-{attachment_uuid[:12]}",
@@ -901,7 +959,7 @@ def prepare_session_navigation(
                 "first_timestamp": "",
                 "last_timestamp": "",
                 "message_count": 0,
-                "first_user_message": f"Fork point ({len(branches)} branches)",
+                "first_user_message": fork_label,
                 "token_summary": "",
                 "parent_session_id": parent_sid,
                 "parent_message_index": ctx.session_first_message.get(parent_sid),
@@ -1984,15 +2042,21 @@ def _render_messages(
                     timestamp="",
                     uuid="",
                 )
+                # Get fork point preview for backlink text
+                fork_context = ""
+                if attachment_uuid:
+                    for fmsg in ctx.messages:
+                        if fmsg.meta.uuid == attachment_uuid:
+                            fork_context = _fork_point_preview(fmsg, ctx)
+                            break
+
                 branch_header_content = SessionHeaderMessage(
                     branch_header_meta,
                     title=branch_title,
                     session_id=branch_sid,
                     summary=branch_summary,
                     parent_session_id=parent_sid,
-                    parent_session_summary=(session_summaries or {}).get(parent_sid)
-                    if parent_sid
-                    else None,
+                    parent_session_summary=fork_context or None,
                     parent_message_index=parent_msg_idx,
                     depth=b_hier.get("depth", 0),
                     attachment_uuid=b_hier.get("attachment_uuid"),
