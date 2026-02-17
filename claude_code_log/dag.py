@@ -45,6 +45,8 @@ class SessionDAGLine:
     first_timestamp: str
     parent_session_id: Optional[str] = None
     attachment_uuid: Optional[str] = None  # UUID in parent where this attaches
+    is_branch: bool = False  # True for within-session fork branches
+    original_session_id: Optional[str] = None  # Original session_id before fork split
 
 
 @dataclass
@@ -170,6 +172,76 @@ def build_dag(nodes: dict[str, MessageNode]) -> None:
 # =============================================================================
 
 
+def _walk_session_with_forks(
+    root: MessageNode,
+    session_id: str,
+    session_uuids: set[str],
+    nodes: dict[str, MessageNode],
+) -> list[SessionDAGLine]:
+    """Walk a session's DAG from root, splitting into separate DAG-lines at fork points.
+
+    Uses a queue-based approach to handle nested forks:
+    1. Start with (root_uuid, session_id, None) in the queue
+    2. Walk chain following single same-session children
+    3. On fork (multiple same-session children): stop chain at fork point,
+       push each child as a new branch
+    4. Update MessageNode.session_id for branch nodes
+
+    Returns:
+        List of SessionDAGLine objects (trunk first, then branches)
+    """
+    # Queue entries: (start_uuid, dag_line_id, parent_dag_line_id)
+    queue: list[tuple[str, str, Optional[str]]] = [(root.uuid, session_id, None)]
+    result: list[SessionDAGLine] = []
+
+    while queue:
+        start_uuid, line_id, parent_line_id = queue.pop(0)
+        chain: list[str] = []
+        current: Optional[MessageNode] = nodes[start_uuid]
+        is_branch = line_id != session_id
+
+        while current is not None:
+            chain.append(current.uuid)
+            # Update session_id for branch nodes (needed for build_session_tree)
+            if is_branch:
+                current.session_id = line_id
+
+            # Find children in the original session
+            same_session_children = [
+                c for c in current.children_uuids if c in session_uuids
+            ]
+            if len(same_session_children) == 0:
+                current = None
+            elif len(same_session_children) == 1:
+                current = nodes[same_session_children[0]]
+            else:
+                # Fork point: stop chain here, push each child as a branch
+                # Sort children chronologically for deterministic order
+                same_session_children.sort(key=lambda c: nodes[c].timestamp)
+                for child_uuid in same_session_children:
+                    branch_id = f"{line_id}@{child_uuid[:12]}"
+                    queue.append((child_uuid, branch_id, line_id))
+                current = None
+
+        if chain:
+            first_ts = nodes[chain[0]].timestamp
+            dag_line = SessionDAGLine(
+                session_id=line_id,
+                uuids=chain,
+                first_timestamp=first_ts,
+                is_branch=is_branch,
+                original_session_id=session_id if is_branch else None,
+            )
+            # Set parent/attachment for branches
+            if is_branch and parent_line_id is not None:
+                parent_uuid = nodes[chain[0]].parent_uuid
+                dag_line.parent_session_id = parent_line_id
+                dag_line.attachment_uuid = parent_uuid
+            result.append(dag_line)
+
+    return result
+
+
 def extract_session_dag_lines(
     nodes: dict[str, MessageNode],
 ) -> dict[str, SessionDAGLine]:
@@ -179,8 +251,9 @@ def extract_session_dag_lines(
     to a different session), then walks forward via children_uuids filtering
     to same-session children.
 
-    Verifies linearity: each node has at most one child in the same session.
-    Falls back to timestamp sort if violated.
+    Within-session forks (multiple same-session children) produce additional
+    DAG-lines with synthetic IDs (e.g., "s1@child_uuid12").
+    Falls back to timestamp sort only when no root is found.
     """
     # Group nodes by session
     session_nodes: dict[str, list[MessageNode]] = {}
@@ -221,50 +294,28 @@ def extract_session_dag_lines(
                 roots[0].uuid,
             )
 
-        # Walk forward from root, following same-session children
-        chain: list[str] = []
-        current: Optional[MessageNode] = roots[0]
-        linear = True
+        # Walk with fork detection
+        dag_lines = _walk_session_with_forks(roots[0], session_id, session_uuids, nodes)
 
-        while current is not None:
-            chain.append(current.uuid)
-            # Find children in the same session
-            same_session_children = [
-                c for c in current.children_uuids if c in session_uuids
-            ]
-            if len(same_session_children) == 0:
-                current = None
-            elif len(same_session_children) == 1:
-                current = nodes[same_session_children[0]]
-            else:
-                logger.warning(
-                    "Session %s: node %s has %d same-session children, "
-                    "linearity violated",
-                    session_id,
-                    current.uuid,
-                    len(same_session_children),
-                )
-                linear = False
-                current = None
-
-        if not linear or len(chain) < len(snodes):
-            if len(chain) < len(snodes):
-                logger.warning(
-                    "Session %s: chain covers %d of %d nodes, "
-                    "falling back to timestamp sort",
-                    session_id,
-                    len(chain),
-                    len(snodes),
-                )
+        # Check coverage: all session nodes should be in some DAG-line
+        covered = sum(len(dl.uuids) for dl in dag_lines)
+        if covered < len(snodes):
+            logger.warning(
+                "Session %s: DAG walk covers %d of %d nodes, "
+                "falling back to timestamp sort",
+                session_id,
+                covered,
+                len(snodes),
+            )
             sorted_nodes = sorted(snodes, key=lambda n: n.timestamp)
-            chain = [n.uuid for n in sorted_nodes]
-
-        first_ts = nodes[chain[0]].timestamp
-        sessions[session_id] = SessionDAGLine(
-            session_id=session_id,
-            uuids=chain,
-            first_timestamp=first_ts,
-        )
+            sessions[session_id] = SessionDAGLine(
+                session_id=session_id,
+                uuids=[n.uuid for n in sorted_nodes],
+                first_timestamp=sorted_nodes[0].timestamp,
+            )
+        else:
+            for dag_line in dag_lines:
+                sessions[dag_line.session_id] = dag_line
 
     return sessions
 

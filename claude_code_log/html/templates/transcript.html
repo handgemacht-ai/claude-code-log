@@ -142,6 +142,13 @@
             </div>
         </div>
         <div class='content{% if markdown %} markdown{% endif %}'>{{ html_content | safe }}</div>
+        {% if message.junction_forward_links %}
+        <div class='junction-forward-links'>
+            {% for branch_sid, branch_idx in message.junction_forward_links %}
+            <a href='#msg-d-{{ branch_idx }}' class='junction-link'>&#x2192; {{ branch_sid.split('@')[-1][:8] }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% if message.has_children %}
         <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='{{ msg_css_class }}'>
             {% if message.immediate_children_count == message.total_descendants_count %}

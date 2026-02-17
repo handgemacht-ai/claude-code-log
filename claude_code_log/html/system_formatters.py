@@ -88,6 +88,14 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
         HTML for the session header display
     """
     escaped_title = html.escape(content.title)
+    if content.is_branch and content.parent_message_index is not None:
+        # Branch header: backlink to fork point
+        link = (
+            f'<a href="#msg-d-{content.parent_message_index}" '
+            f'class="session-backlink branch-backlink">'
+            f"&#x21b3; branch from fork point</a>"
+        )
+        return f"{link}{escaped_title}"
     if content.parent_session_id:
         parent_label = content.parent_session_summary or content.parent_session_id[:8]
         escaped_parent = html.escape(parent_label)

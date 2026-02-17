@@ -667,6 +667,9 @@ class SessionHeaderMessage(MessageContent):
     parent_message_index: Optional[int] = None  # d-{N} index for backlink
     depth: int = 0  # 0 = root, 1 = child, etc.
     attachment_uuid: Optional[str] = None
+    is_branch: bool = False  # True for within-session fork branches
+    original_session_id: Optional[str] = None  # Original session_id before fork split
+    first_uuid: Optional[str] = None  # First UUID in this branch (for forward links)
 
     @property
     def message_type(self) -> str:

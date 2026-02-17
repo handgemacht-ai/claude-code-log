@@ -689,3 +689,257 @@ class TestDegenerateParentUuid:
         assert len(result) == 5
         uuids = [e.uuid for e in result]  # type: ignore[union-attr]
         assert uuids == ["msg_0", "msg_1", "msg_2", "msg_3", "msg_4"]
+
+
+# =============================================================================
+# Test: Within-session fork (dag_within_fork.jsonl)
+# =============================================================================
+
+
+class TestWithinSessionFork:
+    """Tests using dag_within_fork.jsonl: s1(a→b→c) with fork at c.
+
+    c has two same-session children: d→e→f (branch 1) and d'→e' (branch 2).
+    This produces three DAG-lines: trunk (a,b,c), branch 1 (d,e,f), branch 2 (d',e').
+    """
+
+    @pytest.fixture()
+    def tree(self) -> SessionTree:
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_within_fork.jsonl")
+        return build_dag_from_entries(entries)
+
+    def test_trunk_stops_at_fork(self, tree: SessionTree) -> None:
+        """Trunk DAG-line stops at fork point c."""
+        assert "s1" in tree.sessions
+        assert tree.sessions["s1"].uuids == ["a", "b", "c"]
+
+    def test_branch_sessions_created(self, tree: SessionTree) -> None:
+        """Two branch pseudo-sessions are created."""
+        branch_ids = [sid for sid in tree.sessions if "@" in sid]
+        assert len(branch_ids) == 2
+
+    def test_branch1_chain(self, tree: SessionTree) -> None:
+        """Branch 1 (d→e→f) has correct chain."""
+        branch1_id = "s1@d"
+        assert branch1_id in tree.sessions
+        assert tree.sessions[branch1_id].uuids == ["d", "e", "f"]
+
+    def test_branch2_chain(self, tree: SessionTree) -> None:
+        """Branch 2 (d'→e') has correct chain."""
+        branch2_id = "s1@d_prime"
+        assert branch2_id in tree.sessions
+        assert tree.sessions[branch2_id].uuids == ["d_prime", "e_prime"]
+
+    def test_branches_are_marked(self, tree: SessionTree) -> None:
+        """Branch DAG-lines have is_branch=True and original_session_id set."""
+        for sid in tree.sessions:
+            if "@" in sid:
+                dl = tree.sessions[sid]
+                assert dl.is_branch is True
+                assert dl.original_session_id == "s1"
+            else:
+                dl = tree.sessions[sid]
+                assert dl.is_branch is False
+                assert dl.original_session_id is None
+
+    def test_trunk_is_root(self, tree: SessionTree) -> None:
+        """Only trunk s1 is a root session."""
+        assert tree.roots == ["s1"]
+
+    def test_branches_parent_is_trunk(self, tree: SessionTree) -> None:
+        """Both branches have parent_session_id = trunk."""
+        for sid in tree.sessions:
+            if "@" in sid:
+                assert tree.sessions[sid].parent_session_id == "s1"
+                assert tree.sessions[sid].attachment_uuid == "c"
+
+    def test_junction_at_fork_point(self, tree: SessionTree) -> None:
+        """Fork point c is a junction point with both branches as targets."""
+        assert "c" in tree.junction_points
+        jp = tree.junction_points["c"]
+        assert jp.session_id == "s1"
+        assert len(jp.target_sessions) == 2
+        assert "s1@d" in jp.target_sessions
+        assert "s1@d_prime" in jp.target_sessions
+
+    def test_traversal_order(self, tree: SessionTree) -> None:
+        """Depth-first: trunk, then branch 1 at junction, then branch 2."""
+        result = traverse_session_tree(tree)
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        assert uuids == ["a", "b", "c", "d", "e", "f", "d_prime", "e_prime"]
+
+    def test_node_session_ids_updated(self, tree: SessionTree) -> None:
+        """MessageNode.session_id is updated for branch nodes."""
+        assert tree.nodes["a"].session_id == "s1"
+        assert tree.nodes["b"].session_id == "s1"
+        assert tree.nodes["c"].session_id == "s1"
+        assert tree.nodes["d"].session_id == "s1@d"
+        assert tree.nodes["e"].session_id == "s1@d"
+        assert tree.nodes["f"].session_id == "s1@d"
+        assert tree.nodes["d_prime"].session_id == "s1@d_prime"
+        assert tree.nodes["e_prime"].session_id == "s1@d_prime"
+
+    def test_traversal_covers_all_entries(self, tree: SessionTree) -> None:
+        """All 8 entries should appear in traversal."""
+        result = traverse_session_tree(tree)
+        assert len(result) == 8
+
+
+class TestNestedFork:
+    """Test nested within-session forks (fork within a fork)."""
+
+    def test_nested_fork(self) -> None:
+        """Session with fork at b, then nested fork at d within first branch."""
+        # a → b (fork) → d (fork) → f, g
+        #             → e
+        data = [
+            {
+                "type": "user",
+                "timestamp": "2025-07-01T10:00:00.000Z",
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "a",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Start"}],
+                },
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2025-07-01T10:01:00.000Z",
+                "parentUuid": "a",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "b",
+                "requestId": "req_1",
+                "message": {
+                    "id": "b",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-sonnet",
+                    "content": [{"type": "text", "text": "Fork point 1"}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                },
+            },
+            # Branch 1 from b: c → d (fork)
+            {
+                "type": "user",
+                "timestamp": "2025-07-01T10:02:00.000Z",
+                "parentUuid": "b",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "c",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Branch 1"}],
+                },
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2025-07-01T10:03:00.000Z",
+                "parentUuid": "c",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "d",
+                "requestId": "req_2",
+                "message": {
+                    "id": "d",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-sonnet",
+                    "content": [{"type": "text", "text": "Fork point 2"}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                },
+            },
+            # Nested branch 1a from d
+            {
+                "type": "user",
+                "timestamp": "2025-07-01T10:04:00.000Z",
+                "parentUuid": "d",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "f",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Nested branch 1a"}],
+                },
+            },
+            # Nested branch 1b from d
+            {
+                "type": "user",
+                "timestamp": "2025-07-01T10:05:00.000Z",
+                "parentUuid": "d",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "g",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Nested branch 1b"}],
+                },
+            },
+            # Branch 2 from b
+            {
+                "type": "user",
+                "timestamp": "2025-07-01T10:06:00.000Z",
+                "parentUuid": "b",
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": "e",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Branch 2"}],
+                },
+            },
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        tree = build_dag_from_entries(entries)
+
+        # Trunk: a, b (stops at fork)
+        assert tree.sessions["s1"].uuids == ["a", "b"]
+
+        # Branch 1 from b: c, d (stops at nested fork)
+        branch1_id = "s1@c"
+        assert branch1_id in tree.sessions
+        assert tree.sessions[branch1_id].uuids == ["c", "d"]
+
+        # Nested branches from d (within branch 1)
+        nested1a_id = f"{branch1_id}@f"
+        nested1b_id = f"{branch1_id}@g"
+        assert nested1a_id in tree.sessions
+        assert tree.sessions[nested1a_id].uuids == ["f"]
+        assert nested1b_id in tree.sessions
+        assert tree.sessions[nested1b_id].uuids == ["g"]
+
+        # Branch 2 from b
+        branch2_id = "s1@e"
+        assert branch2_id in tree.sessions
+        assert tree.sessions[branch2_id].uuids == ["e"]
+
+        # Traversal
+        result = traverse_session_tree(tree)
+        uuids = [e.uuid for e in result]  # type: ignore[union-attr]
+        assert uuids == ["a", "b", "c", "d", "f", "g", "e"]

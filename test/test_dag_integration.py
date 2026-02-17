@@ -613,3 +613,98 @@ class TestProgressChainRepairIntegration:
 
         # All 4 real entries should be in DAG order
         assert uuids == ["a", "b", "c", "d"]
+
+
+# =============================================================================
+# Test: Within-session fork detection in real data
+# =============================================================================
+
+
+class TestWithinSessionForkRealData:
+    """Test fork detection using real session 03eb5929 which has a fork at eb84."""
+
+    def test_fork_detected_at_eb84(self) -> None:
+        """The real data has a fork at eb84 with two children (5270, 9edc)."""
+        from claude_code_log.dag import build_dag_from_entries
+
+        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        dag_entries = [e for e in result if hasattr(e, "uuid")]
+        tree = build_dag_from_entries(dag_entries)
+
+        # Find the fork junction at eb84
+        fork_jps = [
+            (uuid, jp)
+            for uuid, jp in tree.junction_points.items()
+            if uuid.startswith("eb84") and any("@" in t for t in jp.target_sessions)
+        ]
+        assert len(fork_jps) == 1, (
+            f"Expected 1 fork junction at eb84, got {len(fork_jps)}"
+        )
+        uuid, jp = fork_jps[0]
+        assert len(jp.target_sessions) == 2
+
+    def test_no_linearity_warnings(self, caplog: Any) -> None:
+        """Fork handling should produce no linearity violation warnings."""
+        import logging
+        from claude_code_log.dag import build_dag_from_entries
+
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+            dag_entries = [e for e in result if hasattr(e, "uuid")]
+            build_dag_from_entries(dag_entries)
+
+        linearity_warnings = [
+            r.message for r in caplog.records if "linearity" in r.message
+        ]
+        assert linearity_warnings == []
+
+    def test_branch_sessions_created(self) -> None:
+        """Branch pseudo-sessions are created for the fork."""
+        from claude_code_log.dag import build_dag_from_entries
+
+        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        dag_entries = [e for e in result if hasattr(e, "uuid")]
+        tree = build_dag_from_entries(dag_entries)
+
+        branch_sessions = [sid for sid in tree.sessions if "@" in sid]
+        assert len(branch_sessions) >= 2
+
+        for sid in branch_sessions:
+            dl = tree.sessions[sid]
+            assert dl.is_branch is True
+            assert dl.original_session_id is not None
+            assert len(dl.uuids) > 0
+
+    def test_end_to_end_rendering_with_fork(self) -> None:
+        """Full rendering pipeline produces branch headers for fork."""
+        from claude_code_log.renderer import generate_template_messages
+        from claude_code_log.models import SessionHeaderMessage
+
+        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        root_messages, session_nav, ctx = generate_template_messages(result)
+
+        # Find branch headers
+        branch_headers = [
+            tm
+            for tm in root_messages
+            if isinstance(tm.content, SessionHeaderMessage) and tm.content.is_branch
+        ]
+        assert len(branch_headers) >= 2
+
+    def test_within_fork_coverage(self) -> None:
+        """All entries are covered by DAG-lines (trunk + branches)."""
+        from claude_code_log.dag import build_dag_from_entries
+
+        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        dag_entries = [e for e in result if hasattr(e, "uuid")]
+        tree = build_dag_from_entries(dag_entries)
+
+        # Should have both trunk and branch pseudo-sessions
+        real_sessions = [sid for sid in tree.sessions if "@" not in sid]
+        branch_sessions = [sid for sid in tree.sessions if "@" in sid]
+        assert len(real_sessions) >= 1
+        assert len(branch_sessions) >= 2
+
+        # All entries should be covered
+        total_in_daglines = sum(len(dl.uuids) for dl in tree.sessions.values())
+        assert total_in_daglines == len(tree.nodes)
