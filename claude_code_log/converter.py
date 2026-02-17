@@ -50,6 +50,68 @@ def get_file_extension(format: str) -> str:
 
 
 # =============================================================================
+# Progress Chain Repair
+# =============================================================================
+
+
+def _scan_file_progress(path: Path, chain: dict[str, Optional[str]]) -> None:
+    """Extract progress entry uuid->parentUuid from a single JSONL file."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if "progress" not in line:  # Fast pre-filter
+                    continue
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                    if isinstance(d, dict) and d.get("type") == "progress":
+                        uuid = d.get("uuid")
+                        if uuid:
+                            chain[uuid] = d.get("parentUuid")
+                except json.JSONDecodeError:
+                    continue
+    except FileNotFoundError:
+        pass  # Race condition: file may have been deleted
+
+
+def _scan_progress_chains(*paths: Path) -> dict[str, Optional[str]]:
+    """Fast scan of JSONL files for progress entry uuid->parentUuid mappings."""
+    chain: dict[str, Optional[str]] = {}
+    for path in paths:
+        if path.is_file():
+            _scan_file_progress(path, chain)
+        elif path.is_dir():
+            for f in path.glob("*.jsonl"):
+                _scan_file_progress(f, chain)
+            # Also scan subagent directories
+            for f in path.glob("*/subagents/*.jsonl"):
+                _scan_file_progress(f, chain)
+    return chain
+
+
+def _repair_parent_chains(
+    messages: list[TranscriptEntry],
+    progress_chain: dict[str, Optional[str]],
+) -> None:
+    """Repair parentUuid fields that point to progress entries.
+
+    Walks the progress chain to find the nearest non-progress ancestor.
+    Mutates entries in place (Pydantic v2 models are mutable by default).
+    """
+    if not progress_chain:
+        return
+    for msg in messages:
+        parent = getattr(msg, "parentUuid", None)
+        if parent and parent in progress_chain:
+            current: Optional[str] = parent
+            while current is not None and current in progress_chain:
+                current = progress_chain[current]
+            msg.parentUuid = current  # type: ignore[union-attr]
+
+
+# =============================================================================
 # Transcript Loading Functions
 # =============================================================================
 
@@ -332,6 +394,10 @@ def load_directory_transcripts(
             jsonl_file, cache_manager, from_date, to_date, silent
         )
         all_messages.extend(messages)
+
+    # Repair parent chains: progress entries create UUID gaps
+    progress_chain = _scan_progress_chains(directory_path)
+    _repair_parent_chains(all_messages, progress_chain)
 
     # Partition: sidechain entries excluded from DAG (Phase C scope)
     sidechain_entries = [e for e in all_messages if getattr(e, "isSidechain", False)]
@@ -963,6 +1029,9 @@ def convert_jsonl_to(
         if output_path is None:
             output_path = input_path.with_suffix(f".{ext}")
         messages = load_transcript(input_path, silent=silent)
+        # Repair progress chain gaps for single-file mode
+        progress_chain = _scan_progress_chains(input_path)
+        _repair_parent_chains(messages, progress_chain)
         title = f"Claude Transcript - {input_path.stem}"
         cache_was_updated = False  # No cache in single file mode
     else:

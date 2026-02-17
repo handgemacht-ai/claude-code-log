@@ -5,11 +5,16 @@ results when wired into the converter's directory-mode loading.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 
-from claude_code_log.converter import load_directory_transcripts
+from claude_code_log.converter import (
+    load_directory_transcripts,
+    _scan_progress_chains,
+    _repair_parent_chains,
+)
 from claude_code_log.models import (
     SummaryTranscriptEntry,
     QueueOperationTranscriptEntry,
@@ -389,3 +394,222 @@ class TestEndToEndHtmlWithDag:
         # Also verify template generation works
         root_messages, session_nav, context = generate_template_messages(messages)
         assert len(root_messages) > 0
+
+
+# =============================================================================
+# Test: Progress chain repair
+# =============================================================================
+
+# Path to real project test data with progress entries
+EXPERIMENTS_IDEAS_DIR = (
+    Path(__file__).parent / "test_data" / "real_projects" / "-experiments-ideas"
+)
+
+
+def _make_progress_entry(uuid: str, parent_uuid: str | None = None) -> dict[str, Any]:
+    """Helper to create a progress transcript entry dict."""
+    return {
+        "type": "progress",
+        "timestamp": "2025-07-01T10:00:00.000Z",
+        "uuid": uuid,
+        "parentUuid": parent_uuid,
+        "sessionId": "s1",
+        "content": {"type": "hook_progress"},
+    }
+
+
+class TestScanProgressChains:
+    """Unit tests for _scan_progress_chains helper."""
+
+    def test_scan_empty_directory(self, tmp_path: Path) -> None:
+        """Empty directory produces empty chain."""
+        chain = _scan_progress_chains(tmp_path)
+        assert chain == {}
+
+    def test_scan_file_with_no_progress(self, tmp_path: Path) -> None:
+        """File with no progress entries produces empty chain."""
+        entries = [
+            _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", None),
+        ]
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+        chain = _scan_progress_chains(tmp_path)
+        assert chain == {}
+
+    def test_scan_file_with_progress(self, tmp_path: Path) -> None:
+        """File with progress entries produces correct chain."""
+        entries = [
+            _make_progress_entry("p1", None),
+            _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", "p1"),
+            _make_progress_entry("p2", "a"),
+        ]
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+        chain = _scan_progress_chains(tmp_path)
+        assert chain == {"p1": None, "p2": "a"}
+
+    def test_scan_single_file_path(self, tmp_path: Path) -> None:
+        """Can scan a single file (not just a directory)."""
+        entries = [_make_progress_entry("p1", "parent1")]
+        path = tmp_path / "session.jsonl"
+        _write_jsonl(path, entries)
+        chain = _scan_progress_chains(path)
+        assert chain == {"p1": "parent1"}
+
+    def test_scan_real_data(self) -> None:
+        """Scan real test data with 11 progress entries."""
+        chain = _scan_progress_chains(EXPERIMENTS_IDEAS_DIR)
+        assert len(chain) == 11
+
+
+class TestRepairParentChains:
+    """Unit tests for _repair_parent_chains helper."""
+
+    def test_no_progress_noop(self, tmp_path: Path) -> None:
+        """No progress entries means no repairs needed."""
+        entries = [
+            _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", None),
+            _make_assistant_entry("b", "s1", "2025-07-01T10:01:00.000Z", "a"),
+        ]
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+        from claude_code_log.converter import load_transcript
+
+        messages = load_transcript(tmp_path / "session.jsonl", silent=True)
+        _repair_parent_chains(messages, {})
+        assert messages[0].parentUuid is None
+        assert messages[1].parentUuid == "a"
+
+    def test_single_progress_gap(self, tmp_path: Path) -> None:
+        """Single progress gap is bridged."""
+        entries = [
+            _make_progress_entry("p1", None),
+            _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", "p1"),
+        ]
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+        from claude_code_log.converter import load_transcript
+
+        messages = load_transcript(tmp_path / "session.jsonl", silent=True)
+        progress_chain = {"p1": None}
+        _repair_parent_chains(messages, progress_chain)
+        # user(a).parentUuid was "p1" (progress), repaired to None
+        assert messages[0].parentUuid is None
+
+    def test_chained_progress_gap(self, tmp_path: Path) -> None:
+        """Chain of consecutive progress entries is fully bridged."""
+        # real_parent → progress(p1) → progress(p2) → user(a)
+        entries = [
+            _make_user_entry("real_parent", "s1", "2025-07-01T10:00:00.000Z", None),
+            _make_progress_entry("p1", "real_parent"),
+            _make_progress_entry("p2", "p1"),
+            _make_user_entry("a", "s1", "2025-07-01T10:01:00.000Z", "p2"),
+        ]
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+        from claude_code_log.converter import load_transcript
+
+        messages = load_transcript(tmp_path / "session.jsonl", silent=True)
+        progress_chain = {"p1": "real_parent", "p2": "p1"}
+        _repair_parent_chains(messages, progress_chain)
+        # user(a).parentUuid was "p2", should walk through p2→p1→real_parent
+        user_a = [m for m in messages if getattr(m, "uuid", None) == "a"][0]
+        assert user_a.parentUuid == "real_parent"
+
+
+class TestProgressChainRepairIntegration:
+    """Integration tests for progress chain repair in load_directory_transcripts."""
+
+    def test_progress_chain_repair_directory(self, caplog: Any) -> None:
+        """Progress entries are bridged: no orphan warnings from DAG build."""
+        with caplog.at_level(logging.WARNING):
+            result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+
+        # Should have loaded entries (41 non-progress, non-file-history entries)
+        assert len(result) > 0
+
+        # No orphan warnings should appear in logs
+        orphan_warnings = [
+            r.message for r in caplog.records if "Orphan node" in r.message
+        ]
+        assert orphan_warnings == [], (
+            f"Expected no orphan warnings, got: {orphan_warnings}"
+        )
+
+    def test_progress_chain_repair_single_file(self) -> None:
+        """Single-file mode also repairs progress chains."""
+        from claude_code_log.converter import (
+            load_transcript,
+            _scan_progress_chains,
+            _repair_parent_chains,
+        )
+
+        single_file = (
+            EXPERIMENTS_IDEAS_DIR / "03eb5929-52b3-4b13-ada3-b93ae35806b8.jsonl"
+        )
+        messages = load_transcript(single_file, silent=True)
+
+        # Before repair: some entries have parentUuid pointing to progress UUIDs
+        progress_chain = _scan_progress_chains(single_file)
+        assert len(progress_chain) == 11
+
+        # Count entries with progress parents before repair
+        orphan_before = sum(
+            1 for m in messages if getattr(m, "parentUuid", None) in progress_chain
+        )
+        assert orphan_before == 8
+
+        # Repair
+        _repair_parent_chains(messages, progress_chain)
+
+        # After repair: no entries should point to progress UUIDs
+        orphan_after = sum(
+            1 for m in messages if getattr(m, "parentUuid", None) in progress_chain
+        )
+        assert orphan_after == 0
+
+    def test_progress_chain_preserves_entry_count(self) -> None:
+        """Repair doesn't add or remove entries, only mutates parentUuid."""
+        from claude_code_log.converter import load_transcript
+
+        single_file = (
+            EXPERIMENTS_IDEAS_DIR / "03eb5929-52b3-4b13-ada3-b93ae35806b8.jsonl"
+        )
+        messages = load_transcript(single_file, silent=True)
+        count_before = len(messages)
+
+        progress_chain = _scan_progress_chains(single_file)
+        _repair_parent_chains(messages, progress_chain)
+
+        assert len(messages) == count_before
+
+    def test_dag_chain_fully_connected(self) -> None:
+        """After repair, DAG build produces a single connected chain."""
+        from claude_code_log.dag import build_dag_from_entries
+
+        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+
+        # Filter to DAG-eligible entries (those with uuid)
+        dag_entries = [e for e in result if hasattr(e, "uuid")]
+
+        # Build DAG to verify connectivity
+        tree = build_dag_from_entries(dag_entries)
+
+        # Should have sessions in the tree
+        assert len(tree.sessions) >= 1
+
+        # All DAG-eligible entries should be accounted for in the tree nodes
+        assert len(tree.nodes) > 0
+
+    def test_synthetic_progress_in_directory_mode(self, tmp_path: Path) -> None:
+        """Synthetic test: progress entries in directory mode are bridged."""
+        entries: list[dict[str, Any]] = [
+            _make_progress_entry("p1", None),
+            _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", "p1", "Start"),
+            _make_assistant_entry("b", "s1", "2025-07-01T10:01:00.000Z", "a"),
+            _make_progress_entry("p2", "b"),
+            _make_user_entry("c", "s1", "2025-07-01T10:02:00.000Z", "p2", "Continue"),
+            _make_assistant_entry("d", "s1", "2025-07-01T10:03:00.000Z", "c"),
+        ]
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        result = load_directory_transcripts(tmp_path, silent=True)
+        uuids = [getattr(e, "uuid", None) for e in result]
+
+        # All 4 real entries should be in DAG order
+        assert uuids == ["a", "b", "c", "d"]
