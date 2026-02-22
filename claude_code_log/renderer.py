@@ -12,6 +12,7 @@ from datetime import datetime
 
 if TYPE_CHECKING:
     from .cache import CacheManager
+    from .dag import SessionTree
 
 from .models import (
     MessageContent,
@@ -211,6 +212,13 @@ class TemplateMessage:
     def is_branch_header(self) -> bool:
         """Check if this is a branch (within-session fork) header."""
         return isinstance(self.content, SessionHeaderMessage) and self.content.is_branch
+
+    @property
+    def branch_depth(self) -> int:
+        """Depth of this branch header in the session tree (0 for non-branches)."""
+        if isinstance(self.content, SessionHeaderMessage) and self.content.is_branch:
+            return self.content.depth
+        return 0
 
     @property
     def has_children(self) -> bool:
@@ -548,6 +556,7 @@ class TemplateSummary:
 
 def generate_template_messages(
     messages: list[TranscriptEntry],
+    session_tree: Optional["SessionTree"] = None,
 ) -> Tuple[list[TemplateMessage], list[dict[str, Any]], RenderingContext]:
     """Generate root messages and session navigation from transcript messages.
 
@@ -556,6 +565,8 @@ def generate_template_messages(
 
     Args:
         messages: List of transcript entries to process.
+        session_tree: Optional pre-built SessionTree from DAG construction.
+            When provided, avoids an expensive DAG rebuild.
 
     Returns:
         A tuple of (root_messages, session_nav, context) where:
@@ -582,9 +593,11 @@ def generate_template_messages(
     with log_timing("Session summary processing", t_start):
         session_summaries = prepare_session_summaries(messages)
 
-    # Extract session hierarchy from DAG
+    # Extract session hierarchy from DAG (reuse pre-built tree when available)
     with log_timing("Extract session hierarchy", t_start):
-        session_hierarchy, junction_targets = _extract_session_hierarchy(messages)
+        session_hierarchy, junction_targets = _extract_session_hierarchy(
+            messages, session_tree=session_tree
+        )
 
     # Filter messages (removes summaries, warmup, empty, etc.)
     with log_timing("Filter messages", t_start):
@@ -682,17 +695,25 @@ def generate_template_messages(
 
 def _extract_session_hierarchy(
     messages: list[TranscriptEntry],
+    session_tree: Optional["SessionTree"] = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]]]:
     """Extract session hierarchy from DAG for rendering.
+
+    Args:
+        messages: Transcript entries (used to build DAG if tree not provided).
+        session_tree: Pre-built SessionTree to reuse (avoids expensive rebuild).
 
     Returns:
         (hierarchy, junction_targets) where:
         - hierarchy: session_id -> {parent_session_id, attachment_uuid, depth}
         - junction_targets: uuid -> [target session IDs]
     """
-    from .dag import build_dag_from_entries
+    if session_tree is not None:
+        tree = session_tree
+    else:
+        from .dag import build_dag_from_entries
 
-    tree = build_dag_from_entries(messages)
+        tree = build_dag_from_entries(messages)
 
     depth_cache: dict[str, int] = {}
 

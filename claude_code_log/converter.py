@@ -37,7 +37,7 @@ from .models import (
     UserTranscriptEntry,
     ToolResultContent,
 )
-from .dag import build_dag_from_entries, traverse_session_tree
+from .dag import SessionTree, build_dag_from_entries, traverse_session_tree
 from .renderer import get_renderer, is_html_outdated
 
 
@@ -89,6 +89,35 @@ def _scan_progress_chains(*paths: Path) -> dict[str, Optional[str]]:
             for f in path.glob("*/subagents/*.jsonl"):
                 _scan_file_progress(f, chain)
     return chain
+
+
+def _scan_sidechain_uuids(directory: Path) -> set[str]:
+    """Collect UUIDs from sidechain/subagent files not loaded into the DAG.
+
+    Some subagent files (e.g. aprompt_suggestion) are never referenced
+    via agentId in the main session, so they aren't loaded by
+    load_transcript(). Their UUIDs are needed to suppress false orphan
+    warnings when main-chain entries reference sidechain parents.
+    """
+    uuids: set[str] = set()
+    for f in directory.glob("*/subagents/*.jsonl"):
+        try:
+            with open(f, "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                        if isinstance(d, dict):
+                            uuid = d.get("uuid")
+                            if uuid:
+                                uuids.add(uuid)
+                    except json.JSONDecodeError:
+                        continue
+        except FileNotFoundError:
+            pass
+    return uuids
 
 
 def _repair_parent_chains(
@@ -379,8 +408,12 @@ def load_directory_transcripts(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     silent: bool = False,
-) -> list[TranscriptEntry]:
-    """Load all JSONL transcript files from a directory and combine them."""
+) -> tuple[list[TranscriptEntry], SessionTree]:
+    """Load all JSONL transcript files from a directory and combine them.
+
+    Returns (messages, session_tree) — the tree is reused by the renderer
+    to avoid rebuilding the DAG.
+    """
     all_messages: list[TranscriptEntry] = []
 
     # Find all .jsonl files, excluding agent files (they are loaded via load_transcript
@@ -403,8 +436,15 @@ def load_directory_transcripts(
     sidechain_entries = [e for e in all_messages if getattr(e, "isSidechain", False)]
     main_entries = [e for e in all_messages if not getattr(e, "isSidechain", False)]
 
+    # Collect sidechain UUIDs so DAG build can suppress orphan warnings
+    # for parents that exist in sidechain data (will be integrated in Phase C)
+    sidechain_uuids = {e.uuid for e in sidechain_entries if hasattr(e, "uuid")}
+    # Also scan unloaded subagent files (e.g. aprompt_suggestion agents
+    # that are never referenced via agentId in the main session)
+    sidechain_uuids |= _scan_sidechain_uuids(directory_path)
+
     # Build DAG and traverse (entries grouped by session, depth-first)
-    tree = build_dag_from_entries(main_entries)
+    tree = build_dag_from_entries(main_entries, sidechain_uuids=sidechain_uuids)
     dag_ordered = traverse_session_tree(tree)
 
     # Re-add summaries/queue-ops (excluded from DAG since they lack uuid)
@@ -414,7 +454,7 @@ def load_directory_transcripts(
         if isinstance(e, (SummaryTranscriptEntry, QueueOperationTranscriptEntry))
     ]
 
-    return dag_ordered + sidechain_entries + non_dag_entries
+    return dag_ordered + sidechain_entries + non_dag_entries, tree
 
 
 # =============================================================================
@@ -776,6 +816,7 @@ def _generate_paginated_html(
     session_data: Dict[str, SessionCacheData],
     working_directories: List[str],
     silent: bool = False,
+    session_tree: Optional[SessionTree] = None,
 ) -> Path:
     """Generate paginated HTML files for combined transcript.
 
@@ -934,6 +975,7 @@ def _generate_paginated_html(
             page_title,
             page_info=page_info,
             page_stats=page_stats,
+            session_tree=session_tree,
         )
         page_file.write_text(html_content, encoding="utf-8")
 
@@ -1026,6 +1068,10 @@ def convert_jsonl_to(
     # Initialize working_directories for both branches (used by pagination in directory mode)
     working_directories: List[str] = []
 
+    # session_tree is populated in directory mode (DAG already built);
+    # None in single-file mode (renderer builds it on demand)
+    session_tree: Optional[SessionTree] = None
+
     if input_path.is_file():
         # Single file mode - cache only available for directory mode
         if output_path is None:
@@ -1069,7 +1115,7 @@ def convert_jsonl_to(
                     return output_path
 
         # Phase 2: Load messages (will use fresh cache when available)
-        messages = load_directory_transcripts(
+        messages, session_tree = load_directory_transcripts(
             input_path, cache_manager, from_date, to_date, silent
         )
 
@@ -1146,6 +1192,7 @@ def convert_jsonl_to(
             session_data,
             working_directories,
             silent=silent,
+            session_tree=session_tree,
         )
     else:
         # Use single-file generation for small projects or filtered views
@@ -1172,7 +1219,9 @@ def convert_jsonl_to(
         if should_regenerate:
             # For referenced images, pass the output directory
             output_dir = output_path.parent
-            content = renderer.generate(messages, title, output_dir=output_dir)
+            content = renderer.generate(
+                messages, title, output_dir=output_dir, session_tree=session_tree
+            )
             assert content is not None
             output_path.write_text(content, encoding="utf-8")
 
@@ -1248,7 +1297,7 @@ def ensure_fresh_cache(
     # Load and process messages to populate cache
     if not silent:
         print(f"Updating cache for {project_dir.name}...")
-    messages = load_directory_transcripts(
+    messages, _tree = load_directory_transcripts(
         project_dir, cache_manager, from_date, to_date, silent
     )
 
@@ -2076,7 +2125,7 @@ def process_projects_hierarchy(
             print(
                 f"Warning: No cached data available for {project_dir.name}, using fallback processing"
             )
-            messages = load_directory_transcripts(
+            messages, _tree = load_directory_transcripts(
                 project_dir, cache_manager, from_date, to_date, silent=silent
             )
             # Ensure cache is populated with session data (including working directories)

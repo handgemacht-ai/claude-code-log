@@ -565,10 +565,8 @@
     font-size: 1.2em;
 }
 
-/* Branch headers (within-session forks) — visually subordinate */
-.session-header.branch-header {
-    margin-left: 2em;
-}
+/* Branch headers (within-session forks) — indent set via inline
+   style based on tree depth (margin-left: depth*2em). */
 
 .session-subtitle {
     font-size: 0.9em;

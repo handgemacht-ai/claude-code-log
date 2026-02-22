@@ -1838,7 +1838,7 @@ class SessionBrowser(App[Optional[str]]):
                 messages = self.cache_manager.load_session_entries(session_id)
             else:
                 # Load from JSONL files for current sessions
-                messages = load_directory_transcripts(
+                messages, _tree = load_directory_transcripts(
                     self.project_path, self.cache_manager, silent=True
                 )
             if not messages:

@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Tuple, cast
 
+if TYPE_CHECKING:
+    from ..dag import SessionTree
+
 from ..cache import get_library_version
 from ..models import (
     AssistantTextMessage,
@@ -528,6 +531,7 @@ class HtmlRenderer(Renderer):
         output_dir: Optional[Path] = None,
         page_info: Optional[dict[str, Any]] = None,
         page_stats: Optional[dict[str, Any]] = None,
+        session_tree: Optional["SessionTree"] = None,
     ) -> str:
         """Generate HTML from transcript messages.
 
@@ -538,6 +542,7 @@ class HtmlRenderer(Renderer):
             output_dir: Optional output directory for referenced images.
             page_info: Optional pagination info (page_number, prev_link, next_link).
             page_stats: Optional page statistics (message_count, date_range, token_summary).
+            session_tree: Optional pre-built SessionTree (avoids rebuilding DAG).
         """
         import time
 
@@ -551,7 +556,9 @@ class HtmlRenderer(Renderer):
             title = "Claude Transcript"
 
         # Get root messages (tree) and session navigation from format-neutral renderer
-        root_messages, session_nav, _ = generate_template_messages(messages)
+        root_messages, session_nav, _ = generate_template_messages(
+            messages, session_tree=session_tree
+        )
 
         # Flatten tree via pre-order traversal, formatting content along the way
         with log_timing("Content formatting (pre-order)", t_start):
@@ -655,6 +662,7 @@ def generate_html(
     combined_transcript_link: Optional[str] = None,
     page_info: Optional[dict[str, Any]] = None,
     page_stats: Optional[dict[str, Any]] = None,
+    session_tree: Optional["SessionTree"] = None,
 ) -> str:
     """Generate HTML from transcript messages using Jinja2 templates.
 
@@ -666,6 +674,7 @@ def generate_html(
         combined_transcript_link: Optional link to combined transcript.
         page_info: Optional pagination info (page_number, prev_link, next_link).
         page_stats: Optional page statistics (message_count, date_range, token_summary).
+        session_tree: Optional pre-built SessionTree (avoids rebuilding DAG).
     """
     return HtmlRenderer().generate(
         messages,
@@ -673,6 +682,7 @@ def generate_html(
         combined_transcript_link,
         page_info=page_info,
         page_stats=page_stats,
+        session_tree=session_tree,
     )
 
 

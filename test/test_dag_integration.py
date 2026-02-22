@@ -115,7 +115,7 @@ class TestLoadDirectoryDagOrdering:
         _write_jsonl(tmp_path / "session1.jsonl", file1_entries)
         _write_jsonl(tmp_path / "session2.jsonl", file2_entries)
 
-        result = load_directory_transcripts(tmp_path, silent=True)
+        result, _ = load_directory_transcripts(tmp_path, silent=True)
 
         # Should have all 8 entries in DAG order (s1 then s2)
         uuids = [getattr(e, "uuid", None) for e in result]
@@ -140,7 +140,7 @@ class TestLoadDirectoryDagOrdering:
 
         _write_jsonl(tmp_path / "session.jsonl", main_entries + sidechain_entries)
 
-        result = load_directory_transcripts(tmp_path, silent=True)
+        result, _ = load_directory_transcripts(tmp_path, silent=True)
         uuids = [getattr(e, "uuid", None) for e in result]
 
         # Main entries first (DAG ordered), then sidechain
@@ -165,7 +165,7 @@ class TestLoadDirectoryDagOrdering:
 
         _write_jsonl(tmp_path / "session.jsonl", entries)
 
-        result = load_directory_transcripts(tmp_path, silent=True)
+        result, _ = load_directory_transcripts(tmp_path, silent=True)
 
         # Should have 2 DAG entries + 1 summary
         summary_entries = [e for e in result if isinstance(e, SummaryTranscriptEntry)]
@@ -192,7 +192,7 @@ class TestLoadDirectoryDagOrdering:
 
         _write_jsonl(tmp_path / "session.jsonl", entries)
 
-        result = load_directory_transcripts(tmp_path, silent=True)
+        result, _ = load_directory_transcripts(tmp_path, silent=True)
 
         # All 5 entries should be present
         uuids = [getattr(e, "uuid", None) for e in result]
@@ -215,7 +215,7 @@ class TestLoadDirectoryDagOrdering:
 
         _write_jsonl(tmp_path / "session.jsonl", entries)
 
-        result = load_directory_transcripts(tmp_path, silent=True)
+        result, _ = load_directory_transcripts(tmp_path, silent=True)
 
         queue_entries = [
             e for e in result if isinstance(e, QueueOperationTranscriptEntry)
@@ -254,7 +254,7 @@ class TestEndToEndHtmlWithDag:
         _write_jsonl(tmp_path / "session2.jsonl", file2_entries)
 
         # Load via DAG ordering
-        messages = load_directory_transcripts(tmp_path, silent=True)
+        messages, _ = load_directory_transcripts(tmp_path, silent=True)
 
         # Run through template message generation (returns tuple)
         root_messages, session_nav, context = generate_template_messages(messages)
@@ -299,7 +299,7 @@ class TestEndToEndHtmlWithDag:
         ]
 
         _write_jsonl(tmp_path / "sessions.jsonl", entries)
-        messages = load_directory_transcripts(tmp_path, silent=True)
+        messages, _ = load_directory_transcripts(tmp_path, silent=True)
         root_messages, session_nav, _ctx = generate_template_messages(messages)
 
         headers = {
@@ -332,7 +332,7 @@ class TestEndToEndHtmlWithDag:
         ]
 
         _write_jsonl(tmp_path / "sessions.jsonl", entries)
-        messages = load_directory_transcripts(tmp_path, silent=True)
+        messages, _ = load_directory_transcripts(tmp_path, silent=True)
         _root, session_nav, _ctx = generate_template_messages(messages)
 
         nav_by_id = {s["id"]: s for s in session_nav}
@@ -356,7 +356,7 @@ class TestEndToEndHtmlWithDag:
         ]
 
         _write_jsonl(tmp_path / "session.jsonl", entries)
-        messages = load_directory_transcripts(tmp_path, silent=True)
+        messages, _ = load_directory_transcripts(tmp_path, silent=True)
         root_messages, session_nav, _ctx = generate_template_messages(messages)
 
         header = next(
@@ -385,7 +385,7 @@ class TestEndToEndHtmlWithDag:
 
         _write_jsonl(tmp_path / "session.jsonl", entries)
 
-        messages = load_directory_transcripts(tmp_path, silent=True)
+        messages, _ = load_directory_transcripts(tmp_path, silent=True)
 
         # Verify order matches timestamps
         uuids = [getattr(e, "uuid", None) for e in messages if hasattr(e, "uuid")]
@@ -518,7 +518,7 @@ class TestProgressChainRepairIntegration:
     def test_progress_chain_repair_directory(self, caplog: Any) -> None:
         """Progress entries are bridged: no orphan warnings from DAG build."""
         with caplog.at_level(logging.WARNING):
-            result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+            result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
 
         # Should have loaded entries (41 non-progress, non-file-history entries)
         assert len(result) > 0
@@ -582,7 +582,7 @@ class TestProgressChainRepairIntegration:
         """After repair, DAG build produces a single connected chain."""
         from claude_code_log.dag import build_dag_from_entries
 
-        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
 
         # Filter to DAG-eligible entries (those with uuid)
         dag_entries = [e for e in result if hasattr(e, "uuid")]
@@ -608,7 +608,7 @@ class TestProgressChainRepairIntegration:
         ]
         _write_jsonl(tmp_path / "session.jsonl", entries)
 
-        result = load_directory_transcripts(tmp_path, silent=True)
+        result, _ = load_directory_transcripts(tmp_path, silent=True)
         uuids = [getattr(e, "uuid", None) for e in result]
 
         # All 4 real entries should be in DAG order
@@ -627,7 +627,7 @@ class TestWithinSessionForkRealData:
         """The real data has a fork at eb84 with two children (5270, 9edc)."""
         from claude_code_log.dag import build_dag_from_entries
 
-        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
         dag_entries = [e for e in result if hasattr(e, "uuid")]
         tree = build_dag_from_entries(dag_entries)
 
@@ -649,7 +649,7 @@ class TestWithinSessionForkRealData:
         from claude_code_log.dag import build_dag_from_entries
 
         with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
-            result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+            result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
             dag_entries = [e for e in result if hasattr(e, "uuid")]
             build_dag_from_entries(dag_entries)
 
@@ -662,7 +662,7 @@ class TestWithinSessionForkRealData:
         """Branch pseudo-sessions are created for the fork."""
         from claude_code_log.dag import build_dag_from_entries
 
-        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
         dag_entries = [e for e in result if hasattr(e, "uuid")]
         tree = build_dag_from_entries(dag_entries)
 
@@ -680,7 +680,7 @@ class TestWithinSessionForkRealData:
         from claude_code_log.renderer import generate_template_messages
         from claude_code_log.models import SessionHeaderMessage
 
-        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
         root_messages, session_nav, ctx = generate_template_messages(result)
 
         # Find branch headers
@@ -695,7 +695,7 @@ class TestWithinSessionForkRealData:
         """All entries are covered by DAG-lines (trunk + branches)."""
         from claude_code_log.dag import build_dag_from_entries
 
-        result = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
+        result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
         dag_entries = [e for e in result if hasattr(e, "uuid")]
         tree = build_dag_from_entries(dag_entries)
 

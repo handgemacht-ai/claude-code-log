@@ -131,12 +131,18 @@ def build_message_index(
 # =============================================================================
 
 
-def build_dag(nodes: dict[str, MessageNode]) -> None:
+def build_dag(
+    nodes: dict[str, MessageNode],
+    sidechain_uuids: set[str] | None = None,
+) -> None:
     """Populate children_uuids on each node. Mutates nodes in place.
 
     Warns about orphan nodes (parentUuid points outside loaded data)
-    and validates acyclicity.
+    and validates acyclicity. Parents known to be in sidechain data
+    (Phase C scope) are silently promoted to root without warning.
     """
+    _sidechain_uuids = sidechain_uuids or set()
+
     # Clear existing children
     for node in nodes.values():
         node.children_uuids = []
@@ -148,12 +154,13 @@ def build_dag(nodes: dict[str, MessageNode]) -> None:
             if parent is not None:
                 parent.children_uuids.append(node.uuid)
             else:
-                logger.warning(
-                    "Orphan node %s: parentUuid %s not found in loaded data"
-                    " (promoting to root)",
-                    node.uuid,
-                    node.parent_uuid,
-                )
+                if node.parent_uuid not in _sidechain_uuids:
+                    logger.warning(
+                        "Orphan node %s: parentUuid %s not found in loaded"
+                        " data (promoting to root)",
+                        node.uuid,
+                        node.parent_uuid,
+                    )
                 # Clear the dangling parent so this node becomes a root
                 # and can participate in DAG walks
                 node.parent_uuid = None
@@ -623,12 +630,15 @@ def traverse_session_tree(tree: SessionTree) -> list[TranscriptEntry]:
 
 def build_dag_from_entries(
     entries: list[TranscriptEntry],
+    sidechain_uuids: set[str] | None = None,
 ) -> SessionTree:
     """Build a complete SessionTree from raw transcript entries.
 
     Convenience function that runs Steps 1-4 in sequence.
+    ``sidechain_uuids`` suppresses orphan warnings for parents known
+    to be in sidechain data (not yet integrated, Phase C scope).
     """
     nodes = build_message_index(entries)
-    build_dag(nodes)
+    build_dag(nodes, sidechain_uuids=sidechain_uuids)
     sessions = extract_session_dag_lines(nodes)
     return build_session_tree(nodes, sessions)
