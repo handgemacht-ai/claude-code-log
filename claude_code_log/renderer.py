@@ -2647,6 +2647,7 @@ class Renderer:
         title: Optional[str] = None,
         cache_manager: Optional["CacheManager"] = None,
         output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
     ) -> Optional[str]:
         """Generate output for a single session.
 
@@ -2656,6 +2657,7 @@ class Renderer:
             title: Optional title for the output.
             cache_manager: Optional cache manager.
             output_dir: Optional output directory for referenced images.
+            session_tree: Optional pre-built SessionTree (avoids rebuilding DAG).
 
         Returns None by default; subclasses override to return formatted output.
         """

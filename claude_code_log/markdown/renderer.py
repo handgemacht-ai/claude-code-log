@@ -909,6 +909,7 @@ class MarkdownRenderer(Renderer):
         title: Optional[str] = None,
         cache_manager: Optional["CacheManager"] = None,
         output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
     ) -> str:
         """Generate Markdown for a single session."""
         session_messages = [msg for msg in messages if msg.sessionId == session_id]
@@ -918,6 +919,7 @@ class MarkdownRenderer(Renderer):
             title or f"Session {session_id[:8]}",
             combined_transcript_link=combined_link,
             output_dir=output_dir,
+            session_tree=session_tree,
         )
 
     def generate_projects_index(

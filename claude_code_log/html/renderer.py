@@ -596,6 +596,7 @@ class HtmlRenderer(Renderer):
         title: Optional[str] = None,
         cache_manager: Optional["CacheManager"] = None,
         output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
     ) -> str:
         """Generate HTML for a single session."""
         # Filter messages for this session (SummaryTranscriptEntry.sessionId is always None)
@@ -616,6 +617,7 @@ class HtmlRenderer(Renderer):
             title or f"Session {session_id[:8]}",
             combined_transcript_link=combined_link,
             output_dir=output_dir,
+            session_tree=session_tree,
         )
 
     def generate_projects_index(
