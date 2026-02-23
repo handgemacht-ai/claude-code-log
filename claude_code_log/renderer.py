@@ -275,10 +275,14 @@ class TemplateMessage:
     def render_session_id(self) -> str:
         """Get effective session/branch ID for grouping.
 
-        Returns _render_session_id if set (for within-session fork branches),
+        Returns render_session_id if set (for within-session fork branches),
         otherwise falls back to meta.session_id.
         """
         return self._render_session_id or self.meta.session_id
+
+    @render_session_id.setter
+    def render_session_id(self, value: str) -> None:
+        self._render_session_id = value
 
     @property
     def parent_uuid(self) -> Optional[str]:
@@ -809,10 +813,10 @@ def _fork_point_preview(fork_msg: "TemplateMessage", ctx: RenderingContext) -> s
     # Extract text from the found message
     content = msg.content
     if isinstance(content, AssistantTextMessage):
-        parts = [item.text for item in content.items if hasattr(item, "text")]
+        parts = [item.text for item in content.items if isinstance(item, TextContent)]
         text = " ".join(parts).strip()
     elif isinstance(content, UserTextMessage):
-        parts = [item.text for item in content.items if hasattr(item, "text")]
+        parts = [item.text for item in content.items if isinstance(item, TextContent)]
         text = " ".join(parts).strip()
     else:
         return ""
@@ -916,9 +920,9 @@ def prepare_session_navigation(
             hier = session_hierarchy.get(rsid, {})
             if hier.get("is_branch"):
                 # Extract text from UserTextMessage items
-                preview_parts = []
+                preview_parts: list[str] = []
                 for item in msg.content.items:
-                    if hasattr(item, "text"):
+                    if isinstance(item, TextContent):
                         preview_parts.append(item.text)
                 preview = " ".join(preview_parts).strip()
                 if preview:
@@ -2016,7 +2020,7 @@ def _render_messages(
 
         # Check if this message starts a new branch (within-session fork)
         # Must happen before system/summary handling so branch state is
-        # correct when tagging those messages with _render_session_id.
+        # correct when tagging those messages with render_session_id.
         message_uuid = getattr(message, "uuid", "")
         if message_uuid and message_uuid in branch_start_uuids:
             branch_sid = branch_start_uuids[message_uuid]
@@ -2045,8 +2049,9 @@ def _render_messages(
                 branch_summary = (session_summaries or {}).get(original_sid)
                 # Extract preview from the branch's first user message
                 branch_preview = ""
-                if as_user_entry(message):
-                    branch_text = extract_text_content(message.message.content)
+                user_entry = as_user_entry(message)
+                if user_entry is not None:
+                    branch_text = extract_text_content(user_entry.message.content)
                     if branch_text:
                         branch_preview = create_session_preview(branch_text)
                 # Truncate for header title (keep full preview for nav)
@@ -2086,7 +2091,7 @@ def _render_messages(
                     first_uuid=message_uuid,
                 )
                 branch_header = TemplateMessage(branch_header_content)
-                branch_header._render_session_id = branch_sid
+                branch_header.render_session_id = branch_sid
                 msg_index = ctx.register(branch_header)
                 ctx.session_first_message[branch_sid] = msg_index
 
@@ -2096,7 +2101,7 @@ def _render_messages(
             if system_content:
                 system_msg = TemplateMessage(system_content)
                 if current_render_session:
-                    system_msg._render_session_id = current_render_session
+                    system_msg.render_session_id = current_render_session
                 ctx.register(system_msg)
             continue
 
@@ -2237,7 +2242,7 @@ def _render_messages(
 
                 chunk_msg = TemplateMessage(content_model)
                 if current_render_session:
-                    chunk_msg._render_session_id = current_render_session
+                    chunk_msg.render_session_id = current_render_session
                 ctx.register(chunk_msg)
 
             else:
@@ -2287,7 +2292,7 @@ def _render_messages(
 
                 tool_msg = TemplateMessage(tool_result.content)
                 if current_render_session:
-                    tool_msg._render_session_id = current_render_session
+                    tool_msg.render_session_id = current_render_session
                 ctx.register(tool_msg)
 
     return ctx
@@ -2627,6 +2632,7 @@ class Renderer:
         title: Optional[str] = None,
         combined_transcript_link: Optional[str] = None,
         output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
     ) -> Optional[str]:
         """Generate output from transcript messages.
 
@@ -2635,6 +2641,7 @@ class Renderer:
             title: Optional title for the output.
             combined_transcript_link: Optional link to combined transcript.
             output_dir: Optional output directory for referenced images.
+            session_tree: Optional pre-built SessionTree (avoids rebuilding DAG).
 
         Returns None by default; subclasses override to return formatted output.
         """

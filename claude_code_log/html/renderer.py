@@ -529,9 +529,9 @@ class HtmlRenderer(Renderer):
         title: Optional[str] = None,
         combined_transcript_link: Optional[str] = None,
         output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
         page_info: Optional[dict[str, Any]] = None,
         page_stats: Optional[dict[str, Any]] = None,
-        session_tree: Optional["SessionTree"] = None,
     ) -> str:
         """Generate HTML from transcript messages.
 

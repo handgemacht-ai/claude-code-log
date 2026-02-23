@@ -35,7 +35,7 @@ class MessageNode:
     session_id: str
     timestamp: str
     entry: TranscriptEntry
-    children_uuids: list[str] = field(default_factory=list)
+    children_uuids: list[str] = field(default_factory=lambda: [])
 
 
 @dataclass
@@ -57,7 +57,7 @@ class JunctionPoint:
 
     uuid: str
     session_id: str  # The session this message belongs to
-    target_sessions: list[str] = field(default_factory=list)
+    target_sessions: list[str] = field(default_factory=lambda: [])
 
 
 @dataclass

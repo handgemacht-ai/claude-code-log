@@ -29,6 +29,7 @@ from .cache import (
 from .parser import parse_timestamp
 from .factories import create_transcript_entry
 from .models import (
+    BaseTranscriptEntry,
     TranscriptEntry,
     AssistantTranscriptEntry,
     QueueOperationTranscriptEntry,
@@ -65,10 +66,13 @@ def _scan_file_progress(path: Path, chain: dict[str, Optional[str]]) -> None:
                 if not line:
                     continue
                 try:
-                    d = json.loads(line)
-                    if isinstance(d, dict) and d.get("type") == "progress":
+                    raw = json.loads(line)
+                    if not isinstance(raw, dict):
+                        continue
+                    d = cast(dict[str, Any], raw)
+                    if d.get("type") == "progress":
                         uuid = d.get("uuid")
-                        if uuid:
+                        if isinstance(uuid, str):
                             chain[uuid] = d.get("parentUuid")
                 except json.JSONDecodeError:
                     continue
@@ -108,10 +112,10 @@ def _scan_sidechain_uuids(directory: Path) -> set[str]:
                     if not line:
                         continue
                     try:
-                        d = json.loads(line)
-                        if isinstance(d, dict):
-                            uuid = d.get("uuid")
-                            if uuid:
+                        raw = json.loads(line)
+                        if isinstance(raw, dict):
+                            uuid = cast(dict[str, Any], raw).get("uuid")
+                            if isinstance(uuid, str):
                                 uuids.add(uuid)
                     except json.JSONDecodeError:
                         continue
@@ -438,7 +442,9 @@ def load_directory_transcripts(
 
     # Collect sidechain UUIDs so DAG build can suppress orphan warnings
     # for parents that exist in sidechain data (will be integrated in Phase C)
-    sidechain_uuids = {e.uuid for e in sidechain_entries if hasattr(e, "uuid")}
+    sidechain_uuids: set[str] = {
+        e.uuid for e in sidechain_entries if isinstance(e, BaseTranscriptEntry)
+    }
     # Also scan unloaded subagent files (e.g. aprompt_suggestion agents
     # that are never referenced via agentId in the main session)
     sidechain_uuids |= _scan_sidechain_uuids(directory_path)
