@@ -567,6 +567,7 @@ class TemplateSummary:
 def generate_template_messages(
     messages: list[TranscriptEntry],
     session_tree: Optional["SessionTree"] = None,
+    compact: bool = False,
 ) -> Tuple[list[TemplateMessage], list[dict[str, Any]], RenderingContext]:
     """Generate root messages and session navigation from transcript messages.
 
@@ -612,6 +613,11 @@ def generate_template_messages(
     # Filter messages (removes summaries, warmup, empty, etc.)
     with log_timing("Filter messages", t_start):
         filtered_messages = _filter_messages(messages)
+
+    # Compact mode: keep only user and assistant text messages (no tools, system, thinking)
+    if compact:
+        with log_timing("Compact filter", t_start):
+            filtered_messages = _filter_compact(filtered_messages)
 
     # Pass 1: Collect session metadata and token tracking
     with log_timing("Collect session info", t_start):
@@ -1805,6 +1811,31 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     return filtered
 
 
+def _filter_compact(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
+    """Filter messages for compact mode: keep only user and assistant text.
+
+    Strips tool items from user entries and thinking/tool items from assistant
+    entries. System, summary, and queue-operation entries are removed entirely.
+    """
+    from copy import copy
+
+    _strip_types = (ThinkingContent, ToolUseContent, ToolResultContent)
+    filtered: list[TranscriptEntry] = []
+    for message in messages:
+        if isinstance(message, (UserTranscriptEntry, AssistantTranscriptEntry)):
+            text_items = [
+                item
+                for item in message.message.content
+                if not isinstance(item, _strip_types)
+            ]
+            if text_items:
+                msg_copy = copy(message)
+                msg_copy.message = copy(message.message)
+                msg_copy.message.content = text_items
+                filtered.append(msg_copy)
+    return filtered
+
+
 def _collect_session_info(
     messages: list[TranscriptEntry],
     session_summaries: dict[str, str],
@@ -2398,6 +2429,8 @@ class Renderer:
     - Subclasses override methods to implement format-specific rendering
     """
 
+    compact: bool = False
+
     def _dispatch_format(self, obj: Any, message: TemplateMessage) -> str:
         """Dispatch to format_{ClassName}(obj, message) based on object type."""
         for cls in type(obj).__mro__:
@@ -2673,13 +2706,18 @@ class Renderer:
         return None
 
 
-def get_renderer(format: str, image_export_mode: Optional[str] = None) -> Renderer:
+def get_renderer(
+    format: str,
+    image_export_mode: Optional[str] = None,
+    compact: bool = False,
+) -> Renderer:
     """Get a renderer instance for the specified format.
 
     Args:
         format: The output format ("html", "md", or "markdown").
         image_export_mode: Image export mode ("placeholder", "embedded", "referenced").
             If None, defaults to "embedded" for HTML and "referenced" for Markdown.
+        compact: If True, render only user and assistant text messages.
 
     Returns:
         A Renderer instance for the specified format.
@@ -2692,14 +2730,17 @@ def get_renderer(format: str, image_export_mode: Optional[str] = None) -> Render
 
         # For HTML, default to embedded mode (current behavior)
         mode = image_export_mode or "embedded"
-        return HtmlRenderer(image_export_mode=mode)
+        renderer = HtmlRenderer(image_export_mode=mode)
     elif format in ("md", "markdown"):
         from .markdown.renderer import MarkdownRenderer
 
         # For Markdown, default to referenced mode
         mode = image_export_mode or "referenced"
-        return MarkdownRenderer(image_export_mode=mode)
-    raise ValueError(f"Unsupported format: {format}")
+        renderer = MarkdownRenderer(image_export_mode=mode)
+    else:
+        raise ValueError(f"Unsupported format: {format}")
+    renderer.compact = compact
+    return renderer
 
 
 def is_html_outdated(html_file_path: Path) -> bool:
