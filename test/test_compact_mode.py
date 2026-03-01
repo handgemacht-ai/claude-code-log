@@ -213,6 +213,23 @@ class TestFilterCompact:
         result = _filter_compact(messages)
         assert len(result) == 0
 
+    def test_removes_sidechain_entries(self, tmp_path):
+        """Sidechain (subagent) entries are dropped."""
+        sidechain_user = _user_entry("Subagent prompt")
+        sidechain_user["isSidechain"] = True
+        sidechain_assistant = _assistant_entry("Subagent reply")
+        sidechain_assistant["isSidechain"] = True
+        entries = [
+            _user_entry("Main prompt"),
+            sidechain_user,
+            sidechain_assistant,
+            _assistant_entry("Main reply"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        result = _filter_compact(messages)
+        assert len(result) == 2
+        assert all(not m.isSidechain for m in result)
+
     def test_does_not_mutate_original(self, tmp_path):
         """Filtering creates copies, not mutations of the original."""
         entries = [
@@ -291,6 +308,68 @@ class TestCompactTemplateMessages:
         assert len(root_messages) >= 1
         assert root_messages[0].is_session_header
         assert len(session_nav) >= 1
+
+    def test_compact_removes_bash_messages(self, tmp_path):
+        """Compact mode removes bash-input and bash-output messages."""
+        entries = [
+            _user_entry("Check the directory"),
+            # bash-input is parsed from user text containing <bash-input> tags
+            _user_entry(
+                "<bash-input>ls -la</bash-input>", timestamp="2025-01-01T10:00:01Z"
+            ),
+            _user_entry(
+                "<bash-stdout>total 42\ndrwxr-xr-x</bash-stdout>",
+                timestamp="2025-01-01T10:00:02Z",
+            ),
+            _assistant_entry("Here are the files.", timestamp="2025-01-01T10:00:03Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        root_messages, _, _ = generate_template_messages(messages, compact=True)
+        all_types = set()
+        _collect_types(root_messages, all_types)
+        assert "bash-input" not in all_types
+        assert "bash-output" not in all_types
+
+    def test_compact_removes_slash_command_messages(self, tmp_path):
+        """Compact mode removes slash command messages (e.g. /exit)."""
+        entries = [
+            _user_entry("Hello"),
+            _assistant_entry("Hi", timestamp="2025-01-01T10:00:01Z"),
+            # Slash command entries are user entries whose text matches /command
+            _user_entry("/exit", timestamp="2025-01-01T10:00:02Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        root_messages, _, ctx = generate_template_messages(messages, compact=True)
+        all_types = set()
+        _collect_types(root_messages, all_types)
+        # /exit should not appear as any type
+        for msg in ctx.messages:
+            assert "/exit" not in getattr(msg.content, "text", ""), (
+                f"Slash command '/exit' found in compact output as {msg.type}"
+            )
+
+    def test_compact_removes_sidechain_messages(self, tmp_path):
+        """Compact mode removes sidechain (subagent) messages entirely."""
+        sidechain_user = _user_entry("Subagent task", timestamp="2025-01-01T10:00:01Z")
+        sidechain_user["isSidechain"] = True
+        sidechain_assistant = _assistant_entry(
+            "Subagent result", timestamp="2025-01-01T10:00:02Z"
+        )
+        sidechain_assistant["isSidechain"] = True
+        entries = [
+            _user_entry("Do a task"),
+            sidechain_user,
+            sidechain_assistant,
+            _assistant_entry("Task done.", timestamp="2025-01-01T10:00:03Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        root_messages, _, ctx = generate_template_messages(messages, compact=True)
+        # No sidechain messages should remain
+        for msg in ctx.messages:
+            assert not msg.is_sidechain, f"Sidechain message found: {msg.type}"
 
     def test_compact_vs_normal_fewer_messages(self, tmp_path):
         """Compact mode produces fewer messages than normal mode."""
@@ -593,28 +672,33 @@ class TestCompactRealProjects:
             assert html, f"Empty HTML for {jsonl_file.name}"
             assert "<!DOCTYPE html>" in html
 
-    def test_compact_has_no_tool_messages(self, real_projects_path):
-        """Compact HTML from real projects contains no tool_use/tool_result divs."""
+    def test_compact_has_no_excluded_messages(self, real_projects_path):
+        """Compact HTML from real projects contains no tool, thinking, bash, or sidechain divs."""
         files = self._get_project_jsonl_files(real_projects_path)
 
         renderer = HtmlRenderer()
         renderer.compact = True
 
+        excluded_patterns = [
+            "class='message tool_use",
+            "class='message tool_result",
+            "class='message thinking",
+            "class='message bash-input",
+            "class='message bash-output",
+            "class='message user-slash-command",
+            "class='message command-output",
+            "class='message compacted-summary",
+        ]
+
         for jsonl_file in files:
             messages = load_transcript(jsonl_file)
             html = renderer.generate(messages, "Compact Test")
-            tool_use_count = html.count("class='message tool_use")
-            tool_result_count = html.count("class='message tool_result")
-            thinking_count = html.count("class='message thinking")
-            assert tool_use_count == 0, (
-                f"{jsonl_file.name}: found {tool_use_count} tool_use messages"
-            )
-            assert tool_result_count == 0, (
-                f"{jsonl_file.name}: found {tool_result_count} tool_result messages"
-            )
-            assert thinking_count == 0, (
-                f"{jsonl_file.name}: found {thinking_count} thinking messages"
-            )
+            for pattern in excluded_patterns:
+                count = html.count(pattern)
+                msg_type = pattern.split("class='message ")[1]
+                assert count == 0, (
+                    f"{jsonl_file.name}: found {count} {msg_type} messages"
+                )
 
     def test_compact_fewer_messages_than_normal(self, real_projects_path):
         """Compact mode produces strictly fewer messages for projects with tools."""
@@ -644,25 +728,18 @@ class TestCompactRealProjects:
             all_types = set()
             _collect_types(root_messages, all_types)
 
-            # Should only have user/assistant text types (plus session headers
-            # and user-derived types like bash-input/output, slash commands)
-            non_tool_types = all_types - {
+            # Should only have user/assistant text types (plus session headers)
+            non_header_types = all_types - {
                 "session-header",
                 "session_header",
             }
-            # These are all derived from user/assistant text content, not tools
             allowed = {
                 "user",
                 "assistant",
-                "bash-input",
-                "bash-output",
-                "user-slash-command",
-                "command-output",
-                "compacted-summary",
                 "user-steering",
                 "user-memory",
             }
-            unexpected = non_tool_types - allowed
+            unexpected = non_header_types - allowed
             assert not unexpected, (
                 f"{jsonl_file.name}: unexpected types in compact: {unexpected}"
             )

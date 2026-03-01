@@ -682,6 +682,11 @@ def generate_template_messages(
                     fork_msg.junction_forward_links.clear()
                     fork_msg.fork_point_preview = ""
 
+    # Compact post-render: remove text-derived types (bash, slash commands, etc.)
+    if compact:
+        with log_timing("Compact post-render filter", t_start):
+            ctx.messages = _filter_compact_template_messages(ctx.messages)
+
     # Prepare session navigation data (uses ctx for session header indices)
     session_nav: list[dict[str, Any]] = []
     with log_timing(
@@ -1815,25 +1820,62 @@ def _filter_compact(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     """Filter messages for compact mode: keep only user and assistant text.
 
     Strips tool items from user entries and thinking/tool items from assistant
-    entries. System, summary, and queue-operation entries are removed entirely.
+    entries. System, summary, queue-operation, and sidechain entries are removed.
     """
     from copy import copy
 
     _strip_types = (ThinkingContent, ToolUseContent, ToolResultContent)
     filtered: list[TranscriptEntry] = []
     for message in messages:
-        if isinstance(message, (UserTranscriptEntry, AssistantTranscriptEntry)):
-            text_items = [
-                item
-                for item in message.message.content
-                if not isinstance(item, _strip_types)
-            ]
-            if text_items:
-                msg_copy = copy(message)
-                msg_copy.message = copy(message.message)
-                msg_copy.message.content = text_items
-                filtered.append(msg_copy)
+        if not isinstance(message, (UserTranscriptEntry, AssistantTranscriptEntry)):
+            continue
+        # Drop sidechain (subagent) messages
+        if message.isSidechain:
+            continue
+        text_items = [
+            item
+            for item in message.message.content
+            if not isinstance(item, _strip_types)
+        ]
+        if text_items:
+            msg_copy = copy(message)
+            msg_copy.message = copy(message.message)
+            msg_copy.message.content = text_items
+            filtered.append(msg_copy)
     return filtered
+
+
+# Content classes to exclude in compact mode post-render.
+# These are text-derived types created by the user factory that we don't want
+# in a compact view (bash commands, slash command prompts, compacted summaries).
+# We check by class rather than message_type string because several of these
+# classes (SlashCommandMessage, CommandOutputMessage, CompactedSummaryMessage)
+# return "user" as their message_type.
+_COMPACT_EXCLUDE_CLASSES = (
+    BashInputMessage,
+    BashOutputMessage,
+    SlashCommandMessage,
+    UserSlashCommandMessage,
+    CommandOutputMessage,
+    CompactedSummaryMessage,
+)
+
+
+def _filter_compact_template_messages(
+    messages: list[TemplateMessage],
+) -> list[TemplateMessage]:
+    """Post-render filter for compact mode: remove text-derived message types.
+
+    After _render_messages creates TemplateMessages, some user text content
+    gets classified into special types (bash commands, slash commands, etc.)
+    that should be excluded from compact output.
+    """
+    return [
+        msg
+        for msg in messages
+        if not isinstance(msg.content, _COMPACT_EXCLUDE_CLASSES)
+        and not msg.is_sidechain
+    ]
 
 
 def _collect_session_info(
