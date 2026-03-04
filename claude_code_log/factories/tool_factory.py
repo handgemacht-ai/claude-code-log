@@ -652,14 +652,15 @@ def parse_webfetch_output(
                 code_text=tool_use_result.get("codeText"),
                 duration_ms=tool_use_result.get("durationMs"),
             )
-
-    # Fallback: try to extract from tool_result content
-    content = _extract_tool_result_text(tool_result)
-    if not content:
+        # Structured data present but incomplete — don't fall through
         return None
 
-    # For fallback, we don't have the rich metadata, just the result text
-    # We also don't have the URL, so return None (will use generic formatter)
+    # Fallback: use text content as result (agent progress entries lack toolUseResult).
+    # URL comes from the tool_use input title, not needed here for rendering.
+    content = _extract_tool_result_text(tool_result)
+    if content:
+        return WebFetchOutput(url="", result=content)
+
     return None
 
 

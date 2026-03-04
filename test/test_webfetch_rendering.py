@@ -114,11 +114,23 @@ class TestWebFetchOutput:
         assert output.code is None
 
     def test_parse_webfetch_output_no_tool_use_result(self):
-        """Test parsing WebFetch output without toolUseResult returns None."""
+        """Test parsing WebFetch output without toolUseResult uses text fallback."""
         tool_result = ToolResultContent(
             type="tool_result",
             tool_use_id="toolu_test",
             content="Some content",
+        )
+        output = parse_webfetch_output(tool_result, None, None)
+        assert output is not None
+        assert output.url == ""
+        assert output.result == "Some content"
+
+    def test_parse_webfetch_output_no_tool_use_result_empty(self):
+        """Test parsing WebFetch output without toolUseResult and no content returns None."""
+        tool_result = ToolResultContent(
+            type="tool_result",
+            tool_use_id="toolu_test",
+            content="",
         )
         output = parse_webfetch_output(tool_result, None, None)
         assert output is None
