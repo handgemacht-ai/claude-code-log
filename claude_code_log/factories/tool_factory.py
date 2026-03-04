@@ -10,12 +10,12 @@ Also provides creation of tool inputs into typed models:
 - create_tool_result_message(): Process ToolResultContent into ToolItemResult
 """
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, cast
 
 from pydantic import BaseModel
-
-import re
 
 from ..models import (
     # Tool input models
@@ -533,30 +533,83 @@ def _parse_websearch_from_structured(
     return WebSearchOutput(query=query, links=links, preamble=None, summary=summary)
 
 
+def _parse_websearch_from_text(text: str) -> Optional[WebSearchOutput]:
+    """Parse WebSearch from plain text content (fallback for agent progress entries).
+
+    Text format:
+        Web search results for query: "..."
+
+        Links: [{JSON array of {title, url} objects}]
+
+        Summary text...
+
+    Returns:
+        WebSearchOutput if parsing succeeds, None otherwise
+    """
+    # Extract query
+    query_match = re.match(r'Web search results for query:\s*"(.+?)"', text)
+    if not query_match:
+        return None
+    query = query_match.group(1)
+
+    # Extract links JSON array
+    links: list[WebSearchLink] = []
+    links_match = re.search(r"Links:\s*(\[.*?\])\s*\n", text, re.DOTALL)
+    if links_match:
+        try:
+            raw_links = json.loads(links_match.group(1))
+            if isinstance(raw_links, list):
+                for item in cast(list[Any], raw_links):
+                    if isinstance(item, dict):
+                        link = cast(dict[str, Any], item)
+                        title = link.get("title")
+                        url = link.get("url")
+                        if isinstance(title, str) and isinstance(url, str):
+                            links.append(WebSearchLink(title=title, url=url))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Extract summary (everything after the Links line)
+    summary: Optional[str] = None
+    if links_match:
+        after_links = text[links_match.end() :].strip()
+        if after_links:
+            summary = after_links
+
+    return WebSearchOutput(query=query, links=links, preamble=None, summary=summary)
+
+
 def parse_websearch_output(
     tool_result: ToolResultContent,
     file_path: Optional[str],
     tool_use_result: Optional[ToolUseResult] = None,
 ) -> Optional[WebSearchOutput]:
-    """Parse WebSearch tool result from structured toolUseResult data.
+    """Parse WebSearch tool result from structured toolUseResult or text content.
 
-    Note: A regex-based fallback parser for text content was removed.
-    See commit 0d1d2a9 if you need to restore it.
+    Prefers structured toolUseResult when available. Falls back to parsing
+    the text content for agent progress entries that lack toolUseResult.
 
     Args:
-        tool_result: The tool result content (unused, kept for signature compatibility)
+        tool_result: The tool result content
         file_path: Unused for WebSearch tool
         tool_use_result: Structured toolUseResult from the entry
 
     Returns:
         WebSearchOutput with query, links, and summary, or None if not parseable
     """
-    del tool_result, file_path  # Unused
+    del file_path  # Unused
 
-    if tool_use_result is None:
-        return None
+    if tool_use_result is not None:
+        result = _parse_websearch_from_structured(tool_use_result)
+        if result is not None:
+            return result
 
-    return _parse_websearch_from_structured(tool_use_result)
+    # Fallback: parse from text content (agent progress entries)
+    text = _extract_tool_result_text(tool_result)
+    if text:
+        return _parse_websearch_from_text(text)
+
+    return None
 
 
 def parse_webfetch_output(
