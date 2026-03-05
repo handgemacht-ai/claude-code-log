@@ -97,7 +97,7 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
         # Show original session ID for context
         orig_id = ""
         if content.original_session_id:
-            orig_id = content.original_session_id[:8]
+            orig_id = html.escape(content.original_session_id[:8])
         link = (
             f'<a href="#msg-d-{content.parent_message_index}" '
             f'class="session-backlink branch-backlink">'

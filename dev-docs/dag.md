@@ -40,9 +40,9 @@ forms a single contiguous chain in the DAG — its **DAG-line**. A session's
 DAG-line contains only the messages unique to that session (after
 deduplication).
 
-**Assertion**: Within a session, the `parentUuid` chain is linear (no
-branching). If data violates this, we log a warning and fall back to
-timestamp ordering within that session.
+**Assertion**: Within a session, the default `parentUuid` chain is linear.
+Explicit rewinds create within-session forks that are rendered as branch
+pseudo-sessions. Unexpected non-rewind branching logs a warning.
 
 ### Junction Points
 

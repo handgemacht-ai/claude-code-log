@@ -641,7 +641,8 @@ def generate_template_messages(
                 fork_msg = uuid_to_msg[uuid]
                 for branch_sid in branch_targets:
                     branch_idx = ctx.session_first_message.get(branch_sid)
-                    fork_msg.junction_forward_links.append((branch_sid, branch_idx))
+                    if branch_idx is not None:
+                        fork_msg.junction_forward_links.append((branch_sid, branch_idx))
 
     # Prepare session navigation data (uses ctx for session header indices)
     session_nav: list[dict[str, Any]] = []

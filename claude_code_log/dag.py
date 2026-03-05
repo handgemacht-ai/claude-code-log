@@ -172,6 +172,7 @@ def build_dag(
         while current is not None:
             if current in visited:
                 logger.warning("Cycle detected in parent chain at uuid %s", current)
+                nodes[current].parent_uuid = None
                 break
             visited.add(current)
             parent = nodes.get(current)
@@ -472,7 +473,7 @@ def extract_session_dag_lines(
             dag_lines.extend(root_lines)
 
         # Check coverage: walked + intentionally skipped (compaction replays)
-        covered = len(walked_uuids) + len(skipped_uuids)
+        covered = len(walked_uuids | skipped_uuids)
         if covered < len(snodes):
             logger.warning(
                 "Session %s: DAG walk covers %d of %d nodes, "
@@ -605,6 +606,8 @@ def traverse_session_tree(tree: SessionTree) -> list[TranscriptEntry]:
         for sid, sline in tree.sessions.items():
             if sline.parent_session_id == session_id and sline.attachment_uuid:
                 children_at.setdefault(sline.attachment_uuid, []).append(sid)
+        for child_sids in children_at.values():
+            child_sids.sort(key=lambda sid: tree.sessions[sid].first_timestamp)
 
         # Emit entries, visiting child sessions at junction points
         for uuid in dag_line.uuids:

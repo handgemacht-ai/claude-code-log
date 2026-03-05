@@ -139,7 +139,12 @@ def _repair_parent_chains(
         parent = getattr(msg, "parentUuid", None)
         if parent and parent in progress_chain:
             current: Optional[str] = parent
+            seen: set[str] = set()
             while current is not None and current in progress_chain:
+                if current in seen:
+                    current = None
+                    break
+                seen.add(current)
                 current = progress_chain[current]
             msg.parentUuid = current  # type: ignore[union-attr]
 
