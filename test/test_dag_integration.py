@@ -255,10 +255,12 @@ class TestEndToEndHtmlWithDag:
         _write_jsonl(tmp_path / "session2.jsonl", file2_entries)
 
         # Load via DAG ordering
-        messages, _ = load_directory_transcripts(tmp_path, silent=True)
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
 
-        # Run through template message generation (returns tuple)
-        root_messages, session_nav, context = generate_template_messages(messages)
+        # Run through template message generation (reuse pre-built tree)
+        root_messages, session_nav, context = generate_template_messages(
+            messages, session_tree=session_tree
+        )
 
         # Extract session headers and verify order
         from claude_code_log.models import SessionHeaderMessage
@@ -300,8 +302,10 @@ class TestEndToEndHtmlWithDag:
         ]
 
         _write_jsonl(tmp_path / "sessions.jsonl", entries)
-        messages, _ = load_directory_transcripts(tmp_path, silent=True)
-        root_messages, session_nav, _ctx = generate_template_messages(messages)
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        root_messages, session_nav, _ctx = generate_template_messages(
+            messages, session_tree=session_tree
+        )
 
         headers = {
             tm.content.session_id: tm.content
@@ -333,8 +337,10 @@ class TestEndToEndHtmlWithDag:
         ]
 
         _write_jsonl(tmp_path / "sessions.jsonl", entries)
-        messages, _ = load_directory_transcripts(tmp_path, silent=True)
-        _root, session_nav, _ctx = generate_template_messages(messages)
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        _root, session_nav, _ctx = generate_template_messages(
+            messages, session_tree=session_tree
+        )
 
         nav_by_id = {s["id"]: s for s in session_nav}
 
@@ -357,8 +363,10 @@ class TestEndToEndHtmlWithDag:
         ]
 
         _write_jsonl(tmp_path / "session.jsonl", entries)
-        messages, _ = load_directory_transcripts(tmp_path, silent=True)
-        root_messages, session_nav, _ctx = generate_template_messages(messages)
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        root_messages, session_nav, _ctx = generate_template_messages(
+            messages, session_tree=session_tree
+        )
 
         header = next(
             tm.content
@@ -386,14 +394,16 @@ class TestEndToEndHtmlWithDag:
 
         _write_jsonl(tmp_path / "session.jsonl", entries)
 
-        messages, _ = load_directory_transcripts(tmp_path, silent=True)
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
 
         # Verify order matches timestamps
         uuids = [getattr(e, "uuid", None) for e in messages if hasattr(e, "uuid")]
         assert uuids == ["x", "y", "z"]
 
-        # Also verify template generation works
-        root_messages, session_nav, context = generate_template_messages(messages)
+        # Also verify template generation works (reuse pre-built tree)
+        root_messages, session_nav, context = generate_template_messages(
+            messages, session_tree=session_tree
+        )
         assert len(root_messages) > 0
 
 
@@ -685,8 +695,12 @@ class TestWithinSessionForkRealData:
         from claude_code_log.renderer import generate_template_messages
         from claude_code_log.models import SessionHeaderMessage
 
-        result, _ = load_directory_transcripts(EXPERIMENTS_IDEAS_DIR, silent=True)
-        root_messages, session_nav, ctx = generate_template_messages(result)
+        result, session_tree = load_directory_transcripts(
+            EXPERIMENTS_IDEAS_DIR, silent=True
+        )
+        root_messages, session_nav, ctx = generate_template_messages(
+            result, session_tree=session_tree
+        )
 
         # Find branch headers
         branch_headers = [
