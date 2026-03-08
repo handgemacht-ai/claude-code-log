@@ -63,9 +63,10 @@ def _make_assistant_entry(
     parent_uuid: str | None = None,
     text: str = "reply",
     is_sidechain: bool = False,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     """Helper to create an assistant transcript entry dict."""
-    return {
+    entry: dict[str, Any] = {
         "type": "assistant",
         "timestamp": timestamp,
         "parentUuid": parent_uuid,
@@ -86,6 +87,9 @@ def _make_assistant_entry(
             "usage": {"input_tokens": 10, "output_tokens": 5},
         },
     }
+    if agent_id is not None:
+        entry["agentId"] = agent_id
+    return entry
 
 
 # =============================================================================
@@ -123,7 +127,7 @@ class TestLoadDirectoryDagOrdering:
         assert uuids == ["a", "b", "c", "d", "e", "f", "g", "h"]
 
     def test_load_directory_with_sidechains(self, tmp_path: Path) -> None:
-        """Sidechain entries should be present after DAG-ordered main entries."""
+        """Sidechain entries are integrated into DAG at their structural position."""
         main_entries = [
             _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
             _make_assistant_entry("b", "s1", "2025-07-01T10:01:00.000Z", "a"),
@@ -144,12 +148,9 @@ class TestLoadDirectoryDagOrdering:
         result, _ = load_directory_transcripts(tmp_path, silent=True)
         uuids = [getattr(e, "uuid", None) for e in result]
 
-        # Main entries first (DAG ordered), then sidechain
-        assert "a" in uuids
-        assert "b" in uuids
-        assert "sc1" in uuids
-        # Sidechain should be after main entries
-        assert uuids.index("sc1") > uuids.index("b")
+        # Sidechain is now part of the DAG: sc1 is a child of a (tool-result
+        # side-branch), stitched before the continuation child b
+        assert uuids == ["a", "sc1", "b"]
 
     def test_load_directory_with_summaries(self, tmp_path: Path) -> None:
         """Summary entries should be preserved in output."""
@@ -727,3 +728,259 @@ class TestWithinSessionForkRealData:
         # All entries should be covered
         total_in_daglines = sum(len(dl.uuids) for dl in tree.sessions.values())
         assert total_in_daglines == len(tree.nodes)
+
+
+# =============================================================================
+# Test: Agent transcript DAG integration
+# =============================================================================
+
+
+class TestAgentDagIntegration:
+    """Test that agent (sidechain) transcripts are integrated into the DAG."""
+
+    def test_agent_entries_parented_to_anchor(self, tmp_path: Path) -> None:
+        """Agent root entry gets parentUuid pointing to the anchor tool_result."""
+        # Main session: user → assistant(tool_use Agent) → user(tool_result, agentId)
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # User entry carrying tool_result with agentId reference
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "a1",
+                "tool result",
+                agent_id="agent-abc",
+            ),
+            _make_assistant_entry("a2", "s1", "2025-07-01T10:03:00.000Z", "u2"),
+        ]
+        # Agent file entries (all sidechain)
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:01:30.000Z",
+                None,
+                "Agent prompt",
+                is_sidechain=True,
+                agent_id="agent-abc",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:01:40.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-abc",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        result, tree = load_directory_transcripts(tmp_path, silent=True)
+        uuids = [getattr(e, "uuid", None) for e in result]
+
+        # Agent entries should be in the DAG, placed at the junction point
+        assert "ag1" in uuids
+        assert "ag2" in uuids
+        # Main session entries should be in order
+        assert uuids.index("u1") < uuids.index("a1")
+        assert uuids.index("a1") < uuids.index("u2")
+        assert uuids.index("u2") < uuids.index("a2")
+        # Agent entries should appear between the anchor (u2) and
+        # continuation (a2) — the agent DAG-line is a child session
+        # traversed at the junction point
+        assert uuids.index("u2") < uuids.index("ag1")
+        assert uuids.index("ag2") < uuids.index("a2")
+
+    def test_agent_session_in_tree(self, tmp_path: Path) -> None:
+        """Agent transcript creates a synthetic child session in the tree."""
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "u1",
+                "tool result",
+                agent_id="agent-xyz",
+            ),
+        ]
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:01:00.000Z",
+                None,
+                "Agent prompt",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:01:10.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        _, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # Should have synthetic agent session
+        agent_sids = [sid for sid in tree.sessions if "#agent-" in sid]
+        assert len(agent_sids) == 1
+        assert agent_sids[0] == "s1#agent-agent-xyz"
+
+        # Agent session should be a child of the main session
+        agent_dag_line = tree.sessions[agent_sids[0]]
+        assert agent_dag_line.parent_session_id == "s1"
+        assert agent_dag_line.attachment_uuid == "u2"
+
+        # Main session should be a root
+        assert "s1" in tree.roots
+        assert agent_sids[0] not in tree.roots
+
+    def test_agent_no_session_header(self, tmp_path: Path) -> None:
+        """Agent sessions don't generate session headers in rendering."""
+        from claude_code_log.renderer import generate_template_messages
+        from claude_code_log.models import SessionHeaderMessage
+
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "u1",
+                "tool result",
+                agent_id="agent-xyz",
+            ),
+        ]
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:01:00.000Z",
+                None,
+                "Agent prompt",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:01:10.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        root_messages, session_nav, context = generate_template_messages(
+            messages, session_tree=session_tree
+        )
+
+        # Only one session header (for the main session), not for the agent
+        headers = [
+            m for m in context.messages if isinstance(m.content, SessionHeaderMessage)
+        ]
+        assert len(headers) == 1
+        header_content = headers[0].content
+        assert isinstance(header_content, SessionHeaderMessage)
+        assert header_content.session_id == "s1"
+
+    def test_multiple_agents_ordered(self, tmp_path: Path) -> None:
+        """Multiple agents are each placed at their respective anchor points."""
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # First agent anchor
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "a1",
+                "result1",
+                agent_id="agent-1",
+            ),
+            _make_assistant_entry("a2", "s1", "2025-07-01T10:03:00.000Z", "u2"),
+            # Second agent anchor
+            _make_user_entry(
+                "u3",
+                "s1",
+                "2025-07-01T10:04:00.000Z",
+                "a2",
+                "result2",
+                agent_id="agent-2",
+            ),
+            _make_assistant_entry("a3", "s1", "2025-07-01T10:05:00.000Z", "u3"),
+        ]
+        agent1_entries = [
+            _make_user_entry(
+                "ag1-1",
+                "s1",
+                "2025-07-01T10:01:30.000Z",
+                None,
+                "Agent1 prompt",
+                is_sidechain=True,
+                agent_id="agent-1",
+            ),
+            _make_assistant_entry(
+                "ag1-2",
+                "s1",
+                "2025-07-01T10:01:40.000Z",
+                "ag1-1",
+                "Agent1 reply",
+                is_sidechain=True,
+                agent_id="agent-1",
+            ),
+        ]
+        agent2_entries = [
+            _make_user_entry(
+                "ag2-1",
+                "s1",
+                "2025-07-01T10:03:30.000Z",
+                None,
+                "Agent2 prompt",
+                is_sidechain=True,
+                agent_id="agent-2",
+            ),
+            _make_assistant_entry(
+                "ag2-2",
+                "s1",
+                "2025-07-01T10:03:40.000Z",
+                "ag2-1",
+                "Agent2 reply",
+                is_sidechain=True,
+                agent_id="agent-2",
+            ),
+        ]
+
+        _write_jsonl(
+            tmp_path / "session.jsonl",
+            main_entries + agent1_entries + agent2_entries,
+        )
+
+        result, tree = load_directory_transcripts(tmp_path, silent=True)
+        uuids = [getattr(e, "uuid", None) for e in result]
+
+        # Each agent should appear after its anchor and before the next main entry
+        assert uuids.index("ag1-1") > uuids.index("u2")
+        assert uuids.index("ag1-2") < uuids.index("a2")
+        assert uuids.index("ag2-1") > uuids.index("u3")
+        assert uuids.index("ag2-2") < uuids.index("a3")
+
+        # Two synthetic agent sessions
+        agent_sids = [sid for sid in tree.sessions if "#agent-" in sid]
+        assert len(agent_sids) == 2

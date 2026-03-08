@@ -350,12 +350,16 @@ validate DAG construction against known transcripts.
 4. Generate session headers with navigation links (forward/back)
 5. Update session index from flat to hierarchical
 
-### Phase C: Agent Transcript Rework
+### Phase C: Agent Transcript Rework (Steps 1-2 done)
 
-1. Implement parenting strategies for each agent type
-2. Replace `_reorder_sidechain_template_messages` with DAG-line splicing
+1. ~~Implement parenting strategies for each agent type~~ — Done:
+   `_integrate_agent_entries()` parents agent roots to anchors and assigns
+   synthetic session IDs (`{sessionId}#agent-{agentId}`)
+2. ~~Replace `_reorder_sidechain_template_messages` with DAG-line splicing~~
+   — Done: agents are now DAG-ordered; the old function is kept as fallback
 3. Simplify or remove `_cleanup_sidechain_duplicates` (dedup now
-   happens at DAG level)
+   happens at DAG level) — TODO
+4. Agent tool renderer (separate PR, `dev/user-sidechain` branch) — TODO
 
 ### Phase D: Async Agent and Teammate Support
 

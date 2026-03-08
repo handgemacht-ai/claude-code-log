@@ -411,6 +411,49 @@ def load_transcript(
     return messages
 
 
+def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
+    """Parent agent entries and assign synthetic session IDs.
+
+    Agent (sidechain) entries share sessionId with their parent session
+    but form separate conversation threads. This function:
+
+    1. Builds a map of agentId -> anchor UUID (the main-session User entry
+       whose agentId matches, i.e. the tool_result that references the agent)
+    2. For each agent's root entry (parentUuid=None, isSidechain=True),
+       sets parentUuid to the anchor UUID
+    3. Assigns a synthetic sessionId ("{sessionId}#agent-{agentId}") to all
+       agent entries so they form separate DAG-lines
+
+    Mutates entries in place (Pydantic v2 models are mutable by default).
+    """
+    # Build agentId -> anchor UUID map from main-session entries
+    agent_anchors: dict[str, str] = {}
+    for msg in messages:
+        if not isinstance(msg, BaseTranscriptEntry):
+            continue
+        if msg.isSidechain:
+            continue
+        # Main-session entries with agentId reference an agent transcript
+        if msg.agentId:
+            agent_anchors[msg.agentId] = msg.uuid
+
+    if not agent_anchors:
+        return
+
+    # Process sidechain entries: parent roots and assign synthetic sessionIds
+    for msg in messages:
+        if not isinstance(msg, BaseTranscriptEntry):
+            continue
+        if not msg.isSidechain or not msg.agentId:
+            continue
+        agent_id = msg.agentId
+        # Assign synthetic session ID to separate from main session
+        msg.sessionId = f"{msg.sessionId}#agent-{agent_id}"
+        # Parent the root entry to the anchor
+        if msg.parentUuid is None and agent_id in agent_anchors:
+            msg.parentUuid = agent_anchors[agent_id]
+
+
 def load_directory_transcripts(
     directory_path: Path,
     cache_manager: Optional["CacheManager"] = None,
@@ -441,31 +484,28 @@ def load_directory_transcripts(
     progress_chain = _scan_progress_chains(directory_path)
     _repair_parent_chains(all_messages, progress_chain)
 
-    # Partition: sidechain entries excluded from DAG (Phase C scope)
-    sidechain_entries = [e for e in all_messages if getattr(e, "isSidechain", False)]
-    main_entries = [e for e in all_messages if not getattr(e, "isSidechain", False)]
+    # Parent agent entries and assign synthetic session IDs so they
+    # form separate DAG-lines spliced at their anchor points.
+    _integrate_agent_entries(all_messages)
 
-    # Collect sidechain UUIDs so DAG build can suppress orphan warnings
-    # for parents that exist in sidechain data (will be integrated in Phase C)
-    sidechain_uuids: set[str] = {
-        e.uuid for e in sidechain_entries if isinstance(e, BaseTranscriptEntry)
-    }
-    # Also scan unloaded subagent files (e.g. aprompt_suggestion agents
-    # that are never referenced via agentId in the main session)
-    sidechain_uuids |= _scan_sidechain_uuids(directory_path)
+    # Collect UUIDs from unloaded subagent files (e.g. aprompt_suggestion
+    # agents never referenced via agentId) to suppress orphan warnings
+    unloaded_sidechain_uuids = _scan_sidechain_uuids(directory_path)
 
     # Build DAG and traverse (entries grouped by session, depth-first)
-    tree = build_dag_from_entries(main_entries, sidechain_uuids=sidechain_uuids)
+    tree = build_dag_from_entries(
+        all_messages, sidechain_uuids=unloaded_sidechain_uuids
+    )
     dag_ordered = traverse_session_tree(tree)
 
     # Re-add summaries/queue-ops (excluded from DAG since they lack uuid)
     non_dag_entries: list[TranscriptEntry] = [
         e
-        for e in main_entries
+        for e in all_messages
         if isinstance(e, (SummaryTranscriptEntry, QueueOperationTranscriptEntry))
     ]
 
-    return dag_ordered + sidechain_entries + non_dag_entries, tree
+    return dag_ordered + non_dag_entries, tree
 
 
 # =============================================================================
@@ -1619,12 +1659,16 @@ def _generate_individual_session_files(
     # Pre-compute warmup sessions to exclude them
     warmup_session_ids = get_warmup_session_ids(messages)
 
-    # Find all unique session IDs (excluding warmup sessions)
+    # Find all unique session IDs (excluding warmup and agent sessions)
     session_ids: set[str] = set()
     for message in messages:
         if hasattr(message, "sessionId"):
             session_id: str = getattr(message, "sessionId")
-            if session_id and session_id not in warmup_session_ids:
+            if (
+                session_id
+                and session_id not in warmup_session_ids
+                and "#agent-" not in session_id
+            ):
                 session_ids.add(session_id)
 
     # Get session data from cache for better titles

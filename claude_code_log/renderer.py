@@ -851,6 +851,9 @@ def prepare_session_navigation(
     session_nav: list[dict[str, Any]] = []
 
     for session_id in session_order:
+        # Skip agent sidechain sessions (they appear inline, not in nav)
+        if "#agent-" in session_id:
+            continue
         session_info = sessions[session_id]
 
         # Skip empty sessions (agent-only, no user messages)
@@ -2019,6 +2022,14 @@ def _render_messages(
     for message in messages:
         message_type = message.type
 
+        # Determine if this message belongs to an agent sidechain session.
+        # Agent messages use the parent session's render_session_id so they
+        # stay grouped with the main session (no separate session header).
+        msg_session_id = getattr(message, "sessionId", "") or ""
+        agent_parent_session: Optional[str] = (
+            msg_session_id.split("#agent-")[0] if "#agent-" in msg_session_id else None
+        )
+
         # Check if this message starts a new branch (within-session fork)
         # Must happen before system/summary handling so branch state is
         # correct when tagging those messages with render_session_id.
@@ -2101,8 +2112,9 @@ def _render_messages(
             system_content = create_system_message(message)
             if system_content:
                 system_msg = TemplateMessage(system_content)
-                if current_render_session:
-                    system_msg.render_session_id = current_render_session
+                effective_session = agent_parent_session or current_render_session
+                if effective_session:
+                    system_msg.render_session_id = effective_session
                 ctx.register(system_msg)
             continue
 
@@ -2148,43 +2160,46 @@ def _render_messages(
         session_summary = sessions.get(session_id, {}).get("summary")
 
         # Add session header if this is a new session
+        # Skip headers for agent sidechain sessions (they appear inline)
+        is_agent_session = "#agent-" in session_id
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
-            current_session_summary = session_summary
-            session_title = (
-                f"{current_session_summary} • {session_id[:8]}"
-                if current_session_summary
-                else session_id[:8]
-            )
+            if not is_agent_session:
+                current_session_summary = session_summary
+                session_title = (
+                    f"{current_session_summary} • {session_id[:8]}"
+                    if current_session_summary
+                    else session_id[:8]
+                )
 
-            # Create meta with session_id for the session header
-            session_header_meta = MessageMeta(
-                session_id=session_id,
-                timestamp="",
-                uuid="",
-            )
-            hier = (session_hierarchy or {}).get(session_id, {})
-            parent_sid = hier.get("parent_session_id")
-            parent_msg_idx = (
-                ctx.session_first_message.get(parent_sid) if parent_sid else None
-            )
-            session_header_content = SessionHeaderMessage(
-                session_header_meta,
-                title=session_title,
-                session_id=session_id,
-                summary=current_session_summary,
-                parent_session_id=parent_sid,
-                parent_session_summary=(session_summaries or {}).get(parent_sid)
-                if parent_sid
-                else None,
-                parent_message_index=parent_msg_idx,
-                depth=hier.get("depth", 0),
-                attachment_uuid=hier.get("attachment_uuid"),
-            )
-            # Register and track session's first message
-            session_header = TemplateMessage(session_header_content)
-            msg_index = ctx.register(session_header)
-            ctx.session_first_message[session_id] = msg_index
+                # Create meta with session_id for the session header
+                session_header_meta = MessageMeta(
+                    session_id=session_id,
+                    timestamp="",
+                    uuid="",
+                )
+                hier = (session_hierarchy or {}).get(session_id, {})
+                parent_sid = hier.get("parent_session_id")
+                parent_msg_idx = (
+                    ctx.session_first_message.get(parent_sid) if parent_sid else None
+                )
+                session_header_content = SessionHeaderMessage(
+                    session_header_meta,
+                    title=session_title,
+                    session_id=session_id,
+                    summary=current_session_summary,
+                    parent_session_id=parent_sid,
+                    parent_session_summary=(session_summaries or {}).get(parent_sid)
+                    if parent_sid
+                    else None,
+                    parent_message_index=parent_msg_idx,
+                    depth=hier.get("depth", 0),
+                    attachment_uuid=hier.get("attachment_uuid"),
+                )
+                # Register and track session's first message
+                session_header = TemplateMessage(session_header_content)
+                msg_index = ctx.register(session_header)
+                ctx.session_first_message[session_id] = msg_index
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
@@ -2242,8 +2257,9 @@ def _render_messages(
                     continue
 
                 chunk_msg = TemplateMessage(content_model)
-                if current_render_session:
-                    chunk_msg.render_session_id = current_render_session
+                effective_session = agent_parent_session or current_render_session
+                if effective_session:
+                    chunk_msg.render_session_id = effective_session
                 ctx.register(chunk_msg)
 
             else:
@@ -2292,8 +2308,9 @@ def _render_messages(
                     continue
 
                 tool_msg = TemplateMessage(tool_result.content)
-                if current_render_session:
-                    tool_msg.render_session_id = current_render_session
+                effective_session = agent_parent_session or current_render_session
+                if effective_session:
+                    tool_msg.render_session_id = effective_session
                 ctx.register(tool_msg)
 
     return ctx
