@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 from .utils import (
     format_timestamp_range,
+    get_parent_session_id,
     get_project_display_name,
     is_agent_session,
     should_use_as_session_starter,
@@ -788,10 +789,8 @@ def _build_session_data_from_messages(
         ):
             continue
 
-        session_id = getattr(message, "sessionId", "")
+        session_id = get_parent_session_id(getattr(message, "sessionId", ""))
         if not session_id or session_id in warmup_session_ids:
-            continue
-        if is_agent_session(session_id):
             continue
 
         if session_id not in sessions:
@@ -926,11 +925,7 @@ def _generate_paginated_html(
     for msg in messages:
         session_id = getattr(msg, "sessionId", None)
         if session_id:
-            key = (
-                session_id.split("#agent-")[0]
-                if is_agent_session(session_id)
-                else session_id
-            )
+            key = get_parent_session_id(session_id)
             if key not in messages_by_session:
                 messages_by_session[key] = []
             messages_by_session[key].append(msg)
@@ -1432,8 +1427,8 @@ def _update_cache_with_session_data(
         if hasattr(message, "sessionId") and not isinstance(
             message, SummaryTranscriptEntry
         ):
-            session_id = getattr(message, "sessionId", "")
-            if not session_id or is_agent_session(session_id):
+            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
+            if not session_id:
                 continue
 
             if session_id not in sessions_cache_data:
@@ -1469,7 +1464,7 @@ def _update_cache_with_session_data(
         if message.type == "assistant" and hasattr(message, "message"):
             assistant_message = getattr(message, "message")
             request_id = getattr(message, "requestId", None)
-            session_id = getattr(message, "sessionId", "")
+            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
 
             if (
                 hasattr(assistant_message, "usage")

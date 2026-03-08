@@ -66,6 +66,7 @@ from .factories import (
 from .utils import (
     format_timestamp,
     format_timestamp_range,
+    get_parent_session_id,
     get_project_display_name,
     is_agent_session,
     should_skip_message,
@@ -2036,7 +2037,7 @@ def _render_messages(
                 agent_parent_session = hier.get("parent_session_id")
             if not agent_parent_session:
                 # Fallback: extract original session from synthetic ID
-                agent_parent_session = msg_session_id.split("#agent-")[0]
+                agent_parent_session = get_parent_session_id(msg_session_id)
 
         # Check if this message starts a new branch (within-session fork)
         # Must happen before system/summary handling so branch state is

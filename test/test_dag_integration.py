@@ -12,6 +12,7 @@ from typing import Any
 
 from claude_code_log.converter import (
     load_directory_transcripts,
+    _build_session_data_from_messages,
     _scan_progress_chains,
     _repair_parent_chains,
 )
@@ -1070,3 +1071,69 @@ class TestAgentDagIntegration:
         assert "b1_u" in msg_uuids
         assert "b2_u" in msg_uuids
         assert msg_uuids["b1_u"] < msg_uuids["ag1"] < msg_uuids["b2_u"]  # type: ignore[operator]
+
+    def test_agent_messages_coalesced_into_parent_session(self, tmp_path: Path) -> None:
+        """Agent message counts and tokens fold into parent session aggregates.
+
+        Regression test: agent messages must not be dropped from session
+        metadata used for pagination and cache. They should be counted under
+        the parent session.
+        """
+        # Main session: user → assistant(anchor, agentId) → user(next)
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-01-01T00:00:00Z", text="Hello"),
+            _make_assistant_entry(
+                "a1",
+                "s1",
+                "2025-01-01T00:00:01Z",
+                parent_uuid="u1",
+                agent_id="ag1",
+            ),
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-01-01T00:00:05Z",
+                parent_uuid="a1",
+                text="Continue",
+            ),
+        ]
+        # Agent sidechain: 2 entries (user + assistant)
+        agent_entries = [
+            _make_user_entry(
+                "ag_u1",
+                "s1",
+                "2025-01-01T00:00:02Z",
+                is_sidechain=True,
+                agent_id="ag1",
+                text="agent task",
+            ),
+            _make_assistant_entry(
+                "ag_a1",
+                "s1",
+                "2025-01-01T00:00:03Z",
+                parent_uuid="ag_u1",
+                is_sidechain=True,
+                agent_id="ag1",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        messages, _tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # Build session data (used for pagination page assignment)
+        session_data = _build_session_data_from_messages(messages)
+
+        # Only the parent session should exist — no agent-synthetic session
+        assert "s1" in session_data
+        assert not any("#agent-" in sid for sid in session_data)
+
+        s1 = session_data["s1"]
+        # message_count should include both main (3) and agent (2) entries
+        assert s1.message_count == 5
+
+        # Token totals should include agent assistant entry (10 input, 5 output)
+        # Main has 1 assistant (a1: 10 input, 5 output)
+        # Agent has 1 assistant (ag_a1: 10 input, 5 output)
+        assert s1.total_input_tokens == 20
+        assert s1.total_output_tokens == 10
