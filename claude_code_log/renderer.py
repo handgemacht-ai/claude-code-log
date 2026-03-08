@@ -67,6 +67,7 @@ from .utils import (
     format_timestamp,
     format_timestamp_range,
     get_project_display_name,
+    is_agent_session,
     should_skip_message,
     should_use_as_session_starter,
     create_session_preview,
@@ -852,7 +853,7 @@ def prepare_session_navigation(
 
     for session_id in session_order:
         # Skip agent sidechain sessions (they appear inline, not in nav)
-        if "#agent-" in session_id:
+        if is_agent_session(session_id):
             continue
         session_info = sessions[session_id]
 
@@ -2027,7 +2028,7 @@ def _render_messages(
         # stay grouped with the correct session (trunk or branch).
         msg_session_id = getattr(message, "sessionId", "") or ""
         agent_parent_session: Optional[str] = None
-        if "#agent-" in msg_session_id:
+        if is_agent_session(msg_session_id):
             # Use session hierarchy to find the actual parent (may be a branch
             # pseudo-session if the anchor is inside a within-session fork)
             if session_hierarchy:
@@ -2168,10 +2169,10 @@ def _render_messages(
 
         # Add session header if this is a new session
         # Skip headers for agent sidechain sessions (they appear inline)
-        is_agent_session = "#agent-" in session_id
+        is_agent = is_agent_session(session_id)
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
-            if not is_agent_session:
+            if not is_agent:
                 current_session_summary = session_summary
                 session_title = (
                     f"{current_session_summary} • {session_id[:8]}"

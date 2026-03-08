@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from .utils import (
     format_timestamp_range,
     get_project_display_name,
+    is_agent_session,
     should_use_as_session_starter,
     create_session_preview,
     get_warmup_session_ids,
@@ -790,6 +791,8 @@ def _build_session_data_from_messages(
         session_id = getattr(message, "sessionId", "")
         if not session_id or session_id in warmup_session_ids:
             continue
+        if is_agent_session(session_id):
+            continue
 
         if session_id not in sessions:
             sessions[session_id] = {
@@ -917,14 +920,20 @@ def _generate_paginated_html(
             if orphan_path.exists():
                 orphan_path.unlink()
 
-    # Group messages by session for fast lookup
+    # Group messages by session for fast lookup (agent messages grouped
+    # under their parent session since they don't have their own pages)
     messages_by_session: Dict[str, List[TranscriptEntry]] = {}
     for msg in messages:
         session_id = getattr(msg, "sessionId", None)
         if session_id:
-            if session_id not in messages_by_session:
-                messages_by_session[session_id] = []
-            messages_by_session[session_id].append(msg)
+            key = (
+                session_id.split("#agent-")[0]
+                if is_agent_session(session_id)
+                else session_id
+            )
+            if key not in messages_by_session:
+                messages_by_session[key] = []
+            messages_by_session[key].append(msg)
 
     first_page_path = output_dir / _get_page_html_path(1)
 
@@ -1225,7 +1234,11 @@ def convert_jsonl_to(
             current_session_ids: set[str] = set()
             for message in messages:
                 session_id = getattr(message, "sessionId", "")
-                if session_id and session_id not in warmup_session_ids:
+                if (
+                    session_id
+                    and session_id not in warmup_session_ids
+                    and not is_agent_session(session_id)
+                ):
                     current_session_ids.add(session_id)
             session_data = {
                 session_id: session_cache
@@ -1420,7 +1433,7 @@ def _update_cache_with_session_data(
             message, SummaryTranscriptEntry
         ):
             session_id = getattr(message, "sessionId", "")
-            if not session_id:
+            if not session_id or is_agent_session(session_id):
                 continue
 
             if session_id not in sessions_cache_data:
@@ -1667,7 +1680,7 @@ def _generate_individual_session_files(
             if (
                 session_id
                 and session_id not in warmup_session_ids
-                and "#agent-" not in session_id
+                and not is_agent_session(session_id)
             ):
                 session_ids.add(session_id)
 
