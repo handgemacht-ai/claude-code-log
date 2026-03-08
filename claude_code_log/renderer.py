@@ -2024,11 +2024,18 @@ def _render_messages(
 
         # Determine if this message belongs to an agent sidechain session.
         # Agent messages use the parent session's render_session_id so they
-        # stay grouped with the main session (no separate session header).
+        # stay grouped with the correct session (trunk or branch).
         msg_session_id = getattr(message, "sessionId", "") or ""
-        agent_parent_session: Optional[str] = (
-            msg_session_id.split("#agent-")[0] if "#agent-" in msg_session_id else None
-        )
+        agent_parent_session: Optional[str] = None
+        if "#agent-" in msg_session_id:
+            # Use session hierarchy to find the actual parent (may be a branch
+            # pseudo-session if the anchor is inside a within-session fork)
+            if session_hierarchy:
+                hier = session_hierarchy.get(msg_session_id, {})
+                agent_parent_session = hier.get("parent_session_id")
+            if not agent_parent_session:
+                # Fallback: extract original session from synthetic ID
+                agent_parent_session = msg_session_id.split("#agent-")[0]
 
         # Check if this message starts a new branch (within-session fork)
         # Must happen before system/summary handling so branch state is

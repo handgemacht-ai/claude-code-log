@@ -984,3 +984,89 @@ class TestAgentDagIntegration:
         # Two synthetic agent sessions
         agent_sids = [sid for sid in tree.sessions if "#agent-" in sid]
         assert len(agent_sids) == 2
+
+    def test_agent_in_branch(self, tmp_path: Path) -> None:
+        """Agent anchored inside a within-session fork attaches to the branch."""
+        from claude_code_log.renderer import generate_template_messages
+
+        # Trunk: u1 → a1 (fork point)
+        # Branch 1: b1_u (rewind from a1, different timestamp) → b1_a
+        #   with agent anchored at b1_u
+        # Branch 2: b2_u (rewind from a1, different timestamp)
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # Branch 1: user rewind from a1
+            _make_user_entry(
+                "b1_u",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "a1",
+                "Branch 1",
+                agent_id="agent-b1",
+            ),
+            _make_assistant_entry(
+                "b1_a",
+                "s1",
+                "2025-07-01T10:03:00.000Z",
+                "b1_u",
+            ),
+            # Branch 2: user rewind from a1 (different timestamp = real fork)
+            _make_user_entry(
+                "b2_u",
+                "s1",
+                "2025-07-01T10:04:00.000Z",
+                "a1",
+                "Branch 2",
+            ),
+        ]
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:02:30.000Z",
+                None,
+                "Agent in branch",
+                is_sidechain=True,
+                agent_id="agent-b1",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:02:40.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-b1",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        result, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # Agent session's parent should be the branch pseudo-session, not trunk
+        agent_sids = [sid for sid in tree.sessions if "#agent-" in sid]
+        assert len(agent_sids) == 1
+        agent_dl = tree.sessions[agent_sids[0]]
+        # The branch pseudo-session has format "s1@{child_uuid[:12]}"
+        assert agent_dl.parent_session_id is not None
+        assert "@" in agent_dl.parent_session_id, (
+            f"Agent should be child of branch, got parent={agent_dl.parent_session_id}"
+        )
+        assert agent_dl.attachment_uuid == "b1_u"
+
+        # End-to-end rendering: agent messages should appear in the branch,
+        # not get regrouped under the trunk
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        root_messages, session_nav, context = generate_template_messages(
+            messages, session_tree=session_tree
+        )
+
+        # Verify message ordering: agent messages should be in the branch
+        # block (after b1_u anchor, before branch 2's b2_u)
+        msg_uuids = {m.meta.uuid: m.message_index for m in context.messages}
+        assert "ag1" in msg_uuids
+        assert "b1_u" in msg_uuids
+        assert "b2_u" in msg_uuids
+        assert msg_uuids["b1_u"] < msg_uuids["ag1"] < msg_uuids["b2_u"]  # type: ignore[operator]
