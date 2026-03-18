@@ -340,6 +340,58 @@ class TestSessionBrowser:
                 assert table.row_count == 2
 
     @pytest.mark.asyncio
+    async def test_populate_table_with_bracket_content(self, temp_project_dir):
+        """Test that session previews containing square brackets don't cause MarkupError.
+
+        Rich interprets square brackets as markup tags, so content like
+        '[/Users/foo/bar]' would be parsed as a closing tag and raise MarkupError.
+        Session summaries and first messages must be escaped before display.
+        """
+        app = SessionBrowser(temp_project_dir)
+
+        # Use session IDs matching the JSONL files in temp_project_dir fixture
+        mock_session_data = {
+            "session-123": SessionCacheData(
+                session_id="session-123",
+                summary=None,
+                first_timestamp="2025-01-01T10:00:00Z",
+                last_timestamp="2025-01-01T10:01:00Z",
+                message_count=5,
+                first_user_message="10:06:02.383: [/Users/guowang/PycharmProjects/h5st_student] \ngit -c credential.helper=",
+                total_input_tokens=100,
+                total_output_tokens=200,
+                cwd="/test/project",
+            ),
+            "session-456": SessionCacheData(
+                session_id="session-456",
+                summary="Working on [feature-branch] implementation",
+                first_timestamp="2025-01-02T14:30:00Z",
+                last_timestamp="2025-01-02T14:30:00Z",
+                message_count=3,
+                first_user_message="Normal message",
+                total_input_tokens=50,
+                total_output_tokens=75,
+                cwd="/test/other",
+            ),
+        }
+
+        with (
+            patch.object(app.cache_manager, "get_cached_project_data") as mock_cache,
+            patch.object(app.cache_manager, "get_modified_files") as mock_modified,
+        ):
+            mock_cache.return_value = Mock(
+                sessions=mock_session_data, working_directories=[str(temp_project_dir)]
+            )
+            mock_modified.return_value = []
+
+            async with app.run_test() as pilot:
+                await pilot.pause(0.1)
+
+                # Should not raise MarkupError - table should render successfully
+                table = cast(DataTable, app.query_one("#sessions-table"))
+                assert table.row_count == 2
+
+    @pytest.mark.asyncio
     async def test_row_selection(self, temp_project_dir):
         """Test selecting a row in the sessions table."""
         app = SessionBrowser(temp_project_dir)
