@@ -21,6 +21,7 @@ from textual.widgets import (
     Tree,
 )
 from textual.reactive import reactive
+from rich.markup import escape as escape_markup
 
 from .cache import CacheManager, SessionCacheData, get_library_version
 from .converter import (
@@ -1463,14 +1464,16 @@ class SessionBrowser(App[Optional[str]]):
             token_display = f"{total_tokens:,}" if total_tokens > 0 else "-"
 
             # Get summary or first user message
-            preview = (
+            # Escape Rich markup to prevent MarkupError from square brackets
+            # in paths like [/Users/foo/bar] being parsed as closing tags
+            preview = escape_markup(
                 session_data.summary
                 or session_data.first_user_message
                 or "No preview available"
             )
             # Add [ARCHIVED] indicator for archived sessions
             if is_archived:
-                preview = f"[ARCHIVED] {preview}"
+                preview = f"\\[ARCHIVED] {preview}"
 
             table.add_row(
                 session_id[:8],
