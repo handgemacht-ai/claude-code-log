@@ -1,6 +1,6 @@
 """Test cases for Grep tool rendering."""
 
-from claude_code_log.html.tool_formatters import format_grep_input, render_params_table
+from claude_code_log.html.tool_formatters import format_grep_input
 from claude_code_log.html.renderer import HtmlRenderer
 from claude_code_log.markdown.renderer import MarkdownRenderer
 from claude_code_log.models import (
@@ -48,7 +48,9 @@ class TestGrepInput:
 
     def test_extra_fields(self):
         """Grep allows extra fields like -A, -B, -C, -i, -n."""
-        inp = GrepInput(**{"pattern": "test", "-A": 3, "-B": 2, "-i": True})
+        inp = GrepInput.model_validate(
+            {"pattern": "test", "-A": 3, "-B": 2, "-i": True}
+        )
         assert inp.pattern == "test"
         assert inp.model_extra == {"-A": 3, "-B": 2, "-i": True}
 
@@ -87,7 +89,7 @@ class TestFormatGrepInput:
 
     def test_extra_fields_shown(self):
         """Extra fields like -A, -B should appear in the params table."""
-        inp = GrepInput(**{"pattern": "test", "-A": 5, "-i": True})
+        inp = GrepInput.model_validate({"pattern": "test", "-A": 5, "-i": True})
         html = format_grep_input(inp)
         assert "tool-params-table" in html
         assert "-A" in html
