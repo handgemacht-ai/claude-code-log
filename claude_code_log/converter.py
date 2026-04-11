@@ -428,16 +428,25 @@ def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
 
     Mutates entries in place (Pydantic v2 models are mutable by default).
     """
-    # Build agentId -> anchor UUID map from main-session entries
+    # Build agentId -> anchor UUID map.
+    # An anchor is any entry whose agentId references a sidechain transcript.
+    # Prefer non-sidechain anchors (main session), but also accept sidechain
+    # anchors (nested agents: agent A spawns agent B, so B's anchor lives
+    # inside A's sidechain).
     agent_anchors: dict[str, str] = {}
+    agent_anchors_from_sidechain: dict[str, str] = {}
     for msg in messages:
         if not isinstance(msg, BaseTranscriptEntry):
             continue
-        if msg.isSidechain:
+        if not msg.agentId:
             continue
-        # Main-session entries with agentId reference an agent transcript
-        if msg.agentId:
+        if msg.isSidechain:
+            agent_anchors_from_sidechain.setdefault(msg.agentId, msg.uuid)
+        else:
             agent_anchors[msg.agentId] = msg.uuid
+    # Merge: non-sidechain anchors take priority
+    for agent_id, uuid in agent_anchors_from_sidechain.items():
+        agent_anchors.setdefault(agent_id, uuid)
 
     if not agent_anchors:
         return
@@ -1561,13 +1570,14 @@ def _collect_project_sessions(messages: list[TranscriptEntry]) -> list[dict[str,
             ):
                 session_summaries[uuid_to_session_backup[leaf_uuid]] = message.summary
 
-    # Group messages by session (excluding warmup-only sessions)
+    # Group messages by session (excluding warmup-only sessions,
+    # coalescing agent sessions into their parent)
     sessions: dict[str, dict[str, Any]] = {}
     for message in messages:
         if hasattr(message, "sessionId") and not isinstance(
             message, SummaryTranscriptEntry
         ):
-            session_id = getattr(message, "sessionId", "")
+            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
             if not session_id or session_id in warmup_session_ids:
                 continue
 
