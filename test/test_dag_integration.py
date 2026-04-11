@@ -1137,3 +1137,58 @@ class TestAgentDagIntegration:
         # Agent has 1 assistant (ag_a1: 10 input, 5 output)
         assert s1.total_input_tokens == 20
         assert s1.total_output_tokens == 10
+
+
+# =============================================================================
+# Test: current_render_session reset across sessions
+# =============================================================================
+
+
+class TestRenderSessionResetAcrossSessions:
+    """Test that current_render_session is reset when entering a new session.
+
+    Bug: _render_messages() sets current_render_session when entering a
+    within-session fork branch but never clears it on new sessions,
+    causing subsequent session messages to inherit a stale branch ID.
+    """
+
+    def test_second_session_not_polluted_by_first_session_branch(
+        self, tmp_path: Path
+    ) -> None:
+        """Messages in session 2 should not inherit session 1's branch render_session_id."""
+        from claude_code_log.renderer import generate_template_messages
+
+        # Session s1 with a fork: u1 → a1, then both u2a and u2b branch from a1
+        s1_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # Fork: two children of a1
+            _make_user_entry("u2a", "s1", "2025-07-01T10:02:00.000Z", "a1", "Branch A"),
+            _make_assistant_entry("a2a", "s1", "2025-07-01T10:03:00.000Z", "u2a"),
+            _make_user_entry("u2b", "s1", "2025-07-01T10:02:01.000Z", "a1", "Branch B"),
+            _make_assistant_entry("a2b", "s1", "2025-07-01T10:03:01.000Z", "u2b"),
+        ]
+
+        # Session s2: separate session, should NOT inherit s1's branch state
+        s2_entries = [
+            _make_user_entry(
+                "u3", "s2", "2025-07-01T11:00:00.000Z", None, "New session"
+            ),
+            _make_assistant_entry("a3", "s2", "2025-07-01T11:01:00.000Z", "u3"),
+        ]
+
+        _write_jsonl(tmp_path / "s1.jsonl", s1_entries)
+        _write_jsonl(tmp_path / "s2.jsonl", s2_entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        _, _, ctx = generate_template_messages(messages, session_tree=session_tree)
+
+        # Find messages from session s2 by UUID
+        s2_msgs = [m for m in ctx.messages if m.meta.uuid in ("u3", "a3")]
+        assert len(s2_msgs) == 2, f"Expected 2 s2 messages, got {len(s2_msgs)}"
+
+        for msg in s2_msgs:
+            assert msg.render_session_id == "s2", (
+                f"Message {msg.meta.uuid} has render_session_id={msg.render_session_id!r}, "
+                f"expected 's2' — branch tracking from s1 leaked into s2"
+            )

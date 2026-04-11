@@ -2093,6 +2093,7 @@ def _render_messages(
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
             if not is_agent:
+                current_render_session = None  # Reset branch tracking
                 current_session_summary = session_summary
                 session_title = (
                     f"{current_session_summary} • {session_id[:8]}"
