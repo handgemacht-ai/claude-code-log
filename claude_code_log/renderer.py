@@ -668,11 +668,6 @@ def generate_template_messages(
     with log_timing("Reorder paired messages", t_start):
         template_messages = _reorder_paired_messages(template_messages)
 
-    # Reorder sidechains to appear after their Task results
-    # This must happen AFTER pair reordering, since that moves tool_results
-    with log_timing("Reorder sidechain messages", t_start):
-        template_messages = _reorder_sidechain_template_messages(template_messages)
-
     # Build hierarchy (message_id and ancestry) based on final order
     # This must happen AFTER all reordering to get correct parent-child relationships
     with log_timing("Build message hierarchy", t_start):
@@ -1703,82 +1698,6 @@ def _reorder_session_template_messages(
     for sid, msgs in session_messages_map.items():
         if sid not in used_sessions:
             result.extend(msgs)
-
-    return result
-
-
-def _reorder_sidechain_template_messages(
-    messages: list[TemplateMessage],
-) -> list[TemplateMessage]:
-    """Reorder template messages to place sidechains immediately after their Task results.
-
-    When parallel Task agents run, their sidechain messages may appear in arbitrary
-    order based on when each agent finishes. This function reorders messages so that
-    each sidechain's messages appear right after the Task result that references them.
-
-    Note: Deduplication of sidechain content (first user message = Task input,
-    last assistant message = Task output) is handled later by _cleanup_sidechain_duplicates
-    after the tree structure is built.
-
-    This must be called AFTER _reorder_paired_messages, since that function moves
-    tool_results next to their tool_uses, which changes where the agentId-bearing
-    messages end up.
-
-    Args:
-        messages: Template messages including sidechains
-
-    Returns:
-        Reordered messages with sidechains properly placed after their Task results
-    """
-    # First pass: extract sidechains grouped by agent_id
-    main_messages: list[TemplateMessage] = []
-    sidechain_map: dict[str, list[TemplateMessage]] = {}
-
-    for message in messages:
-        is_sidechain = message.is_sidechain
-        agent_id = message.agent_id
-
-        if is_sidechain and agent_id:
-            # Group sidechain messages by agent_id
-            if agent_id not in sidechain_map:
-                sidechain_map[agent_id] = []
-            sidechain_map[agent_id].append(message)
-        else:
-            main_messages.append(message)
-
-    # If no sidechains, return original order
-    if not sidechain_map:
-        return messages
-
-    # Second pass: insert sidechains after their Task result messages
-    result: list[TemplateMessage] = []
-    used_agents: set[str] = set()
-
-    for message in main_messages:
-        result.append(message)
-
-        # Check if this is a Task tool_result that references a sidechain (via agent_id)
-        # We only insert after tool_result (not tool_use) to avoid duplicates if
-        # tool_use ever gets agent_id in the future
-        agent_id = message.agent_id
-
-        # Only insert sidechain if not already inserted (handles case where
-        # multiple tool_results have the same agent_id)
-        if (
-            agent_id
-            and message.type == MessageType.TOOL_RESULT
-            and agent_id in sidechain_map
-            and agent_id not in used_agents
-        ):
-            # Insert the sidechain messages for this agent right after this message
-            # Note: ancestry will be rebuilt by _build_message_hierarchy() later
-            result.extend(sidechain_map[agent_id])
-            used_agents.add(agent_id)
-
-    # Append any sidechains that weren't matched (shouldn't happen normally)
-    for agent_id, sidechain_msgs in sidechain_map.items():
-        if agent_id not in used_agents:
-            result.extend(sidechain_msgs)
 
     return result
 

@@ -1144,6 +1144,9 @@ def convert_jsonl_to(
         # Repair progress chain gaps for single-file mode
         progress_chain = _scan_progress_chains(input_path)
         _repair_parent_chains(messages, progress_chain)
+        # Parent agent entries and assign synthetic session IDs (same as
+        # directory mode) so DAG-based ordering handles sidechain placement.
+        _integrate_agent_entries(messages)
         title = f"Claude Transcript - {input_path.stem}"
         cache_was_updated = False  # No cache in single file mode
     else:

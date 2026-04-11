@@ -39,15 +39,20 @@ The synthetic ID is only assigned in-memory during `load_directory_transcripts()
   in `_reorder_session_template_messages()`
 - Agent sessions excluded from session navigation and individual file generation
 
-### What Was Kept (Not Removed Yet)
+### What Was Kept
 
-- `_reorder_sidechain_template_messages()` — now a no-op for properly
-  integrated agents (they're already in DAG order), but kept as fallback
-  for any edge cases with old-style data
 - `_cleanup_sidechain_duplicates()` — still needed for Task tool dedup
-  (first user message = Task input, last assistant = Task output)
+  (first user message = Task input, last assistant = Task output).
+  This is content-level dedup that can't be handled at the DAG level.
 - `sidechain_uuids` parameter in `build_dag()` — still needed for unloaded
   subagent files (e.g. aprompt_suggestion agents never referenced via agentId)
+
+### What Was Removed (Step 4)
+
+- `_reorder_sidechain_template_messages()` — removed. With DAG integration,
+  agent messages are already in correct order via DAG traversal. Single-file
+  mode now also calls `_integrate_agent_entries()` so both paths use DAG-based
+  ordering.
 
 ## Remaining Steps
 
@@ -59,13 +64,14 @@ What's left:
 - Verify rendering hierarchy (levels 4/5) works correctly for all cases
 - Test with projects that have nested agents (agent spawning sub-agents)
 
-### Step 4: Rendering Cleanup
+### Step 4: Rendering Cleanup (Done)
 
-Once confident in DAG ordering:
-- Remove `_reorder_sidechain_template_messages()` (currently a no-op for
-  integrated agents)
-- Simplify `_cleanup_sidechain_duplicates()` — dedup may be handleable at
-  DAG level
+- Removed `_reorder_sidechain_template_messages()` — no longer needed with
+  DAG-based ordering. Added `_integrate_agent_entries()` to single-file mode
+  in `converter.py` so both code paths use consistent DAG integration.
+- `_cleanup_sidechain_duplicates()` — kept as-is. Content-level dedup
+  (Task input/output duplicated in sidechain) cannot be handled at the DAG
+  level since it requires text comparison, not structural ordering.
 
 ### Step 5: Agent Tool Renderer (separate PR, `dev/user-sidechain`)
 
