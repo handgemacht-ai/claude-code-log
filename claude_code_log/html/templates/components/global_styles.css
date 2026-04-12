@@ -38,6 +38,10 @@
     --system-error-color: #f44336;
     --tool-use-color: #4caf50;
 
+    /* Fork/branch structural colors */
+    --fork-point-color: #adb5bd;
+    --branch-point-color: #adb5bd;
+
     /* Question/answer tool colors */
     --question-accent: #f5a623;
     --question-bg: #fffbf0;

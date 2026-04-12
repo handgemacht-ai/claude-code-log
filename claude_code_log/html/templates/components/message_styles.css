@@ -571,7 +571,7 @@
     background-color: transparent;
     box-shadow: none;
     border: none;
-    border-left: 3px solid #adb5bd;
+    border-left: 3px solid var(--branch-point-color);
     padding: 8px 14px;
     margin: 2em 0 1em 0;
 }
@@ -581,8 +581,8 @@
     margin-bottom: 0;
 }
 
-.branch-header .fold-bar-section.folded {
-    border-bottom-color: #adb5bd;
+.branch-header .fold-bar[data-border-color="session-header"] .fold-bar-section.folded {
+    border-bottom-color: var(--branch-point-color);
 }
 
 .session-subtitle {
