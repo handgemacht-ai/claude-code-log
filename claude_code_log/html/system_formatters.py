@@ -90,6 +90,15 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
     escaped_title = html.escape(content.title)
     if content.is_branch and content.parent_message_index is not None:
         # Branch header: compact with back-reference to fork point
+        # Show session info for cross-session branches (different real session)
+        session_info = ""
+        if content.original_session_id and content.parent_session_id:
+            parent_real_sid = content.parent_session_id.split("@")[0]
+            if content.original_session_id != parent_real_sid:
+                esc_sid = html.escape(content.original_session_id[:8])
+                session_info = (
+                    f' <span class="branch-session">(in Session {esc_sid})</span>'
+                )
         fork_backref = ""
         if content.parent_session_summary:
             escaped_fork = html.escape(content.parent_session_summary)
@@ -106,7 +115,7 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
                 f'class="branch-backlink">'
                 f"&#x2442; Fork point</a></div>"
             )
-        return f"{escaped_title}{fork_backref}"
+        return f"{escaped_title}{session_info}{fork_backref}"
     if content.parent_session_id:
         parent_label = content.parent_session_summary or content.parent_session_id[:8]
         escaped_parent = html.escape(parent_label)

@@ -573,12 +573,16 @@
     border: none;
     border-left: 3px solid #adb5bd;
     padding: 8px 14px;
-    margin: 4px 0 8px 0;
+    margin: 2em 0 1em 0;
 }
 
 .branch-header .header {
     font-size: 1em;
     margin-bottom: 0;
+}
+
+.branch-header .fold-bar-section.folded {
+    border-bottom-color: #adb5bd;
 }
 
 .session-subtitle {
