@@ -54,9 +54,7 @@
         currentMatchIndex: 0,
         matches: [],
         searchIndex: null,
-        isIndexPage: window.location.pathname.includes('index.html') ||
-                      window.location.pathname.endsWith('projects/') ||
-                      (!window.location.pathname.includes('.html') && window.location.pathname.endsWith('/'))
+        isIndexPage: null
     };
 
     // DOM elements
@@ -76,6 +74,9 @@
 
     // Initialize search
     function initSearch() {
+        // Detect page type by content rather than URL so it works regardless of filename
+        searchState.isIndexPage = document.querySelector('.project-list') !== null;
+
         // Build search index from page content
         buildSearchIndex();
 
@@ -87,6 +88,11 @@
 
         // Initialize UI state
         updateSearchInputState();
+
+        // Re-index when filters change (transcript pages only)
+        if (!searchState.isIndexPage) {
+            setupTranscriptFilterObserver();
+        }
     }
 
     // Build search index from current page
@@ -732,8 +738,7 @@
     }
 
     // Re-index when filters change (for transcript pages)
-    if (!searchState.isIndexPage) {
-        // Listen for filter changes
+    function setupTranscriptFilterObserver() {
         let isUpdatingFilters = false;
         const observer = new MutationObserver((mutations) => {
             // Only react to filtered-hidden class changes, not search highlights
