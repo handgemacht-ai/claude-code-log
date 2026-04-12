@@ -20,6 +20,7 @@ from .models import (
     MessageType,
     TranscriptEntry,
     AssistantTranscriptEntry,
+    PassthroughTranscriptEntry,
     SystemTranscriptEntry,
     SummaryTranscriptEntry,
     QueueOperationTranscriptEntry,
@@ -1749,6 +1750,10 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     for message in messages:
         # Skip summary messages
         if isinstance(message, SummaryTranscriptEntry):
+            continue
+
+        # Skip passthrough entries (structural DAG nodes, not rendered)
+        if isinstance(message, PassthroughTranscriptEntry):
             continue
 
         # Skip most queue operations - only process 'remove' for counts

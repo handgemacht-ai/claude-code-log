@@ -493,7 +493,13 @@ class TestRepairParentChains:
         assert messages[1].parentUuid == "a"
 
     def test_single_progress_gap(self, tmp_path: Path) -> None:
-        """Single progress gap is bridged."""
+        """Progress entry with uuid+sessionId becomes PassthroughTranscriptEntry.
+
+        With passthrough entries in the DAG, the chain is intact —
+        no repair needed for progress entries that have uuid+sessionId.
+        """
+        from claude_code_log.models import PassthroughTranscriptEntry
+
         entries = [
             _make_progress_entry("p1", None),
             _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", "p1"),
@@ -504,12 +510,16 @@ class TestRepairParentChains:
         messages = load_transcript(tmp_path / "session.jsonl", silent=True)
         progress_chain = {"p1": None}
         _repair_parent_chains(messages, progress_chain)
-        # user(a).parentUuid was "p1" (progress), repaired to None
-        assert isinstance(messages[0], BaseTranscriptEntry)
-        assert messages[0].parentUuid is None
+        # p1 is now a PassthroughTranscriptEntry (not dropped)
+        assert isinstance(messages[0], PassthroughTranscriptEntry)
+        assert messages[0].uuid == "p1"
+        # user(a).parentUuid remains "p1" — chain intact via passthrough
+        user_a = [m for m in messages if getattr(m, "uuid", None) == "a"][0]
+        assert isinstance(user_a, BaseTranscriptEntry)
+        assert user_a.parentUuid == "p1"
 
     def test_chained_progress_gap(self, tmp_path: Path) -> None:
-        """Chain of consecutive progress entries is fully bridged."""
+        """Chain of passthrough progress entries preserves DAG links."""
         # real_parent → progress(p1) → progress(p2) → user(a)
         entries = [
             _make_user_entry("real_parent", "s1", "2025-07-01T10:00:00.000Z", None),
@@ -523,10 +533,10 @@ class TestRepairParentChains:
         messages = load_transcript(tmp_path / "session.jsonl", silent=True)
         progress_chain = {"p1": "real_parent", "p2": "p1"}
         _repair_parent_chains(messages, progress_chain)
-        # user(a).parentUuid was "p2", should walk through p2→p1→real_parent
+        # With passthrough entries, chain is intact: a → p2 → p1 → real_parent
         user_a = [m for m in messages if getattr(m, "uuid", None) == "a"][0]
         assert isinstance(user_a, BaseTranscriptEntry)
-        assert user_a.parentUuid == "real_parent"
+        assert user_a.parentUuid == "p2"  # NOT repaired — p2 is in the DAG
 
 
 class TestProgressChainRepairIntegration:
@@ -549,36 +559,44 @@ class TestProgressChainRepairIntegration:
         )
 
     def test_progress_chain_repair_single_file(self) -> None:
-        """Single-file mode also repairs progress chains."""
+        """Single-file mode: progress entries are PassthroughTranscriptEntry nodes.
+
+        With passthrough entries, progress entries are in the DAG and don't
+        need repair. Entries pointing to them have valid parents.
+        """
         from claude_code_log.converter import (
             load_transcript,
             _scan_progress_chains,
             _repair_parent_chains,
         )
+        from claude_code_log.models import PassthroughTranscriptEntry
 
         single_file = (
             EXPERIMENTS_IDEAS_DIR / "03eb5929-52b3-4b13-ada3-b93ae35806b8.jsonl"
         )
         messages = load_transcript(single_file, silent=True)
 
-        # Before repair: some entries have parentUuid pointing to progress UUIDs
+        # Progress entries are now PassthroughTranscriptEntry in messages
         progress_chain = _scan_progress_chains(single_file)
         assert len(progress_chain) == 11
 
-        # Count entries with progress parents before repair
-        orphan_before = sum(
-            1 for m in messages if getattr(m, "parentUuid", None) in progress_chain
-        )
-        assert orphan_before == 8
+        # Progress entries should be in the messages list
+        passthrough_uuids = {
+            m.uuid
+            for m in messages
+            if isinstance(m, PassthroughTranscriptEntry) and m.type == "progress"
+        }
+        assert len(passthrough_uuids) > 0
 
-        # Repair
+        # Repair should be a no-op since all progress entries are present
         _repair_parent_chains(messages, progress_chain)
 
-        # After repair: no entries should point to progress UUIDs
-        orphan_after = sum(
+        # Entries still point to progress UUIDs (which is correct —
+        # those are valid PassthroughTranscriptEntry nodes in the DAG)
+        entries_with_progress_parents = sum(
             1 for m in messages if getattr(m, "parentUuid", None) in progress_chain
         )
-        assert orphan_after == 0
+        assert entries_with_progress_parents > 0  # Chain intact through passthrough
 
     def test_progress_chain_preserves_entry_count(self) -> None:
         """Repair doesn't add or remove entries, only mutates parentUuid."""
@@ -614,7 +632,9 @@ class TestProgressChainRepairIntegration:
         assert len(tree.nodes) > 0
 
     def test_synthetic_progress_in_directory_mode(self, tmp_path: Path) -> None:
-        """Synthetic test: progress entries in directory mode are bridged."""
+        """Progress entries become passthrough nodes in directory mode."""
+        from claude_code_log.models import PassthroughTranscriptEntry
+
         entries: list[dict[str, Any]] = [
             _make_progress_entry("p1", None),
             _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", "p1", "Start"),
@@ -628,8 +648,13 @@ class TestProgressChainRepairIntegration:
         result, _ = load_directory_transcripts(tmp_path, silent=True)
         uuids = [getattr(e, "uuid", None) for e in result]
 
-        # All 4 real entries should be in DAG order
-        assert uuids == ["a", "b", "c", "d"]
+        # All 6 entries in DAG order (including passthrough progress entries)
+        assert uuids == ["p1", "a", "b", "p2", "c", "d"]
+
+        # Progress entries are PassthroughTranscriptEntry
+        passthrough = [e for e in result if isinstance(e, PassthroughTranscriptEntry)]
+        assert len(passthrough) == 2
+        assert {p.uuid for p in passthrough} == {"p1", "p2"}
 
 
 # =============================================================================
@@ -1192,3 +1217,142 @@ class TestRenderSessionResetAcrossSessions:
                 f"Message {msg.meta.uuid} has render_session_id={msg.render_session_id!r}, "
                 f"expected 's2' — branch tracking from s1 leaked into s2"
             )
+
+
+# =============================================================================
+# Test: PassthroughTranscriptEntry for DAG chain continuity
+# =============================================================================
+
+
+def _make_passthrough_entry(
+    uuid: str,
+    session_id: str,
+    timestamp: str,
+    parent_uuid: str | None = None,
+    entry_type: str = "attachment",
+) -> dict[str, Any]:
+    """Helper to create a passthrough (non-rendered) entry dict."""
+    return {
+        "type": entry_type,
+        "timestamp": timestamp,
+        "parentUuid": parent_uuid,
+        "isSidechain": False,
+        "userType": "external",
+        "cwd": "/tmp",
+        "sessionId": session_id,
+        "version": "1.0.0",
+        "uuid": uuid,
+        # No "message" field — this is not a user/assistant entry
+    }
+
+
+class TestPassthroughDagChain:
+    """Test that passthrough entries (attachment, etc.) preserve DAG chain."""
+
+    def test_attachment_preserves_parent_chain(self, tmp_path: Path) -> None:
+        """Assistant whose parentUuid points to an attachment should not be a false root."""
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_passthrough_entry(
+                "att1", "s1", "2025-07-01T10:00:30.000Z", "u1", "attachment"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "att1", "Reply"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # All three entries should be in the DAG
+        assert "u1" in tree.nodes
+        assert "att1" in tree.nodes
+        assert "a1" in tree.nodes
+
+        # a1's parent should be att1, att1's parent should be u1
+        assert tree.nodes["a1"].parent_uuid == "att1"
+        assert tree.nodes["att1"].parent_uuid == "u1"
+
+        # a1 should NOT be a false root — the session should have only 1 root (u1)
+        s1 = tree.sessions.get("s1")
+        assert s1 is not None
+        assert s1.uuids[0] == "u1", "u1 should be the first entry in the session"
+
+    def test_attachment_not_rendered(self, tmp_path: Path) -> None:
+        """Passthrough entries should not appear in rendered output."""
+        from claude_code_log.renderer import generate_template_messages
+
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Hello"),
+            _make_passthrough_entry(
+                "att1", "s1", "2025-07-01T10:00:30.000Z", "u1", "attachment"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "att1", "World"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        _, _, ctx = generate_template_messages(messages, session_tree=session_tree)
+
+        # No message should have uuid "att1"
+        rendered_uuids = [m.meta.uuid for m in ctx.messages if m.meta.uuid]
+        assert "att1" not in rendered_uuids
+        # But user and assistant should be rendered
+        assert "u1" in rendered_uuids
+        assert "a1" in rendered_uuids
+
+    def test_multiple_passthrough_types(self, tmp_path: Path) -> None:
+        """Various unknown types with uuid should all become passthrough entries."""
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_passthrough_entry(
+                "p1", "s1", "2025-07-01T10:00:10.000Z", "u1", "attachment"
+            ),
+            _make_passthrough_entry(
+                "p2", "s1", "2025-07-01T10:00:20.000Z", "p1", "permission-mode"
+            ),
+            _make_passthrough_entry(
+                "p3", "s1", "2025-07-01T10:00:30.000Z", "p2", "file-history-snapshot"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "p3", "Reply"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # All should be in DAG
+        for uid in ["u1", "p1", "p2", "p3", "a1"]:
+            assert uid in tree.nodes, f"{uid} should be in DAG"
+
+        # Chain should be intact: u1 → p1 → p2 → p3 → a1
+        assert tree.nodes["a1"].parent_uuid == "p3"
+        assert tree.nodes["p3"].parent_uuid == "p2"
+        assert tree.nodes["p2"].parent_uuid == "p1"
+        assert tree.nodes["p1"].parent_uuid == "u1"
+
+    def test_passthrough_excluded_from_session_data(self, tmp_path: Path) -> None:
+        """Passthrough entries should not inflate session message counts."""
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_passthrough_entry(
+                "att1", "s1", "2025-07-01T10:00:30.000Z", "u1", "attachment"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "att1", "Reply"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, _ = load_directory_transcripts(tmp_path, silent=True)
+        session_data = _build_session_data_from_messages(messages)
+
+        # Only user + assistant should be counted (not the attachment)
+        assert session_data["s1"].message_count == 2

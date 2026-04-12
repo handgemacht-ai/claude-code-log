@@ -24,6 +24,7 @@ from ..models import (
     # Transcript entry types
     AssistantTranscriptEntry,
     MessageType,
+    PassthroughTranscriptEntry,
     QueueOperationTranscriptEntry,
     SummaryTranscriptEntry,
     SystemTranscriptEntry,
@@ -233,6 +234,17 @@ def create_transcript_entry(data: dict[str, Any]) -> TranscriptEntry:
     """
     entry_type = data.get("type")
     creator = ENTRY_CREATORS.get(entry_type)  # type: ignore[arg-type]
-    if creator is None:
-        raise ValueError(f"Unknown transcript entry type: {entry_type}")
-    return creator(data)
+    if creator is not None:
+        return creator(data)
+    # Fall back to PassthroughTranscriptEntry for unknown types with DAG fields
+    if data.get("uuid") and data.get("sessionId"):
+        return PassthroughTranscriptEntry(
+            uuid=data["uuid"],
+            parentUuid=data.get("parentUuid"),
+            sessionId=data["sessionId"],
+            timestamp=data.get("timestamp", ""),
+            type=entry_type,
+            isSidechain=data.get("isSidechain", False),
+            agentId=data.get("agentId"),
+        )
+    raise ValueError(f"Unknown transcript entry type: {entry_type}")

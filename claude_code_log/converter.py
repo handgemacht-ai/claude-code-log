@@ -32,6 +32,7 @@ from .parser import parse_timestamp
 from .factories import create_transcript_entry
 from .models import (
     BaseTranscriptEntry,
+    PassthroughTranscriptEntry,
     TranscriptEntry,
     AssistantTranscriptEntry,
     QueueOperationTranscriptEntry,
@@ -130,24 +131,37 @@ def _repair_parent_chains(
     messages: list[TranscriptEntry],
     progress_chain: dict[str, Optional[str]],
 ) -> None:
-    """Repair parentUuid fields that point to progress entries.
+    """Repair parentUuid fields that point to dropped progress entries.
 
     Walks the progress chain to find the nearest non-progress ancestor.
+    Only repairs links to progress entries that are NOT in the messages
+    list (i.e. those that were truly dropped, not preserved as
+    PassthroughTranscriptEntry).
     Mutates entries in place (Pydantic v2 models are mutable by default).
     """
     if not progress_chain:
         return
+    # Filter out progress UUIDs that are present as parsed entries —
+    # those are PassthroughTranscriptEntry nodes in the DAG and valid parents.
+    present_uuids = {getattr(m, "uuid", None) for m in messages}
+    dropped_progress = {
+        uuid: parent
+        for uuid, parent in progress_chain.items()
+        if uuid not in present_uuids
+    }
+    if not dropped_progress:
+        return
     for msg in messages:
         parent = getattr(msg, "parentUuid", None)
-        if parent and parent in progress_chain:
+        if parent and parent in dropped_progress:
             current: Optional[str] = parent
             seen: set[str] = set()
-            while current is not None and current in progress_chain:
+            while current is not None and current in dropped_progress:
                 if current in seen:
                     current = None
                     break
                 seen.add(current)
-                current = progress_chain[current]
+                current = dropped_progress[current]
             msg.parentUuid = current  # type: ignore[union-attr]
 
 
@@ -312,19 +326,20 @@ def load_transcript(
                         # Parse using Pydantic models
                         entry = create_transcript_entry(entry_dict)
                         messages.append(entry)
-                    elif (
-                        entry_type
-                        in [
-                            "file-history-snapshot",  # Internal Claude Code file backup metadata
-                            "progress",  # Real-time progress updates (hook_progress, bash_progress)
-                        ]
-                    ):
-                        # Silently skip internal message types we don't render
-                        pass
-                    else:
-                        display_line = line[:1000] + "..." if len(line) > 1000 else line
-                        print(
-                            f"Line {line_no} of {jsonl_path} is not a recognised message type: {display_line}"
+                    elif entry_dict.get("uuid") and entry_dict.get("sessionId"):
+                        # Unknown type with DAG-relevant fields — create a
+                        # PassthroughTranscriptEntry to preserve DAG chain
+                        # continuity (e.g. "attachment", "permission-mode").
+                        messages.append(
+                            PassthroughTranscriptEntry(
+                                uuid=entry_dict["uuid"],
+                                parentUuid=entry_dict.get("parentUuid"),
+                                sessionId=entry_dict["sessionId"],
+                                timestamp=entry_dict.get("timestamp", ""),
+                                type=entry_type,
+                                isSidechain=entry_dict.get("isSidechain", False),
+                                agentId=entry_dict.get("agentId"),
+                            )
                         )
                 except json.JSONDecodeError as e:
                     print(
@@ -436,7 +451,7 @@ def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
     agent_anchors: dict[str, str] = {}
     agent_anchors_from_sidechain: dict[str, str] = {}
     for msg in messages:
-        if not isinstance(msg, BaseTranscriptEntry):
+        if not isinstance(msg, (BaseTranscriptEntry, PassthroughTranscriptEntry)):
             continue
         if not msg.agentId:
             continue
@@ -453,7 +468,7 @@ def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
 
     # Process sidechain entries: parent roots and assign synthetic sessionIds
     for msg in messages:
-        if not isinstance(msg, BaseTranscriptEntry):
+        if not isinstance(msg, (BaseTranscriptEntry, PassthroughTranscriptEntry)):
             continue
         if not msg.isSidechain or not msg.agentId:
             continue
@@ -794,7 +809,7 @@ def _build_session_data_from_messages(
     sessions: Dict[str, Dict[str, Any]] = {}
     for message in messages:
         if not hasattr(message, "sessionId") or isinstance(
-            message, SummaryTranscriptEntry
+            message, (SummaryTranscriptEntry, PassthroughTranscriptEntry)
         ):
             continue
 
