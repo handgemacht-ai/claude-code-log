@@ -583,15 +583,19 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
         session_id = getattr(message, "sessionId", "")
 
         # Get content key for differentiating concurrent messages
-        # - For assistant messages: use message.id (same for stutters, different for different msgs)
+        # - For assistant messages: use message.id + content block types
+        #   (stutters share the same message.id AND content types;
+        #   split content blocks share message.id but have distinct types)
         # - For user messages with tool results: use first tool_use_id
-        # - For user text messages: use empty string (deduplicate by timestamp alone)
+        # - For user text messages: use uuid (DAG parent references must stay valid)
         # - For summary messages: use leafUuid (summaries have no timestamp/uuid)
+        # - For system messages: use uuid (different system events can share a timestamp)
+        # - For passthrough entries: use uuid (DAG chain nodes)
         content_key = ""
         is_user_text = False
         if isinstance(message, AssistantTranscriptEntry):
-            # For assistant messages, use the message id
-            content_key = message.message.id
+            block_types = ":".join(c.type for c in message.message.content)
+            content_key = f"{message.message.id}:{block_types}"
         elif isinstance(message, UserTranscriptEntry):
             # For user messages, check for tool results
             for item in message.message.content:
@@ -600,16 +604,12 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
                     break
             else:
                 # No tool result found - this is a user text message.
-                # Use uuid to keep distinct messages (even at same timestamp)
-                # so DAG parent references remain valid.
                 is_user_text = True
                 content_key = message.uuid
         elif isinstance(message, SummaryTranscriptEntry):
             # Summaries have no timestamp or uuid - use leafUuid to keep them distinct
             content_key = message.leafUuid
-        elif isinstance(message, PassthroughTranscriptEntry):
-            # Passthrough entries are DAG chain nodes — use uuid to prevent
-            # false dedup of entries with the same timestamp (e.g. attachments)
+        elif isinstance(message, (SystemTranscriptEntry, PassthroughTranscriptEntry)):
             content_key = message.uuid
 
         # Create deduplication key

@@ -83,5 +83,5 @@ def create_system_message(
 
     # Create structured system content
     meta = create_meta(transcript)
-    level = getattr(transcript, "level", "info")
+    level = transcript.level or "info"
     return SystemMessage(level=level, text=transcript.content, meta=meta)
