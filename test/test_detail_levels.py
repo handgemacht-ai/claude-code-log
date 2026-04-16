@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Tests for --shallow rendering mode.
+"""Tests for --detail level rendering.
 
-Shallow mode filters out everything except user and assistant text messages:
-no tools, no thinking, no system messages.
+Detail levels control which message types are included in output:
+- full: everything (default)
+- high: detailed but cleaned (no system/hook noise)
+- low: interaction-focused + key signals
+- minimal: user + assistant messages only
 """
 
 import json
@@ -19,13 +22,14 @@ from claude_code_log.html.renderer import HtmlRenderer
 from claude_code_log.markdown.renderer import MarkdownRenderer
 from claude_code_log.models import (
     AssistantTranscriptEntry,
+    DetailLevel,
     SystemTranscriptEntry,
     ThinkingContent,
     ToolResultContent,
     ToolUseContent,
     UserTranscriptEntry,
 )
-from claude_code_log.renderer import _filter_shallow, generate_template_messages
+from claude_code_log.renderer import _filter_by_detail, generate_template_messages
 
 
 # -- Test data helpers --------------------------------------------------------
@@ -126,7 +130,7 @@ def _write_jsonl(entries: list[dict], path: Path) -> Path:
 # -- Unit tests for _filter_compact ------------------------------------------
 
 
-class TestFilterShallow:
+class TestFilterMinimal:
     """Test the _filter_compact function directly on parsed TranscriptEntry lists."""
 
     def test_keeps_user_and_assistant_text(self, tmp_path):
@@ -136,7 +140,7 @@ class TestFilterShallow:
             _assistant_entry("Hi there!"),
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_shallow(messages)
+        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(result) == 2
         assert isinstance(result[0], UserTranscriptEntry)
         assert isinstance(result[1], AssistantTranscriptEntry)
@@ -149,7 +153,7 @@ class TestFilterShallow:
             _assistant_entry("Hi"),
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_shallow(messages)
+        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(result) == 2
         assert all(not isinstance(m, SystemTranscriptEntry) for m in result)
 
@@ -163,7 +167,7 @@ class TestFilterShallow:
             ),
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_shallow(messages)
+        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(result) == 2
         # Assistant entry should have text but no tool_use
         assistant = result[1]
@@ -180,7 +184,7 @@ class TestFilterShallow:
             ),
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_shallow(messages)
+        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(result) == 1
         user = result[0]
         assert isinstance(user, UserTranscriptEntry)
@@ -196,7 +200,7 @@ class TestFilterShallow:
             ),
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_shallow(messages)
+        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(result) == 1
         assistant = result[0]
         assert isinstance(assistant, AssistantTranscriptEntry)
@@ -210,7 +214,7 @@ class TestFilterShallow:
         # Remove the text item, keeping only tool_use
         entry["message"]["content"] = [_tool_use_item()]
         messages = load_transcript(_write_jsonl([entry], tmp_path / "t.jsonl"))
-        result = _filter_shallow(messages)
+        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(result) == 0
 
     def test_removes_sidechain_entries(self, tmp_path):
@@ -226,7 +230,7 @@ class TestFilterShallow:
             _assistant_entry("Main reply"),
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_shallow(messages)
+        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(result) == 2
         for m in result:
             assert isinstance(m, (UserTranscriptEntry, AssistantTranscriptEntry))
@@ -244,18 +248,18 @@ class TestFilterShallow:
         first = messages[0]
         assert isinstance(first, AssistantTranscriptEntry)
         original_content_count = len(first.message.content)
-        _filter_shallow(messages)
+        _filter_by_detail(messages, DetailLevel.MINIMAL)
         assert len(first.message.content) == original_content_count
 
 
-# -- Integration tests: generate_template_messages with shallow ---------------
+# -- Integration tests: generate_template_messages with minimal ---------------
 
 
-class TestShallowTemplateMessages:
-    """Test shallow mode through the full generate_template_messages pipeline."""
+class TestMinimalTemplateMessages:
+    """Test minimal mode through the full generate_template_messages pipeline."""
 
-    def test_shallow_removes_tool_messages(self, tmp_path):
-        """Shallow mode should not produce tool_use or tool_result TemplateMessages."""
+    def test_minimal_removes_tool_messages(self, tmp_path):
+        """Minimal mode should not produce tool_use or tool_result TemplateMessages."""
         entries = [
             _user_entry("Run something"),
             _assistant_entry(
@@ -272,7 +276,9 @@ class TestShallowTemplateMessages:
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
-        root_messages, _, _ = generate_template_messages(messages, shallow=True)
+        root_messages, _, _ = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
+        )
         # Flatten tree
         all_types = set()
         _collect_types(root_messages, all_types)
@@ -281,8 +287,8 @@ class TestShallowTemplateMessages:
         assert "user" in all_types
         assert "assistant" in all_types
 
-    def test_shallow_removes_thinking_messages(self, tmp_path):
-        """Shallow mode should not produce thinking TemplateMessages."""
+    def test_minimal_removes_thinking_messages(self, tmp_path):
+        """Minimal mode should not produce thinking TemplateMessages."""
         entries = [
             _user_entry("Think about this"),
             _assistant_entry(
@@ -292,14 +298,16 @@ class TestShallowTemplateMessages:
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
-        root_messages, _, _ = generate_template_messages(messages, shallow=True)
+        root_messages, _, _ = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
+        )
         all_types = set()
         _collect_types(root_messages, all_types)
         assert "thinking" not in all_types
         assert "assistant" in all_types
 
-    def test_shallow_preserves_session_headers(self, tmp_path):
-        """Session headers are still generated in shallow mode."""
+    def test_minimal_preserves_session_headers(self, tmp_path):
+        """Session headers are still generated in minimal mode."""
         entries = [
             _user_entry("Hello"),
             _assistant_entry("Hi"),
@@ -307,14 +315,14 @@ class TestShallowTemplateMessages:
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
         root_messages, session_nav, _ = generate_template_messages(
-            messages, shallow=True
+            messages, detail=DetailLevel.MINIMAL
         )
         assert len(root_messages) >= 1
         assert root_messages[0].is_session_header
         assert len(session_nav) >= 1
 
-    def test_shallow_removes_bash_messages(self, tmp_path):
-        """Shallow mode removes bash-input and bash-output messages."""
+    def test_minimal_removes_bash_messages(self, tmp_path):
+        """Minimal mode removes bash-input and bash-output messages."""
         entries = [
             _user_entry("Check the directory"),
             # bash-input is parsed from user text containing <bash-input> tags
@@ -329,14 +337,16 @@ class TestShallowTemplateMessages:
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
-        root_messages, _, _ = generate_template_messages(messages, shallow=True)
+        root_messages, _, _ = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
+        )
         all_types = set()
         _collect_types(root_messages, all_types)
         assert "bash-input" not in all_types
         assert "bash-output" not in all_types
 
-    def test_shallow_removes_slash_command_messages(self, tmp_path):
-        """Shallow mode removes slash command messages (e.g. /exit)."""
+    def test_minimal_removes_slash_command_messages(self, tmp_path):
+        """Minimal mode removes slash command messages (e.g. /exit)."""
         entries = [
             _user_entry("Hello"),
             _assistant_entry("Hi", timestamp="2025-01-01T10:00:01Z"),
@@ -345,17 +355,19 @@ class TestShallowTemplateMessages:
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
-        root_messages, _, ctx = generate_template_messages(messages, shallow=True)
+        root_messages, _, ctx = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
+        )
         all_types = set()
         _collect_types(root_messages, all_types)
         # /exit should not appear as any type
         for msg in ctx.messages:
             assert "/exit" not in getattr(msg.content, "text", ""), (
-                f"Slash command '/exit' found in shallow output as {msg.type}"
+                f"Slash command '/exit' found in minimal output as {msg.type}"
             )
 
-    def test_shallow_removes_sidechain_messages(self, tmp_path):
-        """Shallow mode removes sidechain (subagent) messages entirely."""
+    def test_minimal_removes_sidechain_messages(self, tmp_path):
+        """Minimal mode removes sidechain (subagent) messages entirely."""
         sidechain_user = _user_entry("Subagent task", timestamp="2025-01-01T10:00:01Z")
         sidechain_user["isSidechain"] = True
         sidechain_assistant = _assistant_entry(
@@ -370,13 +382,15 @@ class TestShallowTemplateMessages:
         ]
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
-        root_messages, _, ctx = generate_template_messages(messages, shallow=True)
+        root_messages, _, ctx = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
+        )
         # No sidechain messages should remain
         for msg in ctx.messages:
             assert not msg.is_sidechain, f"Sidechain message found: {msg.type}"
 
-    def test_shallow_vs_normal_fewer_messages(self, tmp_path):
-        """Shallow mode produces fewer messages than normal mode."""
+    def test_minimal_vs_normal_fewer_messages(self, tmp_path):
+        """Minimal mode produces fewer messages than normal mode."""
         entries = [
             _user_entry("Do something"),
             _assistant_entry(
@@ -394,25 +408,25 @@ class TestShallowTemplateMessages:
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
         normal_roots, _, normal_ctx = generate_template_messages(
-            messages, shallow=False
+            messages, detail=DetailLevel.FULL
         )
-        shallow_roots, _, shallow_ctx = generate_template_messages(
-            messages, shallow=True
+        minimal_roots, _, minimal_ctx = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
         )
 
         normal_count = len(normal_ctx.messages)
-        shallow_count = len(shallow_ctx.messages)
-        assert shallow_count < normal_count
+        minimal_count = len(minimal_ctx.messages)
+        assert minimal_count < normal_count
 
 
 # -- HTML rendering tests -----------------------------------------------------
 
 
-class TestShallowHtmlRendering:
-    """Test shallow mode through the HTML renderer."""
+class TestMinimalHtmlRendering:
+    """Test minimal mode through the HTML renderer."""
 
-    def test_shallow_html_no_tool_divs(self, tmp_path):
-        """Shallow HTML should not contain tool_use or tool_result message divs."""
+    def test_minimal_html_no_tool_divs(self, tmp_path):
+        """Minimal HTML should not contain tool_use or tool_result message divs."""
         entries = [
             _user_entry("Write a file"),
             _assistant_entry(
@@ -430,8 +444,8 @@ class TestShallowHtmlRendering:
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
         renderer = HtmlRenderer()
-        renderer.shallow = True
-        html = renderer.generate(messages, "Shallow Test")
+        renderer.detail = DetailLevel.MINIMAL
+        html = renderer.generate(messages, "Minimal Test")
 
         assert "class='message tool_use" not in html
         assert "class='message tool_result" not in html
@@ -439,8 +453,8 @@ class TestShallowHtmlRendering:
         assert "Creating the file" in html
         assert "File created!" in html
 
-    def test_shallow_html_no_thinking(self, tmp_path):
-        """Shallow HTML should not contain thinking message divs."""
+    def test_minimal_html_no_thinking(self, tmp_path):
+        """Minimal HTML should not contain thinking message divs."""
         entries = [
             _user_entry("Explain something"),
             _assistant_entry(
@@ -451,8 +465,8 @@ class TestShallowHtmlRendering:
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
         renderer = HtmlRenderer()
-        renderer.shallow = True
-        html = renderer.generate(messages, "Shallow Test")
+        renderer.detail = DetailLevel.MINIMAL
+        html = renderer.generate(messages, "Minimal Test")
 
         assert "class='message thinking" not in html
         assert "I need to consider" not in html
@@ -462,11 +476,11 @@ class TestShallowHtmlRendering:
 # -- Markdown rendering tests --------------------------------------------------
 
 
-class TestShallowMarkdownRendering:
-    """Test shallow mode through the Markdown renderer."""
+class TestMinimalMarkdownRendering:
+    """Test minimal mode through the Markdown renderer."""
 
-    def test_shallow_markdown_no_tool_content(self, tmp_path):
-        """Shallow Markdown should not contain tool names or tool output."""
+    def test_minimal_markdown_no_tool_content(self, tmp_path):
+        """Minimal Markdown should not contain tool names or tool output."""
         entries = [
             _user_entry("Write a file"),
             _assistant_entry(
@@ -484,8 +498,8 @@ class TestShallowMarkdownRendering:
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
         renderer = MarkdownRenderer()
-        renderer.shallow = True
-        md = renderer.generate(messages, "Shallow Test")
+        renderer.detail = DetailLevel.MINIMAL
+        md = renderer.generate(messages, "Minimal Test")
 
         assert "Write a file" in md
         assert "Creating the file" in md
@@ -495,8 +509,8 @@ class TestShallowMarkdownRendering:
             "Write" not in md.split("File created!")[0].split("Creating the file.")[1]
         )
 
-    def test_shallow_markdown_no_thinking(self, tmp_path):
-        """Shallow Markdown should not contain thinking blocks."""
+    def test_minimal_markdown_no_thinking(self, tmp_path):
+        """Minimal Markdown should not contain thinking blocks."""
         entries = [
             _user_entry("Explain this"),
             _assistant_entry(
@@ -507,15 +521,15 @@ class TestShallowMarkdownRendering:
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
         renderer = MarkdownRenderer()
-        renderer.shallow = True
-        md = renderer.generate(messages, "Shallow Test")
+        renderer.detail = DetailLevel.MINIMAL
+        md = renderer.generate(messages, "Minimal Test")
 
         assert "Here's the explanation" in md
         assert "Let me reason about this" not in md
         assert "Thinking" not in md
 
-    def test_shallow_markdown_preserves_session_structure(self, tmp_path):
-        """Shallow Markdown preserves session headers."""
+    def test_minimal_markdown_preserves_session_structure(self, tmp_path):
+        """Minimal Markdown preserves session headers."""
         entries = [
             _user_entry("Hello"),
             _assistant_entry("Hi there"),
@@ -523,15 +537,15 @@ class TestShallowMarkdownRendering:
         messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
 
         renderer = MarkdownRenderer()
-        renderer.shallow = True
-        md = renderer.generate(messages, "Shallow Test")
+        renderer.detail = DetailLevel.MINIMAL
+        md = renderer.generate(messages, "Minimal Test")
 
-        assert "# Shallow Test" in md
+        assert "# Minimal Test" in md
         assert "Hello" in md
         assert "Hi there" in md
 
-    def test_shallow_markdown_on_real_projects(self, tmp_path):
-        """Shallow Markdown works on real project data."""
+    def test_minimal_markdown_on_real_projects(self, tmp_path):
+        """Minimal Markdown works on real project data."""
         real_projects = Path(__file__).parent / "test_data" / "real_projects"
         if not real_projects.exists():
             pytest.skip("Real test projects not available")
@@ -545,21 +559,21 @@ class TestShallowMarkdownRendering:
             pytest.skip("No JSONL files in real_projects")
 
         renderer = MarkdownRenderer()
-        renderer.shallow = True
+        renderer.detail = DetailLevel.MINIMAL
         messages = load_transcript(jsonl_files[0])
-        md = renderer.generate(messages, "Shallow MD Test")
+        md = renderer.generate(messages, "Minimal MD Test")
         assert md
-        assert "# Shallow MD Test" in md
+        assert "# Minimal MD Test" in md
 
 
 # -- CLI tests ----------------------------------------------------------------
 
 
-class TestShallowCLI:
-    """Test the --shallow CLI flag."""
+class TestDetailCLI:
+    """Test the --minimal CLI flag."""
 
-    def test_shallow_flag_accepted(self, tmp_path):
-        """CLI accepts --shallow without error."""
+    def test_minimal_flag_accepted(self, tmp_path):
+        """CLI accepts --minimal without error."""
         entries = [
             _user_entry("Hello"),
             _assistant_entry("Hi there"),
@@ -570,13 +584,19 @@ class TestShallowCLI:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            [str(tmp_path / "test.jsonl"), "-o", str(output_file), "--shallow"],
+            [
+                str(tmp_path / "test.jsonl"),
+                "-o",
+                str(output_file),
+                "--detail",
+                "minimal",
+            ],
         )
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         assert output_file.exists()
 
-    def test_shallow_flag_filters_tools(self, tmp_path):
-        """CLI --shallow produces HTML without tool messages."""
+    def test_minimal_flag_filters_tools(self, tmp_path):
+        """CLI --minimal produces HTML without tool messages."""
         entries = [
             _user_entry("Run a command"),
             _assistant_entry(
@@ -597,7 +617,13 @@ class TestShallowCLI:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            [str(tmp_path / "test.jsonl"), "-o", str(output_file), "--shallow"],
+            [
+                str(tmp_path / "test.jsonl"),
+                "-o",
+                str(output_file),
+                "--detail",
+                "minimal",
+            ],
         )
         assert result.exit_code == 0, f"CLI failed: {result.output}"
 
@@ -607,8 +633,8 @@ class TestShallowCLI:
         assert "Run a command" in html
         assert "Here's the output" in html
 
-    def test_shallow_with_markdown_format(self, tmp_path):
-        """CLI --shallow works with --format md too."""
+    def test_minimal_with_markdown_format(self, tmp_path):
+        """CLI --minimal works with --format md too."""
         entries = [
             _user_entry("Hello"),
             _assistant_entry(
@@ -626,7 +652,8 @@ class TestShallowCLI:
                 str(tmp_path / "test.jsonl"),
                 "-o",
                 str(output_file),
-                "--shallow",
+                "--detail",
+                "minimal",
                 "--format",
                 "md",
             ],
@@ -650,8 +677,8 @@ def real_projects_path() -> Path:
     return REAL_PROJECTS_DIR
 
 
-class TestShallowRealProjects:
-    """Test shallow mode against real project data from test_data/real_projects/."""
+class TestMinimalRealProjects:
+    """Test minimal mode against real project data from test_data/real_projects/."""
 
     def _get_project_jsonl_files(self, projects_path: Path) -> list[Path]:
         """Get all JSONL files from real projects (top-level only, no subagents)."""
@@ -662,26 +689,26 @@ class TestShallowRealProjects:
                     files.append(f)
         return files
 
-    def test_shallow_produces_valid_html(self, real_projects_path):
-        """Shallow mode generates valid HTML for every real project file."""
+    def test_minimal_produces_valid_html(self, real_projects_path):
+        """Minimal mode generates valid HTML for every real project file."""
         files = self._get_project_jsonl_files(real_projects_path)
         assert files, "No JSONL files found in real_projects"
 
         renderer = HtmlRenderer()
-        renderer.shallow = True
+        renderer.detail = DetailLevel.MINIMAL
 
         for jsonl_file in files:
             messages = load_transcript(jsonl_file)
-            html = renderer.generate(messages, f"Shallow: {jsonl_file.name}")
+            html = renderer.generate(messages, f"Minimal: {jsonl_file.name}")
             assert html, f"Empty HTML for {jsonl_file.name}"
             assert "<!DOCTYPE html>" in html
 
-    def test_shallow_has_no_excluded_messages(self, real_projects_path):
-        """Shallow HTML from real projects contains no tool, thinking, bash, or sidechain divs."""
+    def test_minimal_has_no_excluded_messages(self, real_projects_path):
+        """Minimal HTML from real projects contains no tool, thinking, bash, or sidechain divs."""
         files = self._get_project_jsonl_files(real_projects_path)
 
         renderer = HtmlRenderer()
-        renderer.shallow = True
+        renderer.detail = DetailLevel.MINIMAL
 
         excluded_patterns = [
             "class='message tool_use",
@@ -696,7 +723,7 @@ class TestShallowRealProjects:
 
         for jsonl_file in files:
             messages = load_transcript(jsonl_file)
-            html = renderer.generate(messages, "Shallow Test")
+            html = renderer.generate(messages, "Minimal Test")
             for pattern in excluded_patterns:
                 count = html.count(pattern)
                 msg_type = pattern.split("class='message ")[1]
@@ -704,31 +731,37 @@ class TestShallowRealProjects:
                     f"{jsonl_file.name}: found {count} {msg_type} messages"
                 )
 
-    def test_shallow_fewer_messages_than_normal(self, real_projects_path):
-        """Shallow mode produces strictly fewer messages for projects with tools."""
+    def test_minimal_fewer_messages_than_normal(self, real_projects_path):
+        """Minimal mode produces strictly fewer messages for projects with tools."""
         files = self._get_project_jsonl_files(real_projects_path)
 
         for jsonl_file in files:
             messages = load_transcript(jsonl_file)
-            _, _, normal_ctx = generate_template_messages(messages, shallow=False)
-            _, _, shallow_ctx = generate_template_messages(messages, shallow=True)
-
-            normal_count = len(normal_ctx.messages)
-            shallow_count = len(shallow_ctx.messages)
-
-            # Real projects typically have many tool calls, so shallow should
-            # have fewer messages. Some tiny projects might only have text.
-            assert shallow_count <= normal_count, (
-                f"{jsonl_file.name}: shallow ({shallow_count}) > normal ({normal_count})"
+            _, _, normal_ctx = generate_template_messages(
+                messages, detail=DetailLevel.FULL
+            )
+            _, _, minimal_ctx = generate_template_messages(
+                messages, detail=DetailLevel.MINIMAL
             )
 
-    def test_shallow_preserves_user_and_assistant(self, real_projects_path):
-        """Shallow mode keeps user and assistant messages from real projects."""
+            normal_count = len(normal_ctx.messages)
+            minimal_count = len(minimal_ctx.messages)
+
+            # Real projects typically have many tool calls, so minimal should
+            # have fewer messages. Some tiny projects might only have text.
+            assert minimal_count <= normal_count, (
+                f"{jsonl_file.name}: minimal ({minimal_count}) > normal ({normal_count})"
+            )
+
+    def test_minimal_preserves_user_and_assistant(self, real_projects_path):
+        """Minimal mode keeps user and assistant messages from real projects."""
         files = self._get_project_jsonl_files(real_projects_path)
 
         for jsonl_file in files:
             messages = load_transcript(jsonl_file)
-            root_messages, _, _ = generate_template_messages(messages, shallow=True)
+            root_messages, _, _ = generate_template_messages(
+                messages, detail=DetailLevel.MINIMAL
+            )
             all_types = set()
             _collect_types(root_messages, all_types)
 
@@ -745,11 +778,11 @@ class TestShallowRealProjects:
             }
             unexpected = non_header_types - allowed
             assert not unexpected, (
-                f"{jsonl_file.name}: unexpected types in shallow: {unexpected}"
+                f"{jsonl_file.name}: unexpected types in minimal: {unexpected}"
             )
 
-    def test_shallow_directory_mode(self, real_projects_path, tmp_path):
-        """Shallow mode works on a directory of JSONL files."""
+    def test_minimal_directory_mode(self, real_projects_path, tmp_path):
+        """Minimal mode works on a directory of JSONL files."""
         # Copy a project to tmp for isolated testing
         project_dirs = [d for d in real_projects_path.iterdir() if d.is_dir()]
         if not project_dirs:
@@ -765,7 +798,7 @@ class TestShallowRealProjects:
             use_cache=False,
             generate_individual_sessions=False,
             silent=True,
-            shallow=True,
+            detail=DetailLevel.MINIMAL,
         )
         html = output.read_text(encoding="utf-8")
         assert "<!DOCTYPE html>" in html
@@ -776,21 +809,21 @@ class TestShallowRealProjects:
 # -- Test data file tests (representative_messages.jsonl) ----------------------
 
 
-class TestShallowTestData:
-    """Test shallow mode on the bundled test data files."""
+class TestMinimalTestData:
+    """Test minimal mode on the bundled test data files."""
 
     @pytest.fixture
     def test_data_dir(self) -> Path:
         return Path(__file__).parent / "test_data"
 
-    def test_shallow_representative_messages(self, test_data_dir):
-        """Shallow mode on representative_messages.jsonl removes tools."""
+    def test_minimal_representative_messages(self, test_data_dir):
+        """Minimal mode on representative_messages.jsonl removes tools."""
         test_file = test_data_dir / "representative_messages.jsonl"
         messages = load_transcript(test_file)
 
         renderer = HtmlRenderer()
-        renderer.shallow = True
-        html = renderer.generate(messages, "Shallow Representative")
+        renderer.detail = DetailLevel.MINIMAL
+        html = renderer.generate(messages, "Minimal Representative")
 
         # Should have user and assistant content
         assert "class='message user" in html
@@ -799,14 +832,16 @@ class TestShallowTestData:
         assert "class='message tool_use" not in html
         assert "class='message tool_result" not in html
 
-    def test_shallow_sidechain(self, test_data_dir):
-        """Shallow mode on sidechain data removes tool messages."""
+    def test_minimal_sidechain(self, test_data_dir):
+        """Minimal mode on sidechain data removes tool messages."""
         test_file = test_data_dir / "sidechain.jsonl"
         if not test_file.exists():
             pytest.skip("sidechain.jsonl not available")
         messages = load_transcript(test_file)
 
-        root_messages, _, _ = generate_template_messages(messages, shallow=True)
+        root_messages, _, _ = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
+        )
         all_types = set()
         _collect_types(root_messages, all_types)
         assert "tool_use" not in all_types

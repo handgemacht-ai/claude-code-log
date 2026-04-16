@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .dag import SessionTree
 
 from .models import (
+    DetailLevel,
     MessageContent,
     MessageMeta,
     MessageType,
@@ -569,7 +570,7 @@ class TemplateSummary:
 def generate_template_messages(
     messages: list[TranscriptEntry],
     session_tree: Optional["SessionTree"] = None,
-    shallow: bool = False,
+    detail: DetailLevel = DetailLevel.FULL,
 ) -> Tuple[list[TemplateMessage], list[dict[str, Any]], RenderingContext]:
     """Generate root messages and session navigation from transcript messages.
 
@@ -580,6 +581,7 @@ def generate_template_messages(
         messages: List of transcript entries to process.
         session_tree: Optional pre-built SessionTree from DAG construction.
             When provided, avoids an expensive DAG rebuild.
+        detail: Output detail level controlling which message types are included.
 
     Returns:
         A tuple of (root_messages, session_nav, context) where:
@@ -588,6 +590,10 @@ def generate_template_messages(
         - context: RenderingContext with message registry for index lookups
     """
     from .utils import get_warmup_session_ids
+
+    # Normalize detail: accept string for convenience (e.g. from CLI)
+    if isinstance(detail, str) and not isinstance(detail, DetailLevel):
+        detail = DetailLevel(detail)
 
     # Performance timing
     t_start = time.time()
@@ -616,10 +622,10 @@ def generate_template_messages(
     with log_timing("Filter messages", t_start):
         filtered_messages = _filter_messages(messages)
 
-    # Shallow mode: keep only user and assistant text messages (no tools, system, thinking)
-    if shallow:
-        with log_timing("Shallow filter", t_start):
-            filtered_messages = _filter_shallow(filtered_messages)
+    # Detail-level pre-render filter
+    if detail != DetailLevel.FULL:
+        with log_timing(f"Detail filter ({detail.value})", t_start):
+            filtered_messages = _filter_by_detail(filtered_messages, detail)
 
     # Pass 1: Collect session metadata and token tracking
     with log_timing("Collect session info", t_start):
@@ -684,10 +690,10 @@ def generate_template_messages(
                     fork_msg.junction_forward_links.clear()
                     fork_msg.fork_point_preview = ""
 
-    # Shallow post-render: remove text-derived types (bash, slash commands, etc.)
-    if shallow:
-        with log_timing("Shallow post-render filter", t_start):
-            ctx.messages = _filter_shallow_template_messages(ctx.messages)
+    # Detail-level post-render: remove text-derived types per level
+    if detail != DetailLevel.FULL:
+        with log_timing(f"Detail post-render filter ({detail.value})", t_start):
+            ctx.messages = _filter_template_by_detail(ctx.messages, detail)
 
     # Prepare session navigation data (uses ctx for session header indices)
     session_nav: list[dict[str, Any]] = []
@@ -1818,26 +1824,84 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     return filtered
 
 
-def _filter_shallow(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
-    """Filter messages for shallow mode: keep only user and assistant text.
+# -- Detail-level filtering ---------------------------------------------------
+#
+# Pre-render: strip content items from TranscriptEntry based on detail level.
+# Post-render: remove TemplateMessage types created by factories from text that
+# shouldn't appear at the given level (bash I/O, slash commands, etc.).
 
-    Strips tool items from user entries and thinking/tool items from assistant
-    entries. System, summary, queue-operation, and sidechain entries are removed.
+# Tool names kept at --detail low (interaction + key signals).
+_LOW_KEEP_TOOLS = {"WebSearch", "WebFetch", "Task"}
+
+# Post-render classes excluded per level (cumulative: each level adds to the
+# previous). HIGH excludes system/hook noise; LOW adds bash and tools; MINIMAL
+# adds everything except user/assistant text.
+_HIGH_EXCLUDE_CLASSES: tuple[type[MessageContent], ...] = (
+    SlashCommandMessage,
+    UserSlashCommandMessage,
+    CommandOutputMessage,
+    CompactedSummaryMessage,
+    UserMemoryMessage,
+    SystemMessage,
+    HookSummaryMessage,
+    UnknownMessage,
+)
+
+_LOW_EXCLUDE_CLASSES: tuple[type[MessageContent], ...] = (
+    *_HIGH_EXCLUDE_CLASSES,
+    BashInputMessage,
+    BashOutputMessage,
+    ThinkingMessage,
+)
+
+_MINIMAL_EXCLUDE_CLASSES: tuple[type[MessageContent], ...] = (
+    *_LOW_EXCLUDE_CLASSES,
+    ToolUseMessage,
+    ToolResultMessage,
+)
+
+
+def _filter_by_detail(
+    messages: list[TranscriptEntry],
+    detail: DetailLevel,
+) -> list[TranscriptEntry]:
+    """Pre-render filter: strip content items per detail level.
+
+    - MINIMAL: keep only user/assistant text (no tools, thinking, system).
+    - LOW: keep user/assistant text + WebSearch/WebFetch/Task tools.
+    - HIGH: keep user/assistant + all tools/thinking, drop system entries.
     """
     from copy import copy
 
-    _strip_types = (ThinkingContent, ToolUseContent, ToolResultContent)
+    if detail == DetailLevel.MINIMAL:
+        strip_types: tuple[type, ...] = (
+            ThinkingContent,
+            ToolUseContent,
+            ToolResultContent,
+        )
+    elif detail == DetailLevel.LOW:
+        strip_types = (ThinkingContent,)
+        # ToolUseContent and ToolResultContent kept for _LOW_KEEP_TOOLS;
+        # others removed in post-render by _filter_template_by_detail.
+    else:
+        # HIGH: no content-item stripping needed
+        strip_types = ()
+
     filtered: list[TranscriptEntry] = []
     for message in messages:
+        # HIGH/LOW/MINIMAL: drop system entries (factory creates SystemMessage)
         if not isinstance(message, (UserTranscriptEntry, AssistantTranscriptEntry)):
             continue
-        # Drop sidechain (subagent) messages
-        if message.isSidechain:
+        # LOW/MINIMAL: drop sidechain (subagent) messages entirely
+        if detail in (DetailLevel.MINIMAL, DetailLevel.LOW) and message.isSidechain:
+            continue
+        if not strip_types:
+            filtered.append(message)
             continue
         text_items: list[ContentItem] = [
             item
             for item in message.message.content
-            if not isinstance(item, _strip_types)
+            if not isinstance(item, strip_types)
         ]
         if text_items:
             msg_copy = copy(message)
@@ -1851,37 +1915,33 @@ def _filter_shallow(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     return filtered
 
 
-# Content classes to exclude in shallow mode post-render.
-# These are text-derived types created by the user factory that we don't want
-# in a shallow view (bash commands, slash command prompts, compacted summaries).
-# We check by class rather than message_type string because several of these
-# classes (SlashCommandMessage, CommandOutputMessage, CompactedSummaryMessage)
-# return "user" as their message_type.
-_SHALLOW_EXCLUDE_CLASSES = (
-    BashInputMessage,
-    BashOutputMessage,
-    SlashCommandMessage,
-    UserSlashCommandMessage,
-    CommandOutputMessage,
-    CompactedSummaryMessage,
-)
-
-
-def _filter_shallow_template_messages(
+def _filter_template_by_detail(
     messages: list[TemplateMessage],
+    detail: DetailLevel,
 ) -> list[TemplateMessage]:
-    """Post-render filter for shallow mode: remove text-derived message types.
+    """Post-render filter: remove TemplateMessage types per detail level."""
+    if detail == DetailLevel.MINIMAL:
+        exclude = _MINIMAL_EXCLUDE_CLASSES
+    elif detail == DetailLevel.LOW:
+        exclude = _LOW_EXCLUDE_CLASSES
+    else:
+        exclude = _HIGH_EXCLUDE_CLASSES
 
-    After _render_messages creates TemplateMessages, some user text content
-    gets classified into special types (bash commands, slash commands, etc.)
-    that should be excluded from shallow output.
-    """
-    return [
-        msg
-        for msg in messages
-        if not isinstance(msg.content, _SHALLOW_EXCLUDE_CLASSES)
-        and not msg.is_sidechain
-    ]
+    result: list[TemplateMessage] = []
+    for msg in messages:
+        if isinstance(msg.content, exclude):
+            continue
+        if detail in (DetailLevel.MINIMAL, DetailLevel.LOW) and msg.is_sidechain:
+            continue
+        # LOW: drop tool_use/tool_result unless it's a kept tool
+        if detail == DetailLevel.LOW and isinstance(
+            msg.content, (ToolUseMessage, ToolResultMessage)
+        ):
+            tool_name = getattr(msg.content, "tool_name", "")
+            if tool_name not in _LOW_KEEP_TOOLS:
+                continue
+        result.append(msg)
+    return result
 
 
 def _collect_session_info(
@@ -2477,7 +2537,7 @@ class Renderer:
     - Subclasses override methods to implement format-specific rendering
     """
 
-    shallow: bool = False
+    detail: DetailLevel = DetailLevel.FULL
 
     def _dispatch_format(self, obj: Any, message: TemplateMessage) -> str:
         """Dispatch to format_{ClassName}(obj, message) based on object type."""
@@ -2757,7 +2817,7 @@ class Renderer:
 def get_renderer(
     format: str,
     image_export_mode: Optional[str] = None,
-    shallow: bool = False,
+    detail: DetailLevel = DetailLevel.FULL,
 ) -> Renderer:
     """Get a renderer instance for the specified format.
 
@@ -2765,7 +2825,7 @@ def get_renderer(
         format: The output format ("html", "md", or "markdown").
         image_export_mode: Image export mode ("placeholder", "embedded", "referenced").
             If None, defaults to "embedded" for HTML and "referenced" for Markdown.
-        shallow: If True, render only user and assistant text messages.
+        detail: Output detail level controlling which message types are included.
 
     Returns:
         A Renderer instance for the specified format.
@@ -2787,7 +2847,7 @@ def get_renderer(
         renderer = MarkdownRenderer(image_export_mode=mode)
     else:
         raise ValueError(f"Unsupported format: {format}")
-    renderer.shallow = shallow
+    renderer.detail = detail
     return renderer
 
 

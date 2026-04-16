@@ -45,6 +45,18 @@ class MessageType(str, Enum):
     SYSTEM_ERROR = "system-error"
 
 
+class DetailLevel(str, Enum):
+    """Output detail level controlling which message types are included.
+
+    Levels form a hierarchy: full > high > low > minimal.
+    """
+
+    FULL = "full"  # Everything
+    HIGH = "high"  # Detailed but cleaned (no system/hook noise)
+    LOW = "low"  # Interaction-focused + key signals
+    MINIMAL = "minimal"  # User + assistant messages only
+
+
 # =============================================================================
 # JSONL Content Models (Pydantic)
 # =============================================================================
