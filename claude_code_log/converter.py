@@ -900,6 +900,7 @@ def _generate_paginated_html(
     silent: bool = False,
     session_tree: Optional[SessionTree] = None,
     detail: DetailLevel = DetailLevel.FULL,
+    compact: bool = False,
 ) -> Path:
     """Generate paginated HTML files for combined transcript.
 
@@ -1057,6 +1058,7 @@ def _generate_paginated_html(
         page_title = f"{title} - Page {page_num}" if page_num > 1 else title
         page_renderer = HtmlRenderer()
         page_renderer.detail = detail
+        page_renderer.compact = compact
         html_content = page_renderer.generate(
             page_messages,
             page_title,
@@ -1123,6 +1125,7 @@ def convert_jsonl_to(
     image_export_mode: Optional[str] = None,
     page_size: int = 2000,
     detail: DetailLevel = DetailLevel.FULL,
+    compact: bool = False,
 ) -> Path:
     """Convert JSONL transcript(s) to the specified format.
 
@@ -1237,7 +1240,7 @@ def convert_jsonl_to(
 
     # Generate combined output file (check if regeneration needed)
     assert output_path is not None
-    renderer = get_renderer(format, image_export_mode, detail=detail)
+    renderer = get_renderer(format, image_export_mode, detail=detail, compact=compact)
 
     # Decide whether to use pagination (HTML only, directory mode, no date filter)
     use_pagination = False
@@ -1290,6 +1293,7 @@ def convert_jsonl_to(
             silent=silent,
             session_tree=session_tree,
             detail=detail,
+            compact=compact,
         )
     else:
         # Use single-file generation for small projects or filtered views
@@ -1348,6 +1352,7 @@ def convert_jsonl_to(
             silent=silent,
             session_tree=session_tree,
             detail=detail,
+            compact=compact,
         )
 
     return output_path
@@ -1700,6 +1705,7 @@ def _generate_individual_session_files(
     silent: bool = False,
     session_tree: Optional[SessionTree] = None,
     detail: DetailLevel = DetailLevel.FULL,
+    compact: bool = False,
 ) -> int:
     """Generate individual files for each session in the specified format.
 
@@ -1739,7 +1745,7 @@ def _generate_individual_session_files(
     project_title = get_project_display_name(output_dir.name, working_directories)
 
     # Get renderer once outside the loop
-    renderer = get_renderer(format, image_export_mode, detail=detail)
+    renderer = get_renderer(format, image_export_mode, detail=detail, compact=compact)
     regenerated_count = 0
 
     # Generate HTML file for each session
@@ -2004,6 +2010,7 @@ def process_projects_hierarchy(
     silent: bool = True,
     page_size: int = 2000,
     detail: DetailLevel = DetailLevel.FULL,
+    compact: bool = False,
 ) -> Path:
     """Process the entire ~/.claude/projects/ hierarchy and create linked output files.
 
@@ -2161,6 +2168,7 @@ def process_projects_hierarchy(
                     image_export_mode=image_export_mode,
                     page_size=page_size,
                     detail=detail,
+                    compact=compact,
                 )
 
                 # Track timing

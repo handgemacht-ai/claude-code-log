@@ -838,8 +838,22 @@ class MarkdownRenderer(Renderer):
         # Heading with title (skip if empty)
         title = self.title_content(msg)
         if title:
-            heading_level = min(level, 6)  # Markdown max is h6
-            parts.append(f"{'#' * heading_level} {title}")
+            msg_type = msg.content.message_type
+
+            # Compact mode: suppress heading for consecutive same-type messages
+            # Reset tracking on session boundaries
+            if is_session_header:
+                self._last_message_type = None
+            suppress_heading = (
+                self.compact
+                and not is_session_header
+                and msg_type == self._last_message_type
+            )
+            self._last_message_type = msg_type
+
+            if not suppress_heading:
+                heading_level = min(level, 6)  # Markdown max is h6
+                parts.append(f"{'#' * heading_level} {title}")
 
             # Format content (if not already output above)
             if content:
@@ -873,6 +887,7 @@ class MarkdownRenderer(Renderer):
         """Generate Markdown from transcript messages."""
         self._output_dir = output_dir
         self._image_counter = 0
+        self._last_message_type: Optional[str] = None
 
         if not title:
             title = "Claude Transcript"

@@ -1022,6 +1022,117 @@ class TestMinimalTestData:
         assert "tool_result" not in all_types
 
 
+# -- Tests for --compact mode (Markdown only) ---------------------------------
+
+
+class TestCompactMarkdown:
+    """Test --compact flag merges consecutive same-type headings in Markdown."""
+
+    def test_compact_merges_consecutive_assistant(self, tmp_path):
+        """Consecutive assistant messages share one heading."""
+        entries = [
+            _user_entry("Hello"),
+            _assistant_entry("First response", timestamp="2025-01-01T10:00:01Z"),
+            _assistant_entry("Second response", timestamp="2025-01-01T10:00:02Z"),
+            _assistant_entry("Third response", timestamp="2025-01-01T10:00:03Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        renderer = MarkdownRenderer()
+        renderer.detail = DetailLevel.MINIMAL
+        renderer.compact = True
+        md = renderer.generate(messages, "Compact Test")
+        # Only one Assistant heading should appear
+        assert md.count("Assistant:") == 1
+        # All three responses should appear
+        assert "First response" in md
+        assert "Second response" in md
+        assert "Third response" in md
+
+    def test_compact_merges_consecutive_user(self, tmp_path):
+        """Consecutive user messages share one heading."""
+        entries = [
+            _user_entry("First question", timestamp="2025-01-01T10:00:00Z"),
+            _user_entry("Follow-up", timestamp="2025-01-01T10:00:01Z"),
+            _assistant_entry("Answer"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        renderer = MarkdownRenderer()
+        renderer.detail = DetailLevel.MINIMAL
+        renderer.compact = True
+        md = renderer.generate(messages, "Compact Test")
+        assert md.count("User:") == 1
+        assert "First question" in md
+        assert "Follow-up" in md
+
+    def test_compact_does_not_merge_different_types(self, tmp_path):
+        """Different message types keep their separate headings."""
+        entries = [
+            _user_entry("Question"),
+            _assistant_entry("Answer"),
+            _user_entry("Another question", timestamp="2025-01-01T10:00:04Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        renderer = MarkdownRenderer()
+        renderer.detail = DetailLevel.MINIMAL
+        renderer.compact = True
+        md = renderer.generate(messages, "Compact Test")
+        # Two User headings (separated by an Assistant)
+        assert md.count("User:") == 2
+        assert md.count("Assistant:") == 1
+
+    def test_compact_off_keeps_all_headings(self, tmp_path):
+        """Without --compact, each message gets its own heading."""
+        entries = [
+            _user_entry("Hello"),
+            _assistant_entry("First", timestamp="2025-01-01T10:00:01Z"),
+            _assistant_entry("Second", timestamp="2025-01-01T10:00:02Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        renderer = MarkdownRenderer()
+        renderer.detail = DetailLevel.MINIMAL
+        renderer.compact = False
+        md = renderer.generate(messages, "No Compact Test")
+        assert md.count("Assistant:") == 2
+
+    def test_compact_resets_at_session_boundary(self, tmp_path):
+        """Session headers reset the consecutive-type tracker."""
+        entries = [
+            _assistant_entry(
+                "Response in session 1",
+                session_id="sess-001",
+                timestamp="2025-01-01T10:00:01Z",
+            ),
+            _assistant_entry(
+                "Response in session 2",
+                session_id="sess-002",
+                timestamp="2025-01-01T11:00:01Z",
+            ),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        renderer = MarkdownRenderer()
+        renderer.detail = DetailLevel.MINIMAL
+        renderer.compact = True
+        md = renderer.generate(messages, "Multi-Session")
+        # Each session gets its own Assistant heading (session boundary resets)
+        assert md.count("Assistant:") == 2
+
+    def test_compact_no_effect_on_html(self, tmp_path):
+        """Compact flag does not affect HTML output."""
+        entries = [
+            _user_entry("Hello"),
+            _assistant_entry("First", timestamp="2025-01-01T10:00:01Z"),
+            _assistant_entry("Second", timestamp="2025-01-01T10:00:02Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        renderer = HtmlRenderer()
+        renderer.detail = DetailLevel.MINIMAL
+        renderer.compact = True
+        html = renderer.generate(messages, "Compact HTML")
+        # HTML doesn't implement compact — both messages render normally
+        assert "First" in html
+        assert "Second" in html
+
+
 # -- Helpers ------------------------------------------------------------------
 
 

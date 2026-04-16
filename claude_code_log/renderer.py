@@ -2538,6 +2538,7 @@ class Renderer:
     """
 
     detail: DetailLevel = DetailLevel.FULL
+    compact: bool = False
 
     def _dispatch_format(self, obj: Any, message: TemplateMessage) -> str:
         """Dispatch to format_{ClassName}(obj, message) based on object type."""
@@ -2818,6 +2819,7 @@ def get_renderer(
     format: str,
     image_export_mode: Optional[str] = None,
     detail: DetailLevel = DetailLevel.FULL,
+    compact: bool = False,
 ) -> Renderer:
     """Get a renderer instance for the specified format.
 
@@ -2826,6 +2828,7 @@ def get_renderer(
         image_export_mode: Image export mode ("placeholder", "embedded", "referenced").
             If None, defaults to "embedded" for HTML and "referenced" for Markdown.
         detail: Output detail level controlling which message types are included.
+        compact: If True, merge consecutive same-type headings (Markdown only).
 
     Returns:
         A Renderer instance for the specified format.
@@ -2848,6 +2851,7 @@ def get_renderer(
     else:
         raise ValueError(f"Unsupported format: {format}")
     renderer.detail = detail
+    renderer.compact = compact
     return renderer
 
 

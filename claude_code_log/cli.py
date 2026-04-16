@@ -526,6 +526,11 @@ def _clear_output_files(input_path: Path, all_projects: bool, file_ext: str) -> 
     ),
 )
 @click.option(
+    "--compact",
+    is_flag=True,
+    help="Merge consecutive same-type headings in Markdown output.",
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -549,6 +554,7 @@ def main(
     page_size: int,
     session_id: Optional[str],
     detail: str,
+    compact: bool,
     debug: bool,
 ) -> None:
     """Convert Claude transcript JSONL files to HTML or Markdown.
@@ -763,6 +769,7 @@ def main(
                 image_export_mode,
                 page_size=page_size,
                 detail=detail_level,
+                compact=compact,
             )
 
             # Count processed projects
@@ -816,6 +823,7 @@ def main(
             image_export_mode=image_export_mode,
             page_size=page_size,
             detail=detail_level,
+            compact=compact,
         )
         if input_path.is_file():
             click.echo(f"Successfully converted {input_path} to {output_path}")
