@@ -570,7 +570,7 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
 
         # For system messages, include level to differentiate info/warning/error
         if isinstance(message, SystemTranscriptEntry):
-            level = getattr(message, "level", "info")
+            level = message.level or "info"
             message_type = f"system-{level}"
 
         # Get timestamp
