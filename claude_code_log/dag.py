@@ -409,25 +409,35 @@ def _walk_session_with_forks(
                 # from artifacts (see dev-docs/dag.md caveats).
                 same_session_children.sort(key=lambda c: nodes[c].timestamp)
 
-                # All-passthrough fork: e.g. a hook_success attachment
-                # alongside a SessionStart:resume attachment.  Neither
-                # branch carries conversation, so collapse them all as
-                # structural side-branches and end the chain here.
-                # The subtree check is defense-in-depth: today passthrough
-                # entries are leaves, but a future passthrough type with
-                # conversational descendants must fall through to the
-                # normal fork logic.
-                if all(
-                    isinstance(nodes[c].entry, PassthroughTranscriptEntry)
-                    and _is_structural_subtree(c, session_uuids, nodes)
+                # Collapse passthrough side-branches. A child is
+                # "structural" when it is a PassthroughTranscriptEntry
+                # whose subtree has no user/assistant descendants — e.g. a
+                # `progress` entry, a `hook_success` attachment, or a chain
+                # of them. When at most one non-structural child remains,
+                # the chain continues through that child (or terminates if
+                # none remain); the structural children are stitched in
+                # chronologically as dead-end side entries.
+                #
+                # This catches both the all-passthrough case (e.g. two
+                # hook attachments on the same parent) and the common
+                # mixed case (a `<progress>` sibling of a real user
+                # message), preventing spurious 1-branch forks.
+                structural_kids = [
+                    c
                     for c in same_session_children
-                ):
-                    for pc in same_session_children:
+                    if isinstance(nodes[c].entry, PassthroughTranscriptEntry)
+                    and _is_structural_subtree(c, session_uuids, nodes)
+                ]
+                non_structural = [
+                    c for c in same_session_children if c not in structural_kids
+                ]
+                if structural_kids and len(non_structural) <= 1:
+                    for pk in sorted(structural_kids, key=lambda c: nodes[c].timestamp):
                         if is_branch:
-                            nodes[pc].session_id = line_id
-                        _collect_descendants(pc, session_uuids, nodes, skipped)
-                        chain.append(pc)
-                    current = None
+                            nodes[pk].session_id = line_id
+                        _collect_descendants(pk, session_uuids, nodes, skipped)
+                        chain.append(pk)
+                    current = nodes[non_structural[0]] if non_structural else None
                     continue
 
                 stitched = _stitch_tool_results(
