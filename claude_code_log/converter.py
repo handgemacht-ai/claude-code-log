@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 
 from .utils import (
     format_timestamp_range,
+    get_parent_session_id,
     get_project_display_name,
+    is_agent_session,
     should_use_as_session_starter,
     create_session_preview,
     get_warmup_session_ids,
@@ -30,6 +32,7 @@ from .parser import parse_timestamp
 from .factories import create_transcript_entry
 from .models import (
     BaseTranscriptEntry,
+    PassthroughTranscriptEntry,
     TranscriptEntry,
     AssistantTranscriptEntry,
     QueueOperationTranscriptEntry,
@@ -128,24 +131,37 @@ def _repair_parent_chains(
     messages: list[TranscriptEntry],
     progress_chain: dict[str, Optional[str]],
 ) -> None:
-    """Repair parentUuid fields that point to progress entries.
+    """Repair parentUuid fields that point to dropped progress entries.
 
     Walks the progress chain to find the nearest non-progress ancestor.
+    Only repairs links to progress entries that are NOT in the messages
+    list (i.e. those that were truly dropped, not preserved as
+    PassthroughTranscriptEntry).
     Mutates entries in place (Pydantic v2 models are mutable by default).
     """
     if not progress_chain:
         return
+    # Filter out progress UUIDs that are present as parsed entries —
+    # those are PassthroughTranscriptEntry nodes in the DAG and valid parents.
+    present_uuids = {getattr(m, "uuid", None) for m in messages}
+    dropped_progress = {
+        uuid: parent
+        for uuid, parent in progress_chain.items()
+        if uuid not in present_uuids
+    }
+    if not dropped_progress:
+        return
     for msg in messages:
         parent = getattr(msg, "parentUuid", None)
-        if parent and parent in progress_chain:
+        if parent and parent in dropped_progress:
             current: Optional[str] = parent
             seen: set[str] = set()
-            while current is not None and current in progress_chain:
+            while current is not None and current in dropped_progress:
                 if current in seen:
                     current = None
                     break
                 seen.add(current)
-                current = progress_chain[current]
+                current = dropped_progress[current]
             msg.parentUuid = current  # type: ignore[union-attr]
 
 
@@ -310,19 +326,20 @@ def load_transcript(
                         # Parse using Pydantic models
                         entry = create_transcript_entry(entry_dict)
                         messages.append(entry)
-                    elif (
-                        entry_type
-                        in [
-                            "file-history-snapshot",  # Internal Claude Code file backup metadata
-                            "progress",  # Real-time progress updates (hook_progress, bash_progress)
-                        ]
-                    ):
-                        # Silently skip internal message types we don't render
-                        pass
-                    else:
-                        display_line = line[:1000] + "..." if len(line) > 1000 else line
-                        print(
-                            f"Line {line_no} of {jsonl_path} is not a recognised message type: {display_line}"
+                    elif entry_dict.get("uuid") and entry_dict.get("sessionId"):
+                        # Unknown type with DAG-relevant fields — create a
+                        # PassthroughTranscriptEntry to preserve DAG chain
+                        # continuity (e.g. "attachment", "permission-mode").
+                        messages.append(
+                            PassthroughTranscriptEntry(
+                                uuid=entry_dict["uuid"],
+                                parentUuid=entry_dict.get("parentUuid"),
+                                sessionId=entry_dict["sessionId"],
+                                timestamp=entry_dict.get("timestamp", ""),
+                                type=entry_type,
+                                isSidechain=entry_dict.get("isSidechain", False),
+                                agentId=entry_dict.get("agentId"),
+                            )
                         )
                 except json.JSONDecodeError as e:
                     print(
@@ -411,6 +428,58 @@ def load_transcript(
     return messages
 
 
+def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
+    """Parent agent entries and assign synthetic session IDs.
+
+    Agent (sidechain) entries share sessionId with their parent session
+    but form separate conversation threads. This function:
+
+    1. Builds a map of agentId -> anchor UUID (the main-session User entry
+       whose agentId matches, i.e. the tool_result that references the agent)
+    2. For each agent's root entry (parentUuid=None, isSidechain=True),
+       sets parentUuid to the anchor UUID
+    3. Assigns a synthetic sessionId ("{sessionId}#agent-{agentId}") to all
+       agent entries so they form separate DAG-lines
+
+    Mutates entries in place (Pydantic v2 models are mutable by default).
+    """
+    # Build agentId -> anchor UUID map.
+    # An anchor is any entry whose agentId references a sidechain transcript.
+    # Prefer non-sidechain anchors (main session), but also accept sidechain
+    # anchors (nested agents: agent A spawns agent B, so B's anchor lives
+    # inside A's sidechain).
+    agent_anchors: dict[str, str] = {}
+    agent_anchors_from_sidechain: dict[str, str] = {}
+    for msg in messages:
+        if not isinstance(msg, (BaseTranscriptEntry, PassthroughTranscriptEntry)):
+            continue
+        if not msg.agentId:
+            continue
+        if msg.isSidechain:
+            agent_anchors_from_sidechain.setdefault(msg.agentId, msg.uuid)
+        else:
+            agent_anchors[msg.agentId] = msg.uuid
+    # Merge: non-sidechain anchors take priority
+    for agent_id, uuid in agent_anchors_from_sidechain.items():
+        agent_anchors.setdefault(agent_id, uuid)
+
+    if not agent_anchors:
+        return
+
+    # Process sidechain entries: parent roots and assign synthetic sessionIds
+    for msg in messages:
+        if not isinstance(msg, (BaseTranscriptEntry, PassthroughTranscriptEntry)):
+            continue
+        if not msg.isSidechain or not msg.agentId:
+            continue
+        agent_id = msg.agentId
+        # Assign synthetic session ID to separate from main session
+        msg.sessionId = f"{msg.sessionId}#agent-{agent_id}"
+        # Parent the root entry to the anchor
+        if msg.parentUuid is None and agent_id in agent_anchors:
+            msg.parentUuid = agent_anchors[agent_id]
+
+
 def load_directory_transcripts(
     directory_path: Path,
     cache_manager: Optional["CacheManager"] = None,
@@ -441,31 +510,28 @@ def load_directory_transcripts(
     progress_chain = _scan_progress_chains(directory_path)
     _repair_parent_chains(all_messages, progress_chain)
 
-    # Partition: sidechain entries excluded from DAG (Phase C scope)
-    sidechain_entries = [e for e in all_messages if getattr(e, "isSidechain", False)]
-    main_entries = [e for e in all_messages if not getattr(e, "isSidechain", False)]
+    # Parent agent entries and assign synthetic session IDs so they
+    # form separate DAG-lines spliced at their anchor points.
+    _integrate_agent_entries(all_messages)
 
-    # Collect sidechain UUIDs so DAG build can suppress orphan warnings
-    # for parents that exist in sidechain data (will be integrated in Phase C)
-    sidechain_uuids: set[str] = {
-        e.uuid for e in sidechain_entries if isinstance(e, BaseTranscriptEntry)
-    }
-    # Also scan unloaded subagent files (e.g. aprompt_suggestion agents
-    # that are never referenced via agentId in the main session)
-    sidechain_uuids |= _scan_sidechain_uuids(directory_path)
+    # Collect UUIDs from unloaded subagent files (e.g. aprompt_suggestion
+    # agents never referenced via agentId) to suppress orphan warnings
+    unloaded_sidechain_uuids = _scan_sidechain_uuids(directory_path)
 
     # Build DAG and traverse (entries grouped by session, depth-first)
-    tree = build_dag_from_entries(main_entries, sidechain_uuids=sidechain_uuids)
+    tree = build_dag_from_entries(
+        all_messages, sidechain_uuids=unloaded_sidechain_uuids
+    )
     dag_ordered = traverse_session_tree(tree)
 
     # Re-add summaries/queue-ops (excluded from DAG since they lack uuid)
     non_dag_entries: list[TranscriptEntry] = [
         e
-        for e in main_entries
+        for e in all_messages
         if isinstance(e, (SummaryTranscriptEntry, QueueOperationTranscriptEntry))
     ]
 
-    return dag_ordered + sidechain_entries + non_dag_entries, tree
+    return dag_ordered + non_dag_entries, tree
 
 
 # =============================================================================
@@ -504,7 +570,7 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
 
         # For system messages, include level to differentiate info/warning/error
         if isinstance(message, SystemTranscriptEntry):
-            level = getattr(message, "level", "info")
+            level = message.level or "info"
             message_type = f"system-{level}"
 
         # Get timestamp
@@ -517,15 +583,19 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
         session_id = getattr(message, "sessionId", "")
 
         # Get content key for differentiating concurrent messages
-        # - For assistant messages: use message.id (same for stutters, different for different msgs)
+        # - For assistant messages: use message.id + content block types
+        #   (stutters share the same message.id AND content types;
+        #   split content blocks share message.id but have distinct types)
         # - For user messages with tool results: use first tool_use_id
-        # - For user text messages: use empty string (deduplicate by timestamp alone)
+        # - For user text messages: use uuid (DAG parent references must stay valid)
         # - For summary messages: use leafUuid (summaries have no timestamp/uuid)
+        # - For system messages: use uuid (different system events can share a timestamp)
+        # - For passthrough entries: use uuid (DAG chain nodes)
         content_key = ""
         is_user_text = False
         if isinstance(message, AssistantTranscriptEntry):
-            # For assistant messages, use the message id
-            content_key = message.message.id
+            block_types = ":".join(c.type for c in message.message.content)
+            content_key = f"{message.message.id}:{block_types}"
         elif isinstance(message, UserTranscriptEntry):
             # For user messages, check for tool results
             for item in message.message.content:
@@ -534,13 +604,13 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
                     break
             else:
                 # No tool result found - this is a user text message.
-                # Use uuid to keep distinct messages (even at same timestamp)
-                # so DAG parent references remain valid.
                 is_user_text = True
                 content_key = message.uuid
         elif isinstance(message, SummaryTranscriptEntry):
             # Summaries have no timestamp or uuid - use leafUuid to keep them distinct
             content_key = message.leafUuid
+        elif isinstance(message, (SystemTranscriptEntry, PassthroughTranscriptEntry)):
+            content_key = message.uuid
 
         # Create deduplication key
         dedup_key = (message_type, timestamp, is_meta, session_id, content_key)
@@ -743,11 +813,11 @@ def _build_session_data_from_messages(
     sessions: Dict[str, Dict[str, Any]] = {}
     for message in messages:
         if not hasattr(message, "sessionId") or isinstance(
-            message, SummaryTranscriptEntry
+            message, (SummaryTranscriptEntry, PassthroughTranscriptEntry)
         ):
             continue
 
-        session_id = getattr(message, "sessionId", "")
+        session_id = get_parent_session_id(getattr(message, "sessionId", ""))
         if not session_id or session_id in warmup_session_ids:
             continue
 
@@ -877,14 +947,16 @@ def _generate_paginated_html(
             if orphan_path.exists():
                 orphan_path.unlink()
 
-    # Group messages by session for fast lookup
+    # Group messages by session for fast lookup (agent messages grouped
+    # under their parent session since they don't have their own pages)
     messages_by_session: Dict[str, List[TranscriptEntry]] = {}
     for msg in messages:
         session_id = getattr(msg, "sessionId", None)
         if session_id:
-            if session_id not in messages_by_session:
-                messages_by_session[session_id] = []
-            messages_by_session[session_id].append(msg)
+            key = get_parent_session_id(session_id)
+            if key not in messages_by_session:
+                messages_by_session[key] = []
+            messages_by_session[key].append(msg)
 
     first_page_path = output_dir / _get_page_html_path(1)
 
@@ -1091,6 +1163,9 @@ def convert_jsonl_to(
         # Repair progress chain gaps for single-file mode
         progress_chain = _scan_progress_chains(input_path)
         _repair_parent_chains(messages, progress_chain)
+        # Parent agent entries and assign synthetic session IDs (same as
+        # directory mode) so DAG-based ordering handles sidechain placement.
+        _integrate_agent_entries(messages)
         title = f"Claude Transcript - {input_path.stem}"
         cache_was_updated = False  # No cache in single file mode
     else:
@@ -1185,7 +1260,11 @@ def convert_jsonl_to(
             current_session_ids: set[str] = set()
             for message in messages:
                 session_id = getattr(message, "sessionId", "")
-                if session_id and session_id not in warmup_session_ids:
+                if (
+                    session_id
+                    and session_id not in warmup_session_ids
+                    and not is_agent_session(session_id)
+                ):
                     current_session_ids.add(session_id)
             session_data = {
                 session_id: session_cache
@@ -1379,7 +1458,7 @@ def _update_cache_with_session_data(
         if hasattr(message, "sessionId") and not isinstance(
             message, SummaryTranscriptEntry
         ):
-            session_id = getattr(message, "sessionId", "")
+            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
             if not session_id:
                 continue
 
@@ -1416,7 +1495,7 @@ def _update_cache_with_session_data(
         if message.type == "assistant" and hasattr(message, "message"):
             assistant_message = getattr(message, "message")
             request_id = getattr(message, "requestId", None)
-            session_id = getattr(message, "sessionId", "")
+            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
 
             if (
                 hasattr(assistant_message, "usage")
@@ -1513,13 +1592,14 @@ def _collect_project_sessions(messages: list[TranscriptEntry]) -> list[dict[str,
             ):
                 session_summaries[uuid_to_session_backup[leaf_uuid]] = message.summary
 
-    # Group messages by session (excluding warmup-only sessions)
+    # Group messages by session (excluding warmup-only sessions,
+    # coalescing agent sessions into their parent)
     sessions: dict[str, dict[str, Any]] = {}
     for message in messages:
         if hasattr(message, "sessionId") and not isinstance(
             message, SummaryTranscriptEntry
         ):
-            session_id = getattr(message, "sessionId", "")
+            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
             if not session_id or session_id in warmup_session_ids:
                 continue
 
@@ -1619,12 +1699,16 @@ def _generate_individual_session_files(
     # Pre-compute warmup sessions to exclude them
     warmup_session_ids = get_warmup_session_ids(messages)
 
-    # Find all unique session IDs (excluding warmup sessions)
+    # Find all unique session IDs (excluding warmup and agent sessions)
     session_ids: set[str] = set()
     for message in messages:
         if hasattr(message, "sessionId"):
             session_id: str = getattr(message, "sessionId")
-            if session_id and session_id not in warmup_session_ids:
+            if (
+                session_id
+                and session_id not in warmup_session_ids
+                and not is_agent_session(session_id)
+            ):
                 session_ids.add(session_id)
 
     # Get session data from cache for better titles

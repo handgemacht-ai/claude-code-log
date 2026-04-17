@@ -220,12 +220,31 @@ class QueueOperationTranscriptEntry(BaseModel):
     )
 
 
+class PassthroughTranscriptEntry(BaseModel):
+    """Structural-only entry for DAG chain continuity.
+
+    Captures entries like "attachment", "permission-mode", etc. that have
+    uuid/parentUuid and participate in the DAG chain but are not rendered.
+    Without these, messages whose parentUuid points to a dropped entry
+    become false roots in the DAG.
+    """
+
+    uuid: str
+    parentUuid: Optional[str] = None
+    sessionId: str
+    timestamp: str
+    type: Optional[str] = None  # Original type (e.g. "attachment")
+    isSidechain: bool = False
+    agentId: Optional[str] = None
+
+
 TranscriptEntry = Union[
     UserTranscriptEntry,
     AssistantTranscriptEntry,
     SummaryTranscriptEntry,
     SystemTranscriptEntry,
     QueueOperationTranscriptEntry,
+    PassthroughTranscriptEntry,
 ]
 
 

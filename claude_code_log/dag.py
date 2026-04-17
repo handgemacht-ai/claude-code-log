@@ -49,6 +49,7 @@ class SessionDAGLine:
     attachment_uuid: Optional[str] = None  # UUID in parent where this attaches
     is_branch: bool = False  # True for within-session fork branches
     original_session_id: Optional[str] = None  # Original session_id before fork split
+    is_sidechain: bool = False  # True for agent transcript sessions
 
 
 @dataclass
@@ -138,8 +139,9 @@ def build_dag(
     """Populate children_uuids on each node. Mutates nodes in place.
 
     Warns about orphan nodes (parentUuid points outside loaded data)
-    and validates acyclicity. Parents known to be in sidechain data
-    (Phase C scope) are silently promoted to root without warning.
+    and validates acyclicity. Parents known to be in unloaded sidechain
+    data (e.g. aprompt_suggestion agents) are silently promoted to root
+    without warning.
     """
     _sidechain_uuids = sidechain_uuids or set()
 
@@ -639,7 +641,8 @@ def build_dag_from_entries(
 
     Convenience function that runs Steps 1-4 in sequence.
     ``sidechain_uuids`` suppresses orphan warnings for parents known
-    to be in sidechain data (not yet integrated, Phase C scope).
+    to be in unloaded sidechain data (e.g. aprompt_suggestion agents
+    that are never referenced via agentId in the main session).
     """
     nodes = build_message_index(entries)
     build_dag(nodes, sidechain_uuids=sidechain_uuids)

@@ -288,6 +288,24 @@ def _compact_ide_tags_for_preview(text_content: str) -> str:
     return text_content
 
 
+def is_agent_session(session_id: str) -> bool:
+    """Check if a session ID is a synthetic agent session.
+
+    Agent sessions use the format ``{sessionId}#agent-{agentId}``,
+    assigned by ``_integrate_agent_entries()`` during DAG construction.
+    """
+    return "#agent-" in session_id
+
+
+def get_parent_session_id(session_id: str) -> str:
+    """Return the parent session ID for an agent session, or the ID itself.
+
+    For ``{sessionId}#agent-{agentId}`` returns ``{sessionId}``.
+    For non-agent sessions returns the input unchanged.
+    """
+    return session_id.split("#agent-")[0] if "#agent-" in session_id else session_id
+
+
 def get_warmup_session_ids(messages: list[TranscriptEntry]) -> set[str]:
     """Get set of session IDs that are warmup-only sessions.
 

@@ -12,6 +12,7 @@ from typing import Any
 
 from claude_code_log.converter import (
     load_directory_transcripts,
+    _build_session_data_from_messages,
     _scan_progress_chains,
     _repair_parent_chains,
 )
@@ -63,9 +64,10 @@ def _make_assistant_entry(
     parent_uuid: str | None = None,
     text: str = "reply",
     is_sidechain: bool = False,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     """Helper to create an assistant transcript entry dict."""
-    return {
+    entry: dict[str, Any] = {
         "type": "assistant",
         "timestamp": timestamp,
         "parentUuid": parent_uuid,
@@ -86,6 +88,9 @@ def _make_assistant_entry(
             "usage": {"input_tokens": 10, "output_tokens": 5},
         },
     }
+    if agent_id is not None:
+        entry["agentId"] = agent_id
+    return entry
 
 
 # =============================================================================
@@ -123,7 +128,7 @@ class TestLoadDirectoryDagOrdering:
         assert uuids == ["a", "b", "c", "d", "e", "f", "g", "h"]
 
     def test_load_directory_with_sidechains(self, tmp_path: Path) -> None:
-        """Sidechain entries should be present after DAG-ordered main entries."""
+        """Sidechain entries are integrated into DAG at their structural position."""
         main_entries = [
             _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
             _make_assistant_entry("b", "s1", "2025-07-01T10:01:00.000Z", "a"),
@@ -144,12 +149,9 @@ class TestLoadDirectoryDagOrdering:
         result, _ = load_directory_transcripts(tmp_path, silent=True)
         uuids = [getattr(e, "uuid", None) for e in result]
 
-        # Main entries first (DAG ordered), then sidechain
-        assert "a" in uuids
-        assert "b" in uuids
-        assert "sc1" in uuids
-        # Sidechain should be after main entries
-        assert uuids.index("sc1") > uuids.index("b")
+        # Sidechain is now part of the DAG: sc1 is a child of a (tool-result
+        # side-branch), stitched before the continuation child b
+        assert uuids == ["a", "sc1", "b"]
 
     def test_load_directory_with_summaries(self, tmp_path: Path) -> None:
         """Summary entries should be preserved in output."""
@@ -491,7 +493,13 @@ class TestRepairParentChains:
         assert messages[1].parentUuid == "a"
 
     def test_single_progress_gap(self, tmp_path: Path) -> None:
-        """Single progress gap is bridged."""
+        """Progress entry with uuid+sessionId becomes PassthroughTranscriptEntry.
+
+        With passthrough entries in the DAG, the chain is intact —
+        no repair needed for progress entries that have uuid+sessionId.
+        """
+        from claude_code_log.models import PassthroughTranscriptEntry
+
         entries = [
             _make_progress_entry("p1", None),
             _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", "p1"),
@@ -502,12 +510,16 @@ class TestRepairParentChains:
         messages = load_transcript(tmp_path / "session.jsonl", silent=True)
         progress_chain = {"p1": None}
         _repair_parent_chains(messages, progress_chain)
-        # user(a).parentUuid was "p1" (progress), repaired to None
-        assert isinstance(messages[0], BaseTranscriptEntry)
-        assert messages[0].parentUuid is None
+        # p1 is now a PassthroughTranscriptEntry (not dropped)
+        assert isinstance(messages[0], PassthroughTranscriptEntry)
+        assert messages[0].uuid == "p1"
+        # user(a).parentUuid remains "p1" — chain intact via passthrough
+        user_a = [m for m in messages if getattr(m, "uuid", None) == "a"][0]
+        assert isinstance(user_a, BaseTranscriptEntry)
+        assert user_a.parentUuid == "p1"
 
     def test_chained_progress_gap(self, tmp_path: Path) -> None:
-        """Chain of consecutive progress entries is fully bridged."""
+        """Chain of passthrough progress entries preserves DAG links."""
         # real_parent → progress(p1) → progress(p2) → user(a)
         entries = [
             _make_user_entry("real_parent", "s1", "2025-07-01T10:00:00.000Z", None),
@@ -521,10 +533,10 @@ class TestRepairParentChains:
         messages = load_transcript(tmp_path / "session.jsonl", silent=True)
         progress_chain = {"p1": "real_parent", "p2": "p1"}
         _repair_parent_chains(messages, progress_chain)
-        # user(a).parentUuid was "p2", should walk through p2→p1→real_parent
+        # With passthrough entries, chain is intact: a → p2 → p1 → real_parent
         user_a = [m for m in messages if getattr(m, "uuid", None) == "a"][0]
         assert isinstance(user_a, BaseTranscriptEntry)
-        assert user_a.parentUuid == "real_parent"
+        assert user_a.parentUuid == "p2"  # NOT repaired — p2 is in the DAG
 
 
 class TestProgressChainRepairIntegration:
@@ -547,36 +559,44 @@ class TestProgressChainRepairIntegration:
         )
 
     def test_progress_chain_repair_single_file(self) -> None:
-        """Single-file mode also repairs progress chains."""
+        """Single-file mode: progress entries are PassthroughTranscriptEntry nodes.
+
+        With passthrough entries, progress entries are in the DAG and don't
+        need repair. Entries pointing to them have valid parents.
+        """
         from claude_code_log.converter import (
             load_transcript,
             _scan_progress_chains,
             _repair_parent_chains,
         )
+        from claude_code_log.models import PassthroughTranscriptEntry
 
         single_file = (
             EXPERIMENTS_IDEAS_DIR / "03eb5929-52b3-4b13-ada3-b93ae35806b8.jsonl"
         )
         messages = load_transcript(single_file, silent=True)
 
-        # Before repair: some entries have parentUuid pointing to progress UUIDs
+        # Progress entries are now PassthroughTranscriptEntry in messages
         progress_chain = _scan_progress_chains(single_file)
         assert len(progress_chain) == 11
 
-        # Count entries with progress parents before repair
-        orphan_before = sum(
-            1 for m in messages if getattr(m, "parentUuid", None) in progress_chain
-        )
-        assert orphan_before == 8
+        # Progress entries should be in the messages list
+        passthrough_uuids = {
+            m.uuid
+            for m in messages
+            if isinstance(m, PassthroughTranscriptEntry) and m.type == "progress"
+        }
+        assert len(passthrough_uuids) > 0
 
-        # Repair
+        # Repair should be a no-op since all progress entries are present
         _repair_parent_chains(messages, progress_chain)
 
-        # After repair: no entries should point to progress UUIDs
-        orphan_after = sum(
+        # Entries still point to progress UUIDs (which is correct —
+        # those are valid PassthroughTranscriptEntry nodes in the DAG)
+        entries_with_progress_parents = sum(
             1 for m in messages if getattr(m, "parentUuid", None) in progress_chain
         )
-        assert orphan_after == 0
+        assert entries_with_progress_parents > 0  # Chain intact through passthrough
 
     def test_progress_chain_preserves_entry_count(self) -> None:
         """Repair doesn't add or remove entries, only mutates parentUuid."""
@@ -612,7 +632,9 @@ class TestProgressChainRepairIntegration:
         assert len(tree.nodes) > 0
 
     def test_synthetic_progress_in_directory_mode(self, tmp_path: Path) -> None:
-        """Synthetic test: progress entries in directory mode are bridged."""
+        """Progress entries become passthrough nodes in directory mode."""
+        from claude_code_log.models import PassthroughTranscriptEntry
+
         entries: list[dict[str, Any]] = [
             _make_progress_entry("p1", None),
             _make_user_entry("a", "s1", "2025-07-01T10:00:00.000Z", "p1", "Start"),
@@ -626,8 +648,13 @@ class TestProgressChainRepairIntegration:
         result, _ = load_directory_transcripts(tmp_path, silent=True)
         uuids = [getattr(e, "uuid", None) for e in result]
 
-        # All 4 real entries should be in DAG order
-        assert uuids == ["a", "b", "c", "d"]
+        # All 6 entries in DAG order (including passthrough progress entries)
+        assert uuids == ["p1", "a", "b", "p2", "c", "d"]
+
+        # Progress entries are PassthroughTranscriptEntry
+        passthrough = [e for e in result if isinstance(e, PassthroughTranscriptEntry)]
+        assert len(passthrough) == 2
+        assert {p.uuid for p in passthrough} == {"p1", "p2"}
 
 
 # =============================================================================
@@ -727,3 +754,605 @@ class TestWithinSessionForkRealData:
         # All entries should be covered
         total_in_daglines = sum(len(dl.uuids) for dl in tree.sessions.values())
         assert total_in_daglines == len(tree.nodes)
+
+
+# =============================================================================
+# Test: Agent transcript DAG integration
+# =============================================================================
+
+
+class TestAgentDagIntegration:
+    """Test that agent (sidechain) transcripts are integrated into the DAG."""
+
+    def test_agent_entries_parented_to_anchor(self, tmp_path: Path) -> None:
+        """Agent root entry gets parentUuid pointing to the anchor tool_result."""
+        # Main session: user → assistant(tool_use Agent) → user(tool_result, agentId)
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # User entry carrying tool_result with agentId reference
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "a1",
+                "tool result",
+                agent_id="agent-abc",
+            ),
+            _make_assistant_entry("a2", "s1", "2025-07-01T10:03:00.000Z", "u2"),
+        ]
+        # Agent file entries (all sidechain)
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:01:30.000Z",
+                None,
+                "Agent prompt",
+                is_sidechain=True,
+                agent_id="agent-abc",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:01:40.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-abc",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        result, tree = load_directory_transcripts(tmp_path, silent=True)
+        uuids = [getattr(e, "uuid", None) for e in result]
+
+        # Agent entries should be in the DAG, placed at the junction point
+        assert "ag1" in uuids
+        assert "ag2" in uuids
+        # Main session entries should be in order
+        assert uuids.index("u1") < uuids.index("a1")
+        assert uuids.index("a1") < uuids.index("u2")
+        assert uuids.index("u2") < uuids.index("a2")
+        # Agent entries should appear between the anchor (u2) and
+        # continuation (a2) — the agent DAG-line is a child session
+        # traversed at the junction point
+        assert uuids.index("u2") < uuids.index("ag1")
+        assert uuids.index("ag2") < uuids.index("a2")
+
+    def test_agent_session_in_tree(self, tmp_path: Path) -> None:
+        """Agent transcript creates a synthetic child session in the tree."""
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "u1",
+                "tool result",
+                agent_id="agent-xyz",
+            ),
+        ]
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:01:00.000Z",
+                None,
+                "Agent prompt",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:01:10.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        _, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # Should have synthetic agent session
+        agent_sids = [sid for sid in tree.sessions if "#agent-" in sid]
+        assert len(agent_sids) == 1
+        assert agent_sids[0] == "s1#agent-agent-xyz"
+
+        # Agent session should be a child of the main session
+        agent_dag_line = tree.sessions[agent_sids[0]]
+        assert agent_dag_line.parent_session_id == "s1"
+        assert agent_dag_line.attachment_uuid == "u2"
+
+        # Main session should be a root
+        assert "s1" in tree.roots
+        assert agent_sids[0] not in tree.roots
+
+    def test_agent_no_session_header(self, tmp_path: Path) -> None:
+        """Agent sessions don't generate session headers in rendering."""
+        from claude_code_log.renderer import generate_template_messages
+        from claude_code_log.models import SessionHeaderMessage
+
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "u1",
+                "tool result",
+                agent_id="agent-xyz",
+            ),
+        ]
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:01:00.000Z",
+                None,
+                "Agent prompt",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:01:10.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-xyz",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        root_messages, session_nav, context = generate_template_messages(
+            messages, session_tree=session_tree
+        )
+
+        # Only one session header (for the main session), not for the agent
+        headers = [
+            m for m in context.messages if isinstance(m.content, SessionHeaderMessage)
+        ]
+        assert len(headers) == 1
+        header_content = headers[0].content
+        assert isinstance(header_content, SessionHeaderMessage)
+        assert header_content.session_id == "s1"
+
+    def test_multiple_agents_ordered(self, tmp_path: Path) -> None:
+        """Multiple agents are each placed at their respective anchor points."""
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # First agent anchor
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "a1",
+                "result1",
+                agent_id="agent-1",
+            ),
+            _make_assistant_entry("a2", "s1", "2025-07-01T10:03:00.000Z", "u2"),
+            # Second agent anchor
+            _make_user_entry(
+                "u3",
+                "s1",
+                "2025-07-01T10:04:00.000Z",
+                "a2",
+                "result2",
+                agent_id="agent-2",
+            ),
+            _make_assistant_entry("a3", "s1", "2025-07-01T10:05:00.000Z", "u3"),
+        ]
+        agent1_entries = [
+            _make_user_entry(
+                "ag1-1",
+                "s1",
+                "2025-07-01T10:01:30.000Z",
+                None,
+                "Agent1 prompt",
+                is_sidechain=True,
+                agent_id="agent-1",
+            ),
+            _make_assistant_entry(
+                "ag1-2",
+                "s1",
+                "2025-07-01T10:01:40.000Z",
+                "ag1-1",
+                "Agent1 reply",
+                is_sidechain=True,
+                agent_id="agent-1",
+            ),
+        ]
+        agent2_entries = [
+            _make_user_entry(
+                "ag2-1",
+                "s1",
+                "2025-07-01T10:03:30.000Z",
+                None,
+                "Agent2 prompt",
+                is_sidechain=True,
+                agent_id="agent-2",
+            ),
+            _make_assistant_entry(
+                "ag2-2",
+                "s1",
+                "2025-07-01T10:03:40.000Z",
+                "ag2-1",
+                "Agent2 reply",
+                is_sidechain=True,
+                agent_id="agent-2",
+            ),
+        ]
+
+        _write_jsonl(
+            tmp_path / "session.jsonl",
+            main_entries + agent1_entries + agent2_entries,
+        )
+
+        result, tree = load_directory_transcripts(tmp_path, silent=True)
+        uuids = [getattr(e, "uuid", None) for e in result]
+
+        # Each agent should appear after its anchor and before the next main entry
+        assert uuids.index("ag1-1") > uuids.index("u2")
+        assert uuids.index("ag1-2") < uuids.index("a2")
+        assert uuids.index("ag2-1") > uuids.index("u3")
+        assert uuids.index("ag2-2") < uuids.index("a3")
+
+        # Two synthetic agent sessions
+        agent_sids = [sid for sid in tree.sessions if "#agent-" in sid]
+        assert len(agent_sids) == 2
+
+    def test_agent_in_branch(self, tmp_path: Path) -> None:
+        """Agent anchored inside a within-session fork attaches to the branch."""
+        from claude_code_log.renderer import generate_template_messages
+
+        # Trunk: u1 → a1 (fork point)
+        # Branch 1: b1_u (rewind from a1, different timestamp) → b1_a
+        #   with agent anchored at b1_u
+        # Branch 2: b2_u (rewind from a1, different timestamp)
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # Branch 1: user rewind from a1
+            _make_user_entry(
+                "b1_u",
+                "s1",
+                "2025-07-01T10:02:00.000Z",
+                "a1",
+                "Branch 1",
+                agent_id="agent-b1",
+            ),
+            _make_assistant_entry(
+                "b1_a",
+                "s1",
+                "2025-07-01T10:03:00.000Z",
+                "b1_u",
+            ),
+            # Branch 2: user rewind from a1 (different timestamp = real fork)
+            _make_user_entry(
+                "b2_u",
+                "s1",
+                "2025-07-01T10:04:00.000Z",
+                "a1",
+                "Branch 2",
+            ),
+        ]
+        agent_entries = [
+            _make_user_entry(
+                "ag1",
+                "s1",
+                "2025-07-01T10:02:30.000Z",
+                None,
+                "Agent in branch",
+                is_sidechain=True,
+                agent_id="agent-b1",
+            ),
+            _make_assistant_entry(
+                "ag2",
+                "s1",
+                "2025-07-01T10:02:40.000Z",
+                "ag1",
+                "Agent reply",
+                is_sidechain=True,
+                agent_id="agent-b1",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        result, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # Agent session's parent should be the branch pseudo-session, not trunk
+        agent_sids = [sid for sid in tree.sessions if "#agent-" in sid]
+        assert len(agent_sids) == 1
+        agent_dl = tree.sessions[agent_sids[0]]
+        # The branch pseudo-session has format "s1@{child_uuid[:12]}"
+        assert agent_dl.parent_session_id is not None
+        assert "@" in agent_dl.parent_session_id, (
+            f"Agent should be child of branch, got parent={agent_dl.parent_session_id}"
+        )
+        assert agent_dl.attachment_uuid == "b1_u"
+
+        # End-to-end rendering: agent messages should appear in the branch,
+        # not get regrouped under the trunk
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        root_messages, session_nav, context = generate_template_messages(
+            messages, session_tree=session_tree
+        )
+
+        # Verify message ordering: agent messages should be in the branch
+        # block (after b1_u anchor, before branch 2's b2_u)
+        msg_uuids = {m.meta.uuid: m.message_index for m in context.messages}
+        assert "ag1" in msg_uuids
+        assert "b1_u" in msg_uuids
+        assert "b2_u" in msg_uuids
+        assert msg_uuids["b1_u"] < msg_uuids["ag1"] < msg_uuids["b2_u"]  # type: ignore[operator]
+
+    def test_agent_messages_coalesced_into_parent_session(self, tmp_path: Path) -> None:
+        """Agent message counts and tokens fold into parent session aggregates.
+
+        Regression test: agent messages must not be dropped from session
+        metadata used for pagination and cache. They should be counted under
+        the parent session.
+        """
+        # Main session: user → assistant(anchor, agentId) → user(next)
+        main_entries = [
+            _make_user_entry("u1", "s1", "2025-01-01T00:00:00Z", text="Hello"),
+            _make_assistant_entry(
+                "a1",
+                "s1",
+                "2025-01-01T00:00:01Z",
+                parent_uuid="u1",
+                agent_id="ag1",
+            ),
+            _make_user_entry(
+                "u2",
+                "s1",
+                "2025-01-01T00:00:05Z",
+                parent_uuid="a1",
+                text="Continue",
+            ),
+        ]
+        # Agent sidechain: 2 entries (user + assistant)
+        agent_entries = [
+            _make_user_entry(
+                "ag_u1",
+                "s1",
+                "2025-01-01T00:00:02Z",
+                is_sidechain=True,
+                agent_id="ag1",
+                text="agent task",
+            ),
+            _make_assistant_entry(
+                "ag_a1",
+                "s1",
+                "2025-01-01T00:00:03Z",
+                parent_uuid="ag_u1",
+                is_sidechain=True,
+                agent_id="ag1",
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", main_entries + agent_entries)
+
+        messages, _tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # Build session data (used for pagination page assignment)
+        session_data = _build_session_data_from_messages(messages)
+
+        # Only the parent session should exist — no agent-synthetic session
+        assert "s1" in session_data
+        assert not any("#agent-" in sid for sid in session_data)
+
+        s1 = session_data["s1"]
+        # message_count should include both main (3) and agent (2) entries
+        assert s1.message_count == 5
+
+        # Token totals should include agent assistant entry (10 input, 5 output)
+        # Main has 1 assistant (a1: 10 input, 5 output)
+        # Agent has 1 assistant (ag_a1: 10 input, 5 output)
+        assert s1.total_input_tokens == 20
+        assert s1.total_output_tokens == 10
+
+
+# =============================================================================
+# Test: current_render_session reset across sessions
+# =============================================================================
+
+
+class TestRenderSessionResetAcrossSessions:
+    """Test that current_render_session is reset when entering a new session.
+
+    Bug: _render_messages() sets current_render_session when entering a
+    within-session fork branch but never clears it on new sessions,
+    causing subsequent session messages to inherit a stale branch ID.
+    """
+
+    def test_second_session_not_polluted_by_first_session_branch(
+        self, tmp_path: Path
+    ) -> None:
+        """Messages in session 2 should not inherit session 1's branch render_session_id."""
+        from claude_code_log.renderer import generate_template_messages
+
+        # Session s1 with a fork: u1 → a1, then both u2a and u2b branch from a1
+        s1_entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_assistant_entry("a1", "s1", "2025-07-01T10:01:00.000Z", "u1"),
+            # Fork: two children of a1
+            _make_user_entry("u2a", "s1", "2025-07-01T10:02:00.000Z", "a1", "Branch A"),
+            _make_assistant_entry("a2a", "s1", "2025-07-01T10:03:00.000Z", "u2a"),
+            _make_user_entry("u2b", "s1", "2025-07-01T10:02:01.000Z", "a1", "Branch B"),
+            _make_assistant_entry("a2b", "s1", "2025-07-01T10:03:01.000Z", "u2b"),
+        ]
+
+        # Session s2: separate session, should NOT inherit s1's branch state
+        s2_entries = [
+            _make_user_entry(
+                "u3", "s2", "2025-07-01T11:00:00.000Z", None, "New session"
+            ),
+            _make_assistant_entry("a3", "s2", "2025-07-01T11:01:00.000Z", "u3"),
+        ]
+
+        _write_jsonl(tmp_path / "s1.jsonl", s1_entries)
+        _write_jsonl(tmp_path / "s2.jsonl", s2_entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        _, _, ctx = generate_template_messages(messages, session_tree=session_tree)
+
+        # Find messages from session s2 by UUID
+        s2_msgs = [m for m in ctx.messages if m.meta.uuid in ("u3", "a3")]
+        assert len(s2_msgs) == 2, f"Expected 2 s2 messages, got {len(s2_msgs)}"
+
+        for msg in s2_msgs:
+            assert msg.render_session_id == "s2", (
+                f"Message {msg.meta.uuid} has render_session_id={msg.render_session_id!r}, "
+                f"expected 's2' — branch tracking from s1 leaked into s2"
+            )
+
+
+# =============================================================================
+# Test: PassthroughTranscriptEntry for DAG chain continuity
+# =============================================================================
+
+
+def _make_passthrough_entry(
+    uuid: str,
+    session_id: str,
+    timestamp: str,
+    parent_uuid: str | None = None,
+    entry_type: str = "attachment",
+) -> dict[str, Any]:
+    """Helper to create a passthrough (non-rendered) entry dict."""
+    return {
+        "type": entry_type,
+        "timestamp": timestamp,
+        "parentUuid": parent_uuid,
+        "isSidechain": False,
+        "userType": "external",
+        "cwd": "/tmp",
+        "sessionId": session_id,
+        "version": "1.0.0",
+        "uuid": uuid,
+        # No "message" field — this is not a user/assistant entry
+    }
+
+
+class TestPassthroughDagChain:
+    """Test that passthrough entries (attachment, etc.) preserve DAG chain."""
+
+    def test_attachment_preserves_parent_chain(self, tmp_path: Path) -> None:
+        """Assistant whose parentUuid points to an attachment should not be a false root."""
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_passthrough_entry(
+                "att1", "s1", "2025-07-01T10:00:30.000Z", "u1", "attachment"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "att1", "Reply"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # All three entries should be in the DAG
+        assert "u1" in tree.nodes
+        assert "att1" in tree.nodes
+        assert "a1" in tree.nodes
+
+        # a1's parent should be att1, att1's parent should be u1
+        assert tree.nodes["a1"].parent_uuid == "att1"
+        assert tree.nodes["att1"].parent_uuid == "u1"
+
+        # a1 should NOT be a false root — the session should have only 1 root (u1)
+        s1 = tree.sessions.get("s1")
+        assert s1 is not None
+        assert s1.uuids[0] == "u1", "u1 should be the first entry in the session"
+
+    def test_attachment_not_rendered(self, tmp_path: Path) -> None:
+        """Passthrough entries should not appear in rendered output."""
+        from claude_code_log.renderer import generate_template_messages
+
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Hello"),
+            _make_passthrough_entry(
+                "att1", "s1", "2025-07-01T10:00:30.000Z", "u1", "attachment"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "att1", "World"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        _, _, ctx = generate_template_messages(messages, session_tree=session_tree)
+
+        # No message should have uuid "att1"
+        rendered_uuids = [m.meta.uuid for m in ctx.messages if m.meta.uuid]
+        assert "att1" not in rendered_uuids
+        # But user and assistant should be rendered
+        assert "u1" in rendered_uuids
+        assert "a1" in rendered_uuids
+
+    def test_multiple_passthrough_types(self, tmp_path: Path) -> None:
+        """Various unknown types with uuid should all become passthrough entries."""
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_passthrough_entry(
+                "p1", "s1", "2025-07-01T10:00:10.000Z", "u1", "attachment"
+            ),
+            _make_passthrough_entry(
+                "p2", "s1", "2025-07-01T10:00:20.000Z", "p1", "permission-mode"
+            ),
+            _make_passthrough_entry(
+                "p3", "s1", "2025-07-01T10:00:30.000Z", "p2", "file-history-snapshot"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "p3", "Reply"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, tree = load_directory_transcripts(tmp_path, silent=True)
+
+        # All should be in DAG
+        for uid in ["u1", "p1", "p2", "p3", "a1"]:
+            assert uid in tree.nodes, f"{uid} should be in DAG"
+
+        # Chain should be intact: u1 → p1 → p2 → p3 → a1
+        assert tree.nodes["a1"].parent_uuid == "p3"
+        assert tree.nodes["p3"].parent_uuid == "p2"
+        assert tree.nodes["p2"].parent_uuid == "p1"
+        assert tree.nodes["p1"].parent_uuid == "u1"
+
+    def test_passthrough_excluded_from_session_data(self, tmp_path: Path) -> None:
+        """Passthrough entries should not inflate session message counts."""
+        entries = [
+            _make_user_entry("u1", "s1", "2025-07-01T10:00:00.000Z", None, "Start"),
+            _make_passthrough_entry(
+                "att1", "s1", "2025-07-01T10:00:30.000Z", "u1", "attachment"
+            ),
+            _make_assistant_entry(
+                "a1", "s1", "2025-07-01T10:01:00.000Z", "att1", "Reply"
+            ),
+        ]
+
+        _write_jsonl(tmp_path / "session.jsonl", entries)
+
+        messages, _ = load_directory_transcripts(tmp_path, silent=True)
+        session_data = _build_session_data_from_messages(messages)
+
+        # Only user + assistant should be counted (not the attachment)
+        assert session_data["s1"].message_count == 2

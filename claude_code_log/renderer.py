@@ -20,6 +20,7 @@ from .models import (
     MessageType,
     TranscriptEntry,
     AssistantTranscriptEntry,
+    PassthroughTranscriptEntry,
     SystemTranscriptEntry,
     SummaryTranscriptEntry,
     QueueOperationTranscriptEntry,
@@ -66,7 +67,9 @@ from .factories import (
 from .utils import (
     format_timestamp,
     format_timestamp_range,
+    get_parent_session_id,
     get_project_display_name,
+    is_agent_session,
     should_skip_message,
     should_use_as_session_starter,
     create_session_preview,
@@ -192,9 +195,12 @@ class TemplateMessage:
         # Within-session fork tracking: effective session/branch ID for grouping
         self._render_session_id: Optional[str] = None
 
-        # Junction forward links: [(branch_session_id, branch_header_msg_index)]
+        # Junction forward links: [(branch_sid, branch_header_msg_index, branch_preview)]
         # Set on messages that are fork points, for rendering forward links
-        self.junction_forward_links: list[tuple[str, Optional[int]]] = []
+        self.junction_forward_links: list[tuple[str, Optional[int], str]] = []
+
+        # Fork point preview text (short excerpt of fork point message content)
+        self.fork_point_preview: str = ""
 
     # -- Properties derived from content/meta --
 
@@ -631,18 +637,44 @@ def generate_template_messages(
     if ctx.junction_targets:
         # Build UUID → TemplateMessage index for fast lookup
         uuid_to_msg: dict[str, TemplateMessage] = {}
+        # Build msg_index → TemplateMessage for branch preview lookup
+        idx_to_msg: dict[int, TemplateMessage] = {}
         for msg in ctx.messages:
             if msg.meta.uuid:
                 uuid_to_msg[msg.meta.uuid] = msg
+            if msg.message_index is not None:
+                idx_to_msg[msg.message_index] = msg
         for uuid, target_sids in ctx.junction_targets.items():
             # Only add forward links for within-session fork branches
             branch_targets = [sid for sid in target_sids if "@" in sid]
             if branch_targets and uuid in uuid_to_msg:
                 fork_msg = uuid_to_msg[uuid]
+                fork_msg.fork_point_preview = _fork_point_preview(fork_msg, ctx)
                 for branch_sid in branch_targets:
                     branch_idx = ctx.session_first_message.get(branch_sid)
                     if branch_idx is not None:
-                        fork_msg.junction_forward_links.append((branch_sid, branch_idx))
+                        # Get branch preview from the branch header title
+                        branch_preview = ""
+                        branch_header = idx_to_msg.get(branch_idx)
+                        if branch_header and isinstance(
+                            branch_header.content, SessionHeaderMessage
+                        ):
+                            # Extract preview from branch title (e.g. "Branch • preview...")
+                            title = branch_header.content.title
+                            if " • " in title:
+                                preview = title.split(" • ", 1)[1]
+                                # Distinguish real content from UUID fallback
+                                uuid_fragment = branch_sid.split("@")[-1][:8]
+                                if preview != uuid_fragment:
+                                    branch_preview = preview
+                        fork_msg.junction_forward_links.append(
+                            (branch_sid, branch_idx, branch_preview)
+                        )
+                # Elide fork points without at least 2 non-empty branches
+                non_empty = sum(1 for _, _, p in fork_msg.junction_forward_links if p)
+                if non_empty < 2:
+                    fork_msg.junction_forward_links.clear()
+                    fork_msg.fork_point_preview = ""
 
     # Prepare session navigation data (uses ctx for session header indices)
     session_nav: list[dict[str, Any]] = []
@@ -665,11 +697,6 @@ def generate_template_messages(
     # Reorder messages so pairs are adjacent while preserving chronological order
     with log_timing("Reorder paired messages", t_start):
         template_messages = _reorder_paired_messages(template_messages)
-
-    # Reorder sidechains to appear after their Task results
-    # This must happen AFTER pair reordering, since that moves tool_results
-    with log_timing("Reorder sidechain messages", t_start):
-        template_messages = _reorder_sidechain_template_messages(template_messages)
 
     # Build hierarchy (message_id and ancestry) based on final order
     # This must happen AFTER all reordering to get correct parent-child relationships
@@ -851,6 +878,9 @@ def prepare_session_navigation(
     session_nav: list[dict[str, Any]] = []
 
     for session_id in session_order:
+        # Skip agent sidechain sessions (they appear inline, not in nav)
+        if is_agent_session(session_id):
+            continue
         session_info = sessions[session_id]
 
         # Skip empty sessions (agent-only, no user messages)
@@ -1702,82 +1732,6 @@ def _reorder_session_template_messages(
     return result
 
 
-def _reorder_sidechain_template_messages(
-    messages: list[TemplateMessage],
-) -> list[TemplateMessage]:
-    """Reorder template messages to place sidechains immediately after their Task results.
-
-    When parallel Task agents run, their sidechain messages may appear in arbitrary
-    order based on when each agent finishes. This function reorders messages so that
-    each sidechain's messages appear right after the Task result that references them.
-
-    Note: Deduplication of sidechain content (first user message = Task input,
-    last assistant message = Task output) is handled later by _cleanup_sidechain_duplicates
-    after the tree structure is built.
-
-    This must be called AFTER _reorder_paired_messages, since that function moves
-    tool_results next to their tool_uses, which changes where the agentId-bearing
-    messages end up.
-
-    Args:
-        messages: Template messages including sidechains
-
-    Returns:
-        Reordered messages with sidechains properly placed after their Task results
-    """
-    # First pass: extract sidechains grouped by agent_id
-    main_messages: list[TemplateMessage] = []
-    sidechain_map: dict[str, list[TemplateMessage]] = {}
-
-    for message in messages:
-        is_sidechain = message.is_sidechain
-        agent_id = message.agent_id
-
-        if is_sidechain and agent_id:
-            # Group sidechain messages by agent_id
-            if agent_id not in sidechain_map:
-                sidechain_map[agent_id] = []
-            sidechain_map[agent_id].append(message)
-        else:
-            main_messages.append(message)
-
-    # If no sidechains, return original order
-    if not sidechain_map:
-        return messages
-
-    # Second pass: insert sidechains after their Task result messages
-    result: list[TemplateMessage] = []
-    used_agents: set[str] = set()
-
-    for message in main_messages:
-        result.append(message)
-
-        # Check if this is a Task tool_result that references a sidechain (via agent_id)
-        # We only insert after tool_result (not tool_use) to avoid duplicates if
-        # tool_use ever gets agent_id in the future
-        agent_id = message.agent_id
-
-        # Only insert sidechain if not already inserted (handles case where
-        # multiple tool_results have the same agent_id)
-        if (
-            agent_id
-            and message.type == MessageType.TOOL_RESULT
-            and agent_id in sidechain_map
-            and agent_id not in used_agents
-        ):
-            # Insert the sidechain messages for this agent right after this message
-            # Note: ancestry will be rebuilt by _build_message_hierarchy() later
-            result.extend(sidechain_map[agent_id])
-            used_agents.add(agent_id)
-
-    # Append any sidechains that weren't matched (shouldn't happen normally)
-    for agent_id, sidechain_msgs in sidechain_map.items():
-        if agent_id not in used_agents:
-            result.extend(sidechain_msgs)
-
-    return result
-
-
 def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     """Filter messages to those that should be rendered.
 
@@ -1803,6 +1757,10 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
     for message in messages:
         # Skip summary messages
         if isinstance(message, SummaryTranscriptEntry):
+            continue
+
+        # Skip passthrough entries (structural DAG nodes, not rendered)
+        if isinstance(message, PassthroughTranscriptEntry):
             continue
 
         # Skip most queue operations - only process 'remove' for counts
@@ -2019,6 +1977,21 @@ def _render_messages(
     for message in messages:
         message_type = message.type
 
+        # Determine if this message belongs to an agent sidechain session.
+        # Agent messages use the parent session's render_session_id so they
+        # stay grouped with the correct session (trunk or branch).
+        msg_session_id = getattr(message, "sessionId", "") or ""
+        agent_parent_session: Optional[str] = None
+        if is_agent_session(msg_session_id):
+            # Use session hierarchy to find the actual parent (may be a branch
+            # pseudo-session if the anchor is inside a within-session fork)
+            if session_hierarchy:
+                hier = session_hierarchy.get(msg_session_id, {})
+                agent_parent_session = hier.get("parent_session_id")
+            if not agent_parent_session:
+                # Fallback: extract original session from synthetic ID
+                agent_parent_session = get_parent_session_id(msg_session_id)
+
         # Check if this message starts a new branch (within-session fork)
         # Must happen before system/summary handling so branch state is
         # correct when tagging those messages with render_session_id.
@@ -2101,8 +2074,9 @@ def _render_messages(
             system_content = create_system_message(message)
             if system_content:
                 system_msg = TemplateMessage(system_content)
-                if current_render_session:
-                    system_msg.render_session_id = current_render_session
+                effective_session = agent_parent_session or current_render_session
+                if effective_session:
+                    system_msg.render_session_id = effective_session
                 ctx.register(system_msg)
             continue
 
@@ -2148,43 +2122,47 @@ def _render_messages(
         session_summary = sessions.get(session_id, {}).get("summary")
 
         # Add session header if this is a new session
+        # Skip headers for agent sidechain sessions (they appear inline)
+        is_agent = is_agent_session(session_id)
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
-            current_session_summary = session_summary
-            session_title = (
-                f"{current_session_summary} • {session_id[:8]}"
-                if current_session_summary
-                else session_id[:8]
-            )
+            if not is_agent:
+                current_render_session = None  # Reset branch tracking
+                current_session_summary = session_summary
+                session_title = (
+                    f"{current_session_summary} • {session_id[:8]}"
+                    if current_session_summary
+                    else session_id[:8]
+                )
 
-            # Create meta with session_id for the session header
-            session_header_meta = MessageMeta(
-                session_id=session_id,
-                timestamp="",
-                uuid="",
-            )
-            hier = (session_hierarchy or {}).get(session_id, {})
-            parent_sid = hier.get("parent_session_id")
-            parent_msg_idx = (
-                ctx.session_first_message.get(parent_sid) if parent_sid else None
-            )
-            session_header_content = SessionHeaderMessage(
-                session_header_meta,
-                title=session_title,
-                session_id=session_id,
-                summary=current_session_summary,
-                parent_session_id=parent_sid,
-                parent_session_summary=(session_summaries or {}).get(parent_sid)
-                if parent_sid
-                else None,
-                parent_message_index=parent_msg_idx,
-                depth=hier.get("depth", 0),
-                attachment_uuid=hier.get("attachment_uuid"),
-            )
-            # Register and track session's first message
-            session_header = TemplateMessage(session_header_content)
-            msg_index = ctx.register(session_header)
-            ctx.session_first_message[session_id] = msg_index
+                # Create meta with session_id for the session header
+                session_header_meta = MessageMeta(
+                    session_id=session_id,
+                    timestamp="",
+                    uuid="",
+                )
+                hier = (session_hierarchy or {}).get(session_id, {})
+                parent_sid = hier.get("parent_session_id")
+                parent_msg_idx = (
+                    ctx.session_first_message.get(parent_sid) if parent_sid else None
+                )
+                session_header_content = SessionHeaderMessage(
+                    session_header_meta,
+                    title=session_title,
+                    session_id=session_id,
+                    summary=current_session_summary,
+                    parent_session_id=parent_sid,
+                    parent_session_summary=(session_summaries or {}).get(parent_sid)
+                    if parent_sid
+                    else None,
+                    parent_message_index=parent_msg_idx,
+                    depth=hier.get("depth", 0),
+                    attachment_uuid=hier.get("attachment_uuid"),
+                )
+                # Register and track session's first message
+                session_header = TemplateMessage(session_header_content)
+                msg_index = ctx.register(session_header)
+                ctx.session_first_message[session_id] = msg_index
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
@@ -2242,8 +2220,9 @@ def _render_messages(
                     continue
 
                 chunk_msg = TemplateMessage(content_model)
-                if current_render_session:
-                    chunk_msg.render_session_id = current_render_session
+                effective_session = agent_parent_session or current_render_session
+                if effective_session:
+                    chunk_msg.render_session_id = effective_session
                 ctx.register(chunk_msg)
 
             else:
@@ -2292,8 +2271,9 @@ def _render_messages(
                     continue
 
                 tool_msg = TemplateMessage(tool_result.content)
-                if current_render_session:
-                    tool_msg.render_session_id = current_render_session
+                effective_session = agent_parent_session or current_render_session
+                if effective_session:
+                    tool_msg.render_session_id = effective_session
                 ctx.register(tool_msg)
 
     return ctx
