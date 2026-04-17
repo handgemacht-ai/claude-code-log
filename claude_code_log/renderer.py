@@ -1090,6 +1090,12 @@ def prepare_session_navigation(
         if isinstance(msg.content, CompactedSummaryMessage):
             compact_by_session.setdefault(msg.render_session_id, []).append(msg)
 
+    # Build a uuid → TemplateMessage lookup so each compaction landmark
+    # can read preTokens / trigger from its preceding system entry.
+    uuid_to_msg: dict[str, TemplateMessage] = {
+        msg.meta.uuid: msg for msg in ctx.messages if msg.meta.uuid
+    }
+
     for comp_sid, comp_msgs in compact_by_session.items():
         comp_msgs.sort(key=lambda m: m.meta.timestamp)
         parent_nav_idx = next(
@@ -1110,6 +1116,7 @@ def prepare_session_navigation(
         for comp_msg in comp_msgs:
             if comp_msg.message_index is None:
                 continue
+            label = _compact_nav_label(comp_msg, uuid_to_msg)
             comp_nav = {
                 "id": f"compact-{comp_msg.message_index}",
                 "message_index": comp_msg.message_index,
@@ -1118,7 +1125,7 @@ def prepare_session_navigation(
                 "first_timestamp": comp_msg.meta.timestamp,
                 "last_timestamp": "",
                 "message_count": 0,
-                "first_user_message": "Conversation compacted",
+                "first_user_message": label,
                 "token_summary": "",
                 "parent_session_id": comp_sid,
                 "parent_message_index": session_nav[parent_nav_idx]["message_index"],
@@ -1129,6 +1136,35 @@ def prepare_session_navigation(
             insert_pos += 1
 
     return session_nav
+
+
+def _compact_nav_label(
+    comp_msg: "TemplateMessage",
+    uuid_to_msg: dict[str, "TemplateMessage"],
+) -> str:
+    """Build the nav label for a CompactedSummaryMessage landmark.
+
+    Enriches with preTokens (rounded to thousands) when the parent
+    system/compact_boundary entry exposes it via `SystemMessage`,
+    plus the summary's own formatted timestamp.
+
+    Example: "Conversation compacted (115k tokens) • 2026-04-14 09:09"
+    """
+    parts: list[str] = ["Conversation compacted"]
+    parent_uuid = comp_msg.meta.parent_uuid
+    if parent_uuid:
+        parent = uuid_to_msg.get(parent_uuid)
+        if parent is not None and isinstance(parent.content, SystemMessage):
+            pre_tokens = parent.content.compact_pre_tokens
+            if pre_tokens:
+                if pre_tokens >= 1000:
+                    parts[0] += f" ({pre_tokens // 1000}k tokens)"
+                else:
+                    parts[0] += f" ({pre_tokens} tokens)"
+    ts = format_timestamp(comp_msg.meta.timestamp) if comp_msg.meta.timestamp else ""
+    if ts:
+        parts.append(ts)
+    return " • ".join(parts)
 
 
 # Type alias for chunk output: either a list of regular items or a single special item

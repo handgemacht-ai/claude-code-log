@@ -1451,6 +1451,11 @@ class TestCompactBoundaryNav:
         )
         assert comp_items[0]["parent_session_id"] == "s1"
         assert comp_items[0]["message_index"] is not None
+        # Label carries preTokens (100k default from _make_compact_boundary)
+        # and a formatted timestamp.
+        label = comp_items[0]["first_user_message"]
+        assert "100k tokens" in label, f"Expected '100k tokens' in {label!r}"
+        assert "2025" in label, f"Expected timestamp in {label!r}"
 
     def test_multiple_boundaries_in_timestamp_order(self, tmp_path: Path) -> None:
         """Two compactions → two nav items, ordered chronologically."""

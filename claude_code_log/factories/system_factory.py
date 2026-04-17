@@ -84,4 +84,24 @@ def create_system_message(
     # Create structured system content
     meta = create_meta(transcript)
     level = transcript.level or "info"
-    return SystemMessage(level=level, text=transcript.content, meta=meta)
+
+    # Surface compact-boundary metadata on the SystemMessage so the nav
+    # label on the following CompactedSummaryMessage can read preTokens
+    # and trigger without having to crawl back to the transcript entry.
+    pre_tokens: Optional[int] = None
+    compact_trigger: Optional[str] = None
+    if transcript.subtype == "compact_boundary" and transcript.compactMetadata:
+        raw_pre = transcript.compactMetadata.get("preTokens")
+        if isinstance(raw_pre, int):
+            pre_tokens = raw_pre
+        raw_trigger = transcript.compactMetadata.get("trigger")
+        if isinstance(raw_trigger, str):
+            compact_trigger = raw_trigger
+
+    return SystemMessage(
+        level=level,
+        text=transcript.content,
+        meta=meta,
+        compact_pre_tokens=pre_tokens,
+        compact_trigger=compact_trigger,
+    )
