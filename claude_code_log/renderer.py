@@ -12,6 +12,7 @@ from datetime import datetime
 
 if TYPE_CHECKING:
     from .cache import CacheManager
+    from .dag import SessionTree
 
 from .models import (
     MessageContent,
@@ -100,6 +101,9 @@ class RenderingContext:
     session_first_message: dict[str, int] = field(
         default_factory=lambda: {}  # type: dict[str, int]
     )
+    junction_targets: dict[str, list[str]] = field(
+        default_factory=lambda: {}  # type: dict[str, list[str]]
+    )
 
     def register(self, message: "TemplateMessage") -> int:
         """Register a TemplateMessage and assign its message_index.
@@ -185,6 +189,13 @@ class TemplateMessage:
         # Children for tree-based rendering
         self.children: list["TemplateMessage"] = []
 
+        # Within-session fork tracking: effective session/branch ID for grouping
+        self._render_session_id: Optional[str] = None
+
+        # Junction forward links: [(branch_session_id, branch_header_msg_index)]
+        # Set on messages that are fork points, for rendering forward links
+        self.junction_forward_links: list[tuple[str, Optional[int]]] = []
+
     # -- Properties derived from content/meta --
 
     @property
@@ -196,6 +207,18 @@ class TemplateMessage:
     def is_session_header(self) -> bool:
         """Check if this message is a session header."""
         return isinstance(self.content, SessionHeaderMessage)
+
+    @property
+    def is_branch_header(self) -> bool:
+        """Check if this is a branch (within-session fork) header."""
+        return isinstance(self.content, SessionHeaderMessage) and self.content.is_branch
+
+    @property
+    def branch_depth(self) -> int:
+        """Depth of this branch header in the session tree (0 for non-branches)."""
+        if isinstance(self.content, SessionHeaderMessage) and self.content.is_branch:
+            return self.content.depth
+        return 0
 
     @property
     def has_children(self) -> bool:
@@ -247,6 +270,19 @@ class TemplateMessage:
     def session_id(self) -> str:
         """Get session_id from meta."""
         return self.meta.session_id
+
+    @property
+    def render_session_id(self) -> str:
+        """Get effective session/branch ID for grouping.
+
+        Returns render_session_id if set (for within-session fork branches),
+        otherwise falls back to meta.session_id.
+        """
+        return self._render_session_id or self.meta.session_id
+
+    @render_session_id.setter
+    def render_session_id(self, value: str) -> None:
+        self._render_session_id = value
 
     @property
     def parent_uuid(self) -> Optional[str]:
@@ -524,6 +560,7 @@ class TemplateSummary:
 
 def generate_template_messages(
     messages: list[TranscriptEntry],
+    session_tree: Optional["SessionTree"] = None,
 ) -> Tuple[list[TemplateMessage], list[dict[str, Any]], RenderingContext]:
     """Generate root messages and session navigation from transcript messages.
 
@@ -532,6 +569,8 @@ def generate_template_messages(
 
     Args:
         messages: List of transcript entries to process.
+        session_tree: Optional pre-built SessionTree from DAG construction.
+            When provided, avoids an expensive DAG rebuild.
 
     Returns:
         A tuple of (root_messages, session_nav, context) where:
@@ -558,6 +597,12 @@ def generate_template_messages(
     with log_timing("Session summary processing", t_start):
         session_summaries = prepare_session_summaries(messages)
 
+    # Extract session hierarchy from DAG (reuse pre-built tree when available)
+    with log_timing("Extract session hierarchy", t_start):
+        session_hierarchy, junction_targets = _extract_session_hierarchy(
+            messages, session_tree=session_tree
+        )
+
     # Filter messages (removes summaries, warmup, empty, etc.)
     with log_timing("Filter messages", t_start):
         filtered_messages = _filter_messages(messages)
@@ -573,14 +618,40 @@ def generate_template_messages(
     with log_timing(
         lambda: f"Render messages ({len(ctx.messages) if ctx else 0} messages)", t_start
     ):
-        ctx = _render_messages(filtered_messages, sessions, show_tokens_for_message)
+        ctx = _render_messages(
+            filtered_messages,
+            sessions,
+            show_tokens_for_message,
+            session_hierarchy,
+            session_summaries,
+            junction_targets,
+        )
+
+    # Populate junction forward links on fork-point messages
+    if ctx.junction_targets:
+        # Build UUID → TemplateMessage index for fast lookup
+        uuid_to_msg: dict[str, TemplateMessage] = {}
+        for msg in ctx.messages:
+            if msg.meta.uuid:
+                uuid_to_msg[msg.meta.uuid] = msg
+        for uuid, target_sids in ctx.junction_targets.items():
+            # Only add forward links for within-session fork branches
+            branch_targets = [sid for sid in target_sids if "@" in sid]
+            if branch_targets and uuid in uuid_to_msg:
+                fork_msg = uuid_to_msg[uuid]
+                for branch_sid in branch_targets:
+                    branch_idx = ctx.session_first_message.get(branch_sid)
+                    if branch_idx is not None:
+                        fork_msg.junction_forward_links.append((branch_sid, branch_idx))
 
     # Prepare session navigation data (uses ctx for session header indices)
     session_nav: list[dict[str, Any]] = []
     with log_timing(
         lambda: f"Session navigation building ({len(session_nav)} sessions)", t_start
     ):
-        session_nav = prepare_session_navigation(sessions, session_order, ctx)
+        session_nav = prepare_session_navigation(
+            sessions, session_order, ctx, session_hierarchy
+        )
 
     # Reorder messages so each session's messages follow their session header
     # This fixes interleaving that occurs when sessions are resumed
@@ -627,6 +698,59 @@ def generate_template_messages(
 # -- Session Utilities --------------------------------------------------------
 
 
+def _extract_session_hierarchy(
+    messages: list[TranscriptEntry],
+    session_tree: Optional["SessionTree"] = None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[str]]]:
+    """Extract session hierarchy from DAG for rendering.
+
+    Args:
+        messages: Transcript entries (used to build DAG if tree not provided).
+        session_tree: Pre-built SessionTree to reuse (avoids expensive rebuild).
+
+    Returns:
+        (hierarchy, junction_targets) where:
+        - hierarchy: session_id -> {parent_session_id, attachment_uuid, depth}
+        - junction_targets: uuid -> [target session IDs]
+    """
+    if session_tree is not None:
+        tree = session_tree
+    else:
+        from .dag import build_dag_from_entries
+
+        tree = build_dag_from_entries(messages)
+
+    depth_cache: dict[str, int] = {}
+
+    def _depth(sid: str) -> int:
+        if sid in depth_cache:
+            return depth_cache[sid]
+        dl = tree.sessions.get(sid)
+        if dl is None or dl.parent_session_id is None:
+            depth_cache[sid] = 0
+            return 0
+        d = 1 + _depth(dl.parent_session_id)
+        depth_cache[sid] = d
+        return d
+
+    hierarchy: dict[str, dict[str, Any]] = {}
+    for sid, dag_line in tree.sessions.items():
+        hierarchy[sid] = {
+            "parent_session_id": dag_line.parent_session_id,
+            "attachment_uuid": dag_line.attachment_uuid,
+            "depth": _depth(sid),
+            "is_branch": dag_line.is_branch,
+            "original_session_id": dag_line.original_session_id,
+            "first_uuid": dag_line.uuids[0] if dag_line.uuids else None,
+        }
+
+    junction_targets: dict[str, list[str]] = {}
+    for uuid, jp in tree.junction_points.items():
+        junction_targets[uuid] = jp.target_sessions
+
+    return hierarchy, junction_targets
+
+
 def prepare_session_summaries(messages: list[TranscriptEntry]) -> dict[str, str]:
     """Extract session summaries from messages.
 
@@ -665,10 +789,53 @@ def prepare_session_summaries(messages: list[TranscriptEntry]) -> dict[str, str]
     return session_summaries
 
 
+def _fork_point_preview(fork_msg: "TemplateMessage", ctx: RenderingContext) -> str:
+    """Get a meaningful preview for a fork point message.
+
+    If the fork point is a system hook (common with /rewind), walk up
+    to the parent message to find more descriptive content.
+    """
+    msg = fork_msg
+    # Walk up past system hooks to find a meaningful message
+    for _ in range(3):  # limit walk depth
+        if not isinstance(
+            msg.content, (SystemMessage, HookSummaryMessage, SessionHeaderMessage)
+        ):
+            break
+        # Find parent by looking at parent_uuid
+        parent_uuid = msg.meta.parent_uuid
+        if not parent_uuid:
+            break
+        parent = next((m for m in ctx.messages if m.meta.uuid == parent_uuid), None)
+        if parent is None:
+            break
+        msg = parent
+
+    # Extract text from the found message
+    content = msg.content
+    if isinstance(content, AssistantTextMessage):
+        parts = [item.text for item in content.items if isinstance(item, TextContent)]
+        text = " ".join(parts).strip()
+    elif isinstance(content, UserTextMessage):
+        parts = [item.text for item in content.items if isinstance(item, TextContent)]
+        text = " ".join(parts).strip()
+    else:
+        return ""
+
+    if not text:
+        return ""
+    # Truncate for nav display
+    short = text[:80]
+    if len(text) > 80:
+        short += "..."
+    return short
+
+
 def prepare_session_navigation(
     sessions: dict[str, dict[str, Any]],
     session_order: list[str],
     ctx: RenderingContext,
+    session_hierarchy: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Prepare session navigation data for template rendering.
 
@@ -676,6 +843,7 @@ def prepare_session_navigation(
         sessions: Dictionary mapping session_id to session info dict
         session_order: List of session IDs in display order
         ctx: RenderingContext with session_first_message indices
+        session_hierarchy: Optional hierarchy data from _extract_session_hierarchy()
 
     Returns:
         List of session navigation dicts for template rendering
@@ -716,6 +884,13 @@ def prepare_session_navigation(
         # Get message_index for session header (for unified d-{index} links)
         message_index = ctx.session_first_message.get(session_id)
 
+        # Get hierarchy data
+        hier = (session_hierarchy or {}).get(session_id, {})
+        parent_sid = hier.get("parent_session_id")
+        parent_message_index = (
+            ctx.session_first_message.get(parent_sid) if parent_sid else None
+        )
+
         session_nav.append(
             {
                 "id": session_id,
@@ -729,8 +904,121 @@ def prepare_session_navigation(
                 if session_info["first_user_message"] != ""
                 else "[No user message found in session.]",
                 "token_summary": token_summary,
+                "parent_session_id": parent_sid,
+                "parent_message_index": parent_message_index,
+                "depth": hier.get("depth", 0),
             }
         )
+
+    # Add branch pseudo-sessions from hierarchy
+    if session_hierarchy:
+        # Collect first user message preview for each branch
+        branch_previews: dict[str, str] = {}
+        for msg in ctx.messages:
+            rsid = msg.render_session_id
+            if rsid in branch_previews or not isinstance(msg.content, UserTextMessage):
+                continue
+            hier = session_hierarchy.get(rsid, {})
+            if hier.get("is_branch"):
+                # Extract text from UserTextMessage items
+                preview_parts: list[str] = []
+                for item in msg.content.items:
+                    if isinstance(item, TextContent):
+                        preview_parts.append(item.text)
+                preview = " ".join(preview_parts).strip()
+                if preview:
+                    branch_previews[rsid] = create_session_preview(preview)
+
+        # Group branches by their junction point (attachment_uuid)
+        junction_branches: dict[str, list[dict[str, Any]]] = {}
+        for sid, hier in session_hierarchy.items():
+            if hier.get("is_branch"):
+                attachment = hier.get("attachment_uuid", "")
+                junction_branches.setdefault(attachment, []).append(
+                    {"sid": sid, **hier}
+                )
+
+        # For each junction point, insert fork-point and branch nav items
+        for attachment_uuid, branches in junction_branches.items():
+            # Find the session nav item that contains this junction
+            parent_sid = branches[0].get("parent_session_id", "")
+            parent_nav_idx = next(
+                (i for i, n in enumerate(session_nav) if n["id"] == parent_sid),
+                None,
+            )
+            if parent_nav_idx is None:
+                continue
+
+            parent_depth = session_nav[parent_nav_idx]["depth"]
+            insert_pos = parent_nav_idx + 1
+            # Skip past any existing children of this parent
+            while (
+                insert_pos < len(session_nav)
+                and session_nav[insert_pos].get("depth", 0) > parent_depth
+            ):
+                insert_pos += 1
+
+            # Fork point nav item — find the junction message and a
+            # meaningful preview (walk up past system hooks to find it)
+            fork_msg_idx = ctx.session_first_message.get(parent_sid)
+            fork_preview = ""
+            fork_msg = None
+            for msg in ctx.messages:
+                if msg.meta.uuid == attachment_uuid and msg.message_index is not None:
+                    fork_msg_idx = msg.message_index
+                    fork_msg = msg
+                    break
+            if fork_msg is not None:
+                fork_preview = _fork_point_preview(fork_msg, ctx)
+
+            fork_label = (
+                f"Fork point • {fork_preview}"
+                if fork_preview
+                else f"Fork point ({len(branches)} branches)"
+            )
+
+            fork_nav = {
+                "id": f"fork-{attachment_uuid[:12]}",
+                "message_index": fork_msg_idx,
+                "summary": None,
+                "timestamp_range": "",
+                "first_timestamp": "",
+                "last_timestamp": "",
+                "message_count": 0,
+                "first_user_message": fork_label,
+                "token_summary": "",
+                "parent_session_id": parent_sid,
+                "parent_message_index": ctx.session_first_message.get(parent_sid),
+                "depth": parent_depth + 1,
+                "is_fork_point": True,
+            }
+            session_nav.insert(insert_pos, fork_nav)
+            insert_pos += 1
+
+            # Branch nav items
+            for branch in branches:
+                branch_sid = branch["sid"]
+                branch_msg_idx = ctx.session_first_message.get(branch_sid)
+                branch_nav = {
+                    "id": branch_sid,
+                    "message_index": branch_msg_idx,
+                    "summary": None,
+                    "timestamp_range": "",
+                    "first_timestamp": "",
+                    "last_timestamp": "",
+                    "message_count": 0,
+                    "first_user_message": branch_previews.get(
+                        branch_sid,
+                        f"Branch {branch_sid.split('@')[-1][:8]}",
+                    ),
+                    "token_summary": "",
+                    "parent_session_id": parent_sid,
+                    "parent_message_index": fork_msg_idx,
+                    "depth": parent_depth + 2,
+                    "is_branch": True,
+                }
+                session_nav.insert(insert_pos, branch_nav)
+                insert_pos += 1
 
     return session_nav
 
@@ -1379,14 +1667,15 @@ def _reorder_session_template_messages(
         if message.is_session_header:
             session_headers.append(message)
             # Initialize the list for this session (preserves session order)
-            if message.session_id and message.session_id not in session_messages_map:
-                session_messages_map[message.session_id] = []
+            sid = message.render_session_id
+            if sid and sid not in session_messages_map:
+                session_messages_map[sid] = []
         else:
-            session_id = message.session_id
-            if session_id:
-                if session_id not in session_messages_map:
-                    session_messages_map[session_id] = []
-                session_messages_map[session_id].append(message)
+            sid = message.render_session_id
+            if sid:
+                if sid not in session_messages_map:
+                    session_messages_map[sid] = []
+                session_messages_map[sid].append(message)
 
     # If no session headers, return original order
     if not session_headers:
@@ -1398,16 +1687,16 @@ def _reorder_session_template_messages(
 
     for header in session_headers:
         result.append(header)
-        session_id = header.session_id
+        sid = header.render_session_id
 
-        if session_id and session_id in session_messages_map:
+        if sid and sid in session_messages_map:
             # Messages are already in timestamp order from original processing
-            result.extend(session_messages_map[session_id])
-            used_sessions.add(session_id)
+            result.extend(session_messages_map[sid])
+            used_sessions.add(sid)
 
     # Append any messages that weren't matched to a session header (shouldn't happen normally)
-    for session_id, msgs in session_messages_map.items():
-        if session_id not in used_sessions:
+    for sid, msgs in session_messages_map.items():
+        if sid not in used_sessions:
             result.extend(msgs)
 
     return result
@@ -1683,11 +1972,15 @@ def _render_messages(
     messages: list[TranscriptEntry],
     sessions: dict[str, dict[str, Any]],
     show_tokens_for_message: set[str],
+    session_hierarchy: dict[str, dict[str, Any]] | None = None,
+    session_summaries: dict[str, str] | None = None,
+    junction_targets: dict[str, list[str]] | None = None,
 ) -> RenderingContext:
     """Pass 2: Render pre-filtered messages to TemplateMessage objects.
 
     This pass creates the actual TemplateMessage objects for rendering:
     - Creates session headers when entering new sessions
+    - Creates branch headers at within-session fork points
     - Processes text content into HTML
     - Handles tool use, tool result, thinking, and image content
     - Collects timing statistics
@@ -1699,24 +1992,117 @@ def _render_messages(
         messages: Pre-filtered list of transcript entries from _collect_session_info
         sessions: Session metadata from _collect_session_info
         show_tokens_for_message: Set of message UUIDs that should display tokens
+        session_hierarchy: Optional hierarchy data from _extract_session_hierarchy()
+        session_summaries: Optional session summaries for parent backlinks
+        junction_targets: Optional junction target data from _extract_session_hierarchy()
 
     Returns:
         RenderingContext with all TemplateMessage objects registered
     """
     # Create rendering context for this operation
     ctx = RenderingContext()
+    if junction_targets:
+        ctx.junction_targets = junction_targets
+
+    # Build branch_start_uuids: map first UUID of each branch → branch pseudo-session ID
+    branch_start_uuids: dict[str, str] = {}
+    if session_hierarchy:
+        for sid, hier in session_hierarchy.items():
+            if hier.get("is_branch") and hier.get("first_uuid"):
+                branch_start_uuids[hier["first_uuid"]] = sid
 
     # Track which sessions have had headers added
     seen_sessions: set[str] = set()
+    # Track current effective render session (for branch assignment)
+    current_render_session: Optional[str] = None
 
     for message in messages:
         message_type = message.type
+
+        # Check if this message starts a new branch (within-session fork)
+        # Must happen before system/summary handling so branch state is
+        # correct when tagging those messages with render_session_id.
+        message_uuid = getattr(message, "uuid", "")
+        if message_uuid and message_uuid in branch_start_uuids:
+            branch_sid = branch_start_uuids[message_uuid]
+            if branch_sid not in seen_sessions:
+                seen_sessions.add(branch_sid)
+                current_render_session = branch_sid
+
+                # Create branch header
+                b_hier = (session_hierarchy or {}).get(branch_sid, {})
+                parent_sid = b_hier.get("parent_session_id")
+                # Look up the fork point message index (attachment_uuid),
+                # not the parent session header
+                attachment_uuid = b_hier.get("attachment_uuid")
+                parent_msg_idx = None
+                if attachment_uuid:
+                    for msg in ctx.messages:
+                        if (
+                            msg.meta.uuid == attachment_uuid
+                            and msg.message_index is not None
+                        ):
+                            parent_msg_idx = msg.message_index
+                            break
+                if parent_msg_idx is None and parent_sid:
+                    parent_msg_idx = ctx.session_first_message.get(parent_sid)
+                original_sid = b_hier.get("original_session_id", message.sessionId)
+                branch_summary = (session_summaries or {}).get(original_sid)
+                # Extract preview from the branch's first user message
+                branch_preview = ""
+                user_entry = as_user_entry(message)
+                if user_entry is not None:
+                    branch_text = extract_text_content(user_entry.message.content)
+                    if branch_text:
+                        branch_preview = create_session_preview(branch_text)
+                # Truncate for header title (keep full preview for nav)
+                if branch_preview:
+                    short = branch_preview[:80]
+                    if len(branch_preview) > 80:
+                        short += "..."
+                    branch_title = f"Branch • {short}"
+                else:
+                    branch_title = f"Branch • {branch_sid.split('@')[-1][:8]}"
+
+                branch_header_meta = MessageMeta(
+                    session_id=branch_sid,
+                    timestamp="",
+                    uuid="",
+                )
+                # Get fork point preview for backlink text
+                fork_context = ""
+                if attachment_uuid:
+                    for fmsg in ctx.messages:
+                        if fmsg.meta.uuid == attachment_uuid:
+                            fork_context = _fork_point_preview(fmsg, ctx)
+                            break
+
+                branch_header_content = SessionHeaderMessage(
+                    branch_header_meta,
+                    title=branch_title,
+                    session_id=branch_sid,
+                    summary=branch_summary,
+                    parent_session_id=parent_sid,
+                    parent_session_summary=fork_context or None,
+                    parent_message_index=parent_msg_idx,
+                    depth=b_hier.get("depth", 0),
+                    attachment_uuid=b_hier.get("attachment_uuid"),
+                    is_branch=True,
+                    original_session_id=original_sid,
+                    first_uuid=message_uuid,
+                )
+                branch_header = TemplateMessage(branch_header_content)
+                branch_header.render_session_id = branch_sid
+                msg_index = ctx.register(branch_header)
+                ctx.session_first_message[branch_sid] = msg_index
 
         # Handle system messages (already filtered in pass 1)
         if isinstance(message, SystemTranscriptEntry):
             system_content = create_system_message(message)
             if system_content:
                 system_msg = TemplateMessage(system_content)
+                if current_render_session:
+                    system_msg.render_session_id = current_render_session
                 ctx.register(system_msg)
             continue
 
@@ -1777,11 +2163,23 @@ def _render_messages(
                 timestamp="",
                 uuid="",
             )
+            hier = (session_hierarchy or {}).get(session_id, {})
+            parent_sid = hier.get("parent_session_id")
+            parent_msg_idx = (
+                ctx.session_first_message.get(parent_sid) if parent_sid else None
+            )
             session_header_content = SessionHeaderMessage(
                 session_header_meta,
                 title=session_title,
                 session_id=session_id,
                 summary=current_session_summary,
+                parent_session_id=parent_sid,
+                parent_session_summary=(session_summaries or {}).get(parent_sid)
+                if parent_sid
+                else None,
+                parent_message_index=parent_msg_idx,
+                depth=hier.get("depth", 0),
+                attachment_uuid=hier.get("attachment_uuid"),
             )
             # Register and track session's first message
             session_header = TemplateMessage(session_header_content)
@@ -1844,6 +2242,8 @@ def _render_messages(
                     continue
 
                 chunk_msg = TemplateMessage(content_model)
+                if current_render_session:
+                    chunk_msg.render_session_id = current_render_session
                 ctx.register(chunk_msg)
 
             else:
@@ -1892,6 +2292,8 @@ def _render_messages(
                     continue
 
                 tool_msg = TemplateMessage(tool_result.content)
+                if current_render_session:
+                    tool_msg.render_session_id = current_render_session
                 ctx.register(tool_msg)
 
     return ctx
@@ -2231,6 +2633,7 @@ class Renderer:
         title: Optional[str] = None,
         combined_transcript_link: Optional[str] = None,
         output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
     ) -> Optional[str]:
         """Generate output from transcript messages.
 
@@ -2239,6 +2642,7 @@ class Renderer:
             title: Optional title for the output.
             combined_transcript_link: Optional link to combined transcript.
             output_dir: Optional output directory for referenced images.
+            session_tree: Optional pre-built SessionTree (avoids rebuilding DAG).
 
         Returns None by default; subclasses override to return formatted output.
         """
@@ -2251,6 +2655,7 @@ class Renderer:
         title: Optional[str] = None,
         cache_manager: Optional["CacheManager"] = None,
         output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
     ) -> Optional[str]:
         """Generate output for a single session.
 
@@ -2260,6 +2665,7 @@ class Renderer:
             title: Optional title for the output.
             cache_manager: Optional cache manager.
             output_dir: Optional output directory for referenced images.
+            session_tree: Optional pre-built SessionTree (avoids rebuilding DAG).
 
         Returns None by default; subclasses override to return formatted output.
         """

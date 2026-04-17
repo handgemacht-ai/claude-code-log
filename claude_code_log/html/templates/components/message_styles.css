@@ -565,6 +565,9 @@
     font-size: 1.2em;
 }
 
+/* Branch headers (within-session forks) — indent set via inline
+   style based on tree depth (margin-left: depth*2em). */
+
 .session-subtitle {
     font-size: 0.9em;
     color: var(--text-muted);
@@ -891,6 +894,20 @@ details summary {
 .ansi-bg-magenta { background-color: #bc3fbc; }
 .ansi-bg-cyan { background-color: #11a8cd; }
 .ansi-bg-white { background-color: #e5e5e5; }
+
+/* Debug UUID info */
+.debug-info {
+    display: none;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.7em;
+    color: #999;
+    padding: 2px 0;
+    letter-spacing: 0.02em;
+}
+
+.show-debug-info .debug-info {
+    display: block;
+}
 
 /* Bright background colors */
 .ansi-bg-bright-black { background-color: #666666; }

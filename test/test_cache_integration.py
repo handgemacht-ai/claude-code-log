@@ -567,7 +567,7 @@ class TestArchivedSessionsIntegration:
         project_dir = temp_projects_dir / "partial-archived"
         project_dir.mkdir()
 
-        # Create two session files
+        # Create two independent session files (unique UUIDs, as in real transcripts)
         for session_id in ["session-1", "session-2"]:
             jsonl_file = project_dir / f"{session_id}.jsonl"
             with open(jsonl_file, "w") as f:
@@ -575,6 +575,8 @@ class TestArchivedSessionsIntegration:
                     entry_copy = entry.copy()
                     if "sessionId" in entry_copy:
                         entry_copy["sessionId"] = session_id
+                    if "uuid" in entry_copy:
+                        entry_copy["uuid"] = f"{entry_copy['uuid']}-{session_id}"
                     f.write(json.dumps(entry_copy) + "\n")
 
         # Process to populate cache
@@ -703,7 +705,8 @@ class TestArchivedSessionsIntegration:
         project_dir = temp_projects_dir / "count-test"
         project_dir.mkdir()
 
-        # Create two sessions so one remains after deletion
+        # Create two independent sessions so one remains after deletion
+        # (unique UUIDs per session, as in real transcripts)
         for session_id in ["session-1", "session-2"]:
             jsonl_file = project_dir / f"{session_id}.jsonl"
             with open(jsonl_file, "w") as f:
@@ -711,6 +714,8 @@ class TestArchivedSessionsIntegration:
                     entry_copy = entry.copy()
                     if "sessionId" in entry_copy:
                         entry_copy["sessionId"] = session_id
+                    if "uuid" in entry_copy:
+                        entry_copy["uuid"] = f"{entry_copy['uuid']}-{session_id}"
                     f.write(json.dumps(entry_copy) + "\n")
 
         # Process to cache (as part of all-projects hierarchy)

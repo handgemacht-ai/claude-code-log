@@ -260,7 +260,7 @@ class TestDataWithTestFiles:
         test_data_dir = Path(__file__).parent / "test_data"
 
         # Load from directory to get multiple sessions
-        messages = load_directory_transcripts(test_data_dir)
+        messages, _ = load_directory_transcripts(test_data_dir)
         html = generate_html(messages, "Multi Session Test")
 
         # Verify session dividers are present
@@ -282,7 +282,7 @@ class TestDataWithTestFiles:
             temp_path = Path(temp_dir)
 
             # Should return empty list for directory with no JSONL files
-            messages = load_directory_transcripts(temp_path)
+            messages, _ = load_directory_transcripts(temp_path)
             assert messages == []
 
             # Should generate minimal HTML for empty message list

@@ -655,12 +655,21 @@ class SessionHeaderMessage(MessageContent):
     """Content for session headers in transcript rendering.
 
     Represents the header displayed at the start of each session
-    with session title and optional summary.
+    with session title and optional summary. Includes hierarchy
+    fields for parent/child session relationships.
     """
 
     title: str
     session_id: str
     summary: Optional[str] = None
+    parent_session_id: Optional[str] = None
+    parent_session_summary: Optional[str] = None
+    parent_message_index: Optional[int] = None  # d-{N} index for backlink
+    depth: int = 0  # 0 = root, 1 = child, etc.
+    attachment_uuid: Optional[str] = None
+    is_branch: bool = False  # True for within-session fork branches
+    original_session_id: Optional[str] = None  # Original session_id before fork split
+    first_uuid: Optional[str] = None  # First UUID in this branch (for forward links)
 
     @property
     def message_type(self) -> str:
