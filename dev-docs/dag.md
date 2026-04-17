@@ -183,11 +183,20 @@ is available.
 
 ### Phase 3: Extract Session DAG-lines
 
-For each session:
+For each session (`extract_session_dag_lines` in `dag.py`):
 1. Identify the session's unique messages (those whose authoritative
    `sessionId` matches)
-2. Order them by following `parentUuid` chains (not timestamps)
-3. Verify linearity (no branching within a session)
+2. Find roots (nodes whose `parent_uuid` is null or points outside the
+   session). A session may have **multiple roots** — see
+   [Compact Boundaries and Multi-Root Sessions](#compact-boundaries-and-multi-root-sessions).
+3. Walk each root via `_walk_session_with_forks`, following same-session
+   children. Single-child → chain continues. Multiple same-session
+   children → distinguish real forks from artifacts using the heuristics
+   below.
+4. Merge trunk DAG-lines from multiple roots into a single chain
+   (ordered by `first_timestamp`); branch DAG-lines stay separate.
+5. If DAG walk coverage is incomplete, fall back to a timestamp sort for
+   the whole session.
 
 ### Phase 4: Build Session Tree
 
@@ -262,40 +271,151 @@ partition cleanly into same-timestamp (compaction) vs different-timestamp
 
 When the assistant makes **multiple tool calls** in one turn, the JSONL
 records both the next `tool_use` and the previous `tool_result` as children
-of the same parent entry. Two variants exist:
+of the same parent entry. Without intervention this creates a fake fork at
+every parallel-tool_use turn. `_stitch_tool_results()` and the all-passthrough
+clause in `_walk_session_with_forks()` detect three patterns and splice the
+side-branch back into the main chain.
 
-**Variant 1** — User child's subtree is purely structural:
+#### Variant 1 — User child's subtree is purely structural
+
+The `tool_result` for the first parallel call is recorded as a sibling of
+the `tool_use` for the second call. The `tool_result` itself is conversation
+content, but its subtree carries only a `hook_success` attachment leaf and
+no further user/assistant descendants.
+
+Pre-fix DAG (looks like a fork):
+
+```mermaid
+graph TD
+    A1["A(tool_use₁)"] --> U1["U(tool_result₁)"]
+    A1 --> A2["A(tool_use₂)"]
+    U1 --> H["📎 attachment (hook_success)"]
+    A2 --> U2["U(tool_result₂)"]
+    U2 --> rest["..."]
+    classDef structural fill:#eef,stroke:#99c
+    class H structural
 ```
-A(tool_use₁) → U(tool_result₁)        [structural side-branch]
-                 → attachment(hook_success)
-             → A(tool_use₂)           [main chain continues]
+
+Post-fix — `_is_structural_subtree(U₁)` returns true (no user/assistant
+descendants), so `U₁` is stitched into the chain ahead of the continuation
+`A₂`, and the attachment is collapsed in as a non-rendered side entry:
+
+```mermaid
+graph LR
+    A1["A(tool_use₁)"] --> U1["U(tool_result₁)"]
+    U1 --> A2["A(tool_use₂)"]
+    A2 --> U2["U(tool_result₂)"]
+    U2 --> rest["..."]
 ```
 
-**Variant 2** — User child continues, Assistant subtree dead-ends:
+The earlier "no immediate same-session child" check missed Variant 1 when
+a `hook_success` attachment sat under the `tool_result`. That's the shape
+of all 22 fake forks observed in the BCT Teamcenter 1594-entry test file.
+
+#### Variant 2 — Assistant subtree dead-ends
+
+Claude Code sometimes emits a second `tool_use` that terminates without
+producing a continuation — a progress artifact. The `tool_result` for the
+first call **does** continue the main conversation, so the fix stitches the
+dead `tool_use` subtree into the chain before the continuing `tool_result`.
+
+```mermaid
+graph TD
+    A1["A(tool_use₁)"] --> U1["U(tool_result₁)"]
+    U1 --> Amain["A(response) — continues"]
+    A1 --> A2["A(tool_use₂)"]
+    A2 --> U2["U(tool_result₂) — dead end"]
+    classDef dead fill:#fee,stroke:#c99
+    class A2,U2 dead
 ```
-A(tool_use₁) → U(tool_result₁) → A(response) → ...  [main chain]
-             → A(tool_use₂) → ... → dead ends        [progress artifact]
+
+Detected by `_is_subtree_dead_end()`: exactly one user child has a live
+continuation; every assistant child's subtree dead-ends within the session.
+
+#### Structural-only fork — all children are passthrough
+
+Every same-session child is a `PassthroughTranscriptEntry` (attachments,
+`hook_success`, `SessionStart:resume`), often at far-apart timestamps so
+the compaction-replay heuristic doesn't apply. Neither "branch" carries
+conversation.
+
+```mermaid
+graph TD
+    A["A(assistant)"] --> P1["📎 hook_success"]
+    A --> P2["📎 SessionStart:resume"]
+    classDef structural fill:#eef,stroke:#99c
+    class P1,P2 structural
 ```
 
-**Structural-only fork** — every child is passthrough (attachments, hooks),
-no conversational content on either side. Also not a real fork; the chain
-terminates at this point with all children collapsed as side entries.
+Handled directly in `_walk_session_with_forks` **before** `_stitch_tool_results`
+is called: when every child is a passthrough **and** each child's subtree
+is itself structural (defense-in-depth for hypothetical future passthrough
+types with conversational descendants), collapse all children into the
+chain and terminate there.
 
-These patterns create false forks. The fix (`_stitch_tool_results()` plus
-the all-passthrough clause in `_walk_session_with_forks()`) detects them and
-stitches dead-end children into the chain before the continuation child (if
-any). Subtree descendants of dead-end children are collected into the
-`skipped` set for coverage accounting.
+#### Summary of detection criteria
 
-Detection criteria:
-- **Structural-only**: every child is a `PassthroughTranscriptEntry`
-  (handled directly in `_walk_session_with_forks`, outside `_stitch_tool_results`)
-- **Variant 1**: every User child's subtree is *structural* (no user/assistant
-  descendants beyond the root, per `_is_structural_subtree()`), with a single
-  Assistant continuation. This covers tool_result+hook_attachment leaves that
-  the original "no immediate same-session child" check missed.
-- **Variant 2**: exactly one User child has continuation; all Assistant
-  subtrees are dead ends (checked recursively via `_is_subtree_dead_end()`)
+| Pattern | Detection | Action |
+|---------|-----------|--------|
+| Variant 1 | `_is_structural_subtree(U)` true for every user child; exactly one assistant continuation | Splice user children ahead of assistant continuation |
+| Variant 2 | `_is_subtree_dead_end(A)` true for every assistant child; exactly one user continuation | Splice assistant children ahead of user continuation |
+| Structural-only | Every child is `PassthroughTranscriptEntry` with structural subtree | Collapse all into chain, end |
+| Real rewind | Multiple children with conversational subtrees at different timestamps | Real within-session fork → branch pseudo-sessions |
+| Compaction replay | Multiple children sharing the same timestamp | Follow first, skip rest (see next section) |
+
+Subtree descendants of stitched/collapsed side-branch nodes are added to
+the `skipped` set for coverage accounting, so the "DAG walk coverage
+incomplete" fallback doesn't fire.
+
+### Compact Boundaries and Multi-Root Sessions
+
+When the user runs `/compact`, Claude Code writes a `system/compact_boundary`
+entry with `parentUuid: null`, followed by a user entry carrying the summary
+(parsed as `CompactedSummaryMessage`). The pre-compaction context (often
+100k+ tokens) is replaced by the summary — a real content discontinuity.
+
+Because the boundary entry has no parent, it becomes a **fresh root within
+the same `sessionId`**. A session that was `/compact`ed once has 2 roots;
+twice has 3. Early `local_command` entries (e.g. `/memory`) sometimes land
+as orphan roots too.
+
+```mermaid
+graph TB
+    subgraph "Session s1 — 3 roots after two /compact runs"
+        direction TB
+        U0["U: initial prompt — root 1 (parentUuid:null)"] --> A0["A: response"]
+        A0 --> more1["..."]
+        more1 --> CB1["system/compact_boundary — root 2 (parentUuid:null)"]
+        CB1 --> CS1["U: summary (CompactedSummaryMessage)"]
+        CS1 --> after1["..."]
+        after1 --> CB2["system/compact_boundary — root 3 (parentUuid:null)"]
+        CB2 --> CS2["U: summary (CompactedSummaryMessage)"]
+    end
+    classDef root fill:#ffd,stroke:#a80
+    class U0,CB1,CB2 root
+```
+
+**Multi-root handling in `extract_session_dag_lines`** (dag.py):
+
+1. Walk every root via `_walk_session_with_forks` (not just the earliest)
+   so orphan-promoted subtrees are covered.
+2. Merge non-branch DAG-lines from all roots into a single trunk, ordered
+   by `first_timestamp`.
+3. Classify roots to decide log level:
+   - `_EXPECTED_ROOT_SYSTEM_SUBTYPES = {"compact_boundary", "local_command"}`
+   - If every non-primary root is an expected system subtype → `logger.debug`
+   - Otherwise (orphan user/assistant hinting at a missing parent) →
+     `logger.warning` with unexpected count
+
+This keeps the signal useful: orphan user/assistant entries still surface
+as warnings; routine `/compact` multi-root sessions stay quiet.
+
+**Nav landmarks** (`build_session_nav` in renderer.py): each
+`CompactedSummaryMessage` in a session becomes an `is_compaction_point`
+nav item (📦 glyph, solid border, depth = parent+1), chronologically
+ordered. Clicking jumps to the summary's `#msg-d-X` anchor so the reader
+can jump to any compaction point from the session index. Compact points
+inside a branch are correctly scoped via `render_session_id`.
 
 ---
 
@@ -303,14 +423,26 @@ Detection criteria:
 
 These should be checked at runtime (log warnings, don't crash):
 
-1. **Session linearity**: Each session's messages form a single chain
-   (no branching within a `sessionId`), except for explicit user rewinds
-   which create within-session forks rendered as branch pseudo-sessions
-2. **DAG acyclicity**: No cycles in `parentUuid` chains
-3. **Unique ownership**: After deduplication, each `uuid` belongs to
+1. **Session trunk is linear after stitching**: each session's non-branch
+   DAG-line is a single chain. Branching within a `sessionId` comes from
+   exactly three sources:
+   - **Explicit user rewinds** → rendered as branch pseudo-sessions
+   - **Parallel tool_use / dead-end tool_use / all-passthrough
+     children** → stitched or collapsed (not rendered as branches); see
+     [Tool-Result Side-Branches](#tool-result-side-branches)
+   - **Compaction replays** (same-timestamp children) → first child only
+2. **Multi-root sessions are tolerated**: `/compact` and `local_command`
+   produce multiple roots within one `sessionId`; all are walked and the
+   trunks are merged. Other multi-root causes warn (may indicate missing
+   parent data).
+3. **DAG acyclicity**: No cycles in `parentUuid` chains
+4. **Unique ownership**: After deduplication, each `uuid` belongs to
    exactly one session
-4. **Agent parenting**: Every top-level agent transcript has an identifiable
+5. **Agent parenting**: Every top-level agent transcript has an identifiable
    anchor in the main session
+6. **DAG walk coverage**: `walked | skipped` must equal the session's
+   node set; if not, fall back to a timestamp sort for the whole session
+   and log a warning
 
 ---
 
