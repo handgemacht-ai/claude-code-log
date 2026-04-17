@@ -1081,6 +1081,53 @@ def prepare_session_navigation(
                 session_nav.insert(insert_pos, branch_nav)
                 insert_pos += 1
 
+    # Surface compact_boundary ruptures as navigational landmarks.
+    # A CompactedSummaryMessage marks the point where `/compact` was run and
+    # pre-compaction context was replaced with a summary — a real content
+    # discontinuity that's useful to jump to.
+    compact_by_session: dict[str, list[TemplateMessage]] = {}
+    for msg in ctx.messages:
+        if isinstance(msg.content, CompactedSummaryMessage):
+            compact_by_session.setdefault(msg.render_session_id, []).append(msg)
+
+    for comp_sid, comp_msgs in compact_by_session.items():
+        comp_msgs.sort(key=lambda m: m.meta.timestamp)
+        parent_nav_idx = next(
+            (i for i, n in enumerate(session_nav) if n["id"] == comp_sid),
+            None,
+        )
+        if parent_nav_idx is None:
+            continue
+        parent_depth = session_nav[parent_nav_idx]["depth"]
+        insert_pos = parent_nav_idx + 1
+        # Skip past any existing children of this parent (branches, etc.)
+        while (
+            insert_pos < len(session_nav)
+            and session_nav[insert_pos].get("depth", 0) > parent_depth
+        ):
+            insert_pos += 1
+
+        for comp_msg in comp_msgs:
+            if comp_msg.message_index is None:
+                continue
+            comp_nav = {
+                "id": f"compact-{comp_msg.message_index}",
+                "message_index": comp_msg.message_index,
+                "summary": None,
+                "timestamp_range": "",
+                "first_timestamp": comp_msg.meta.timestamp,
+                "last_timestamp": "",
+                "message_count": 0,
+                "first_user_message": "Conversation compacted",
+                "token_summary": "",
+                "parent_session_id": comp_sid,
+                "parent_message_index": session_nav[parent_nav_idx]["message_index"],
+                "depth": parent_depth + 1,
+                "is_compaction_point": True,
+            }
+            session_nav.insert(insert_pos, comp_nav)
+            insert_pos += 1
+
     return session_nav
 
 

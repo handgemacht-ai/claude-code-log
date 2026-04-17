@@ -445,9 +445,11 @@
       color: var(--text-secondary, #495057);
   }
   
-  /* Fork point and branch nav items — lightweight text links, not cards */
+  /* Fork point, branch, and compaction-point nav items
+   * — lightweight text links, not cards */
   .session-fork-point,
-  .session-branch {
+  .session-branch,
+  .session-compaction-point {
       padding-left: 8px;
   }
   
@@ -459,8 +461,13 @@
       border-left: 2px dashed #666;
   }
   
+  .session-compaction-point {
+      border-left: 2px solid #888;
+  }
+  
   .fork-link,
-  .branch-link {
+  .branch-link,
+  .compaction-link {
       display: block;
       text-decoration: none;
       color: #6c757d;
@@ -469,7 +476,8 @@
   }
   
   .fork-link:hover,
-  .branch-link:hover {
+  .branch-link:hover,
+  .compaction-link:hover {
       color: var(--text-secondary);
   }
   /* Project card styles for index page */
@@ -3497,9 +3505,11 @@
       color: var(--text-secondary, #495057);
   }
   
-  /* Fork point and branch nav items — lightweight text links, not cards */
+  /* Fork point, branch, and compaction-point nav items
+   * — lightweight text links, not cards */
   .session-fork-point,
-  .session-branch {
+  .session-branch,
+  .session-compaction-point {
       padding-left: 8px;
   }
   
@@ -3511,8 +3521,13 @@
       border-left: 2px dashed #666;
   }
   
+  .session-compaction-point {
+      border-left: 2px solid #888;
+  }
+  
   .fork-link,
-  .branch-link {
+  .branch-link,
+  .compaction-link {
       display: block;
       text-decoration: none;
       color: #6c757d;
@@ -3521,7 +3536,8 @@
   }
   
   .fork-link:hover,
-  .branch-link:hover {
+  .branch-link:hover,
+  .compaction-link:hover {
       color: var(--text-secondary);
   }
   /* Filter toolbar and controls */
@@ -8694,9 +8710,11 @@
       color: var(--text-secondary, #495057);
   }
   
-  /* Fork point and branch nav items — lightweight text links, not cards */
+  /* Fork point, branch, and compaction-point nav items
+   * — lightweight text links, not cards */
   .session-fork-point,
-  .session-branch {
+  .session-branch,
+  .session-compaction-point {
       padding-left: 8px;
   }
   
@@ -8708,8 +8726,13 @@
       border-left: 2px dashed #666;
   }
   
+  .session-compaction-point {
+      border-left: 2px solid #888;
+  }
+  
   .fork-link,
-  .branch-link {
+  .branch-link,
+  .compaction-link {
       display: block;
       text-decoration: none;
       color: #6c757d;
@@ -8718,7 +8741,8 @@
   }
   
   .fork-link:hover,
-  .branch-link:hover {
+  .branch-link:hover,
+  .compaction-link:hover {
       color: var(--text-secondary);
   }
   /* Filter toolbar and controls */
@@ -13990,9 +14014,11 @@
       color: var(--text-secondary, #495057);
   }
   
-  /* Fork point and branch nav items — lightweight text links, not cards */
+  /* Fork point, branch, and compaction-point nav items
+   * — lightweight text links, not cards */
   .session-fork-point,
-  .session-branch {
+  .session-branch,
+  .session-compaction-point {
       padding-left: 8px;
   }
   
@@ -14004,8 +14030,13 @@
       border-left: 2px dashed #666;
   }
   
+  .session-compaction-point {
+      border-left: 2px solid #888;
+  }
+  
   .fork-link,
-  .branch-link {
+  .branch-link,
+  .compaction-link {
       display: block;
       text-decoration: none;
       color: #6c757d;
@@ -14014,7 +14045,8 @@
   }
   
   .fork-link:hover,
-  .branch-link:hover {
+  .branch-link:hover,
+  .compaction-link:hover {
       color: var(--text-secondary);
   }
   /* Filter toolbar and controls */
@@ -19343,9 +19375,11 @@
       color: var(--text-secondary, #495057);
   }
   
-  /* Fork point and branch nav items — lightweight text links, not cards */
+  /* Fork point, branch, and compaction-point nav items
+   * — lightweight text links, not cards */
   .session-fork-point,
-  .session-branch {
+  .session-branch,
+  .session-compaction-point {
       padding-left: 8px;
   }
   
@@ -19357,8 +19391,13 @@
       border-left: 2px dashed #666;
   }
   
+  .session-compaction-point {
+      border-left: 2px solid #888;
+  }
+  
   .fork-link,
-  .branch-link {
+  .branch-link,
+  .compaction-link {
       display: block;
       text-decoration: none;
       color: #6c757d;
@@ -19367,7 +19406,8 @@
   }
   
   .fork-link:hover,
-  .branch-link:hover {
+  .branch-link:hover,
+  .compaction-link:hover {
       color: var(--text-secondary);
   }
   /* Filter toolbar and controls */

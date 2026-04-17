@@ -1209,3 +1209,96 @@ class TestStructuralOnlyFork:
         branch_uuids = {tuple(b.uuids) for b in branches}
         assert ("u1", "a1") in branch_uuids
         assert ("u2", "a2") in branch_uuids
+
+
+def _make_system_entry(
+    uuid: str,
+    parent: str | None,
+    ts: str,
+    subtype: str = "info",
+    session: str = "s1",
+    content: str = "",
+    compactMetadata: dict | None = None,
+) -> dict:
+    """Helper to build a minimal system transcript entry dict."""
+    entry: dict = {
+        "type": "system",
+        "timestamp": ts,
+        "parentUuid": parent,
+        "isSidechain": False,
+        "userType": "human",
+        "cwd": "/tmp",
+        "sessionId": session,
+        "version": "1.0.0",
+        "uuid": uuid,
+        "subtype": subtype,
+        "content": content,
+    }
+    if compactMetadata is not None:
+        entry["compactMetadata"] = compactMetadata
+    return entry
+
+
+class TestRootClassification:
+    """Multi-root sessions should warn only on unexpected root types."""
+
+    def test_compact_boundary_roots_are_expected(self, caplog) -> None:
+        """Two compact_boundary roots alongside a system local_command root
+        are all expected; no WARNING should fire."""
+        import logging
+
+        data = [
+            # Root 1: a /memory-like local_command at session start
+            _make_system_entry(
+                "lc",
+                None,
+                "2025-07-01T10:00:00.000Z",
+                subtype="local_command",
+            ),
+            _make_entry("user", "u0", "lc", "2025-07-01T10:00:01.000Z"),
+            # Root 2: first compact boundary
+            _make_system_entry(
+                "cb1",
+                None,
+                "2025-07-01T11:00:00.000Z",
+                subtype="compact_boundary",
+            ),
+            _make_entry("user", "u1", "cb1", "2025-07-01T11:00:01.000Z"),
+            # Root 3: second compact boundary
+            _make_system_entry(
+                "cb2",
+                None,
+                "2025-07-01T12:00:00.000Z",
+                subtype="compact_boundary",
+            ),
+            _make_entry("user", "u2", "cb2", "2025-07-01T12:00:01.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert not warnings, (
+            f"Expected no warnings, got: {[r.message for r in warnings]}"
+        )
+
+    def test_unexpected_root_still_warns(self, caplog) -> None:
+        """An orphan user entry (parent missing) triggers a warning."""
+        import logging
+
+        data = [
+            _make_entry("user", "a", None, "2025-07-01T10:00:00.000Z"),
+            _make_entry("assistant", "b", "a", "2025-07-01T10:01:00.000Z"),
+            # Orphan user with parent pointing outside the session.
+            _make_entry("user", "orphan", "not-in-session", "2025-07-01T11:00:00.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        # Orphan promotion emits its own warning; the multi-root warning
+        # should also fire because the orphan-promoted root is a user
+        # entry (unexpected type).
+        multi_root_warnings = [r for r in warnings if "roots found" in r.message]
+        assert multi_root_warnings, (
+            f"Expected a multi-root warning; got: {[r.message for r in warnings]}"
+        )

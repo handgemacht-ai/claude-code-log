@@ -17,6 +17,7 @@ from .models import (
     UserTranscriptEntry,
     AssistantTranscriptEntry,
     PassthroughTranscriptEntry,
+    SystemTranscriptEntry,
 )
 
 logger = logging.getLogger(__name__)
@@ -268,6 +269,20 @@ def _is_structural_subtree(
     return True
 
 
+# System subtypes that produce parentless entries by design (fresh chains
+# after `/compact`, orphan `/memory` or `/config` invocations at session
+# start). Multi-root sessions built from only these are expected, not
+# noteworthy.
+_EXPECTED_ROOT_SYSTEM_SUBTYPES = frozenset({"compact_boundary", "local_command"})
+
+
+def _is_expected_root_type(entry: TranscriptEntry) -> bool:
+    """Whether a multi-root entry is one of Claude Code's expected patterns."""
+    if isinstance(entry, SystemTranscriptEntry):
+        return entry.subtype in _EXPECTED_ROOT_SYSTEM_SUBTYPES
+    return False
+
+
 def _stitch_tool_results(
     children: list[str],
     session_uuids: set[str],
@@ -512,12 +527,30 @@ def extract_session_dag_lines(
         # Sort roots by timestamp (earliest first = primary root)
         roots.sort(key=lambda n: n.timestamp)
         if len(roots) > 1:
-            logger.warning(
-                "Session %s: %d roots found, walking all from earliest (%s)",
-                session_id,
-                len(roots),
-                roots[0].uuid,
-            )
+            # Roots that arise from expected Claude Code mechanisms —
+            # `/compact` writes a compact_boundary system entry with no
+            # parentUuid; early `local_command` entries like `/memory`
+            # sometimes land as orphans too. Warn only when an unexpected
+            # root shows up (e.g. an orphan user/assistant that hints at a
+            # missing parent); otherwise log at debug level.
+            unexpected = [n for n in roots if not _is_expected_root_type(n.entry)]
+            if unexpected:
+                logger.warning(
+                    "Session %s: %d roots found (%d unexpected), "
+                    "walking all from earliest (%s)",
+                    session_id,
+                    len(roots),
+                    len(unexpected),
+                    roots[0].uuid,
+                )
+            else:
+                logger.debug(
+                    "Session %s: %d expected roots (compact_boundary / "
+                    "local_command), walking all from earliest (%s)",
+                    session_id,
+                    len(roots),
+                    roots[0].uuid,
+                )
 
         # Walk from ALL roots to maximize coverage (orphan-promoted roots
         # create disconnected subtrees that must each be walked)
