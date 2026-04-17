@@ -843,6 +843,42 @@
 
             // Apply initial fold state
             setInitialFoldState();
+
+            // Unfold any folded ancestors so an anchor target (e.g. a tool_use
+            // jumped to from the session index) is actually visible. Ancestor
+            // message_ids appear as `d-X` classes on the target, outer-first.
+            function unfoldAncestorsOf(hash) {
+                if (!hash || !hash.startsWith('#msg-')) return;
+                const target = document.getElementById(hash.slice(1));
+                if (!target) return;
+                const ancestorIds = Array.from(target.classList).filter(
+                    cls => cls.startsWith('d-')
+                );
+                ancestorIds.forEach(id => {
+                    const ancestorMsg = document.querySelector(
+                        `.message[data-message-id="${id}"]`
+                    );
+                    if (!ancestorMsg) return;
+                    const foldBar = ancestorMsg.querySelector('.fold-bar');
+                    if (!foldBar) return;
+                    const foldAll = foldBar.querySelector('.fold-all-levels');
+                    if (foldAll && foldAll.classList.contains('folded')) {
+                        foldAll.click();
+                    }
+                });
+                // Re-trigger the browser's scroll-to-anchor now that
+                // the target is no longer display:none.
+                if (target.scrollIntoView) {
+                    target.scrollIntoView({block: 'start'});
+                }
+            }
+            window.addEventListener(
+                'hashchange',
+                () => unfoldAncestorsOf(window.location.hash)
+            );
+            if (window.location.hash) {
+                unfoldAncestorsOf(window.location.hash);
+            }
         });
     </script>
     <!-- Search functionality script -->

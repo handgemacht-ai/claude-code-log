@@ -989,8 +989,20 @@ def prepare_session_navigation(
 
         # For each junction point, insert fork-point and branch nav items
         for attachment_uuid, branches in junction_branches.items():
+            # Drop branches whose first message was filtered out (e.g. a
+            # passthrough attachment) — their #msg-d-None anchor points
+            # nowhere. If no navigable branches remain, the fork point
+            # itself is useless and is dropped too.
+            navigable_branches = [
+                b
+                for b in branches
+                if ctx.session_first_message.get(b["sid"]) is not None
+            ]
+            if not navigable_branches:
+                continue
+
             # Find the session nav item that contains this junction
-            parent_sid = branches[0].get("parent_session_id", "")
+            parent_sid = navigable_branches[0].get("parent_session_id", "")
             parent_nav_idx = next(
                 (i for i, n in enumerate(session_nav) if n["id"] == parent_sid),
                 None,
@@ -1023,7 +1035,7 @@ def prepare_session_navigation(
             fork_label = (
                 f"Fork point • {fork_preview}"
                 if fork_preview
-                else f"Fork point ({len(branches)} branches)"
+                else f"Fork point ({len(navigable_branches)} branches)"
             )
 
             fork_nav = {
@@ -1045,7 +1057,7 @@ def prepare_session_navigation(
             insert_pos += 1
 
             # Branch nav items
-            for branch in branches:
+            for branch in navigable_branches:
                 branch_sid = branch["sid"]
                 branch_msg_idx = ctx.session_first_message.get(branch_sid)
                 branch_nav = {
