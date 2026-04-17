@@ -264,10 +264,11 @@ When the assistant makes **multiple tool calls** in one turn, the JSONL
 records both the next `tool_use` and the previous `tool_result` as children
 of the same parent entry. Two variants exist:
 
-**Variant 1** — User child is immediate dead end:
+**Variant 1** — User child's subtree is purely structural:
 ```
-A(tool_use₁) → U(tool_result₁)   [dead-end side-branch]
-             → A(tool_use₂)      [main chain continues]
+A(tool_use₁) → U(tool_result₁)        [structural side-branch]
+                 → attachment(hook_success)
+             → A(tool_use₂)           [main chain continues]
 ```
 
 **Variant 2** — User child continues, Assistant subtree dead-ends:
@@ -276,16 +277,25 @@ A(tool_use₁) → U(tool_result₁) → A(response) → ...  [main chain]
              → A(tool_use₂) → ... → dead ends        [progress artifact]
 ```
 
-Both variants create false forks. The fix (`_stitch_tool_results()`) detects
-the pattern and stitches dead-end children into the chain before the
-continuation child. Subtree descendants of dead-end children are collected
-into the `skipped` set for coverage accounting.
+**Structural-only fork** — every child is passthrough (attachments, hooks),
+no conversational content on either side. Also not a real fork; the chain
+terminates at this point with all children collapsed as side entries.
+
+These patterns create false forks. The fix (`_stitch_tool_results()` plus
+the all-passthrough clause in `_walk_session_with_forks()`) detects them and
+stitches dead-end children into the chain before the continuation child (if
+any). Subtree descendants of dead-end children are collected into the
+`skipped` set for coverage accounting.
 
 Detection criteria:
-- At least one User child and at least one Assistant child
-- Variant 1: all User children are immediate dead ends + single Assistant
-- Variant 2: exactly one User child has continuation, all Assistant subtrees
-  are dead ends (checked recursively via `_is_subtree_dead_end()`)
+- **Structural-only**: every child is a `PassthroughTranscriptEntry`
+  (handled directly in `_walk_session_with_forks`, outside `_stitch_tool_results`)
+- **Variant 1**: every User child's subtree is *structural* (no user/assistant
+  descendants beyond the root, per `_is_structural_subtree()`), with a single
+  Assistant continuation. This covers tool_result+hook_attachment leaves that
+  the original "no immediate same-session child" check missed.
+- **Variant 2**: exactly one User child has continuation; all Assistant
+  subtrees are dead ends (checked recursively via `_is_subtree_dead_end()`)
 
 ---
 

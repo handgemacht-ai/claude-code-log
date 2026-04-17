@@ -16,6 +16,7 @@ from .models import (
     QueueOperationTranscriptEntry,
     UserTranscriptEntry,
     AssistantTranscriptEntry,
+    PassthroughTranscriptEntry,
 )
 
 logger = logging.getLogger(__name__)
@@ -231,6 +232,42 @@ def _is_subtree_dead_end(
     return True
 
 
+def _is_structural_subtree(
+    uuid: str,
+    session_uuids: set[str],
+    nodes: dict[str, MessageNode],
+    max_depth: int = 20,
+) -> bool:
+    """Check if the subtree below `uuid` contains only structural entries.
+
+    A subtree is 'structural' if the root's descendants (within the session)
+    contain no UserTranscriptEntry or AssistantTranscriptEntry — only
+    passthrough nodes (attachments, permission-mode), system-info hook
+    summaries, etc.  Used to detect side-branches that look live at the DAG
+    level but carry no conversational content (e.g. a user(tool_result)
+    followed by just a hook_success attachment).
+
+    The root itself is not inspected — only its descendants — because this
+    check is used to decide whether a child of a fork point represents
+    continuing conversation.
+    """
+    stack: list[tuple[str, int]] = [(c, 1) for c in nodes[uuid].children_uuids]
+    seen: set[str] = set()
+    while stack:
+        current, depth = stack.pop()
+        if current in seen or current not in session_uuids:
+            continue
+        seen.add(current)
+        entry = nodes[current].entry
+        if isinstance(entry, (UserTranscriptEntry, AssistantTranscriptEntry)):
+            return False  # Found conversational content
+        if depth >= max_depth:
+            return False  # Too deep to tell — be conservative
+        for c in nodes[current].children_uuids:
+            stack.append((c, depth + 1))
+    return True
+
+
 def _stitch_tool_results(
     children: list[str],
     session_uuids: set[str],
@@ -242,9 +279,10 @@ def _stitch_tool_results(
     records both the next tool_use and the tool_result as children of the
     current tool_use entry, creating a false fork.  Two variants:
 
-    Variant 1 — User child is immediate dead end:
-        A(tool_use) → U(tool_result)   [dead-end side-branch]
-                    → A(next tool_use) [main chain continues]
+    Variant 1 — User child's subtree is structural (no conversation):
+        A(tool_use) → U(tool_result)          [structural side-branch]
+                         → attachment(hook)
+                    → A(next tool_use) → ...  [main chain continues]
 
     Variant 2 — User child continues, Assistant subtree dead-ends:
         A(tool_use) → U(tool_result) → A(response) → ...  [main chain]
@@ -252,7 +290,8 @@ def _stitch_tool_results(
 
     Returns a stitched ordering placing dead-end children first, then
     the single continuation child.  Returns None if the pattern doesn't
-    match.
+    match.  Callers should treat `result[:-1]` as dead-end nodes whose
+    subtree descendants are skipped, and `result[-1]` as the continuation.
     """
     # Separate into user (tool_result) and assistant (continuation) children
     user_children = [
@@ -265,20 +304,21 @@ def _stitch_tool_results(
     if not user_children or not assistant_children:
         return None  # Not the tool_result pattern
 
-    # Check variant 1: all user children are immediate dead ends
-    user_all_dead = all(
-        not any(c in session_uuids for c in nodes[uc].children_uuids)
-        for uc in user_children
+    # Variant 1: user children carry only structural content (attachments,
+    # hook summaries), the assistant sibling is the real continuation.
+    # The earlier "no immediate same-session child" check missed cases
+    # where the tool_result has a hook_success attachment leaf.
+    user_all_structural = all(
+        _is_structural_subtree(uc, session_uuids, nodes) for uc in user_children
     )
 
-    if user_all_dead:
-        # Variant 1: user dead ends + single assistant continuation
+    if user_all_structural:
         if len(assistant_children) != 1:
             return None
         user_children.sort(key=lambda c: nodes[c].timestamp)
         return user_children + assistant_children
 
-    # Check variant 2: assistant subtrees are dead ends,
+    # Variant 2: assistant subtrees are dead ends,
     # exactly one user child continues
     user_with_cont = [
         uc
@@ -353,6 +393,22 @@ def _walk_session_with_forks(
                 # Multiple same-session children. Distinguish real forks
                 # from artifacts (see dev-docs/dag.md caveats).
                 same_session_children.sort(key=lambda c: nodes[c].timestamp)
+
+                # All-passthrough fork: e.g. a hook_success attachment
+                # alongside a SessionStart:resume attachment.  Neither
+                # branch carries conversation, so collapse them all as
+                # structural side-branches and end the chain here.
+                if all(
+                    isinstance(nodes[c].entry, PassthroughTranscriptEntry)
+                    for c in same_session_children
+                ):
+                    for pc in same_session_children:
+                        if is_branch:
+                            nodes[pc].session_id = line_id
+                        _collect_descendants(pc, session_uuids, nodes, skipped)
+                        chain.append(pc)
+                    current = None
+                    continue
 
                 stitched = _stitch_tool_results(
                     same_session_children, session_uuids, nodes

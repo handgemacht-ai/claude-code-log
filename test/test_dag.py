@@ -986,6 +986,28 @@ def _make_entry(
     return base
 
 
+def _make_attachment(
+    uuid: str,
+    parent: str,
+    ts: str,
+    attachment_type: str = "hook_success",
+    session: str = "s1",
+) -> dict:
+    """Helper to build an 'attachment' entry (becomes PassthroughTranscriptEntry)."""
+    return {
+        "type": "attachment",
+        "timestamp": ts,
+        "parentUuid": parent,
+        "isSidechain": False,
+        "userType": "external",
+        "cwd": "/tmp",
+        "sessionId": session,
+        "version": "1.0.0",
+        "uuid": uuid,
+        "attachment": {"type": attachment_type},
+    }
+
+
 class TestCompactionReplay:
     """Context compaction replays should not create branches."""
 
@@ -1104,3 +1126,86 @@ class TestToolResultStitching:
         assert tree.sessions["s1"].uuids == ["a", "b", "d", "c", "e"]
         branch_count = sum(1 for s in tree.sessions.values() if s.is_branch)
         assert branch_count == 0
+
+    def test_parallel_tool_use_with_attachment_stitched(self) -> None:
+        """Parallel tool_use: user(tool_result) has an attachment leaf,
+        assistant sibling has conversation. Older 'no immediate child'
+        check missed this; updated variant 1 uses _is_structural_subtree.
+        Mirrors the 22 fake forks found in the BCT Teamcenter session.
+        """
+        data = [
+            _make_entry("user", "a", None, "2025-07-01T10:00:00.000Z"),
+            _make_entry("assistant", "tool1", "a", "2025-07-01T10:01:00.000Z"),
+            # tool1's children: user(tool_result) with attachment leaf
+            # + next assistant tool_use (main chain)
+            _make_entry("user", "res1", "tool1", "2025-07-01T10:01:00.100Z"),
+            _make_attachment(
+                "hook1", "res1", "2025-07-01T10:01:00.150Z", "hook_success"
+            ),
+            _make_entry("assistant", "tool2", "tool1", "2025-07-01T10:01:00.200Z"),
+            _make_entry("user", "res2", "tool2", "2025-07-01T10:01:01.000Z"),
+            _make_entry("assistant", "tool3", "tool2", "2025-07-01T10:01:02.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        tree = build_dag_from_entries(entries)
+
+        # Should be linear: a → tool1 → res1 → tool2 → res2 → tool3
+        # (hook1 is a descendant of res1 but passthrough, not rendered)
+        assert tree.sessions["s1"].uuids == [
+            "a",
+            "tool1",
+            "res1",
+            "tool2",
+            "res2",
+            "tool3",
+        ]
+        branch_count = sum(1 for s in tree.sessions.values() if s.is_branch)
+        assert branch_count == 0
+
+
+class TestStructuralOnlyFork:
+    """All-passthrough children should collapse instead of creating forks."""
+
+    def test_attachment_only_children_terminate(self) -> None:
+        """Parent with only attachment children (e.g. hook_success +
+        SessionStart:resume at different times) should not fork."""
+        data = [
+            _make_entry("user", "a", None, "2025-07-01T10:00:00.000Z"),
+            _make_entry("assistant", "b", "a", "2025-07-01T10:01:00.000Z"),
+            # b has two attachment children with different timestamps.
+            _make_attachment("att1", "b", "2025-07-01T10:02:00.000Z", "hook_success"),
+            _make_attachment(
+                "att2",
+                "b",
+                "2025-07-02T09:00:00.000Z",
+                "hook_success",
+            ),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        tree = build_dag_from_entries(entries)
+
+        # Linear trunk with both attachments collapsed in, no branches
+        assert tree.sessions["s1"].uuids == ["a", "b", "att1", "att2"]
+        branch_count = sum(1 for s in tree.sessions.values() if s.is_branch)
+        assert branch_count == 0
+
+    def test_real_within_session_fork_preserved(self) -> None:
+        """Two children with conversational subtrees at different times
+        remain a real fork (user /fork-style rewind)."""
+        data = [
+            _make_entry("user", "a", None, "2025-07-01T10:00:00.000Z"),
+            _make_entry("assistant", "b", "a", "2025-07-01T10:01:00.000Z"),
+            # b has two live children, each with conversation
+            _make_entry("user", "u1", "b", "2025-07-01T10:02:00.000Z"),
+            _make_entry("assistant", "a1", "u1", "2025-07-01T10:02:30.000Z"),
+            _make_entry("user", "u2", "b", "2025-07-01T10:10:00.000Z"),
+            _make_entry("assistant", "a2", "u2", "2025-07-01T10:10:30.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        tree = build_dag_from_entries(entries)
+
+        branches = [s for s in tree.sessions.values() if s.is_branch]
+        assert len(branches) == 2
+        branch_uuids = {tuple(b.uuids) for b in branches}
+        assert ("u1", "a1") in branch_uuids
+        assert ("u2", "a2") in branch_uuids
