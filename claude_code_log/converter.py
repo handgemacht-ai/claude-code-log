@@ -701,14 +701,18 @@ class GenerationStats:
         return "\n".join(parts)
 
 
-def _get_page_html_path(page_number: int) -> str:
+def _get_page_html_path(page_number: int, variant_suffix: str = "") -> str:
     """Get the HTML filename for a given page number.
 
-    Page 1 is combined_transcripts.html, page 2+ are combined_transcripts_N.html
+    Page 1 is combined_transcripts{suffix}.html, page 2+ are
+    combined_transcripts{suffix}_N.html. The `variant_suffix` encodes
+    ``--detail``/``--compact`` variants (see `utils.variant_suffix`)
+    so each variant owns its own page files and cache rows.
     """
+    base = f"combined_transcripts{variant_suffix}"
     if page_number == 1:
-        return "combined_transcripts.html"
-    return f"combined_transcripts_{page_number}.html"
+        return f"{base}.html"
+    return f"{base}_{page_number}.html"
 
 
 # Regex pattern to match and update the next link marker block
@@ -718,7 +722,9 @@ _NEXT_LINK_PATTERN = re.compile(
 )
 
 
-def _enable_next_link_on_previous_page(output_dir: Path, page_number: int) -> bool:
+def _enable_next_link_on_previous_page(
+    output_dir: Path, page_number: int, variant_suffix: str = ""
+) -> bool:
     """Enable the next link on a previous page by removing the last-page class.
 
     When a new page is created, the previous page's "Next" link (which was hidden
@@ -728,6 +734,7 @@ def _enable_next_link_on_previous_page(output_dir: Path, page_number: int) -> bo
     Args:
         output_dir: Directory containing the HTML files
         page_number: The page number whose next link should be enabled
+        variant_suffix: Variant infix for path resolution.
 
     Returns:
         True if the file was modified, False otherwise
@@ -735,7 +742,7 @@ def _enable_next_link_on_previous_page(output_dir: Path, page_number: int) -> bo
     if page_number < 1:
         return False
 
-    page_path = output_dir / _get_page_html_path(page_number)
+    page_path = output_dir / _get_page_html_path(page_number, variant_suffix)
     if not page_path.exists():
         return False
 
@@ -918,7 +925,9 @@ def _generate_paginated_html(
         Path to the first page (combined_transcripts.html)
     """
     from .html.renderer import HtmlRenderer
-    from .utils import format_timestamp
+    from .utils import format_timestamp, variant_suffix as _variant_suffix
+
+    suffix = _variant_suffix(detail, compact, "html")
 
     # Check if page size changed - if so, invalidate all pages
     cached_page_size = cache_manager.get_page_size_config()
@@ -941,12 +950,13 @@ def _generate_paginated_html(
         # No sessions, generate empty page
         pages = [[]]
 
-    # Clean up orphan pages if page count decreased
-    old_page_count = cache_manager.get_page_count()
+    # Clean up orphan pages if page count decreased — scoped to this
+    # variant so we don't delete another variant's live pages.
+    old_page_count = cache_manager.get_page_count(suffix)
     new_page_count = len(pages)
     if old_page_count > new_page_count:
         for orphan_page_num in range(new_page_count + 1, old_page_count + 1):
-            orphan_path = output_dir / _get_page_html_path(orphan_page_num)
+            orphan_path = output_dir / _get_page_html_path(orphan_page_num, suffix)
             if orphan_path.exists():
                 orphan_path.unlink()
 
@@ -961,15 +971,15 @@ def _generate_paginated_html(
                 messages_by_session[key] = []
             messages_by_session[key].append(msg)
 
-    first_page_path = output_dir / _get_page_html_path(1)
+    first_page_path = output_dir / _get_page_html_path(1, suffix)
 
     # Generate each page
     for page_num, page_session_ids in enumerate(pages, start=1):
-        html_path = _get_page_html_path(page_num)
+        html_path = _get_page_html_path(page_num, suffix)
         page_file = output_dir / html_path
 
         # Check if page is stale
-        is_stale, reason = cache_manager.is_page_stale(page_num, page_size)
+        is_stale, reason = cache_manager.is_page_stale(page_num, page_size, suffix)
 
         if not is_stale and page_file.exists():
             if not silent:
@@ -1016,14 +1026,16 @@ def _generate_paginated_html(
 
         page_info = {
             "page_number": page_num,
-            "prev_link": _get_page_html_path(page_num - 1) if has_prev else None,
-            "next_link": _get_page_html_path(page_num + 1),  # Always provide
+            "prev_link": _get_page_html_path(page_num - 1, suffix)
+            if has_prev
+            else None,
+            "next_link": _get_page_html_path(page_num + 1, suffix),
             "is_last_page": is_last_page,
         }
 
         # Enable previous page's next link when creating a new page
         if page_num > 1:
-            _enable_next_link_on_previous_page(output_dir, page_num - 1)
+            _enable_next_link_on_previous_page(output_dir, page_num - 1, suffix)
 
         # Build page_stats
         date_range = ""
@@ -1081,6 +1093,7 @@ def _generate_paginated_html(
             total_output_tokens=total_output_tokens,
             total_cache_creation_tokens=total_cache_creation_tokens,
             total_cache_read_tokens=total_cache_read_tokens,
+            variant_suffix=suffix,
         )
 
     return first_page_path
@@ -1164,10 +1177,14 @@ def convert_jsonl_to(
     # None in single-file mode (renderer builds it on demand)
     session_tree: Optional[SessionTree] = None
 
+    from .utils import variant_suffix as _variant_suffix
+
+    suffix = _variant_suffix(detail, compact, format)
+
     if input_path.is_file():
         # Single file mode - cache only available for directory mode
         if output_path is None:
-            output_path = input_path.with_suffix(f".{ext}")
+            output_path = input_path.with_suffix(f"{suffix}.{ext}")
         messages = load_transcript(input_path, silent=silent)
         # Repair progress chain gaps for single-file mode
         progress_chain = _scan_progress_chains(input_path)
@@ -1180,7 +1197,7 @@ def convert_jsonl_to(
     else:
         # Directory mode - Cache-First Approach
         if output_path is None:
-            output_path = input_path / f"combined_transcripts.{ext}"
+            output_path = input_path / f"combined_transcripts{suffix}.{ext}"
 
         # Phase 1: Ensure cache is fresh and populated
         cache_was_updated = ensure_fresh_cache(
@@ -1248,7 +1265,7 @@ def convert_jsonl_to(
     total_message_count = (
         cached_data.total_message_count if cached_data else len(messages)
     )
-    existing_page_count = cache_manager.get_page_count() if cache_manager else 0
+    existing_page_count = cache_manager.get_page_count(suffix) if cache_manager else 0
 
     if (
         format == "html"
@@ -1306,8 +1323,6 @@ def convert_jsonl_to(
                 or from_date is not None
                 or to_date is not None
                 or not output_path.exists()
-                or detail != DetailLevel.FULL
-                or compact
             )
         else:
             # Fallback: old logic for single file mode or no cache
@@ -1317,8 +1332,6 @@ def convert_jsonl_to(
                 or to_date is not None
                 or not output_path.exists()
                 or (input_path.is_dir() and cache_was_updated)
-                or detail != DetailLevel.FULL
-                or compact
             )
 
         if should_regenerate:
@@ -1714,7 +1727,10 @@ def _generate_individual_session_files(
     Returns:
         Number of sessions regenerated
     """
+    from .utils import variant_suffix as _variant_suffix
+
     ext = get_file_extension(format)
+    suffix = _variant_suffix(detail, compact, format)
     # Pre-compute warmup sessions to exclude them
     warmup_session_ids = get_warmup_session_ids(messages)
 
@@ -1770,8 +1786,8 @@ def _generate_individual_session_files(
             session_title += f" ({date_range_str})"
 
         # Check if session file needs regeneration
-        session_file_path = output_dir / f"session-{session_id}.{ext}"
-        session_file_name = f"session-{session_id}.{ext}"
+        session_file_name = f"session-{session_id}{suffix}.{ext}"
+        session_file_path = output_dir / session_file_name
 
         # Use incremental regeneration: check per-session staleness via html_cache
         if cache_manager is not None and format == "html":
@@ -1943,13 +1959,17 @@ def generate_single_session_file(
     )
 
     # Determine output path
+    from .utils import variant_suffix as _variant_suffix
+
     ext = get_file_extension(format)
+    suffix = _variant_suffix(detail, compact, format)
     output_dir = input_path
     if output is not None:
+        # User's explicit path wins; no suffix appended.
         output_file = output
         output_dir = output.parent
     else:
-        output_file = input_path / f"session-{matched_id}.{ext}"
+        output_file = input_path / f"session-{matched_id}{suffix}.{ext}"
 
     # Generate content and write
     renderer = get_renderer(format, image_export_mode, detail=detail, compact=compact)
