@@ -1139,6 +1139,7 @@ def convert_jsonl_to(
     page_size: int = 2000,
     detail: DetailLevel = DetailLevel.FULL,
     compact: bool = False,
+    update_cache: bool = True,
 ) -> Path:
     """Convert JSONL transcript(s) to the specified format.
 
@@ -1343,8 +1344,12 @@ def convert_jsonl_to(
             assert content is not None
             output_path.write_text(content, encoding="utf-8")
 
-            # Update html_cache for combined transcript (HTML only)
-            if format == "html" and cache_manager is not None:
+            # Update html_cache for combined transcript (HTML only).
+            # Skip when the caller explicitly disabled cache writes — the
+            # CLI does this for `-o custom.html` exports so a user's
+            # one-off destination doesn't occupy a cache slot keyed by
+            # their arbitrary path.
+            if format == "html" and cache_manager is not None and update_cache:
                 cache_manager.update_html_cache(
                     output_path.name, None, total_message_count
                 )
