@@ -92,7 +92,10 @@ def create_system_message(
     compact_trigger: Optional[str] = None
     if transcript.subtype == "compact_boundary" and transcript.compactMetadata:
         raw_pre = transcript.compactMetadata.get("preTokens")
-        if isinstance(raw_pre, int):
+        # `bool` is a subclass of `int` in Python — `isinstance(True, int)`
+        # returns True — so JSON true/false would slip through as 1/0. Filter
+        # bools explicitly; we only want genuine integer token counts.
+        if isinstance(raw_pre, int) and not isinstance(raw_pre, bool):
             pre_tokens = raw_pre
         raw_trigger = transcript.compactMetadata.get("trigger")
         if isinstance(raw_trigger, str):
