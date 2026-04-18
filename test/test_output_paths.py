@@ -341,7 +341,9 @@ class TestSessionBackLink:
             detail=DetailLevel.LOW,
         )
         session_file = tmp_path / "session-sess1.low.html"
-        html = session_file.read_text()
+        # Explicit UTF-8: the HTML contains emoji glyphs (🤷, 🤖, 📦);
+        # Python on Windows otherwise defaults to cp1252 and crashes.
+        html = session_file.read_text(encoding="utf-8")
         # Should link to the LOW combined file, not the bare default.
         assert "combined_transcripts.low.html" in html
         # The bare default may still occur as text elsewhere; ensure it is
