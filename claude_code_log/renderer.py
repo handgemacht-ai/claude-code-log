@@ -570,7 +570,7 @@ class TemplateSummary:
 def generate_template_messages(
     messages: list[TranscriptEntry],
     session_tree: Optional["SessionTree"] = None,
-    detail: DetailLevel = DetailLevel.FULL,
+    detail: DetailLevel | str = DetailLevel.FULL,
 ) -> Tuple[list[TemplateMessage], list[dict[str, Any]], RenderingContext]:
     """Generate root messages and session navigation from transcript messages.
 
@@ -582,6 +582,7 @@ def generate_template_messages(
         session_tree: Optional pre-built SessionTree from DAG construction.
             When provided, avoids an expensive DAG rebuild.
         detail: Output detail level controlling which message types are included.
+            Accepts either a DetailLevel enum or a plain string (e.g. "low").
 
     Returns:
         A tuple of (root_messages, session_nav, context) where:
@@ -591,8 +592,8 @@ def generate_template_messages(
     """
     from .utils import get_warmup_session_ids
 
-    # Normalize detail: accept string for convenience (e.g. from CLI)
-    if isinstance(detail, str) and not isinstance(detail, DetailLevel):
+    # Normalize plain string to DetailLevel for convenience (e.g. from CLI)
+    if not isinstance(detail, DetailLevel):
         detail = DetailLevel(detail)
 
     # Performance timing
