@@ -715,6 +715,51 @@ def _get_page_html_path(page_number: int, variant_suffix: str = "") -> str:
     return f"{base}_{page_number}.html"
 
 
+def _variant_label_from_suffix(suffix: str) -> str:
+    """Human-readable label for a filename suffix (e.g. '.low.compact')."""
+    if not suffix:
+        return "Full"
+    parts = [p for p in suffix.split(".") if p]
+    # Capitalise each segment; "compact" stays lowercased as the adverb.
+    nice = [p.capitalize() if p != "compact" else p for p in parts]
+    return " · ".join(nice)
+
+
+def _enumerate_project_variants(
+    project_dir: Path, project_name: str
+) -> List[Dict[str, str]]:
+    """List variant entry files present in a project directory.
+
+    Looks for top-level `combined_transcripts*.html` entries (page 1 of
+    each variant), sorted so the default (full) variant comes first.
+    Paginated `_N` trailers are excluded by the regex.
+
+    Returns a list of ``{"file": relative-path, "label": human-name,
+    "suffix": variant-suffix-string}`` dicts the index template can
+    iterate over.
+    """
+    from .utils import _VARIANT_ENTRY_RE
+
+    variants: List[Dict[str, str]] = []
+    if not project_dir.is_dir():
+        return variants
+    for entry in sorted(project_dir.glob("combined_transcripts*.html")):
+        m = _VARIANT_ENTRY_RE.match(entry.name)
+        if m is None:
+            continue
+        suffix = m.group(1) or ""
+        variants.append(
+            {
+                "file": f"{project_name}/{entry.name}",
+                "label": _variant_label_from_suffix(suffix),
+                "suffix": suffix,
+            }
+        )
+    # Default (empty suffix) first, others alphabetical.
+    variants.sort(key=lambda v: (v["suffix"] != "", v["suffix"]))
+    return variants
+
+
 # Regex pattern to match and update the next link marker block
 _NEXT_LINK_PATTERN = re.compile(
     r'(<!-- PAGINATION_NEXT_LINK_START -->.*?class="page-nav-link next) last-page(".*?<!-- PAGINATION_NEXT_LINK_END -->)',
@@ -2241,6 +2286,9 @@ def process_projects_hierarchy(
                             "name": project_dir.name,
                             "path": project_dir,
                             "html_file": f"{project_dir.name}/{output_path.name}",
+                            "html_variants": _enumerate_project_variants(
+                                project_dir, project_dir.name
+                            ),
                             "jsonl_count": jsonl_count,
                             "message_count": cached_project_data.total_message_count,
                             "last_modified": last_modified,
@@ -2349,6 +2397,9 @@ def process_projects_hierarchy(
                     "name": project_dir.name,
                     "path": project_dir,
                     "html_file": f"{project_dir.name}/{output_path.name}",
+                    "html_variants": _enumerate_project_variants(
+                        project_dir, project_dir.name
+                    ),
                     "jsonl_count": jsonl_count,
                     "message_count": len(messages),
                     "last_modified": last_modified,
@@ -2402,6 +2453,9 @@ def process_projects_hierarchy(
                     "name": archived_dir.name,
                     "path": archived_dir,
                     "html_file": f"{archived_dir.name}/combined_transcripts.html",
+                    "html_variants": _enumerate_project_variants(
+                        archived_dir, archived_dir.name
+                    ),
                     "jsonl_count": 0,
                     "message_count": cached_project_data.total_message_count,
                     "last_modified": 0.0,
