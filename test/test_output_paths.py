@@ -3,7 +3,7 @@
 Covers:
 
 - `variant_suffix()` matrix across (detail, compact, format).
-- `_VARIANT_ENTRY_RE` regex acceptance/rejection.
+- `VARIANT_ENTRY_RE` regex acceptance/rejection.
 - `_get_page_html_path(n, suffix)` composition with pagination.
 - Converter integration: combined / session / --session-id paths all
   land at the variant-encoded filename; explicit `-o` honours the
@@ -33,7 +33,7 @@ from claude_code_log.converter import (
     generate_single_session_file,
 )
 from claude_code_log.models import DetailLevel
-from claude_code_log.utils import _VARIANT_ENTRY_RE, variant_suffix
+from claude_code_log.utils import VARIANT_ENTRY_RE, variant_suffix
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ class TestVariantSuffix:
 
 
 # ---------------------------------------------------------------------------
-# _VARIANT_ENTRY_RE
+# VARIANT_ENTRY_RE
 # ---------------------------------------------------------------------------
 
 
@@ -83,7 +83,7 @@ class TestVariantEntryRegex:
         ],
     )
     def test_accepts_entry_points(self, name: str, expected_suffix: str) -> None:
-        m = _VARIANT_ENTRY_RE.match(name)
+        m = VARIANT_ENTRY_RE.match(name)
         assert m is not None, name
         assert m.group(1) == expected_suffix
 
@@ -98,7 +98,7 @@ class TestVariantEntryRegex:
         ],
     )
     def test_rejects_non_entry_points(self, name: str) -> None:
-        assert _VARIANT_ENTRY_RE.match(name) is None, name
+        assert VARIANT_ENTRY_RE.match(name) is None, name
 
 
 # ---------------------------------------------------------------------------
@@ -450,3 +450,149 @@ class TestPaginationCacheVariantApi:
         # Page counts are variant-scoped.
         assert cache.get_page_count() == 1
         assert cache.get_page_count(".low") == 1
+
+
+# ---------------------------------------------------------------------------
+# Migration 004 upgrade path — preserve page_sessions across the
+# table-recreate (PRAGMA foreign_keys toggle)
+# ---------------------------------------------------------------------------
+
+
+class TestMigration004UpgradePath:
+    def test_page_sessions_survive_table_recreate(self, tmp_path: Path) -> None:
+        """Pre-populating html_pages + page_sessions rows before applying
+        migration 004 must NOT lose any page_sessions on upgrade. Without
+        `PRAGMA foreign_keys = OFF`, the DROP TABLE html_pages cascades
+        and wipes every page_sessions row."""
+        import sqlite3
+        from claude_code_log.migrations.runner import (
+            apply_migration,
+            _ensure_schema_version_table,
+        )
+
+        db = tmp_path / "cache.db"
+        conn = sqlite3.connect(str(db), timeout=30.0)
+        try:
+            conn.execute("PRAGMA foreign_keys = ON")
+            _ensure_schema_version_table(conn)
+            migrations_dir = (
+                Path(__file__).parent.parent / "claude_code_log" / "migrations"
+            )
+            # Apply 001, 002, 003 to build the pre-upgrade schema.
+            for i in (1, 2, 3):
+                mig_file = next(migrations_dir.glob(f"{i:03d}_*.sql"))
+                apply_migration(conn, i, mig_file)
+
+            # Seed a minimal paginated state: one project, one page, one
+            # page_sessions row.
+            conn.execute(
+                "INSERT INTO projects (project_path, version, cache_created, last_updated) "
+                "VALUES (?, '0.0.1', datetime('now'), datetime('now'))",
+                (str(tmp_path / "proj"),),
+            )
+            project_id = conn.execute("SELECT id FROM projects LIMIT 1").fetchone()[0]
+            conn.execute(
+                "INSERT INTO html_pages "
+                "(project_id, page_number, html_path, page_size_config, message_count, "
+                " first_session_id, last_session_id, generated_at, library_version) "
+                "VALUES (?, 1, 'combined_transcripts.html', 2000, 10, 's1', 's1', "
+                " datetime('now'), '0.0.1')",
+                (project_id,),
+            )
+            page_id = conn.execute("SELECT id FROM html_pages LIMIT 1").fetchone()[0]
+            conn.execute(
+                "INSERT INTO page_sessions (page_id, session_id, session_order) "
+                "VALUES (?, 's1', 0)",
+                (page_id,),
+            )
+            conn.commit()
+
+            before_pages = conn.execute("SELECT COUNT(*) FROM html_pages").fetchone()[0]
+            before_page_sessions = conn.execute(
+                "SELECT COUNT(*) FROM page_sessions"
+            ).fetchone()[0]
+            assert before_pages == 1
+            assert before_page_sessions == 1
+
+            # Apply migration 004 — the blocker was that this silently
+            # cascade-deleted every page_sessions row.
+            mig_004 = next(migrations_dir.glob("004_*.sql"))
+            apply_migration(conn, 4, mig_004)
+
+            after_pages = conn.execute("SELECT COUNT(*) FROM html_pages").fetchone()[0]
+            after_page_sessions = conn.execute(
+                "SELECT COUNT(*) FROM page_sessions"
+            ).fetchone()[0]
+
+            assert after_pages == 1, "html_pages row must survive the table recreate"
+            assert after_page_sessions == 1, (
+                f"page_sessions row must survive migration 004 "
+                f"(was {before_page_sessions}, now {after_page_sessions}) — "
+                "PRAGMA foreign_keys toggle missing?"
+            )
+
+            # Confirm the new variant_suffix column is present and the
+            # existing row has the default '' variant.
+            row = conn.execute(
+                "SELECT variant_suffix FROM html_pages LIMIT 1"
+            ).fetchone()
+            assert row[0] == ""
+        finally:
+            conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Paginated × variant cache coexistence (converter integration)
+# ---------------------------------------------------------------------------
+
+
+class TestPaginatedVariantCoexistence:
+    def test_full_and_low_pages_coexist_and_cache_hits(self, tmp_path: Path) -> None:
+        """Force pagination with a tiny page_size, render FULL → LOW →
+        FULL again. All page files for both variants must coexist; the
+        second FULL render must be a cache hit; LOW must not delete any
+        FULL page file."""
+        # Two sessions, each with multiple messages — with page_size=2 we
+        # get at least 2 pages per variant.
+        _write_session(tmp_path / "sessA.jsonl", "sessA", num_messages=6)
+        _write_session(tmp_path / "sessB.jsonl", "sessB", num_messages=6)
+
+        full_page1 = convert_jsonl_to("html", tmp_path, silent=True, page_size=2)
+        assert full_page1.name == "combined_transcripts.html"
+        full_page2 = tmp_path / "combined_transcripts_2.html"
+        # At minimum we expect the first page; pagination may or may not
+        # split further depending on DAG ordering, but *some* page-2
+        # variant should exist (this is the setup we're testing against
+        # — if it doesn't, increase num_messages).
+        assert full_page2.exists(), (
+            f"Expected pagination to produce page 2; "
+            f"dir contents: {sorted(p.name for p in tmp_path.glob('*.html'))}"
+        )
+        full_page1_mtime = full_page1.stat().st_mtime
+        full_page2_mtime = full_page2.stat().st_mtime
+
+        # Render LOW — must produce its own variant files and leave
+        # FULL's alone.
+        low_page1 = convert_jsonl_to(
+            "html",
+            tmp_path,
+            silent=True,
+            page_size=2,
+            detail=DetailLevel.LOW,
+        )
+        assert low_page1.name == "combined_transcripts.low.html"
+        low_page2 = tmp_path / "combined_transcripts.low_2.html"
+        assert low_page2.exists()
+        # FULL's page files must be untouched.
+        assert full_page1.exists()
+        assert full_page2.exists()
+        assert full_page1.stat().st_mtime == full_page1_mtime
+        assert full_page2.stat().st_mtime == full_page2_mtime
+
+        # Second FULL render must hit the cache — no page files rewritten.
+        full_page1_again = convert_jsonl_to("html", tmp_path, silent=True, page_size=2)
+        assert full_page1_again == full_page1
+        assert full_page1.stat().st_mtime == full_page1_mtime, (
+            "Second FULL render should have been a cache hit"
+        )
+        assert full_page2.stat().st_mtime == full_page2_mtime

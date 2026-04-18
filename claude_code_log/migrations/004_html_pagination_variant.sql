@@ -10,6 +10,15 @@
 -- recreated. Existing rows get variant_suffix = '' (the full/default
 -- variant), which matches their current html_path semantics. The `id`
 -- column is preserved so the page_sessions foreign key stays intact.
+--
+-- `page_sessions.page_id` has `ON DELETE CASCADE` referencing
+-- `html_pages.id`. With `foreign_keys = ON` (set globally by runner.py),
+-- the `DROP TABLE html_pages` step below would cascade and wipe every
+-- page_sessions row BEFORE the RENAME restores the target. Follow the
+-- official SQLite 12-step ALTER TABLE recipe: disable FK enforcement
+-- around the recreate and re-enable + audit afterwards.
+
+PRAGMA foreign_keys = OFF;
 
 CREATE TABLE html_pages_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,3 +63,7 @@ DROP TABLE html_pages;
 ALTER TABLE html_pages_new RENAME TO html_pages;
 
 CREATE INDEX IF NOT EXISTS idx_html_pages_project ON html_pages(project_id);
+
+-- Verify no FK violations were introduced, then restore enforcement.
+PRAGMA foreign_key_check;
+PRAGMA foreign_keys = ON;

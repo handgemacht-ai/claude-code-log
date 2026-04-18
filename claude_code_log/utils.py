@@ -41,7 +41,7 @@ from .factories import (
 # no-op on the filename (matching the CLI description that compact is
 # Markdown-only).
 
-_VARIANT_ENTRY_RE = re.compile(r"^combined_transcripts((?:\.[a-z]+)*)\.html$")
+VARIANT_ENTRY_RE = re.compile(r"^combined_transcripts((?:\.[a-z]+)*)\.html$")
 
 
 def variant_suffix(
@@ -56,7 +56,9 @@ def variant_suffix(
     suffix that is inserted after the basename and before the page
     number / extension.
     """
-    if isinstance(detail, str) and not isinstance(detail, DetailLevel):
+    # `DetailLevel` inherits from `str`, so `isinstance(detail, str)` is
+    # always True — narrow only on `DetailLevel` to coerce plain strings.
+    if not isinstance(detail, DetailLevel):
         detail = DetailLevel(detail)
     parts: list[str] = []
     if detail != DetailLevel.FULL:

@@ -738,13 +738,13 @@ def _enumerate_project_variants(
     "suffix": variant-suffix-string}`` dicts the index template can
     iterate over.
     """
-    from .utils import _VARIANT_ENTRY_RE
+    from .utils import VARIANT_ENTRY_RE
 
     variants: List[Dict[str, str]] = []
     if not project_dir.is_dir():
         return variants
     for entry in sorted(project_dir.glob("combined_transcripts*.html")):
-        m = _VARIANT_ENTRY_RE.match(entry.name)
+        m = VARIANT_ENTRY_RE.match(entry.name)
         if m is None:
             continue
         suffix = m.group(1) or ""
