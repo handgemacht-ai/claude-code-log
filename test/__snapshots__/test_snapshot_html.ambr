@@ -3022,8 +3022,16 @@
       color: var(--text-primary);
   }
   
-  .tool-param-collapsible[open] > summary {
+  /* When open, hide the truncated preview text but keep the arrow visible
+     with a "collapse" hint so the user can close the expanded value again. */
+  .tool-param-collapsible[open] > summary > .tool-param-preview {
       display: none;
+  }
+  
+  .tool-param-collapsible[open] > summary::after {
+      content: "collapse";
+      color: var(--text-muted);
+      font-style: italic;
   }
   
   .tool-param-full {
@@ -8232,8 +8240,16 @@
       color: var(--text-primary);
   }
   
-  .tool-param-collapsible[open] > summary {
+  /* When open, hide the truncated preview text but keep the arrow visible
+     with a "collapse" hint so the user can close the expanded value again. */
+  .tool-param-collapsible[open] > summary > .tool-param-preview {
       display: none;
+  }
+  
+  .tool-param-collapsible[open] > summary::after {
+      content: "collapse";
+      color: var(--text-muted);
+      font-style: italic;
   }
   
   .tool-param-full {
@@ -10935,12 +10951,12 @@
                   <td class='tool-param-key'>todos</td>
                   <td class='tool-param-value'>
                           <details class='tool-param-collapsible'>
-                              <summary>[
+                              <summary><span class='tool-param-preview'>[
     &quot;broken_todo&quot;,
     {
       &quot;id&quot;: &quot;2&quot;,
       &quot;content&quot;: &quot;Implement core functionality&quot;,
-      &quot;status&quot;: &quot;...</summary>
+      &quot;status&quot;: &quot;...</span></summary>
                               <pre class='tool-param-structured'>[
     &quot;broken_todo&quot;,
     {
@@ -13541,8 +13557,16 @@
       color: var(--text-primary);
   }
   
-  .tool-param-collapsible[open] > summary {
+  /* When open, hide the truncated preview text but keep the arrow visible
+     with a "collapse" hint so the user can close the expanded value again. */
+  .tool-param-collapsible[open] > summary > .tool-param-preview {
       display: none;
+  }
+  
+  .tool-param-collapsible[open] > summary::after {
+      content: "collapse";
+      color: var(--text-muted);
+      font-style: italic;
   }
   
   .tool-param-full {
@@ -18907,8 +18931,16 @@
       color: var(--text-primary);
   }
   
-  .tool-param-collapsible[open] > summary {
+  /* When open, hide the truncated preview text but keep the arrow visible
+     with a "collapse" hint so the user can close the expanded value again. */
+  .tool-param-collapsible[open] > summary > .tool-param-preview {
       display: none;
+  }
+  
+  .tool-param-collapsible[open] > summary::after {
+      content: "collapse";
+      color: var(--text-muted);
+      font-style: italic;
   }
   
   .tool-param-full {
