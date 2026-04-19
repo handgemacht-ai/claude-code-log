@@ -17,6 +17,7 @@ from typing import Any, Callable, Optional, cast
 
 from pydantic import BaseModel
 
+from .agent_metadata_factory import parse_agent_result_metadata
 from ..models import (
     # Tool input models
     AskUserQuestionInput,
@@ -324,7 +325,11 @@ def parse_task_output(
 ) -> Optional[TaskOutput]:
     """Parse Task tool result into structured content.
 
-    Task tool results contain the agent's response as markdown.
+    Task tool results contain the agent's response as markdown. For
+    teammate-spawned or async-agent Tasks the tail carries a metadata
+    block (``agentId:`` / ``worktreePath:`` / ``worktreeBranch:`` /
+    ``<usage>``) — we extract that into ``AgentResultMetadata`` and
+    strip the tail so the rendered body stays clean.
 
     Args:
         tool_result: The tool result content (agent's response)
@@ -336,7 +341,8 @@ def parse_task_output(
     del file_path  # Unused
     if not (content := _extract_tool_result_text(tool_result)):
         return None
-    return TaskOutput(result=content)
+    body, metadata = parse_agent_result_metadata(content)
+    return TaskOutput(result=body, metadata=metadata)
 
 
 def _looks_like_bash_output(content: str) -> bool:

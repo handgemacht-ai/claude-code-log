@@ -1,5 +1,8 @@
 """Factory modules for creating typed objects from raw data."""
 
+from .agent_metadata_factory import (
+    parse_agent_result_metadata,
+)
 from .meta_factory import (
     # Metadata creation
     create_meta,
@@ -63,6 +66,8 @@ from .transcript_factory import (
 )
 
 __all__ = [
+    # Agent metadata tail parsing
+    "parse_agent_result_metadata",
     # Metadata creation
     "create_meta",
     # Content type constants
