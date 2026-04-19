@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.0] - 2026-04-19
+
+### Changed
+
+- **Preserve agentId anchors in parallel-Task stitch + tool-param UI fix (#115)**
+- **Per-level output files for --detail and --compact (#114)**
+- **Handle custom-title, agent-name, and agent-color transcript entry types (#113)**
+- **Ignore 'last-prompt' message type (#112)**
+- **Detail levels and compact rendering of conversations (#96)**
+- **Skip PassthroughTranscriptEntry in _render_messages**
+- **Integrate agent transcripts into the DAG (Phase C) (#99)**
+- **Implement DAG-based message ordering (Phases A+B) (#97)**
+- **Fix slow test hitting real ~/.claude/projects (5GB) (#109)**
+- **feat: add --session-id flag for exporting a single  (#103)**
+- **Fix search broken when HTML saved with different filename (#106)**
+- **Add Grep tool renderer with pattern in title (#107)**
+- **Fix TUI square bracket escaping issue (#105)**
+
+
 ## [1.1.1] - 2026-03-10
 
 ### Changed
