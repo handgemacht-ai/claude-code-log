@@ -140,18 +140,19 @@ def test_user_ill_formed_markdown_falls_back_to_raw():
     assert "class='user-md'" in good
     assert "class='user-raw'" in good
 
-    # Force the fallback by monkey-patching render_user_markdown to
-    # return deliberately ill-formed HTML.
-    from claude_code_log.html import user_formatters as uf
+    # Force the fallback by patching render_user_markdown to return
+    # deliberately ill-formed HTML. `mock.patch` handles the restore
+    # and sidesteps ty's invalid-assignment complaint about raw attr
+    # rebinding.
+    from unittest.mock import patch
 
-    original = uf.render_user_markdown
-    try:
-        uf.render_user_markdown = lambda _text: "<p>unclosed"
+    with patch(
+        "claude_code_log.html.user_formatters.render_user_markdown",
+        return_value="<p>unclosed",
+    ):
         bad = format_user_text_content("hello")
         # Ill-formed → bare <pre>, no toggle, no dual-view wrapper.
         assert bad == "<pre>hello</pre>"
-    finally:
-        uf.render_user_markdown = original
 
 
 def test_is_well_formed_html_unit() -> None:
