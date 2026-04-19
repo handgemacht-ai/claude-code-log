@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
+
+import mistune
+from mistune.renderers.markdown import MarkdownRenderer as _MistuneMarkdownRenderer
 
 from ..cache import get_library_version
 from ..html.utils import is_well_formed_html, render_user_markdown
@@ -147,14 +151,33 @@ def _table_cell(value: Any) -> str:
     return str(value or "").replace("\n", "<br>").replace("|", r"\|")
 
 
-# Matches raw HTML/XML-like tags, both opening (possibly with attributes
-# or self-closing) and closing. The tag name must start with a letter and
-# may include digits/hyphens. After the tag name we require whitespace,
-# ``/``, or ``>`` — that keeps CommonMark autolinks like
-# ``<https://example.com>`` from matching (the ``:`` after ``https``
-# would violate the pattern).
-_HTML_TAG_RE = re.compile(r"(?<!`)(</?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^>]*)?/?>)(?!`)")
-_FENCE_OPEN_RE = re.compile(r"^\s{0,3}(```+|~~~+)")
+class _TagProtectingMarkdownRenderer(_MistuneMarkdownRenderer):
+    """Mistune re-emitter that neutralises raw HTML tokens.
+
+    Mistune's stock ``MarkdownRenderer`` round-trips a parsed Markdown
+    document back to Markdown text. We inherit it and override just the
+    two HTML hooks: ``inline_html`` (bare tags like ``<br>``,
+    ``<script>``) and ``block_html`` (block-level HTML chunks). Those
+    are the only tokens that could let a downstream viewer interpret
+    the user's text as markup; everything else — inline code spans,
+    fenced and indented code blocks, lists, tables, blockquotes — is
+    emitted verbatim by the base class because the parser already
+    classified it correctly.
+    """
+
+    def inline_html(self, token: dict[str, Any], state: Any) -> str:
+        raw = token.get("raw", "")
+        return f"`{raw}`"
+
+    def block_html(self, token: dict[str, Any], state: Any) -> str:
+        raw = token.get("raw", "").strip()
+        return f"```\n{raw}\n```\n\n"
+
+
+@functools.lru_cache(maxsize=1)
+def _get_tag_protecting_markdown() -> mistune.Markdown:
+    """Cache the mistune pipeline used by :func:`_protect_html_tags`."""
+    return mistune.create_markdown(renderer=_TagProtectingMarkdownRenderer())
 
 
 def _protect_html_tags(text: str) -> str:
@@ -169,28 +192,21 @@ def _protect_html_tags(text: str) -> str:
     output delegates to the viewer, so we need to neutralise tags at
     emission time.
 
-    Walks the text line-by-line, skipping fenced code blocks
-    (````` ``` ````` or ``~~~``) since their contents already render as
-    literal text. Inline code spans are skipped via a backtick-adjacency
-    check in the regex (tags already surrounded by backticks are left
-    alone).
+    Parses the text with mistune and re-emits it through a
+    tag-protecting renderer. Because the parser already distinguishes
+    raw HTML from inline code spans (``` `x <br> y` ```), fenced blocks,
+    and indented code blocks, all of those are preserved unchanged and
+    only the actual HTML tokens are wrapped. The round-trip may apply
+    minor cosmetic normalisation (e.g. indented HTML becomes a fenced
+    block), which is acceptable since the goal is tag-neutralisation,
+    not byte-for-byte source preservation.
     """
-    out: list[str] = []
-    fence_delim: Optional[str] = None
-    for line in text.split("\n"):
-        stripped_leading = line.lstrip()
-        if fence_delim is not None:
-            out.append(line)
-            if stripped_leading.startswith(fence_delim):
-                fence_delim = None
-            continue
-        fence_match = _FENCE_OPEN_RE.match(line)
-        if fence_match:
-            fence_delim = fence_match.group(1)
-            out.append(line)
-            continue
-        out.append(_HTML_TAG_RE.sub(r"`\1`", line))
-    return "\n".join(out)
+    if not text:
+        return text
+    # `mistune.Markdown.__call__` is typed as returning a union of `str`
+    # and a token list; with a renderer set it always returns a string.
+    rendered = _get_tag_protecting_markdown()(text)
+    return str(rendered).rstrip("\n")
 
 
 class MarkdownRenderer(Renderer):

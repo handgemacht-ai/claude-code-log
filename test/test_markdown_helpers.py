@@ -303,24 +303,44 @@ class TestExcerpt:
 
 
 class TestProtectHtmlTags:
-    """Tests for the _protect_html_tags() module-level helper."""
+    """Tests for the _protect_html_tags() module-level helper.
+
+    The helper parses with mistune and re-emits through a tag-protecting
+    renderer. That means inline HTML tokens get wrapped in backticks,
+    block-level HTML tokens get fenced, and all non-HTML Markdown is
+    preserved — including inline code spans, fenced blocks, and indented
+    code blocks the author may have used specifically to quote HTML.
+    """
 
     def test_plain_text_unchanged(self):
         """Text with no tags is returned verbatim."""
         assert _protect_html_tags("just some prose") == "just some prose"
 
-    def test_wraps_bare_tag(self):
-        """Bare ``<br>`` is wrapped in backticks."""
+    def test_wraps_bare_inline_tag(self):
+        """Bare inline ``<br>`` is wrapped in backticks."""
         assert _protect_html_tags("line one<br>line two") == "line one`<br>`line two"
 
-    def test_wraps_open_and_close(self):
-        """Both opening and closing tags are wrapped independently."""
+    def test_wraps_inline_open_and_close(self):
+        """Inline opening and closing tags are wrapped independently."""
+        # `<b>bold</b>` inside prose → inline-HTML tokens → backticked.
+        result = _protect_html_tags("some <b>bold</b> text")
+        assert result == "some `<b>`bold`</b>` text"
+
+    def test_block_html_gets_fenced(self):
+        """A tag on its own line is a block HTML token → fenced code."""
+        # `<script>alert(1)</script>` alone on a line is parsed as
+        # block-level HTML. Emitting it inside a fence is stronger
+        # protection (literal content, no interpretation) than inline
+        # backticks and is what we want.
         result = _protect_html_tags("<script>alert(1)</script>")
-        assert result == "`<script>`alert(1)`</script>`"
+        assert result == "```\n<script>alert(1)</script>\n```"
 
     def test_wraps_tag_with_attributes(self):
-        """Tags with attributes wrap whole-tag including attrs."""
-        assert _protect_html_tags('<a href="x">link</a>') == '`<a href="x">`link`</a>`'
+        """Inline tags with attributes wrap whole-tag including attrs."""
+        assert (
+            _protect_html_tags('say <a href="x">link</a> please')
+            == 'say `<a href="x">`link`</a>` please'
+        )
 
     def test_self_closing_tag(self):
         """XHTML-style ``<br />`` is wrapped as one token."""
@@ -328,7 +348,20 @@ class TestProtectHtmlTags:
 
     def test_inline_code_already_wrapped(self):
         """A tag already inside inline code isn't double-wrapped."""
-        assert _protect_html_tags("use `<br>` here") == "use `<br>` here"
+        # This is the user-flagged concern from the coderabbit review:
+        # ``` `x <br> y` ``` must not be rewritten.
+        assert _protect_html_tags("use `x <br> y` here") == "use `x <br> y` here"
+
+    def test_double_backtick_inline_code_preserved(self):
+        """Inline code with embedded backticks stays an inline code span.
+
+        Mistune normalises ``\\`\\`<br>\\`\\``` to ``\\`<br>\\``` on
+        re-emission (single-backtick delimiter suffices for that
+        content), which is semantically equivalent — the ``<br>``
+        stays inside an inline-code span either way.
+        """
+        result = _protect_html_tags("run ``<br>`` verbatim")
+        assert result == "run `<br>` verbatim"
 
     def test_autolink_not_wrapped(self):
         """CommonMark autolink ``<https://...>`` is preserved."""
@@ -337,31 +370,58 @@ class TestProtectHtmlTags:
             == "see <https://example.com/path> for info"
         )
 
+    def test_email_autolink_not_wrapped(self):
+        """CommonMark email autolink ``<you@example.com>`` is preserved."""
+        assert (
+            _protect_html_tags("email <you@example.com> directly")
+            == "email <you@example.com> directly"
+        )
+
     def test_less_than_not_wrapped(self):
         """Bare ``<3`` and ``<=`` aren't mistaken for tags."""
         assert _protect_html_tags("x < 3 and x <= 5") == "x < 3 and x <= 5"
 
     def test_inside_fenced_code_block(self):
-        """Tags inside a ``` fence stay untouched (already literal)."""
-        text = "Here is code:\n```html\n<script>x</script>\n```\nend"
-        assert _protect_html_tags(text) == text
+        """Tags inside a ``` fence stay literal (no rewrite)."""
+        text = "Here is code:\n\n```html\n<script>x</script>\n```"
+        # Mistune normalises trailing whitespace but preserves the
+        # fence contents exactly — the key invariant.
+        result = _protect_html_tags(text)
+        assert "```html\n<script>x</script>\n```" in result
 
     def test_inside_tilde_fence(self):
         """~~~ fences are respected just like ``` fences."""
         text = "~~~\n<br>\n~~~"
         assert _protect_html_tags(text) == text
 
+    def test_indented_code_block_preserved(self):
+        """Tags inside an indented code block are not rewritten.
+
+        Mistune classifies 4-space-indented lines as a code block, so
+        the HTML inside is a code-block token (not an inline-HTML one)
+        and isn't touched by our overrides. Mistune's stock renderer
+        re-emits indented code as a fenced block — the content is
+        preserved, only the fence style changes.
+        """
+        result = _protect_html_tags("prose\n\n    <script>x</script>\n\nmore")
+        assert "<script>x</script>" in result
+        # The raw tag is preserved literally (no backticks wrapped
+        # around `<script>` itself — it stays as-is inside the fence).
+        assert "`<script>`" not in result
+
     def test_tag_outside_fence_when_mixed(self):
         """A tag outside a fence is wrapped even when another is in a fence."""
         text = "Outside <br> tag.\n\n```\n<br> inside fence\n```\nAfter <hr>."
-        expected = "Outside `<br>` tag.\n\n```\n<br> inside fence\n```\nAfter `<hr>`."
-        assert _protect_html_tags(text) == expected
+        result = _protect_html_tags(text)
+        assert "Outside `<br>` tag." in result
+        assert "<br> inside fence" in result  # untouched inside the fence
+        assert "After `<hr>`." in result
 
-    def test_multiple_tags_on_one_line(self):
-        """Multiple tags on the same line are each wrapped."""
+    def test_multiple_inline_tags_on_one_line(self):
+        """Multiple inline tags on the same line are each wrapped."""
         assert (
-            _protect_html_tags("<b>bold</b> and <i>italic</i>")
-            == "`<b>`bold`</b>` and `<i>`italic`</i>`"
+            _protect_html_tags("text <b>bold</b> and <i>italic</i>")
+            == "text `<b>`bold`</b>` and `<i>`italic`</i>`"
         )
 
 
