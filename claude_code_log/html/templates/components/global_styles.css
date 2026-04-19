@@ -252,9 +252,10 @@ pre {
 /* User-content view toggle (Markdown / raw).
  *
  * Emitted by `format_user_text_content`: a `.user-content` wrapper
- * with `data-user-view` starting at "md", containing `.user-md`
- * (rendered Markdown), `.user-raw` (escaped raw text), and a small
- * `.user-view-toggle` button.  Precedence:
+ * with no `data-user-view` attribute until the user clicks the
+ * per-message toggle, containing `.user-md` (rendered Markdown),
+ * `.user-raw` (escaped raw text), and a small `.user-view-toggle`
+ * button.  Precedence:
  *
  *   1. Per-message `data-user-view="md"` / `data-user-view="raw"`
  *      wins (highest specificity).
