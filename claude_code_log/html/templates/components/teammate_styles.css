@@ -1,4 +1,3 @@
-<style>
 /* Named tokens for the Claude Code teammate palette.
    Values chosen to read well against both the light and dark message
    backgrounds already used in message_styles.css. */
@@ -239,4 +238,3 @@
 .teammate-tool-card.send-message-card .recipient .teammate-badge {
     font-size: 0.8em;
 }
-</style>
