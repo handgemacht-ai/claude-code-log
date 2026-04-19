@@ -2178,7 +2178,7 @@ def _reorder_session_template_messages(
 
 
 def _queue_op_content_as_list(
-    content: Any,
+    content: Optional[list[ContentItem] | str],
 ) -> list[ContentItem]:
     """Normalise `QueueOperationTranscriptEntry.content` to a ContentItem list.
 
@@ -2189,7 +2189,7 @@ def _queue_op_content_as_list(
     None / empty / other shapes.
     """
     if isinstance(content, list):
-        return content  # type: ignore[return-value]
+        return content
     if isinstance(content, str) and content.strip():
         return [TextContent(type="text", text=content)]
     return []
@@ -2613,12 +2613,20 @@ def _collect_session_info(
             continue
 
         # Get message content
+        message_content: list[ContentItem]
         if isinstance(message, QueueOperationTranscriptEntry):
             message_content = _queue_op_content_as_list(message.content)
         else:
-            message_content = message.message.content  # type: ignore
+            # After filtering out System/Summary/Passthrough upstream in
+            # _filter_messages, `message` is User/Assistant here — both
+            # expose `.message.content: list[ContentItem]`. The inner
+            # cast narrows the union explicitly so pyright's strict mode
+            # and ty both see a clean `list[ContentItem]` on the RHS.
+            message_content = cast(
+                "UserTranscriptEntry | AssistantTranscriptEntry", message
+            ).message.content
 
-        text_content = extract_text_content(message_content)  # type: ignore[arg-type]
+        text_content = extract_text_content(message_content)
 
         # Get session info
         session_id = getattr(message, "sessionId", "unknown")
