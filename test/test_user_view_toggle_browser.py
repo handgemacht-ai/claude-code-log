@@ -76,12 +76,23 @@ class TestUserViewToggleBrowser:
         self.temp_files.append(html_path)
         return html_path
 
+    def _goto_clean(self, page: Page, html: Path) -> None:
+        """Navigate to the rendered HTML with a guaranteed-empty
+        localStorage. Chromium shares localStorage across all file://
+        URLs (single null origin), so tests in the same session can
+        leak the global raw/md preference into each other. Clearing
+        + reloading here gives every test a deterministic starting
+        state — equivalent to what the user sees on a fresh browser."""
+        page.goto(f"file://{html}")
+        page.evaluate("() => localStorage.clear()")
+        page.reload()
+
     @pytest.mark.browser
     def test_default_load_shows_markdown(self, page: Page) -> None:
         """On a fresh load, the rendered Markdown is visible and the raw
         pre is hidden."""
         html = self._render([_user_entry("u1", "# Hi\n\n**bold**")])
-        page.goto(f"file://{html}")
+        self._goto_clean(page, html)
         expect(page.locator(".user-md").first).to_be_visible()
         expect(page.locator(".user-raw").first).to_be_hidden()
 
@@ -92,7 +103,7 @@ class TestUserViewToggleBrowser:
         because every wrapper shipped with data-user-view='md' baked in.
         After the fix, clicking the global toggle flips them correctly."""
         html = self._render([_user_entry("u1", "# Hi\n\n**bold**")])
-        page.goto(f"file://{html}")
+        self._goto_clean(page, html)
 
         md = page.locator(".user-md").first
         raw = page.locator(".user-raw").first
@@ -117,7 +128,7 @@ class TestUserViewToggleBrowser:
                 _user_entry("u2", "second message", "2026-01-01T10:01:00.000Z"),
             ]
         )
-        page.goto(f"file://{html}")
+        self._goto_clean(page, html)
 
         mds = page.locator(".user-md")
         raws = page.locator(".user-raw")
@@ -144,7 +155,7 @@ class TestUserViewToggleBrowser:
                 _user_entry("u2", "default message", "2026-01-01T10:01:00.000Z"),
             ]
         )
-        page.goto(f"file://{html}")
+        self._goto_clean(page, html)
 
         # Click the first message's per-message toggle twice to get an
         # explicit data-user-view='md' (round-trip through 'raw').
@@ -168,7 +179,7 @@ class TestUserViewToggleBrowser:
     def test_global_choice_persists_across_reload(self, page: Page) -> None:
         """localStorage persists the global raw/md preference."""
         html = self._render([_user_entry("u1", "# Hi\n\n**bold**")])
-        page.goto(f"file://{html}")
+        self._goto_clean(page, html)
 
         page.locator("#toggleUserView").click()  # → raw
         expect(page.locator(".user-raw").first).to_be_visible()
