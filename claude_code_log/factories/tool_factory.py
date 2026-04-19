@@ -752,19 +752,27 @@ def parse_teamcreate_output(
 def parse_teamdelete_output(
     tool_result: ToolResultContent, file_path: Optional[str]
 ) -> Optional[TeamDeleteOutput]:
-    """Parse TeamDelete JSON output, extracting active members when present."""
+    """Parse TeamDelete JSON output, extracting active members when present.
+
+    Rejects payloads where ``success`` isn't a real bool or ``message`` isn't
+    a real string so a stringified ``"false"`` can't silently render as
+    success (coderabbit #117).
+    """
     del file_path
     data = _try_load_json_text(tool_result)
     if data is None:
         return None
-    message = str(data.get("message", ""))
+    success = data.get("success")
+    message = data.get("message")
+    if not isinstance(success, bool) or not isinstance(message, str):
+        return None
     active_members: Optional[list[str]] = None
     active_match = _TEAM_DELETE_ACTIVE_RE.search(message)
     if active_match:
         members_raw = active_match.group("members")
         active_members = [m.strip() for m in members_raw.split(",") if m.strip()]
     return TeamDeleteOutput(
-        success=bool(data.get("success", False)),
+        success=success,
         message=message,
         team_name=_opt_str(data.get("team_name")),
         active_members=active_members,
@@ -866,14 +874,22 @@ def parse_sendmessage_output(
 
     Shape:
         {"success": bool, "message": str, "request_id": str, "target": str}
+
+    Rejects payloads where ``success`` isn't a real bool or ``message`` isn't
+    a real string so a stringified ``"false"`` can't silently render as
+    success (coderabbit #117).
     """
     del file_path
     data = _try_load_json_text(tool_result)
     if data is None:
         return None
+    success = data.get("success")
+    message = data.get("message")
+    if not isinstance(success, bool) or not isinstance(message, str):
+        return None
     return SendMessageOutput(
-        success=bool(data.get("success", False)),
-        message=str(data.get("message", "")),
+        success=success,
+        message=message,
         request_id=_opt_str(data.get("request_id")),
         target=_opt_str(data.get("target")),
     )

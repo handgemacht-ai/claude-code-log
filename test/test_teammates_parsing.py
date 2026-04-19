@@ -139,6 +139,52 @@ class TestAgentResultMetadata:
         _, meta = parse_agent_result_metadata("agentId: abc\n")
         assert isinstance(meta, AgentResultMetadata)
 
+    def test_body_mentioning_agent_id_is_preserved(self) -> None:
+        """Regression (coderabbit #117): an agent response that itself
+        shows an `agentId:` line verbatim (e.g. quoting another agent's
+        metadata back) must not be truncated — only the *last* `agentId:`
+        line is treated as the metadata anchor.
+        """
+        # Body contains a literal line-starting ``agentId:`` that would
+        # have matched the old first-match anchor; real metadata follows.
+        text = (
+            "Here's the metadata from the upstream spawn I investigated:\n"
+            "\n"
+            "agentId: bogus1234\n"
+            "worktreePath: /tmp/upstream\n"
+            "\n"
+            "That's what I found. My own report follows.\n"
+            "\n"
+            "agentId: real5678\n"
+            "worktreePath: /tmp/mine\n"
+            "worktreeBranch: wt-real\n"
+        )
+        body, meta = parse_agent_result_metadata(text)
+        # Old code would have truncated at the first ``agentId:`` line,
+        # dropping everything after it (including the "real report" line
+        # AND the actual metadata).
+        assert "agentId: bogus1234" in body
+        assert "That's what I found" in body
+        assert meta is not None
+        assert meta.agent_id == "real5678"
+        assert meta.worktree_path == "/tmp/mine"
+        assert meta.worktree_branch == "wt-real"
+
+    def test_worktree_path_with_spaces(self) -> None:
+        """Regression (coderabbit #117): `worktreePath` with spaces must
+        be captured in full, not truncated at the first space."""
+        text = (
+            "body\n"
+            "agentId: abc\n"
+            "worktreePath: /home/user/My Worktrees/agent-abc\n"
+            "worktreeBranch: feature/agent abc\n"
+        )
+        body, meta = parse_agent_result_metadata(text)
+        assert body == "body"
+        assert meta is not None
+        assert meta.worktree_path == "/home/user/My Worktrees/agent-abc"
+        assert meta.worktree_branch == "feature/agent abc"
+
 
 def _meta() -> MessageMeta:
     return MessageMeta(session_id="s", timestamp="t", uuid="u")
@@ -344,6 +390,27 @@ class TestTeammateToolOutputs:
         assert isinstance(out, TeamDeleteOutput)
         assert out.success is True
         assert out.active_members is None
+
+    def test_teamdelete_rejects_string_success(self) -> None:
+        """Regression (coderabbit #117): stringified `"false"` must not
+        coerce into `success=True`."""
+        payload = '{"success":"false","message":"no","team_name":"x"}'
+        out = parse_teamdelete_output(_tr_text(payload), None)
+        assert out is None
+
+    def test_sendmessage_rejects_string_success(self) -> None:
+        """Regression (coderabbit #117): same as TeamDelete — the parser
+        falls through rather than silently mis-rendering a string bool."""
+        payload = (
+            '{"success":"true","message":"sent","request_id":"r","target":"alice"}'
+        )
+        out = parse_sendmessage_output(_tr_text(payload), None)
+        assert out is None
+
+    def test_sendmessage_rejects_non_string_message(self) -> None:
+        payload = '{"success":true,"message":123,"target":"alice"}'
+        out = parse_sendmessage_output(_tr_text(payload), None)
+        assert out is None
 
     def test_teamdelete_active_members_without_trailing_period(self) -> None:
         """Defensive: the active-members regex must not require a period."""

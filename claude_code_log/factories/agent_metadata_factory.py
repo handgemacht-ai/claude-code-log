@@ -24,9 +24,19 @@ from typing import Optional, Tuple
 from ..models import AgentResultMetadata
 
 
-_AGENT_ID_RE = re.compile(r"^\s*agentId:\s*(\S+)", re.MULTILINE)
-_WORKTREE_PATH_RE = re.compile(r"^\s*worktreePath:\s*(\S+)", re.MULTILINE)
-_WORKTREE_BRANCH_RE = re.compile(r"^\s*worktreeBranch:\s*(\S+)", re.MULTILINE)
+# `[^\S\r\n]*` matches horizontal whitespace only (not the leading newline),
+# so each ^-anchored line is captured from its own start. The path/branch
+# values use `(.+?)` + trailing whitespace trim so paths containing spaces
+# survive intact (coderabbit #117).
+_AGENT_ID_RE = re.compile(r"^[^\S\r\n]*agentId:\s*(\S+)", re.MULTILINE)
+_WORKTREE_PATH_RE = re.compile(
+    r"^[^\S\r\n]*worktreePath:[^\S\r\n]*(.+?)[^\S\r\n]*$",
+    re.MULTILINE,
+)
+_WORKTREE_BRANCH_RE = re.compile(
+    r"^[^\S\r\n]*worktreeBranch:[^\S\r\n]*(.+?)[^\S\r\n]*$",
+    re.MULTILINE,
+)
 _USAGE_RE = re.compile(r"<usage>(.*?)</usage>", re.DOTALL)
 _TOTAL_TOKENS_RE = re.compile(r"total_tokens:\s*(\d+)")
 _TOOL_USES_RE = re.compile(r"tool_uses:\s*(\d+)")
@@ -45,18 +55,19 @@ def parse_agent_result_metadata(
     if not text:
         return text, None
 
-    # Anchor on the first line of the metadata block. Historically only
-    # `agentId:` marks its beginning; worktree/usage lines trail it.
-    anchor_match = _AGENT_ID_RE.search(text)
-    if anchor_match is None:
-        # The `<usage>` block may appear alone in older transcripts — treat it
-        # as metadata too so its body isn't clobbered into the response text.
+    # Anchor on the *last* line starting with `agentId:` so body text that
+    # discusses `agentId:` (e.g. an agent logging its own id mid-response)
+    # isn't mistaken for the metadata tail (coderabbit #117).
+    all_agent_id_matches = list(_AGENT_ID_RE.finditer(text))
+    if all_agent_id_matches:
+        tail_start = all_agent_id_matches[-1].start()
+    else:
+        # The `<usage>` block may appear alone in older transcripts — treat
+        # it as metadata too so its body isn't clobbered into the response.
         usage_match = _USAGE_RE.search(text)
         if usage_match is None:
             return text, None
         tail_start = usage_match.start()
-    else:
-        tail_start = anchor_match.start()
 
     body = text[:tail_start].rstrip()
     tail = text[tail_start:]
