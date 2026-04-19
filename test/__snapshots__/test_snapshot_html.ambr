@@ -5926,7 +5926,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_001</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Hello Claude! Can you help me understand how Python decorators work?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Hello Claude! Can you help me understand how Python decorators work?</p>
   </div><pre class='user-raw'>Hello Claude! Can you help me understand how Python decorators work?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-1' data-border-color='user'>
@@ -5997,7 +5997,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_003</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Great! Can you also show me how to create a decorator that takes parameters?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Great! Can you also show me how to create a decorator that takes parameters?</p>
   </div><pre class='user-raw'>Great! Can you also show me how to create a decorator that takes parameters?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-3' data-border-color='user'>
@@ -6099,7 +6099,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_007</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Can you run that example to show the output?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Can you run that example to show the output?</p>
   </div><pre class='user-raw'>Can you run that example to show the output?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-7' data-border-color='user'>
@@ -6199,7 +6199,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_011</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</p>
   </div><pre class='user-raw'>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</pre></div></div>
           
       </div>
@@ -17383,7 +17383,7 @@
               </div>
           </div>
           <div class='debug-info'>edge_001</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Here's a message with some <strong>markdown</strong> formatting, <code>inline code</code>, and even a <a href="https://example.com">link</a>. Let's see how it renders!</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Here's a message with some <strong>markdown</strong> formatting, <code>inline code</code>, and even a <a href="https://example.com">link</a>. Let's see how it renders!</p>
   </div><pre class='user-raw'>Here&#x27;s a message with some **markdown** formatting, `inline code`, and even a [link](https://example.com). Let&#x27;s see how it renders!</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-1' data-border-color='user'>
@@ -17473,7 +17473,7 @@
               </div>
           </div>
           <div class='debug-info'>edge_003</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Let's test a very long message to see how it handles text wrapping and layout. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Let's test a very long message to see how it handles text wrapping and layout. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.</p>
   </div><pre class='user-raw'>Let&#x27;s test a very long message to see how it handles text wrapping and layout. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-3' data-border-color='user'>
@@ -17656,7 +17656,7 @@
               </div>
           </div>
           <div class='debug-info'>edge_011</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Testing special characters: café, naïve, résumé, 中文, العربية, русский, 🎉 emojis 🚀 and symbols ∑∆√π∞</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Testing special characters: café, naïve, résumé, 中文, العربية, русский, 🎉 emojis 🚀 and symbols ∑∆√π∞</p>
   </div><pre class='user-raw'>Testing special characters: café, naïve, résumé, 中文, العربية, русский, 🎉 emojis 🚀 and symbols ∑∆√π∞</pre></div></div>
           
       </div>
@@ -17676,7 +17676,7 @@
               </div>
           </div>
           <div class='debug-info'>edge_010</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>wow error</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>wow error</p>
   </div><pre class='user-raw'>wow error</pre></div></div>
           
       </div>
@@ -23224,7 +23224,7 @@
               </div>
           </div>
           <div class='debug-info'>session_b_00</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is from a different session file to test multi-session handling.</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is from a different session file to test multi-session handling.</p>
   </div><pre class='user-raw'>This is from a different session file to test multi-session handling.</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-1' data-border-color='user'>
@@ -23276,7 +23276,7 @@
               </div>
           </div>
           <div class='debug-info'>session_b_00</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Perfect! This should appear without any session divider above it.</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Perfect! This should appear without any session divider above it.</p>
   </div><pre class='user-raw'>Perfect! This should appear without any session divider above it.</pre></div></div>
           
       </div>
@@ -23319,7 +23319,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_001</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Hello Claude! Can you help me understand how Python decorators work?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Hello Claude! Can you help me understand how Python decorators work?</p>
   </div><pre class='user-raw'>Hello Claude! Can you help me understand how Python decorators work?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-5' data-border-color='user'>
@@ -23390,7 +23390,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_003</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Great! Can you also show me how to create a decorator that takes parameters?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Great! Can you also show me how to create a decorator that takes parameters?</p>
   </div><pre class='user-raw'>Great! Can you also show me how to create a decorator that takes parameters?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-7' data-border-color='user'>
@@ -23492,7 +23492,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_007</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Can you run that example to show the output?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Can you run that example to show the output?</p>
   </div><pre class='user-raw'>Can you run that example to show the output?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-11' data-border-color='user'>
@@ -23592,7 +23592,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_011</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</p>
   </div><pre class='user-raw'>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</pre></div></div>
           
       </div>
@@ -28998,7 +28998,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_001</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Hello Claude! Can you help me understand how Python decorators work?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Hello Claude! Can you help me understand how Python decorators work?</p>
   </div><pre class='user-raw'>Hello Claude! Can you help me understand how Python decorators work?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-1' data-border-color='user'>
@@ -29069,7 +29069,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_003</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Great! Can you also show me how to create a decorator that takes parameters?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Great! Can you also show me how to create a decorator that takes parameters?</p>
   </div><pre class='user-raw'>Great! Can you also show me how to create a decorator that takes parameters?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-3' data-border-color='user'>
@@ -29171,7 +29171,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_007</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Can you run that example to show the output?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>Can you run that example to show the output?</p>
   </div><pre class='user-raw'>Can you run that example to show the output?</pre></div></div>
           
           <div class='fold-bar' data-message-id='d-7' data-border-color='user'>
@@ -29271,7 +29271,7 @@
               </div>
           </div>
           <div class='debug-info'>msg_011</div>
-          <div class='content'><div class='user-content' data-user-view='md'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</p>
+          <div class='content'><div class='user-content'><button type='button' class='user-view-toggle' aria-label='Toggle between Markdown and raw view' title='Toggle Markdown / raw view'>raw</button><div class='user-md'><p>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</p>
   </div><pre class='user-raw'>This is really helpful! Let me try to implement a timing decorator myself. Can you help me if I get stuck?</pre></div></div>
           
       </div>

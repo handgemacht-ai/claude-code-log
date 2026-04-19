@@ -220,11 +220,14 @@ def format_user_text_content(text: str) -> str:
         "aria-label='Toggle between Markdown and raw view' "
         "title='Toggle Markdown / raw view'>raw</button>"
     )
-    return (
-        f"<div class='user-content' data-user-view='md'>"
-        f"{toggle}{md_block}{raw_block}"
-        f"</div>"
-    )
+    # Intentionally emit the wrapper WITHOUT `data-user-view`. The
+    # attribute is only set by the per-message toggle JS after the user
+    # clicks. The CSS rule for the global raw toggle is
+    # `body.show-raw-user .user-content:not([data-user-view="md"]) …`
+    # — baking `data-user-view="md"` into the default shape would make
+    # every message look explicitly-overridden-to-md and the global
+    # toggle would have no effect.
+    return f"<div class='user-content'>{toggle}{md_block}{raw_block}</div>"
 
 
 def format_user_text_model_content(

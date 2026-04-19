@@ -351,8 +351,12 @@ class TestContentFormatters:
         views. The raw view must still preserve the original text."""
         html = format_user_text_content("Simple user message")
 
-        # Dual-view wrapper present with Markdown as the default view.
-        assert "class='user-content' data-user-view='md'" in html
+        # Dual-view wrapper present. No `data-user-view` attribute by
+        # default — the per-message toggle JS sets it after a click, and
+        # the global-raw CSS selector (`:not([data-user-view="md"])`)
+        # depends on that attribute being absent on untouched messages.
+        assert "class='user-content'>" in html
+        assert "data-user-view" not in html
         # Raw <pre> preserved for toggle-back and accessibility.
         assert "<pre class='user-raw'>Simple user message</pre>" in html
         # Markdown rendering wraps the text in a paragraph.
