@@ -51,6 +51,8 @@ class TestVariantSuffix:
         assert variant_suffix(DetailLevel.HIGH, False, "html") == ".high"
         assert variant_suffix(DetailLevel.LOW, False, "html") == ".low"
         assert variant_suffix(DetailLevel.MINIMAL, False, "md") == ".minimal"
+        assert variant_suffix(DetailLevel.USER_ONLY, False, "html") == ".user-only"
+        assert variant_suffix(DetailLevel.USER_ONLY, False, "md") == ".user-only"
 
     def test_compact_markdown_only(self) -> None:
         # Compact contributes for Markdown output.

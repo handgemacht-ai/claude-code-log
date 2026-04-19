@@ -1133,6 +1133,191 @@ class TestCompactMarkdown:
         assert "Second" in html
 
 
+# -- USER_ONLY level ---------------------------------------------------------
+
+
+class TestUserOnlyTemplateMessages:
+    """USER_ONLY keeps user prompts and steering only — the intended input
+    shape for downstream agents (e.g. extracting a requirements.md)."""
+
+    def test_drops_assistant_text(self, tmp_path):
+        entries = [
+            _user_entry("Design me a login page"),
+            _assistant_entry(
+                "Sure, here's a plan...", timestamp="2025-01-01T10:00:01Z"
+            ),
+            _user_entry("Make it use OAuth", timestamp="2025-01-01T10:00:02Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        root_messages, _, ctx = generate_template_messages(
+            messages, detail=DetailLevel.USER_ONLY
+        )
+        all_types: set[str] = set()
+        _collect_types(root_messages, all_types)
+        assert "assistant" not in all_types
+        assert "user" in all_types
+        user_texts = [
+            getattr(msg.content, "items", None)
+            for msg in ctx.messages
+            if msg.type == "user"
+        ]
+        # Both user prompts survived
+        assert len(user_texts) == 2
+
+    def test_keeps_user_steering(self, tmp_path):
+        """queue-operation 'remove' → UserSteeringMessage, kept at USER_ONLY."""
+        import json as _json
+
+        entries = [
+            _user_entry("Start building", timestamp="2025-01-01T10:00:00Z"),
+            _assistant_entry("Starting...", timestamp="2025-01-01T10:00:01Z"),
+        ]
+        path = tmp_path / "t.jsonl"
+        path.write_text(
+            "\n".join(_json.dumps(e) for e in entries)
+            + "\n"
+            + _json.dumps(
+                {
+                    "type": "queue-operation",
+                    "operation": "remove",
+                    "timestamp": "2025-01-01T10:00:02Z",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Actually, wait — use Postgres not MySQL",
+                        }
+                    ],
+                    "sessionId": "sess-001",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        messages = load_transcript(path)
+
+        _, _, ctx = generate_template_messages(messages, detail=DetailLevel.USER_ONLY)
+        from claude_code_log.models import UserSteeringMessage
+
+        steering_content = [
+            msg.content
+            for msg in ctx.messages
+            if isinstance(msg.content, UserSteeringMessage)
+        ]
+        assert len(steering_content) == 1, (
+            f"Expected exactly one UserSteeringMessage, got content types: "
+            f"{[type(m.content).__name__ for m in ctx.messages]}"
+        )
+
+    def test_drops_tools_thinking_bash_slash(self, tmp_path):
+        """USER_ONLY inherits everything MINIMAL drops."""
+        entries = [
+            _user_entry("List files"),
+            _assistant_entry(
+                "Running ls",
+                extra_content=[_tool_use_item(), _thinking_item()],
+                timestamp="2025-01-01T10:00:01Z",
+            ),
+            _user_entry(
+                "",
+                extra_content=[_tool_result_item()],
+                timestamp="2025-01-01T10:00:02Z",
+            ),
+            _user_entry(
+                "<bash-input>ls</bash-input>", timestamp="2025-01-01T10:00:03Z"
+            ),
+            _user_entry(
+                "<bash-stdout>a b c</bash-stdout>", timestamp="2025-01-01T10:00:04Z"
+            ),
+            _user_entry("/exit", timestamp="2025-01-01T10:00:05Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        root_messages, _, ctx = generate_template_messages(
+            messages, detail=DetailLevel.USER_ONLY
+        )
+        all_types: set[str] = set()
+        _collect_types(root_messages, all_types)
+        for unwanted in (
+            "assistant",
+            "thinking",
+            "tool_use",
+            "tool_result",
+            "bash-input",
+            "bash-output",
+        ):
+            assert unwanted not in all_types, (
+                f"{unwanted!r} should not survive USER_ONLY, got: {all_types}"
+            )
+        # /exit slash command must not appear in any survivor
+        for msg in ctx.messages:
+            assert "/exit" not in getattr(msg.content, "text", ""), (
+                f"Slash command leaked into USER_ONLY as {msg.type}"
+            )
+
+    def test_drops_sidechain(self, tmp_path):
+        sidechain_user = _user_entry("Sub task", timestamp="2025-01-01T10:00:01Z")
+        sidechain_user["isSidechain"] = True
+        entries = [_user_entry("Main prompt"), sidechain_user]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        _, _, ctx = generate_template_messages(messages, detail=DetailLevel.USER_ONLY)
+        for msg in ctx.messages:
+            assert not msg.is_sidechain
+
+    def test_preserves_session_headers(self, tmp_path):
+        """Session headers remain so downstream agents can orient per-session."""
+        entries = [
+            _user_entry("Hello", session_id="sess-A"),
+            _assistant_entry("Hi", session_id="sess-A"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        root_messages, session_nav, _ = generate_template_messages(
+            messages, detail=DetailLevel.USER_ONLY
+        )
+        assert len(root_messages) >= 1
+        assert root_messages[0].is_session_header
+        assert len(session_nav) >= 1
+
+    def test_fewer_messages_than_minimal(self, tmp_path):
+        """USER_ONLY ⊂ MINIMAL (always ≤ messages)."""
+        entries = [
+            _user_entry("Prompt one"),
+            _assistant_entry("Reply one", timestamp="2025-01-01T10:00:01Z"),
+            _user_entry("Prompt two", timestamp="2025-01-01T10:00:02Z"),
+            _assistant_entry("Reply two", timestamp="2025-01-01T10:00:03Z"),
+        ]
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+
+        _, _, ctx_min = generate_template_messages(messages, detail=DetailLevel.MINIMAL)
+        # Re-load to avoid mutation shared state between runs
+        messages2 = load_transcript(tmp_path / "t.jsonl")
+        _, _, ctx_user = generate_template_messages(
+            messages2, detail=DetailLevel.USER_ONLY
+        )
+        assert len(ctx_user.messages) < len(ctx_min.messages)
+
+
+class TestUserOnlyCli:
+    def test_cli_accepts_user_only(self, tmp_path):
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(
+            [
+                _user_entry("Hello"),
+                _assistant_entry("Hi", timestamp="2025-01-01T10:00:01Z"),
+            ],
+            jsonl,
+        )
+        result = CliRunner().invoke(main, [str(jsonl), "--detail", "user-only"])
+        assert result.exit_code == 0, result.output
+        # Output filename carries the variant suffix
+        generated = list(tmp_path.glob("*.user-only.html"))
+        assert len(generated) == 1, (
+            f"Expected one *.user-only.html, got: {list(tmp_path.iterdir())}"
+        )
+
+
 # -- Helpers ------------------------------------------------------------------
 
 

@@ -2289,6 +2289,11 @@ _MINIMAL_EXCLUDE_CLASSES: tuple[type[MessageContent], ...] = (
     ToolResultMessage,
 )
 
+_USER_ONLY_EXCLUDE_CLASSES: tuple[type[MessageContent], ...] = (
+    *_MINIMAL_EXCLUDE_CLASSES,
+    AssistantTextMessage,
+)
+
 
 def _filter_by_detail(
     messages: list[TranscriptEntry],
@@ -2296,14 +2301,16 @@ def _filter_by_detail(
 ) -> list[TranscriptEntry]:
     """Pre-render filter: strip content items per detail level.
 
-    - MINIMAL: keep only user/assistant text (no tools, thinking, system).
+    - MINIMAL / USER_ONLY: keep only user/assistant text (no tools,
+      thinking, system). USER_ONLY drops assistant text in the post-
+      render pass so it behaves identically here.
     - LOW: keep user/assistant text + WebSearch / WebFetch / Task / Agent
       tools (Agent is the teammates spawn alias for Task).
     - HIGH: keep user/assistant + all tools/thinking, drop system entries.
     """
     from copy import copy
 
-    if detail == DetailLevel.MINIMAL:
+    if detail in (DetailLevel.MINIMAL, DetailLevel.USER_ONLY):
         strip_types: tuple[type, ...] = (
             ThinkingContent,
             ToolUseContent,
@@ -2317,13 +2324,29 @@ def _filter_by_detail(
         # HIGH: no content-item stripping needed
         strip_types = ()
 
+    # USER_ONLY additionally keeps queue-operation entries so their
+    # UserSteeringMessage survives — steering prompts carry real user
+    # intent. Other levels drop them; the MINIMAL asymmetry is
+    # pre-existing and out of scope for this change.
+    allowed_types: tuple[type, ...] = (UserTranscriptEntry, AssistantTranscriptEntry)
+    if detail == DetailLevel.USER_ONLY:
+        allowed_types = (*allowed_types, QueueOperationTranscriptEntry)
+
     filtered: list[TranscriptEntry] = []
     for message in messages:
-        # HIGH/LOW/MINIMAL: drop system entries (factory creates SystemMessage)
-        if not isinstance(message, (UserTranscriptEntry, AssistantTranscriptEntry)):
+        # HIGH/LOW/MINIMAL/USER_ONLY: drop system entries (factory creates SystemMessage)
+        if not isinstance(message, allowed_types):
             continue
-        # LOW/MINIMAL: drop sidechain (subagent) messages entirely
-        if detail in (DetailLevel.MINIMAL, DetailLevel.LOW) and message.isSidechain:
+        # queue-operation entries don't have `.message` or `.isSidechain` —
+        # they are appended verbatim for downstream conversion.
+        if isinstance(message, QueueOperationTranscriptEntry):
+            filtered.append(message)
+            continue
+        # LOW/MINIMAL/USER_ONLY: drop sidechain (subagent) messages entirely
+        if (
+            detail in (DetailLevel.MINIMAL, DetailLevel.LOW, DetailLevel.USER_ONLY)
+            and message.isSidechain
+        ):
             continue
         if not strip_types:
             filtered.append(message)
@@ -2498,7 +2521,9 @@ def _filter_template_by_detail(
     detail: DetailLevel,
 ) -> list[TemplateMessage]:
     """Post-render filter: remove TemplateMessage types per detail level."""
-    if detail == DetailLevel.MINIMAL:
+    if detail == DetailLevel.USER_ONLY:
+        exclude = _USER_ONLY_EXCLUDE_CLASSES
+    elif detail == DetailLevel.MINIMAL:
         exclude = _MINIMAL_EXCLUDE_CLASSES
     elif detail == DetailLevel.LOW:
         exclude = _LOW_EXCLUDE_CLASSES
@@ -2509,7 +2534,10 @@ def _filter_template_by_detail(
     for msg in messages:
         if isinstance(msg.content, exclude):
             continue
-        if detail in (DetailLevel.MINIMAL, DetailLevel.LOW) and msg.is_sidechain:
+        if (
+            detail in (DetailLevel.MINIMAL, DetailLevel.LOW, DetailLevel.USER_ONLY)
+            and msg.is_sidechain
+        ):
             continue
         # LOW: drop tool_use/tool_result unless it's a kept tool
         if detail == DetailLevel.LOW and isinstance(
