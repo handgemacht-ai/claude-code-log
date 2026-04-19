@@ -648,6 +648,13 @@ def generate_template_messages(
             junction_targets,
         )
 
+    # Fold Skill-tool bodies (isMeta slash-command entries) into their
+    # originating tool_use. Runs before the detail filter so the body
+    # survives alongside the tool_use at HIGH — and the now-redundant
+    # slash-command + "Launching skill" tool_result are dropped once.
+    with log_timing("Pair Skill tool_uses", t_start):
+        _pair_skill_tool_uses(ctx)
+
     # Populate junction forward links on fork-point messages
     if ctx.junction_targets:
         # Build UUID → TemplateMessage index for fast lookup
@@ -2020,6 +2027,68 @@ def _filter_by_detail(
                 msg_copy.message = cast("AssistantMessageModel", msg_model)
             filtered.append(msg_copy)
     return filtered
+
+
+def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
+    """Fold the `isMeta=True` user body of a Skill invocation into its tool_use.
+
+    Claude Code emits three separate entries for a Skill invocation:
+        1. assistant `Skill` tool_use
+        2. user tool_result containing the literal string "Launching skill: <name>"
+        3. user `isMeta=True` entry whose `sourceToolUseID` matches (1) and whose
+           text is the expanded skill body (markdown, often 100+ lines).
+
+    Rendered as-is, (3) appears as a bare "🧑 User (slash command)" block
+    visually disjoint from (1). Pair them: attach (3)'s text as
+    `skill_body` on the Skill `ToolUseMessage`, drop (2) and (3) from
+    `ctx.messages`, and re-index so later passes see a clean slate.
+
+    See issue #93.
+    """
+    # Build the lookup: tool_use_id -> UserSlashCommandMessage template
+    slash_by_source: dict[str, TemplateMessage] = {}
+    for msg in ctx.messages:
+        if (
+            isinstance(msg.content, UserSlashCommandMessage)
+            and msg.meta.source_tool_use_id
+        ):
+            slash_by_source[msg.meta.source_tool_use_id] = msg
+
+    if not slash_by_source:
+        return
+
+    consumed_indices: set[int] = set()
+    for msg in ctx.messages:
+        if not (
+            isinstance(msg.content, ToolUseMessage) and msg.content.tool_name == "Skill"
+        ):
+            continue
+        slash = slash_by_source.get(msg.content.tool_use_id)
+        if slash is None or not isinstance(slash.content, UserSlashCommandMessage):
+            continue
+        # Fold the body into the Skill tool_use and mark the slash-command consumed.
+        msg.content.skill_body = slash.content.text
+        if slash.message_index is not None:
+            consumed_indices.add(slash.message_index)
+        # The matching tool_result carries the redundant "Launching skill: ..."
+        # string; drop it too so the tool_use stands alone as one visual unit.
+        for other in ctx.messages:
+            if (
+                other.type == "tool_result"
+                and other.tool_use_id == msg.content.tool_use_id
+                and other.message_index is not None
+            ):
+                consumed_indices.add(other.message_index)
+
+    if not consumed_indices:
+        return
+
+    kept = [
+        msg
+        for msg in ctx.messages
+        if msg.message_index is None or msg.message_index not in consumed_indices
+    ]
+    _reindex_filtered_context(ctx, kept)
 
 
 def _reindex_filtered_context(
