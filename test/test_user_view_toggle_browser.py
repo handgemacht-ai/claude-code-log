@@ -176,6 +176,39 @@ class TestUserViewToggleBrowser:
         expect(raws.nth(1)).to_be_visible()
 
     @pytest.mark.browser
+    def test_per_message_click_under_global_raw_flips_in_one_click(
+        self, page: Page
+    ) -> None:
+        """Regression guard for the 2-click bug (coderabbit review #119).
+
+        Before the JS was taught to read the effective current view,
+        clicking a per-message toggle while the global raw toggle was
+        active would set ``data-user-view='raw'`` — matching the view
+        that was already showing — so nothing changed visually and the
+        user needed a second click to actually reach Markdown. After
+        the fix, one click is enough."""
+        html = self._render([_user_entry("u1", "# Hi\n\n**bold**")])
+        self._goto_clean(page, html)
+
+        md = page.locator(".user-md").first
+        raw = page.locator(".user-raw").first
+
+        # Turn on the global raw toggle → md hidden, raw visible.
+        page.locator("#toggleUserView").click()
+        expect(md).to_be_hidden()
+        expect(raw).to_be_visible()
+
+        # Per-message button on a message with no explicit override
+        # should show 'md' (the view you'd switch to) under global raw.
+        per_message = page.locator(".user-view-toggle").first
+        expect(per_message).to_have_text("md")
+
+        # One click on the per-message toggle must flip to md.
+        per_message.click()
+        expect(md).to_be_visible()
+        expect(raw).to_be_hidden()
+
+    @pytest.mark.browser
     def test_global_choice_persists_across_reload(self, page: Page) -> None:
         """localStorage persists the global raw/md preference."""
         html = self._render([_user_entry("u1", "# Hi\n\n**bold**")])

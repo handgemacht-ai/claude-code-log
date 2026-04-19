@@ -6362,6 +6362,31 @@
               //     override beats the global preference (via CSS specificity
               //     on `[data-user-view="md"]`/`[data-user-view="raw"]`).
               const userViewButton = document.getElementById('toggleUserView');
+              function effectivePerMessageView(container) {
+                  // Returns 'md' or 'raw' — the view the user is
+                  // actually seeing for this message right now. Explicit
+                  // `data-user-view` wins; otherwise the global toggle
+                  // decides.
+                  const explicit = container.getAttribute('data-user-view');
+                  if (explicit === 'md' || explicit === 'raw') return explicit;
+                  return document.body.classList.contains('show-raw-user')
+                      ? 'raw'
+                      : 'md';
+              }
+              function applyPerMessageToggleLabels() {
+                  // Per-message button text names the view the user
+                  // would switch to (opposite of what they see). Server
+                  // renders every button as 'raw' by default; this
+                  // corrects that for messages where the effective
+                  // current view is already raw (typically because the
+                  // global toggle is on).
+                  document.querySelectorAll('.user-view-toggle').forEach(function (btn) {
+                      const container = btn.closest('.user-content');
+                      if (!container) return;
+                      const current = effectivePerMessageView(container);
+                      btn.textContent = current === 'md' ? 'raw' : 'md';
+                  });
+              }
               function applyUserViewButtonLabel() {
                   const showingRaw = document.body.classList.contains('show-raw-user');
                   userViewButton.textContent = showingRaw ? 'raw' : 'md';
@@ -6375,6 +6400,7 @@
                   document.body.classList.add('show-raw-user');
               }
               applyUserViewButtonLabel();
+              applyPerMessageToggleLabels();
               userViewButton.addEventListener('click', function () {
                   const showingRaw = document.body.classList.toggle('show-raw-user');
                   localStorage.setItem(
@@ -6382,6 +6408,9 @@
                       showingRaw ? 'raw' : 'md'
                   );
                   applyUserViewButtonLabel();
+                  // Messages without an explicit per-message override
+                  // just flipped — refresh their button labels too.
+                  applyPerMessageToggleLabels();
               });
               // Delegated per-message toggle.
               document.addEventListener('click', function (event) {
@@ -6389,7 +6418,13 @@
                   if (!btn) return;
                   const container = btn.closest('.user-content');
                   if (!container) return;
-                  const current = container.getAttribute('data-user-view') || 'md';
+                  // Use the effective current view (honouring the
+                  // global toggle) rather than just the explicit attr
+                  // — otherwise a first click under global-raw would
+                  // set data-user-view='raw', change nothing visible,
+                  // and the user would need a second click to actually
+                  // reach markdown.
+                  const current = effectivePerMessageView(container);
                   const next = current === 'md' ? 'raw' : 'md';
                   container.setAttribute('data-user-view', next);
                   btn.textContent = next === 'md' ? 'raw' : 'md';
@@ -17919,6 +17954,31 @@
               //     override beats the global preference (via CSS specificity
               //     on `[data-user-view="md"]`/`[data-user-view="raw"]`).
               const userViewButton = document.getElementById('toggleUserView');
+              function effectivePerMessageView(container) {
+                  // Returns 'md' or 'raw' — the view the user is
+                  // actually seeing for this message right now. Explicit
+                  // `data-user-view` wins; otherwise the global toggle
+                  // decides.
+                  const explicit = container.getAttribute('data-user-view');
+                  if (explicit === 'md' || explicit === 'raw') return explicit;
+                  return document.body.classList.contains('show-raw-user')
+                      ? 'raw'
+                      : 'md';
+              }
+              function applyPerMessageToggleLabels() {
+                  // Per-message button text names the view the user
+                  // would switch to (opposite of what they see). Server
+                  // renders every button as 'raw' by default; this
+                  // corrects that for messages where the effective
+                  // current view is already raw (typically because the
+                  // global toggle is on).
+                  document.querySelectorAll('.user-view-toggle').forEach(function (btn) {
+                      const container = btn.closest('.user-content');
+                      if (!container) return;
+                      const current = effectivePerMessageView(container);
+                      btn.textContent = current === 'md' ? 'raw' : 'md';
+                  });
+              }
               function applyUserViewButtonLabel() {
                   const showingRaw = document.body.classList.contains('show-raw-user');
                   userViewButton.textContent = showingRaw ? 'raw' : 'md';
@@ -17932,6 +17992,7 @@
                   document.body.classList.add('show-raw-user');
               }
               applyUserViewButtonLabel();
+              applyPerMessageToggleLabels();
               userViewButton.addEventListener('click', function () {
                   const showingRaw = document.body.classList.toggle('show-raw-user');
                   localStorage.setItem(
@@ -17939,6 +18000,9 @@
                       showingRaw ? 'raw' : 'md'
                   );
                   applyUserViewButtonLabel();
+                  // Messages without an explicit per-message override
+                  // just flipped — refresh their button labels too.
+                  applyPerMessageToggleLabels();
               });
               // Delegated per-message toggle.
               document.addEventListener('click', function (event) {
@@ -17946,7 +18010,13 @@
                   if (!btn) return;
                   const container = btn.closest('.user-content');
                   if (!container) return;
-                  const current = container.getAttribute('data-user-view') || 'md';
+                  // Use the effective current view (honouring the
+                  // global toggle) rather than just the explicit attr
+                  // — otherwise a first click under global-raw would
+                  // set data-user-view='raw', change nothing visible,
+                  // and the user would need a second click to actually
+                  // reach markdown.
+                  const current = effectivePerMessageView(container);
                   const next = current === 'md' ? 'raw' : 'md';
                   container.setAttribute('data-user-view', next);
                   btn.textContent = next === 'md' ? 'raw' : 'md';
@@ -23757,6 +23827,31 @@
               //     override beats the global preference (via CSS specificity
               //     on `[data-user-view="md"]`/`[data-user-view="raw"]`).
               const userViewButton = document.getElementById('toggleUserView');
+              function effectivePerMessageView(container) {
+                  // Returns 'md' or 'raw' — the view the user is
+                  // actually seeing for this message right now. Explicit
+                  // `data-user-view` wins; otherwise the global toggle
+                  // decides.
+                  const explicit = container.getAttribute('data-user-view');
+                  if (explicit === 'md' || explicit === 'raw') return explicit;
+                  return document.body.classList.contains('show-raw-user')
+                      ? 'raw'
+                      : 'md';
+              }
+              function applyPerMessageToggleLabels() {
+                  // Per-message button text names the view the user
+                  // would switch to (opposite of what they see). Server
+                  // renders every button as 'raw' by default; this
+                  // corrects that for messages where the effective
+                  // current view is already raw (typically because the
+                  // global toggle is on).
+                  document.querySelectorAll('.user-view-toggle').forEach(function (btn) {
+                      const container = btn.closest('.user-content');
+                      if (!container) return;
+                      const current = effectivePerMessageView(container);
+                      btn.textContent = current === 'md' ? 'raw' : 'md';
+                  });
+              }
               function applyUserViewButtonLabel() {
                   const showingRaw = document.body.classList.contains('show-raw-user');
                   userViewButton.textContent = showingRaw ? 'raw' : 'md';
@@ -23770,6 +23865,7 @@
                   document.body.classList.add('show-raw-user');
               }
               applyUserViewButtonLabel();
+              applyPerMessageToggleLabels();
               userViewButton.addEventListener('click', function () {
                   const showingRaw = document.body.classList.toggle('show-raw-user');
                   localStorage.setItem(
@@ -23777,6 +23873,9 @@
                       showingRaw ? 'raw' : 'md'
                   );
                   applyUserViewButtonLabel();
+                  // Messages without an explicit per-message override
+                  // just flipped — refresh their button labels too.
+                  applyPerMessageToggleLabels();
               });
               // Delegated per-message toggle.
               document.addEventListener('click', function (event) {
@@ -23784,7 +23883,13 @@
                   if (!btn) return;
                   const container = btn.closest('.user-content');
                   if (!container) return;
-                  const current = container.getAttribute('data-user-view') || 'md';
+                  // Use the effective current view (honouring the
+                  // global toggle) rather than just the explicit attr
+                  // — otherwise a first click under global-raw would
+                  // set data-user-view='raw', change nothing visible,
+                  // and the user would need a second click to actually
+                  // reach markdown.
+                  const current = effectivePerMessageView(container);
                   const next = current === 'md' ? 'raw' : 'md';
                   container.setAttribute('data-user-view', next);
                   btn.textContent = next === 'md' ? 'raw' : 'md';
@@ -29437,6 +29542,31 @@
               //     override beats the global preference (via CSS specificity
               //     on `[data-user-view="md"]`/`[data-user-view="raw"]`).
               const userViewButton = document.getElementById('toggleUserView');
+              function effectivePerMessageView(container) {
+                  // Returns 'md' or 'raw' — the view the user is
+                  // actually seeing for this message right now. Explicit
+                  // `data-user-view` wins; otherwise the global toggle
+                  // decides.
+                  const explicit = container.getAttribute('data-user-view');
+                  if (explicit === 'md' || explicit === 'raw') return explicit;
+                  return document.body.classList.contains('show-raw-user')
+                      ? 'raw'
+                      : 'md';
+              }
+              function applyPerMessageToggleLabels() {
+                  // Per-message button text names the view the user
+                  // would switch to (opposite of what they see). Server
+                  // renders every button as 'raw' by default; this
+                  // corrects that for messages where the effective
+                  // current view is already raw (typically because the
+                  // global toggle is on).
+                  document.querySelectorAll('.user-view-toggle').forEach(function (btn) {
+                      const container = btn.closest('.user-content');
+                      if (!container) return;
+                      const current = effectivePerMessageView(container);
+                      btn.textContent = current === 'md' ? 'raw' : 'md';
+                  });
+              }
               function applyUserViewButtonLabel() {
                   const showingRaw = document.body.classList.contains('show-raw-user');
                   userViewButton.textContent = showingRaw ? 'raw' : 'md';
@@ -29450,6 +29580,7 @@
                   document.body.classList.add('show-raw-user');
               }
               applyUserViewButtonLabel();
+              applyPerMessageToggleLabels();
               userViewButton.addEventListener('click', function () {
                   const showingRaw = document.body.classList.toggle('show-raw-user');
                   localStorage.setItem(
@@ -29457,6 +29588,9 @@
                       showingRaw ? 'raw' : 'md'
                   );
                   applyUserViewButtonLabel();
+                  // Messages without an explicit per-message override
+                  // just flipped — refresh their button labels too.
+                  applyPerMessageToggleLabels();
               });
               // Delegated per-message toggle.
               document.addEventListener('click', function (event) {
@@ -29464,7 +29598,13 @@
                   if (!btn) return;
                   const container = btn.closest('.user-content');
                   if (!container) return;
-                  const current = container.getAttribute('data-user-view') || 'md';
+                  // Use the effective current view (honouring the
+                  // global toggle) rather than just the explicit attr
+                  // — otherwise a first click under global-raw would
+                  // set data-user-view='raw', change nothing visible,
+                  // and the user would need a second click to actually
+                  // reach markdown.
+                  const current = effectivePerMessageView(container);
                   const next = current === 'md' ? 'raw' : 'md';
                   container.setAttribute('data-user-view', next);
                   btn.textContent = next === 'md' ? 'raw' : 'md';
