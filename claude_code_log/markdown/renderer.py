@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import html as _html
 import json
 import re
 from pathlib import Path
@@ -151,49 +152,31 @@ def _table_cell(value: Any) -> str:
     return str(value or "").replace("\n", "<br>").replace("|", r"\|")
 
 
-def _backtick_delimiter(text: str, minimum: int) -> str:
-    """Return a backtick run long enough to safely fence ``text``.
-
-    Mirrors the adaptive-delimiter logic in :meth:`MarkdownRenderer._code_fence`:
-    the delimiter is one backtick longer than the longest run that appears
-    in ``text``, so an HTML token carrying a ``\\``` in an attribute value
-    or a triple-fence inside block HTML can't prematurely close its
-    wrapper and re-expose markup to downstream renderers.
-    """
-    max_ticks = max(
-        (len(match.group(0)) for match in re.finditer(r"`+", text)),
-        default=0,
-    )
-    return "`" * max(minimum, max_ticks + 1)
-
-
 class _TagProtectingMarkdownRenderer(_MistuneMarkdownRenderer):
     """Mistune re-emitter that neutralises raw HTML tokens.
 
     Mistune's stock ``MarkdownRenderer`` round-trips a parsed Markdown
-    document back to Markdown text. We inherit it and override just the
-    two HTML hooks: ``inline_html`` (bare tags like ``<br>``,
-    ``<script>``) and ``block_html`` (block-level HTML chunks). Those
-    are the only tokens that could let a downstream viewer interpret
-    the user's text as markup; everything else — inline code spans,
-    fenced and indented code blocks, lists, tables, blockquotes — is
-    emitted verbatim by the base class because the parser already
-    classified it correctly.
+    document back to Markdown text. We inherit it and override the two
+    HTML hooks — ``inline_html`` (tags like ``<br>``, ``<script>``) and
+    ``block_html`` (block-level HTML chunks) — to emit the token's raw
+    content HTML-escaped to entities instead of passing the tag through
+    verbatim.
 
-    Both hooks pick an adaptive backtick delimiter so that tokens
-    carrying backticks themselves (e.g. ``<span title="\\`">`` or block
-    HTML containing a ```\\`\\`\\```` fence) are still safely wrapped.
+    Escaping to entities sidesteps the class of edge cases that any
+    backtick-wrapping strategy has to contend with (stray backticks in
+    the surrounding text merging with the wrapper delimiter, attribute
+    values carrying backticks, block HTML containing a fence inside,
+    …). The tradeoff is that in very strict downstream renderers the
+    entities can end up visible as literal text; permissive renderers
+    like GitHub correctly display the tag text. Either way the tag
+    itself never reaches the HTML output as live markup.
     """
 
     def inline_html(self, token: dict[str, Any], state: Any) -> str:
-        raw = token.get("raw", "")
-        delim = _backtick_delimiter(raw, minimum=1)
-        return f"{delim}{raw}{delim}"
+        return _html.escape(token.get("raw", ""))
 
     def block_html(self, token: dict[str, Any], state: Any) -> str:
-        raw = token.get("raw", "").strip()
-        fence = _backtick_delimiter(raw, minimum=3)
-        return f"{fence}\n{raw}\n{fence}\n\n"
+        return _html.escape(token.get("raw", ""))
 
 
 @functools.lru_cache(maxsize=1)

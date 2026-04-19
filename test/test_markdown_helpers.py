@@ -306,62 +306,102 @@ class TestProtectHtmlTags:
     """Tests for the _protect_html_tags() module-level helper.
 
     The helper parses with mistune and re-emits through a tag-protecting
-    renderer. That means inline HTML tokens get wrapped in backticks,
-    block-level HTML tokens get fenced, and all non-HTML Markdown is
-    preserved — including inline code spans, fenced blocks, and indented
-    code blocks the author may have used specifically to quote HTML.
+    renderer. Inline and block HTML tokens get HTML-entity-escaped, so
+    the tag text survives but no downstream Markdown renderer can
+    interpret it as live markup. All non-HTML Markdown is preserved —
+    including inline code spans, fenced blocks, and indented code
+    blocks the author may have used specifically to quote HTML.
     """
+
+    # -- Outputs that must be exactly the escaped form -------------------
 
     def test_plain_text_unchanged(self):
         """Text with no tags is returned verbatim."""
         assert _protect_html_tags("just some prose") == "just some prose"
 
-    def test_wraps_bare_inline_tag(self):
-        """Bare inline ``<br>`` is wrapped in backticks."""
-        assert _protect_html_tags("line one<br>line two") == "line one`<br>`line two"
-
-    def test_wraps_inline_open_and_close(self):
-        """Inline opening and closing tags are wrapped independently."""
-        # `<b>bold</b>` inside prose → inline-HTML tokens → backticked.
-        result = _protect_html_tags("some <b>bold</b> text")
-        assert result == "some `<b>`bold`</b>` text"
-
-    def test_block_html_gets_fenced(self):
-        """A tag on its own line is a block HTML token → fenced code."""
-        # `<script>alert(1)</script>` alone on a line is parsed as
-        # block-level HTML. Emitting it inside a fence is stronger
-        # protection (literal content, no interpretation) than inline
-        # backticks and is what we want.
-        result = _protect_html_tags("<script>alert(1)</script>")
-        assert result == "```\n<script>alert(1)</script>\n```"
-
-    def test_wraps_tag_with_attributes(self):
-        """Inline tags with attributes wrap whole-tag including attrs."""
+    def test_escapes_bare_inline_tag(self):
+        """Bare inline ``<br>`` is entity-escaped."""
         assert (
-            _protect_html_tags('say <a href="x">link</a> please')
-            == 'say `<a href="x">`link`</a>` please'
+            _protect_html_tags("line one<br>line two") == "line one&lt;br&gt;line two"
         )
 
-    def test_self_closing_tag(self):
-        """XHTML-style ``<br />`` is wrapped as one token."""
-        assert _protect_html_tags("text<br />more") == "text`<br />`more"
+    def test_escapes_inline_open_and_close(self):
+        """Both opening and closing inline tags are escaped."""
+        assert (
+            _protect_html_tags("some <b>bold</b> text")
+            == "some &lt;b&gt;bold&lt;/b&gt; text"
+        )
+
+    def test_escapes_tag_with_attributes(self):
+        """Inline tags with attributes escape the whole tag including attrs."""
+        assert (
+            _protect_html_tags('say <a href="x">link</a> please')
+            == "say &lt;a href=&quot;x&quot;&gt;link&lt;/a&gt; please"
+        )
+
+    def test_escapes_self_closing_tag(self):
+        """XHTML-style ``<br />`` is escaped whole."""
+        assert _protect_html_tags("text<br />more") == "text&lt;br /&gt;more"
+
+    def test_escapes_multiple_inline_tags_on_one_line(self):
+        """Multiple inline tags on the same line are each escaped."""
+        assert (
+            _protect_html_tags("text <b>bold</b> and <i>italic</i>")
+            == "text &lt;b&gt;bold&lt;/b&gt; and &lt;i&gt;italic&lt;/i&gt;"
+        )
+
+    # -- The user's key concern: already-quoted HTML must survive --------
 
     def test_inline_code_already_wrapped(self):
-        """A tag already inside inline code isn't double-wrapped."""
-        # This is the user-flagged concern from the coderabbit review:
-        # ``` `x <br> y` ``` must not be rewritten.
+        """A tag already inside inline code isn't re-written.
+
+        This is the user-flagged concern from the coderabbit review:
+        ``use `x <br> y` here`` must not be corrupted.
+        """
         assert _protect_html_tags("use `x <br> y` here") == "use `x <br> y` here"
 
-    def test_double_backtick_inline_code_preserved(self):
-        """Inline code with embedded backticks stays an inline code span.
+    # -- Edge cases that used to leak with adaptive-backtick delimiters --
 
-        Mistune normalises ``\\`\\`<br>\\`\\``` to ``\\`<br>\\``` on
-        re-emission (single-backtick delimiter suffices for that
-        content), which is semantically equivalent — the ``<br>``
-        stays inside an inline-code span either way.
+    def test_stray_backtick_before_tag_does_not_leak(self):
+        """A lone ``\\``` adjacent to a tag can't merge with a wrapper
+        delimiter — there isn't one to merge with.
         """
-        result = _protect_html_tags("run ``<br>`` verbatim")
-        assert result == "run `<br>` verbatim"
+        import mistune
+
+        permissive = mistune.create_markdown(
+            renderer=mistune.HTMLRenderer(escape=False)
+        )
+        rendered = str(permissive(_protect_html_tags("x `<br> y"))).strip()
+        assert "&lt;br&gt;" in rendered
+        # No live <br>.
+        assert rendered.replace("&lt;br&gt;", "").count("<br") == 0
+
+    def test_backtick_in_attribute_does_not_leak(self):
+        """Tags with backticks in attributes don't break either."""
+        import mistune
+
+        permissive = mistune.create_markdown(
+            renderer=mistune.HTMLRenderer(escape=False)
+        )
+        rendered = str(
+            permissive(_protect_html_tags('<span title="`">x</span>'))
+        ).strip()
+        assert "&lt;span" in rendered
+        # No live <span>.
+        assert "<span" not in rendered.replace("&lt;span", "")
+
+    def test_block_html_with_inner_fence_does_not_leak(self):
+        """Block HTML containing a ``` fence doesn't break."""
+        import mistune
+
+        permissive = mistune.create_markdown(
+            renderer=mistune.HTMLRenderer(escape=False)
+        )
+        rendered = str(permissive(_protect_html_tags("<div>\n```\n</div>"))).strip()
+        assert "&lt;div&gt;" in rendered
+        assert "<div" not in rendered.replace("&lt;div", "")
+
+    # -- Markdown constructs that must pass through ----------------------
 
     def test_autolink_not_wrapped(self):
         """CommonMark autolink ``<https://...>`` is preserved."""
@@ -382,10 +422,11 @@ class TestProtectHtmlTags:
         assert _protect_html_tags("x < 3 and x <= 5") == "x < 3 and x <= 5"
 
     def test_inside_fenced_code_block(self):
-        """Tags inside a ``` fence stay literal (no rewrite)."""
+        """Tags inside a ``` fence stay literal (code-block token, not HTML)."""
         text = "Here is code:\n\n```html\n<script>x</script>\n```"
-        # Mistune normalises trailing whitespace but preserves the
-        # fence contents exactly — the key invariant.
+        # The fence contents survive intact — the `<script>` inside is
+        # a code-block token, not an inline-HTML one, so our overrides
+        # don't touch it.
         result = _protect_html_tags(text)
         assert "```html\n<script>x</script>\n```" in result
 
@@ -393,64 +434,6 @@ class TestProtectHtmlTags:
         """~~~ fences are respected just like ``` fences."""
         text = "~~~\n<br>\n~~~"
         assert _protect_html_tags(text) == text
-
-    def test_indented_code_block_preserved(self):
-        """Tags inside an indented code block are not rewritten.
-
-        Mistune classifies 4-space-indented lines as a code block, so
-        the HTML inside is a code-block token (not an inline-HTML one)
-        and isn't touched by our overrides. Mistune's stock renderer
-        re-emits indented code as a fenced block — the content is
-        preserved, only the fence style changes.
-        """
-        result = _protect_html_tags("prose\n\n    <script>x</script>\n\nmore")
-        assert "<script>x</script>" in result
-        # The raw tag is preserved literally (no backticks wrapped
-        # around `<script>` itself — it stays as-is inside the fence).
-        assert "`<script>`" not in result
-
-    def test_tag_outside_fence_when_mixed(self):
-        """A tag outside a fence is wrapped even when another is in a fence."""
-        text = "Outside <br> tag.\n\n```\n<br> inside fence\n```\nAfter <hr>."
-        result = _protect_html_tags(text)
-        assert "Outside `<br>` tag." in result
-        assert "<br> inside fence" in result  # untouched inside the fence
-        assert "After `<hr>`." in result
-
-    def test_multiple_inline_tags_on_one_line(self):
-        """Multiple inline tags on the same line are each wrapped."""
-        assert (
-            _protect_html_tags("text <b>bold</b> and <i>italic</i>")
-            == "text `<b>`bold`</b>` and `<i>`italic`</i>`"
-        )
-
-    def test_inline_tag_with_backtick_in_attr(self):
-        """A tag carrying a ``\\``` in an attribute gets a 2-backtick
-        wrapper so the inner backtick doesn't close the span early."""
-        # Single-backtick wrap would be `` `<span title="`">` `` — the
-        # inner backtick closes the span and leaks the rest of the
-        # attribute as raw Markdown. Adaptive delimiter ⇒ 2 ticks.
-        out = _protect_html_tags('say <span title="`">x</span> please')
-        assert '``<span title="`">``' in out
-        # And the output is a valid Markdown fragment that renders
-        # with the tag inside <code>, not as a live element.
-        import mistune
-
-        rendered = str(mistune.create_markdown()(out))
-        assert "&lt;span" in rendered  # entity-escaped inside <code>
-        assert "<span title" not in rendered  # no live tag leakage
-
-    def test_block_html_with_inner_fence(self):
-        """Block HTML containing a ```` ``` ```` fence gets a longer
-        outer fence so the inner one doesn't close it prematurely."""
-        out = _protect_html_tags("para\n\n<div>\n```\n</div>")
-        # Outer fence must be longer than the 3-backtick run inside.
-        assert "````\n<div>\n```\n</div>\n````" in out
-        import mistune
-
-        rendered = str(mistune.create_markdown()(out))
-        assert "&lt;div&gt;" in rendered
-        assert "<div>" not in rendered.replace("&lt;div&gt;", "")
 
 
 class TestFormatUserTextMessage:
@@ -481,11 +464,11 @@ class TestFormatUserTextMessage:
         result = renderer.format_UserTextMessage(content, None)
         assert result == "please review the PR when you have time"
 
-    def test_raw_html_tags_protected_inline(self, renderer):
-        """Clean Markdown with bare ``<script>`` gets the tag wrapped in backticks."""
+    def test_raw_html_tags_escaped_inline(self, renderer):
+        """Clean Markdown with bare ``<script>`` gets the tag entity-escaped."""
         content = self._make("Please run <script>alert(1)</script> safely.")
         result = renderer.format_UserTextMessage(content, None)
-        assert result == "Please run `<script>`alert(1)`</script>` safely."
+        assert result == "Please run &lt;script&gt;alert(1)&lt;/script&gt; safely."
 
     def test_ill_formed_falls_back_to_code_fence(self, renderer, monkeypatch):
         """When the Markdown gate rejects the output, code-fence it."""
