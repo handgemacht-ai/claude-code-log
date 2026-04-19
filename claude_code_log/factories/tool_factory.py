@@ -30,7 +30,13 @@ from ..models import (
     MessageMeta,
     MultiEditInput,
     ReadInput,
+    SendMessageInput,
+    TaskCreateInput,
     TaskInput,
+    TaskListInput,
+    TaskUpdateInput,
+    TeamCreateInput,
+    TeamDeleteInput,
     TodoWriteInput,
     ToolInput,
     ToolResultContent,
@@ -48,7 +54,15 @@ from ..models import (
     EditOutput,
     ExitPlanModeOutput,
     ReadOutput,
+    SendMessageOutput,
+    TaskCreateOutput,
+    TaskListItem,
+    TaskListOutput,
     TaskOutput,
+    TaskStatusChange,
+    TaskUpdateOutput,
+    TeamCreateOutput,
+    TeamDeleteOutput,
     ToolOutput,
     WebSearchLink,
     WebSearchOutput,
@@ -76,6 +90,13 @@ TOOL_INPUT_MODELS: dict[str, type[BaseModel]] = {
     "ExitPlanMode": ExitPlanModeInput,
     "WebSearch": WebSearchInput,
     "WebFetch": WebFetchInput,
+    # Teammates feature tools
+    "TeamCreate": TeamCreateInput,
+    "TeamDelete": TeamDeleteInput,
+    "TaskCreate": TaskCreateInput,
+    "TaskUpdate": TaskUpdateInput,
+    "TaskList": TaskListInput,
+    "SendMessage": SendMessageInput,
 }
 
 
@@ -670,6 +691,194 @@ def parse_webfetch_output(
     return None
 
 
+# =============================================================================
+# Teammates feature tool output parsers
+# =============================================================================
+
+
+def _try_load_json_text(tool_result: ToolResultContent) -> Optional[dict[str, Any]]:
+    """Return the JSON object embedded in *tool_result*'s text, or None."""
+    text = _extract_tool_result_text(tool_result)
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+_TASK_CREATE_RE = re.compile(
+    r"^Task #(?P<id>\d+) created successfully: (?P<subject>.+)$"
+)
+_TASK_UPDATE_RE = re.compile(r"^Updated task #(?P<id>\d+)(?:\s+(?P<fields>.+))?$")
+_TASK_LIST_LINE_RE = re.compile(
+    r"^#(?P<id>\d+)\s+\[(?P<status>[^\]]+)\]\s+(?P<rest>.+)$"
+)
+# Owner trails in parentheses: "... subject (owner)". Owner never contains
+# parens, so this match is unambiguous on the trailing segment.
+_TASK_LIST_OWNER_RE = re.compile(r"^(?P<subject>.+?)\s+\((?P<owner>[^)]+)\)$")
+_TEAM_DELETE_ACTIVE_RE = re.compile(
+    r"active member\(s\):\s*(?P<members>[^.]+?)\.", re.IGNORECASE
+)
+
+
+def parse_teamcreate_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[TeamCreateOutput]:
+    """Parse TeamCreate JSON output.
+
+    Typical shape:
+        {"team_name": ..., "team_file_path": ..., "lead_agent_id": ...}
+    """
+    del file_path
+    data = _try_load_json_text(tool_result)
+    if data is None:
+        return None
+    team_name = data.get("team_name")
+    if not isinstance(team_name, str):
+        return None
+    return TeamCreateOutput(
+        team_name=team_name,
+        team_file_path=_opt_str(data.get("team_file_path")),
+        lead_agent_id=_opt_str(data.get("lead_agent_id")),
+    )
+
+
+def parse_teamdelete_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[TeamDeleteOutput]:
+    """Parse TeamDelete JSON output, extracting active members when present."""
+    del file_path
+    data = _try_load_json_text(tool_result)
+    if data is None:
+        return None
+    message = str(data.get("message", ""))
+    active_members: Optional[list[str]] = None
+    active_match = _TEAM_DELETE_ACTIVE_RE.search(message)
+    if active_match:
+        members_raw = active_match.group("members")
+        active_members = [m.strip() for m in members_raw.split(",") if m.strip()]
+    return TeamDeleteOutput(
+        success=bool(data.get("success", False)),
+        message=message,
+        team_name=_opt_str(data.get("team_name")),
+        active_members=active_members,
+    )
+
+
+def parse_taskcreate_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[TaskCreateOutput]:
+    """Parse TaskCreate text output ``"Task #N created successfully: <subject>"``."""
+    del file_path
+    text = _extract_tool_result_text(tool_result)
+    if not text:
+        return None
+    match = _TASK_CREATE_RE.match(text.strip())
+    if match is None:
+        return None
+    return TaskCreateOutput(
+        task_id=match.group("id"),
+        subject=match.group("subject").strip(),
+        raw_text=text,
+    )
+
+
+def parse_taskupdate_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[TaskUpdateOutput]:
+    """Parse TaskUpdate text output ``"Updated task #N <comma-list-of-fields>"``.
+
+    The plain-text form doesn't report the old/new status explicitly;
+    ``status_change`` remains None unless a richer structured form appears.
+    """
+    del file_path
+    text = _extract_tool_result_text(tool_result)
+    if not text:
+        return None
+    match = _TASK_UPDATE_RE.match(text.strip())
+    if match is None:
+        return None
+    fields_raw = match.group("fields") or ""
+    updated_fields: Optional[dict[str, Any]] = None
+    if fields_raw:
+        updated_fields = {
+            name.strip(): True for name in fields_raw.split(",") if name.strip()
+        }
+    return TaskUpdateOutput(
+        success=True,
+        task_id=match.group("id"),
+        updated_fields=updated_fields,
+        status_change=None,
+        raw_text=text,
+    )
+
+
+def parse_tasklist_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[TaskListOutput]:
+    """Parse TaskList text output: one ``#N [status] subject (owner)`` per line."""
+    del file_path
+    text = _extract_tool_result_text(tool_result)
+    if not text:
+        return None
+
+    tasks: list[TaskListItem] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        match = _TASK_LIST_LINE_RE.match(line)
+        if match is None:
+            # Unrecognized line — bail so the generic renderer keeps the full
+            # text (defensive: avoid silently dropping data we can't explain).
+            return None
+        rest = match.group("rest").strip()
+        owner_match = _TASK_LIST_OWNER_RE.match(rest)
+        if owner_match is not None:
+            subject = owner_match.group("subject").strip()
+            owner: Optional[str] = owner_match.group("owner").strip()
+        else:
+            subject = rest
+            owner = None
+        tasks.append(
+            TaskListItem(
+                id=match.group("id"),
+                subject=subject,
+                status=match.group("status").strip(),
+                owner=owner,
+            )
+        )
+    if not tasks:
+        return None
+    return TaskListOutput(tasks=tasks, raw_text=text)
+
+
+def parse_sendmessage_output(
+    tool_result: ToolResultContent, file_path: Optional[str]
+) -> Optional[SendMessageOutput]:
+    """Parse SendMessage JSON output.
+
+    Shape:
+        {"success": bool, "message": str, "request_id": str, "target": str}
+    """
+    del file_path
+    data = _try_load_json_text(tool_result)
+    if data is None:
+        return None
+    return SendMessageOutput(
+        success=bool(data.get("success", False)),
+        message=str(data.get("message", "")),
+        request_id=_opt_str(data.get("request_id")),
+        target=_opt_str(data.get("target")),
+    )
+
+
+def _opt_str(value: Any) -> Optional[str]:
+    return value if isinstance(value, str) and value else None
+
+
 # Type alias for tool output parsers
 # Standard signature: (tool_result, file_path) -> Optional[ToolOutput]
 # Extended signature: (tool_result, file_path, tool_use_result) -> Optional[ToolOutput]
@@ -688,6 +897,13 @@ TOOL_OUTPUT_PARSERS: dict[str, ToolOutputParser] = {
     "ExitPlanMode": parse_exitplanmode_output,
     "WebSearch": parse_websearch_output,
     "WebFetch": parse_webfetch_output,
+    # Teammates feature tools
+    "TeamCreate": parse_teamcreate_output,
+    "TeamDelete": parse_teamdelete_output,
+    "TaskCreate": parse_taskcreate_output,
+    "TaskUpdate": parse_taskupdate_output,
+    "TaskList": parse_tasklist_output,
+    "SendMessage": parse_sendmessage_output,
 }
 
 # Parsers that accept the extended signature with tool_use_result

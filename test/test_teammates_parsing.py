@@ -11,7 +11,34 @@ from claude_code_log.factories.teammate_factory import (
     has_teammate_message,
     iter_teammate_blocks,
 )
-from claude_code_log.models import AgentResultMetadata, MessageMeta
+from claude_code_log.factories.tool_factory import (
+    TOOL_INPUT_MODELS,
+    TOOL_OUTPUT_PARSERS,
+    create_tool_input,
+    parse_sendmessage_output,
+    parse_taskcreate_output,
+    parse_tasklist_output,
+    parse_taskupdate_output,
+    parse_teamcreate_output,
+    parse_teamdelete_output,
+)
+from claude_code_log.models import (
+    AgentResultMetadata,
+    MessageMeta,
+    SendMessageInput,
+    SendMessageOutput,
+    TaskCreateInput,
+    TaskCreateOutput,
+    TaskListInput,
+    TaskListOutput,
+    TaskUpdateInput,
+    TaskUpdateOutput,
+    TeamCreateInput,
+    TeamCreateOutput,
+    TeamDeleteInput,
+    TeamDeleteOutput,
+    ToolResultContent,
+)
 
 
 class TestAgentResultMetadata:
@@ -196,3 +223,163 @@ class TestTeammateMessageParser:
         assert find_team_lead_body(wrapped) == "do the thing"
         assert find_team_lead_body(SINGLE_BLOCK) is None
         assert find_team_lead_body("") is None
+
+
+def _tr_text(text: str) -> ToolResultContent:
+    """Build a ToolResultContent with a single text block body."""
+    return ToolResultContent(
+        type="tool_result",
+        tool_use_id="tu_fake",
+        content=[{"type": "text", "text": text}],
+    )
+
+
+class TestTeammateToolInputs:
+    """All six teammate tool names route to a typed BaseModel input."""
+
+    def test_inputs_registered(self) -> None:
+        for name, cls in {
+            "TeamCreate": TeamCreateInput,
+            "TeamDelete": TeamDeleteInput,
+            "TaskCreate": TaskCreateInput,
+            "TaskUpdate": TaskUpdateInput,
+            "TaskList": TaskListInput,
+            "SendMessage": SendMessageInput,
+        }.items():
+            assert TOOL_INPUT_MODELS.get(name) is cls, f"{name} not mapped"
+
+    def test_teamcreate_input(self) -> None:
+        parsed = create_tool_input(
+            "TeamCreate",
+            {
+                "team_name": "x",
+                "description": "d",
+                "agent_type": "team-lead",
+            },
+        )
+        assert isinstance(parsed, TeamCreateInput)
+        assert parsed.team_name == "x"
+        assert parsed.agent_type == "team-lead"
+
+    def test_taskupdate_input_partial(self) -> None:
+        parsed = create_tool_input("TaskUpdate", {"taskId": "1", "status": "completed"})
+        assert isinstance(parsed, TaskUpdateInput)
+        assert parsed.taskId == "1"
+        assert parsed.status == "completed"
+        assert parsed.owner is None
+
+    def test_tasklist_input_empty(self) -> None:
+        parsed = create_tool_input("TaskList", {})
+        assert isinstance(parsed, TaskListInput)
+
+    def test_sendmessage_input(self) -> None:
+        parsed = create_tool_input(
+            "SendMessage",
+            {
+                "type": "shutdown_request",
+                "recipient": "alice",
+                "content": "go home",
+            },
+        )
+        assert isinstance(parsed, SendMessageInput)
+        assert parsed.recipient == "alice"
+        assert parsed.content == "go home"
+
+
+class TestTeammateToolOutputs:
+    """JSON/plain-text tool results parse into typed outputs."""
+
+    def test_output_parsers_registered(self) -> None:
+        for name in (
+            "TeamCreate",
+            "TeamDelete",
+            "TaskCreate",
+            "TaskUpdate",
+            "TaskList",
+            "SendMessage",
+        ):
+            assert name in TOOL_OUTPUT_PARSERS, f"{name} parser missing"
+
+    def test_teamcreate_output(self) -> None:
+        payload = (
+            '{"team_name":"test-coverage",'
+            '"team_file_path":"/teams/test-coverage/config.json",'
+            '"lead_agent_id":"team-lead@test-coverage"}'
+        )
+        out = parse_teamcreate_output(_tr_text(payload), None)
+        assert isinstance(out, TeamCreateOutput)
+        assert out.team_name == "test-coverage"
+        assert out.lead_agent_id == "team-lead@test-coverage"
+
+    def test_teamcreate_output_rejects_non_json(self) -> None:
+        out = parse_teamcreate_output(_tr_text("not-json"), None)
+        assert out is None
+
+    def test_teamdelete_extracts_active_members(self) -> None:
+        payload = (
+            '{"success":false,'
+            '"message":"Cannot cleanup team with 2 active member(s): alice, bob. Try shutdown first.",'
+            '"team_name":"test-coverage"}'
+        )
+        out = parse_teamdelete_output(_tr_text(payload), None)
+        assert isinstance(out, TeamDeleteOutput)
+        assert out.success is False
+        assert out.active_members == ["alice", "bob"]
+        assert out.team_name == "test-coverage"
+
+    def test_teamdelete_success_no_members(self) -> None:
+        payload = '{"success":true,"message":"Team deleted.","team_name":"x"}'
+        out = parse_teamdelete_output(_tr_text(payload), None)
+        assert isinstance(out, TeamDeleteOutput)
+        assert out.success is True
+        assert out.active_members is None
+
+    def test_taskcreate_output(self) -> None:
+        out = parse_taskcreate_output(
+            _tr_text("Task #3 created successfully: Add relay tests"),
+            None,
+        )
+        assert isinstance(out, TaskCreateOutput)
+        assert out.task_id == "3"
+        assert out.subject == "Add relay tests"
+
+    def test_taskcreate_rejects_unrecognized(self) -> None:
+        out = parse_taskcreate_output(_tr_text("Completely different"), None)
+        assert out is None
+
+    def test_taskupdate_output(self) -> None:
+        out = parse_taskupdate_output(_tr_text("Updated task #1 owner, status"), None)
+        assert isinstance(out, TaskUpdateOutput)
+        assert out.success is True
+        assert out.task_id == "1"
+        assert out.updated_fields == {"owner": True, "status": True}
+
+    def test_tasklist_output(self) -> None:
+        text = (
+            "#1 [completed] Add relay tests (alice)\n"
+            "#2 [in_progress] Add server tests (bob)\n"
+            "#3 [pending] Merge branches"
+        )
+        out = parse_tasklist_output(_tr_text(text), None)
+        assert isinstance(out, TaskListOutput)
+        assert len(out.tasks) == 3
+        assert out.tasks[0].status == "completed"
+        assert out.tasks[0].owner == "alice"
+        assert out.tasks[2].owner is None
+
+    def test_tasklist_returns_none_on_unknown_format(self) -> None:
+        out = parse_tasklist_output(_tr_text("This is not a task list."), None)
+        assert out is None
+
+    def test_sendmessage_output(self) -> None:
+        payload = (
+            '{"success":true,'
+            '"message":"Shutdown request sent to alice.",'
+            '"request_id":"shutdown-1@alice",'
+            '"target":"alice"}'
+        )
+        out = parse_sendmessage_output(_tr_text(payload), None)
+        assert isinstance(out, SendMessageOutput)
+        assert out.success is True
+        assert out.target == "alice"
+        assert out.request_id == "shutdown-1@alice"
