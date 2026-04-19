@@ -720,7 +720,10 @@ _TASK_LIST_LINE_RE = re.compile(
 # parens, so this match is unambiguous on the trailing segment.
 _TASK_LIST_OWNER_RE = re.compile(r"^(?P<subject>.+?)\s+\((?P<owner>[^)]+)\)$")
 _TEAM_DELETE_ACTIVE_RE = re.compile(
-    r"active member\(s\):\s*(?P<members>[^.]+?)\.", re.IGNORECASE
+    # Trailing delimiter: a period (the usual Anthropic form) OR end of
+    # string (defensive — drops nothing if the period is ever omitted).
+    r"active member\(s\):\s*(?P<members>[^.]+?)(?:\.|$)",
+    re.IGNORECASE,
 )
 
 

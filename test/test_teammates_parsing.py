@@ -345,6 +345,17 @@ class TestTeammateToolOutputs:
         assert out.success is True
         assert out.active_members is None
 
+    def test_teamdelete_active_members_without_trailing_period(self) -> None:
+        """Defensive: the active-members regex must not require a period."""
+        payload = (
+            '{"success":false,'
+            '"message":"Cannot cleanup team with 2 active member(s): alice, bob",'
+            '"team_name":"x"}'
+        )
+        out = parse_teamdelete_output(_tr_text(payload), None)
+        assert isinstance(out, TeamDeleteOutput)
+        assert out.active_members == ["alice", "bob"]
+
     def test_taskcreate_output(self) -> None:
         out = parse_taskcreate_output(
             _tr_text("Task #3 created successfully: Add relay tests"),
@@ -552,6 +563,180 @@ class TestTeammatesFactoryIntegration:
                     assert "agentId:" not in result_text
                     found_alice_metadata = True
         assert found_alice_metadata
+
+    def test_identical_prompts_do_not_collide(self, tmp_path: Path) -> None:
+        """Regression: two Tasks with identical prompts must link to
+        *different* subagent files. Reported by monk in PR #117 review —
+        the inner match loop used to overwrite the first patch when a
+        second agent file's first-message body normalized to the same
+        string.
+        """
+        import json as _json
+
+        session_id = "dead0000-0000-4000-8000-000000000001"
+        main_path = tmp_path / f"{session_id}.jsonl"
+        subagents_dir = tmp_path / session_id / "subagents"
+        subagents_dir.mkdir(parents=True)
+
+        agent_x = "xxxx1111111111111"
+        agent_y = "yyyy2222222222222"
+
+        shared_prompt = "Do the thing."
+        base = {
+            "isSidechain": False,
+            "userType": "external",
+            "cwd": "/t",
+            "sessionId": session_id,
+            "version": "2.1.34",
+        }
+
+        def entry(**kw: object) -> dict:
+            return {**base, **kw}
+
+        def main_uuid(n: int) -> str:
+            return f"00000000-0000-4000-8000-{n:012d}"
+
+        entries = [
+            # U1: initial user prompt
+            entry(
+                parentUuid=None,
+                uuid=main_uuid(1),
+                timestamp="2026-04-19T10:01:00Z",
+                type="user",
+                message={"role": "user", "content": [{"type": "text", "text": "go"}]},
+            ),
+            # A1: Task tool_use → teammate X (identical prompt)
+            entry(
+                parentUuid=main_uuid(1),
+                uuid=main_uuid(2),
+                timestamp="2026-04-19T10:02:00Z",
+                type="assistant",
+                message={
+                    "id": "msg_a",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-opus-4-7",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tu-A",
+                            "name": "Task",
+                            "input": {
+                                "prompt": shared_prompt,
+                                "subagent_type": "general-purpose",
+                                "description": "teammate X",
+                                "name": "x",
+                            },
+                        }
+                    ],
+                    "stop_reason": None,
+                },
+            ),
+            # U2: tool_result for tu-A (no agentId — forces fallback)
+            entry(
+                parentUuid=main_uuid(2),
+                uuid=main_uuid(3),
+                timestamp="2026-04-19T10:03:00Z",
+                type="user",
+                message={
+                    "role": "user",
+                    "content": [
+                        {
+                            "tool_use_id": "tu-A",
+                            "type": "tool_result",
+                            "content": [{"type": "text", "text": "done by x"}],
+                        }
+                    ],
+                },
+            ),
+            # A2: Task tool_use → teammate Y (identical prompt)
+            entry(
+                parentUuid=main_uuid(3),
+                uuid=main_uuid(4),
+                timestamp="2026-04-19T10:04:00Z",
+                type="assistant",
+                message={
+                    "id": "msg_b",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-opus-4-7",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tu-B",
+                            "name": "Task",
+                            "input": {
+                                "prompt": shared_prompt,
+                                "subagent_type": "general-purpose",
+                                "description": "teammate Y",
+                                "name": "y",
+                            },
+                        }
+                    ],
+                    "stop_reason": None,
+                },
+            ),
+            # U3: tool_result for tu-B (no agentId)
+            entry(
+                parentUuid=main_uuid(4),
+                uuid=main_uuid(5),
+                timestamp="2026-04-19T10:05:00Z",
+                type="user",
+                message={
+                    "role": "user",
+                    "content": [
+                        {
+                            "tool_use_id": "tu-B",
+                            "type": "tool_result",
+                            "content": [{"type": "text", "text": "done by y"}],
+                        }
+                    ],
+                },
+            ),
+        ]
+
+        with main_path.open("w") as f:
+            for e in entries:
+                f.write(_json.dumps(e) + "\n")
+
+        # Two agent files whose first message bodies both normalize to the
+        # shared prompt.
+        for agent_id in (agent_x, agent_y):
+            agent_entry = {
+                "parentUuid": None,
+                "isSidechain": True,
+                "agentId": agent_id,
+                "userType": "external",
+                "cwd": "/t",
+                "sessionId": session_id,
+                "version": "2.1.34",
+                "uuid": f"aa{agent_id[:10]}-0000-4000-8000-000000000001",
+                "timestamp": "2026-04-19T10:10:00Z",
+                "type": "user",
+                "message": {"role": "user", "content": shared_prompt},
+            }
+            with (subagents_dir / f"agent-{agent_id}.jsonl").open("w") as f:
+                f.write(_json.dumps(agent_entry) + "\n")
+
+        messages = load_transcript(main_path, cache_manager=None, silent=True)
+
+        # Collect the agentId each tool_result got patched with.
+        patched: dict[str, str] = {}
+        for m in messages:
+            if not isinstance(m, UserTranscriptEntry):
+                continue
+            for c in m.message.content:
+                if isinstance(c, ToolResultContent) and c.tool_use_id in {
+                    "tu-A",
+                    "tu-B",
+                }:
+                    if m.agentId:
+                        patched[c.tool_use_id] = m.agentId
+
+        # Both Tasks linked, to *different* agents (no overwrite).
+        assert patched.keys() == {"tu-A", "tu-B"}, patched
+        assert set(patched.values()) == {agent_x, agent_y}, patched
+        assert patched["tu-A"] != patched["tu-B"]
 
     def test_teammate_message_content_parsed(self, fixture_messages: list) -> None:
         """The user entry carrying multiple <teammate-message> blocks becomes

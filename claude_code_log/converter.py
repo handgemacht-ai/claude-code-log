@@ -504,6 +504,15 @@ def _link_subagents_by_prompt_hash(
     if not subagents_dir.is_dir():
         return
 
+    # Pre-normalize prompts once, and track which result entries are still
+    # up for grabs. Without this a second agent file with the same
+    # normalized prompt would re-match an already-patched entry, wiping
+    # the first match (concrete repro: team-lead sends identical
+    # instructions to multiple teammates in parallel).
+    remaining: list[tuple[str, UserTranscriptEntry]] = [
+        (_normalize_prompt(prompt), entry) for prompt, entry in unresolved
+    ]
+
     for agent_file in sorted(subagents_dir.glob("agent-*.jsonl")):
         candidate_agent_id = agent_file.stem[len("agent-") :]
         if not candidate_agent_id or candidate_agent_id in agent_ids:
@@ -518,10 +527,11 @@ def _link_subagents_by_prompt_hash(
         if not candidate_norm:
             continue
 
-        for prompt_text, result_entry in unresolved:
-            if _normalize_prompt(prompt_text) == candidate_norm:
+        for i, (norm_prompt, result_entry) in enumerate(remaining):
+            if norm_prompt == candidate_norm:
                 agent_ids.add(candidate_agent_id)
                 result_entry.agentId = candidate_agent_id
+                remaining.pop(i)
                 break
 
 
