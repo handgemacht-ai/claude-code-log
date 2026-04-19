@@ -813,6 +813,11 @@ def parse_taskupdate_output(
     if match is None:
         return None
     fields_raw = match.group("fields") or ""
+    # Drop trailing punctuation so a stray period or semicolon at end of
+    # the sentence doesn't leak into the last field key, e.g.
+    # "Updated task #1 owner, status." → {"owner": True, "status": True}
+    # (coderabbit #117).
+    fields_raw = fields_raw.rstrip(" .;:")
     updated_fields: Optional[dict[str, Any]] = None
     if fields_raw:
         updated_fields = {

@@ -443,6 +443,17 @@ class TestTeammateToolOutputs:
         assert out.task_id == "1"
         assert out.updated_fields == {"owner": True, "status": True}
 
+    def test_taskupdate_strips_trailing_punctuation(self) -> None:
+        """Regression (coderabbit #117): a trailing period or semicolon
+        on the field list must not leak into the last field key."""
+        out = parse_taskupdate_output(_tr_text("Updated task #1 owner, status."), None)
+        assert isinstance(out, TaskUpdateOutput)
+        assert out.updated_fields == {"owner": True, "status": True}
+
+        out = parse_taskupdate_output(_tr_text("Updated task #2 subject, owner;"), None)
+        assert isinstance(out, TaskUpdateOutput)
+        assert out.updated_fields == {"subject": True, "owner": True}
+
     def test_tasklist_output(self) -> None:
         text = (
             "#1 [completed] Add relay tests (alice)\n"
