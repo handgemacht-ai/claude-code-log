@@ -20,6 +20,7 @@ from ..models import (
     SessionHeaderMessage,
     SlashCommandMessage,
     SystemMessage,
+    TeammateMessage,
     TextContent,
     ThinkingMessage,
     ToolResultMessage,
@@ -38,7 +39,13 @@ from ..models import (
     GrepInput,
     MultiEditInput,
     ReadInput,
+    SendMessageInput,
+    TaskCreateInput,
     TaskInput,
+    TaskListInput,
+    TaskUpdateInput,
+    TeamCreateInput,
+    TeamDeleteInput,
     TodoWriteInput,
     ToolUseContent,
     WebSearchInput,
@@ -51,7 +58,13 @@ from ..models import (
     ExitPlanModeOutput,
     GlobOutput,
     ReadOutput,
+    SendMessageOutput,
+    TaskCreateOutput,
+    TaskListOutput,
     TaskOutput,
+    TaskUpdateOutput,
+    TeamCreateOutput,
+    TeamDeleteOutput,
     ToolResultContent,
     WebSearchOutput,
     WebFetchOutput,
@@ -71,6 +84,30 @@ if TYPE_CHECKING:
     from ..dag import SessionTree
 
 
+# Colored-circle emoji convention for teammate colors in Markdown output.
+# Markdown can't carry CSS-style color, so prefix each teammate mention
+# with the closest circle emoji to preserve the "at-a-glance" color cue.
+_COLOR_CIRCLE: dict[str, str] = {
+    "blue": "🔵",
+    "cyan": "🟦",
+    "green": "🟢",
+    "yellow": "🟡",
+    "orange": "🟠",
+    "red": "🔴",
+    "pink": "🌸",
+    "purple": "🟣",
+    "gray": "⚪",
+    "system": "⬛",
+    "default": "⚪",
+}
+
+
+def _teammate_marker(name: str, color: Optional[str]) -> str:
+    """Return a `🟢 name` marker for a teammate in Markdown output."""
+    circle = _COLOR_CIRCLE.get((color or "").lower(), _COLOR_CIRCLE["default"])
+    return f"{circle} `{name}`"
+
+
 class MarkdownRenderer(Renderer):
     """Markdown renderer for Claude Code transcripts."""
 
@@ -85,6 +122,12 @@ class MarkdownRenderer(Renderer):
         self._output_dir: Path | None = None
         self._image_counter = 0
         self._ctx: RenderingContext | None = None
+        # teammate_id -> color palette name; snapshotted from the rendering
+        # context at the start of each render so teammate-aware formatters
+        # (TaskUpdate owner, SendMessage recipient, TaskList rows,
+        # TeamDelete active members) can colorize names the entry itself
+        # doesn't annotate. See HtmlRenderer for the same pattern.
+        self._teammate_colors: dict[str, str] = {}
 
     # -------------------------------------------------------------------------
     # Private Utility Methods
@@ -388,6 +431,39 @@ class MarkdownRenderer(Renderer):
         """Format → fenced code block."""
         return self._code_fence(content.memory_text)
 
+    def format_TeammateMessage(
+        self, content: TeammateMessage, _: TemplateMessage
+    ) -> str:
+        """Format → one blockquote per <teammate-message> block.
+
+        Each block's header is a single line with a colored-circle emoji +
+        teammate-id (bold) + optional italic summary; the body follows as
+        a block-quoted markdown segment. Markdown can't color, so the
+        circle-emoji convention gives a quick visual cue in the plain
+        rendering.
+        """
+        parts: list[str] = []
+        if content.leading_text:
+            parts.append(content.leading_text)
+        for block in content.blocks:
+            parts.append(self._format_teammate_block_markdown(block))
+        if content.trailing_text:
+            parts.append(content.trailing_text)
+        return "\n\n".join(p for p in parts if p)
+
+    def _format_teammate_block_markdown(self, block: Any) -> str:
+        emoji = _COLOR_CIRCLE.get((block.color or "").lower(), _COLOR_CIRCLE["default"])
+        if block.is_system:
+            emoji = _COLOR_CIRCLE["system"]
+        header_parts: list[str] = [f"{emoji} **{block.teammate_id}**"]
+        if block.summary:
+            header_parts.append(f"*{block.summary}*")
+        header = " · ".join(header_parts)
+        body = block.body.strip()
+        if not body:
+            return header
+        return f"{header}\n\n{self._quote(body)}"
+
     # -------------------------------------------------------------------------
     # Assistant Content Formatters
     # -------------------------------------------------------------------------
@@ -513,6 +589,62 @@ class MarkdownRenderer(Renderer):
         if len(input.prompt) > 100:
             return self._code_fence(input.prompt)
         return ""
+
+    # --- Teammate-feature tool inputs --------------------------------------
+
+    def format_TeamCreateInput(self, input: TeamCreateInput, _: TemplateMessage) -> str:
+        """Format → bullet list with team/agent_type/description."""
+        lines: list[str] = [f"- **Team:** `{input.team_name}`"]
+        if input.agent_type:
+            lines.append(f"- **Agent type:** `{input.agent_type}`")
+        if input.description:
+            lines.append(f"- **Description:** {input.description}")
+        return "\n".join(lines)
+
+    def format_TeamDeleteInput(
+        self, _input: TeamDeleteInput, _: TemplateMessage
+    ) -> str:
+        """Format → '' (TeamDelete takes no meaningful params)."""
+        return ""
+
+    def format_TaskCreateInput(self, input: TaskCreateInput, _: TemplateMessage) -> str:
+        """Format → subject + description bullets."""
+        lines: list[str] = [f"- **Subject:** {input.subject}"]
+        if input.activeForm:
+            lines.append(f"- **Active form:** {input.activeForm}")
+        if input.description:
+            lines.append(f"- **Description:** {input.description}")
+        return "\n".join(lines)
+
+    def format_TaskUpdateInput(self, input: TaskUpdateInput, _: TemplateMessage) -> str:
+        """Format → '#N status:foo owner:🔵 name'."""
+        parts: list[str] = [f"`#{input.taskId}`"]
+        if input.status:
+            parts.append(f"**status:** `{input.status}`")
+        if input.owner:
+            color = (self._teammate_colors or {}).get(input.owner)
+            parts.append(f"**owner:** {_teammate_marker(input.owner, color)}")
+        return " · ".join(parts)
+
+    def format_TaskListInput(self, _input: TaskListInput, _: TemplateMessage) -> str:
+        """Format → '' (TaskList takes no params)."""
+        return ""
+
+    def format_SendMessageInput(
+        self, input: SendMessageInput, _: TemplateMessage
+    ) -> str:
+        """Format → recipient marker + type + blockquoted content."""
+        lines: list[str] = []
+        if input.recipient:
+            color = (self._teammate_colors or {}).get(input.recipient)
+            lines.append(f"**To:** {_teammate_marker(input.recipient, color)}")
+        if input.type:
+            lines.append(f"**Type:** `{input.type}`")
+        result = "\n\n".join(lines) if lines else ""
+        if input.content:
+            body = self._quote(input.content)
+            result = f"{result}\n\n{body}" if result else body
+        return result
 
     def format_ToolUseContent(self, content: ToolUseContent, _: TemplateMessage) -> str:
         """Fallback for unknown tool inputs - render as key/value list."""
@@ -673,6 +805,103 @@ class MarkdownRenderer(Renderer):
                 meta_parts.append(f"{output.duration_ms}ms")
         meta_line = f"*{' · '.join(meta_parts)}*\n\n" if meta_parts else ""
         return meta_line + self._quote(output.result)
+
+    # --- Teammate-feature tool outputs -------------------------------------
+
+    def format_TeamCreateOutput(
+        self, output: TeamCreateOutput, _: TemplateMessage
+    ) -> str:
+        """Format → bullet list: team / lead / config."""
+        lines: list[str] = [f"- **Team:** `{output.team_name}`"]
+        if output.lead_agent_id:
+            lines.append(f"- **Lead:** `{output.lead_agent_id}`")
+        if output.team_file_path:
+            lines.append(f"- **Config:** `{output.team_file_path}`")
+        return "\n".join(lines)
+
+    def format_TeamDeleteOutput(
+        self, output: TeamDeleteOutput, _: TemplateMessage
+    ) -> str:
+        """Format → ✓/✗ status + message + active members (colored markers)."""
+        status = "✓ Deleted" if output.success else "✗ Refused"
+        lines: list[str] = [status]
+        if output.team_name:
+            lines.append(f"**Team:** `{output.team_name}`")
+        if output.message:
+            lines.append(output.message)
+        if output.active_members:
+            colors = self._teammate_colors or {}
+            markers = [
+                _teammate_marker(name, colors.get(name))
+                for name in output.active_members
+            ]
+            lines.append(f"**Active members:** {', '.join(markers)}")
+        return "\n\n".join(lines)
+
+    def format_TaskCreateOutput(
+        self, output: TaskCreateOutput, _: TemplateMessage
+    ) -> str:
+        """Format → '#N — subject'."""
+        if output.subject:
+            return f"`#{output.task_id}` — {output.subject}"
+        return f"`#{output.task_id}`"
+
+    def format_TaskUpdateOutput(
+        self, output: TaskUpdateOutput, _: TemplateMessage
+    ) -> str:
+        """Format → ✓ Updated #N (fields)."""
+        status = "✓ Updated" if output.success else "✗ Not updated"
+        prefix = f"{status} `#{output.task_id}`"
+        if output.updated_fields:
+            fields = ", ".join(f"`{name}`" for name in output.updated_fields)
+            prefix = f"{prefix} — {fields}"
+        if output.status_change is not None and (
+            output.status_change.from_status or output.status_change.to_status
+        ):
+            prefix = (
+                f"{prefix}\n\n"
+                f"**{output.status_change.from_status or '?'}**"
+                f" → **{output.status_change.to_status or '?'}**"
+            )
+        return prefix
+
+    def format_TaskListOutput(self, output: TaskListOutput, _: TemplateMessage) -> str:
+        """Format → Markdown table with id/status/subject/owner."""
+        if not output.tasks:
+            return "*No tasks*"
+        colors = self._teammate_colors or {}
+        lines: list[str] = [
+            "| # | Status | Subject | Owner |",
+            "|---|---|---|---|",
+        ]
+        for task in output.tasks:
+            owner = (
+                _teammate_marker(task.owner, colors.get(task.owner))
+                if task.owner
+                else ""
+            )
+            status = task.status or ""
+            # Escape pipe characters in subject to keep the table intact.
+            subject = task.subject.replace("|", r"\|")
+            lines.append(f"| #{task.id} | {status} | {subject} | {owner} |")
+        return "\n".join(lines)
+
+    def format_SendMessageOutput(
+        self, output: SendMessageOutput, _: TemplateMessage
+    ) -> str:
+        """Format → ✓/✗ status + target + request id + message."""
+        status = "✓ Sent" if output.success else "✗ Failed"
+        lines: list[str] = [status]
+        if output.target:
+            colors = self._teammate_colors or {}
+            lines.append(
+                f"**To:** {_teammate_marker(output.target, colors.get(output.target))}"
+            )
+        if output.request_id:
+            lines.append(f"**Request:** `{output.request_id}`")
+        if output.message:
+            lines.append(output.message)
+        return "\n\n".join(lines)
 
     def format_ToolResultContent(
         self, output: ToolResultContent, message: TemplateMessage
@@ -904,6 +1133,7 @@ class MarkdownRenderer(Renderer):
             messages, session_tree=session_tree, detail=self.detail
         )
         self._ctx = ctx
+        self._teammate_colors = dict(ctx.teammate_colors)
 
         parts = [f"<!-- Generated by claude-code-log v{get_library_version()} -->", ""]
         parts.append(f"# {title}")
