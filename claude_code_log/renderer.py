@@ -2324,12 +2324,12 @@ def _filter_by_detail(
         # HIGH: no content-item stripping needed
         strip_types = ()
 
-    # USER_ONLY additionally keeps queue-operation entries so their
+    # MINIMAL and USER_ONLY keep queue-operation entries so their
     # UserSteeringMessage survives — steering prompts carry real user
-    # intent. Other levels drop them; the MINIMAL asymmetry is
-    # pre-existing and out of scope for this change.
+    # intent and belong in any view that claims to preserve the user's
+    # side of the conversation. HIGH/LOW continue to drop them.
     allowed_types: tuple[type, ...] = (UserTranscriptEntry, AssistantTranscriptEntry)
-    if detail == DetailLevel.USER_ONLY:
+    if detail in (DetailLevel.MINIMAL, DetailLevel.USER_ONLY):
         allowed_types = (*allowed_types, QueueOperationTranscriptEntry)
 
     filtered: list[TranscriptEntry] = []

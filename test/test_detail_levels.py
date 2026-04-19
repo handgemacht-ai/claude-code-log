@@ -495,6 +495,55 @@ class TestMinimalTemplateMessages:
         assert root_messages[0].is_session_header
         assert len(session_nav) >= 1
 
+    def test_minimal_keeps_user_steering(self, tmp_path):
+        """queue-operation 'remove' → UserSteeringMessage, kept at MINIMAL.
+
+        Steering prompts carry real user precisions (e.g. 'actually, use
+        Postgres not MySQL') and must survive any view that claims to
+        preserve the user's side of the conversation.
+        """
+        import json as _json
+
+        entries = [
+            _user_entry("Start building", timestamp="2025-01-01T10:00:00Z"),
+            _assistant_entry("Starting...", timestamp="2025-01-01T10:00:01Z"),
+        ]
+        path = tmp_path / "t.jsonl"
+        path.write_text(
+            "\n".join(_json.dumps(e) for e in entries)
+            + "\n"
+            + _json.dumps(
+                {
+                    "type": "queue-operation",
+                    "operation": "remove",
+                    "timestamp": "2025-01-01T10:00:02Z",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Use Postgres not MySQL",
+                        }
+                    ],
+                    "sessionId": "sess-001",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        messages = load_transcript(path)
+
+        _, _, ctx = generate_template_messages(messages, detail=DetailLevel.MINIMAL)
+        from claude_code_log.models import UserSteeringMessage
+
+        steering = [
+            msg.content
+            for msg in ctx.messages
+            if isinstance(msg.content, UserSteeringMessage)
+        ]
+        assert len(steering) == 1, (
+            f"MINIMAL should keep steering; got content types: "
+            f"{[type(m.content).__name__ for m in ctx.messages]}"
+        )
+
     def test_minimal_removes_bash_messages(self, tmp_path):
         """Minimal mode removes bash-input and bash-output messages."""
         entries = [
