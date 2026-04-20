@@ -452,7 +452,11 @@ class MarkdownRenderer(Renderer):
         return "\n\n".join(p for p in parts if p)
 
     def _format_teammate_block_markdown(self, block: Any) -> str:
-        emoji = _COLOR_CIRCLE.get((block.color or "").lower(), _COLOR_CIRCLE["default"])
+        # Inline color wins; fall back to the session-wide color map so
+        # later heartbeat/status blocks (which usually omit `color=`)
+        # still get the right circle-emoji marker.
+        color = block.color or self._teammate_colors.get(block.teammate_id)
+        emoji = _COLOR_CIRCLE.get((color or "").lower(), _COLOR_CIRCLE["default"])
         if block.is_system:
             emoji = _COLOR_CIRCLE["system"]
         header_parts: list[str] = [f"{emoji} **{block.teammate_id}**"]

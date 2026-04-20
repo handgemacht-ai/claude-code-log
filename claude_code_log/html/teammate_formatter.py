@@ -114,13 +114,21 @@ def _neutral_badge_style() -> str:
 # ---------------------------------------------------------------------------
 
 
-def format_teammate_content(content: TeammateMessage) -> str:
+def format_teammate_content(
+    content: TeammateMessage,
+    teammate_colors: Optional[dict[str, str]] = None,
+) -> str:
     """Render a TeammateMessage as one card per block, plus surrounding text.
 
     Each block produces a ``<div class="teammate-message">`` containing a
     header (colored badge + optional summary) and a Markdown-rendered body.
     ``teammate_id="system"`` blocks are flagged with ``teammate-system`` so
     the CSS can apply a distinct neutral palette.
+
+    Blocks without an inline ``color="..."`` attribute fall back to
+    ``teammate_colors[block.teammate_id]`` so later heartbeat / status
+    messages stay visually linked to the teammate's color without having
+    to re-send the attribute each time.
     """
     parts: list[str] = []
 
@@ -131,7 +139,7 @@ def format_teammate_content(content: TeammateMessage) -> str:
         )
 
     for block in content.blocks:
-        parts.append(_format_teammate_block(block))
+        parts.append(_format_teammate_block(block, teammate_colors))
 
     if content.trailing_text:
         parts.append(
@@ -142,15 +150,20 @@ def format_teammate_content(content: TeammateMessage) -> str:
     return "".join(parts)
 
 
-def _format_teammate_block(block: TeammateMessageBlock) -> str:
+def _format_teammate_block(
+    block: TeammateMessageBlock,
+    teammate_colors: Optional[dict[str, str]] = None,
+) -> str:
     classes = ["teammate-message"]
     if block.is_system:
         classes.append("teammate-system")
     class_attr = " ".join(classes)
-    style = _color_style(block.color)
+    # Inline color wins; fall back to the learned session color.
+    color = block.color or _lookup_color(teammate_colors, block.teammate_id)
+    style = _color_style(color)
 
     header_parts: list[str] = [
-        _teammate_badge(block.teammate_id, block.color),
+        _teammate_badge(block.teammate_id, color),
     ]
     if block.summary:
         header_parts.append(
@@ -322,11 +335,17 @@ def format_sendmessage_input(
     return _render_card("send-message-card", rows)
 
 
-def format_sendmessage_output(output: SendMessageOutput) -> str:
+def format_sendmessage_output(
+    output: SendMessageOutput,
+    teammate_colors: Optional[dict[str, str]] = None,
+) -> str:
     status = "Sent" if output.success else "Failed"
     rows: list[tuple[str, str]] = [("Status", escape_html(status))]
     if output.target:
-        rows.append(("Target", escape_html(output.target)))
+        # Mirror format_sendmessage_input: show the target as a colored
+        # badge so the link between request and result is visible.
+        color = _lookup_color(teammate_colors, output.target)
+        rows.append(("Target", _teammate_badge(output.target, color)))
     if output.request_id:
         rows.append(("Request", f"<code>{escape_html(output.request_id)}</code>"))
     if output.message:
@@ -392,7 +411,10 @@ def format_task_output_teammate_extras(
             )
         )
     if output.teammate_id:
-        color = _lookup_color(teammate_colors, output.teammate_id) or output.color
+        # Inline output.color is specific to this agent-spawn result and
+        # should win over the session-wide cache learned from earlier
+        # <teammate-message> blocks.
+        color = output.color or _lookup_color(teammate_colors, output.teammate_id)
         rows.append(("Teammate", _teammate_badge(output.teammate_id, color)))
     if not rows:
         return ""

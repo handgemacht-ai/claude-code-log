@@ -287,8 +287,12 @@ class HtmlRenderer(Renderer):
     def format_TeammateMessage(
         self, content: TeammateMessage, _: TemplateMessage
     ) -> str:
-        """Format → one colored card per <teammate-message> block."""
-        return format_teammate_content(content)
+        """Format → one colored card per <teammate-message> block.
+
+        Passes the session-wide teammate_colors map so blocks without an
+        inline color still inherit the teammate's learned color.
+        """
+        return format_teammate_content(content, self._teammate_colors)
 
     # -------------------------------------------------------------------------
     # Assistant Content Formatters
@@ -475,8 +479,8 @@ class HtmlRenderer(Renderer):
     def format_SendMessageOutput(
         self, output: SendMessageOutput, _: TemplateMessage
     ) -> str:
-        """Format → sent/failed notice with target + request id."""
-        return _format_sendmessage_output(output)
+        """Format → sent/failed notice with colored target badge + request id."""
+        return _format_sendmessage_output(output, self._teammate_colors)
 
     def format_ToolResultContent(
         self, output: ToolResultContent, _: TemplateMessage

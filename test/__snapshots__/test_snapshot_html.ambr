@@ -11628,7 +11628,7 @@
               </div>
           </div>
           <div class='debug-info'>11111111-000 &rarr; 22222222-000</div>
-          <div class='content'><dl class="teammate-tool-card send-message-card"><dt>Status</dt><dd>Sent</dd><dt>Target</dt><dd>alice</dd><dt>Request</dt><dd><code>shutdown-0001@alice</code></dd><dt>Message</dt><dd>Shutdown request sent to alice. Request ID: shutdown-0001@alice</dd></dl></div>
+          <div class='content'><dl class="teammate-tool-card send-message-card"><dt>Status</dt><dd>Sent</dd><dt>Target</dt><dd><span class="teammate-badge" style="--cc-color: var(--cc-blue); --cc-color-bg: var(--cc-blue-bg);"><span class="teammate-icon">▎</span>alice</span></dd><dt>Request</dt><dd><code>shutdown-0001@alice</code></dd><dt>Message</dt><dd>Shutdown request sent to alice. Request ID: shutdown-0001@alice</dd></dl></div>
           
       </div>
       
@@ -16315,7 +16315,8 @@
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
-              'bash-output': { id: 'bash-output', content: '📄 Bash Output', style: 'background-color: #efebe9;' }
+              'bash-output': { id: 'bash-output', content: '📄 Bash Output', style: 'background-color: #efebe9;' },
+              'teammate': { id: 'teammate', content: '👥 Teammate', style: 'background-color: #e8f2fd;' }
           };
   
           // Build timeline data from messages
@@ -16349,6 +16350,11 @@
                       messageType = 'bash-input';
                   } else if (classList.includes('bash-output')) {
                       messageType = 'bash-output';
+                  } else if (classList.includes('teammate')) {
+                      // Must precede the generic `.find` below: a teammate
+                      // message also carries the `user` class (for styling),
+                      // and .find would return `user` first in DOM order.
+                      messageType = 'teammate';
                   } else {
                       // Look for standard message types
                       messageType = classList.find(cls =>
@@ -16559,7 +16565,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -27486,7 +27492,8 @@
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
-              'bash-output': { id: 'bash-output', content: '📄 Bash Output', style: 'background-color: #efebe9;' }
+              'bash-output': { id: 'bash-output', content: '📄 Bash Output', style: 'background-color: #efebe9;' },
+              'teammate': { id: 'teammate', content: '👥 Teammate', style: 'background-color: #e8f2fd;' }
           };
   
           // Build timeline data from messages
@@ -27520,6 +27527,11 @@
                       messageType = 'bash-input';
                   } else if (classList.includes('bash-output')) {
                       messageType = 'bash-output';
+                  } else if (classList.includes('teammate')) {
+                      // Must precede the generic `.find` below: a teammate
+                      // message also carries the `user` class (for styling),
+                      // and .find would return `user` first in DOM order.
+                      messageType = 'teammate';
                   } else {
                       // Look for standard message types
                       messageType = classList.find(cls =>
@@ -27730,7 +27742,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
