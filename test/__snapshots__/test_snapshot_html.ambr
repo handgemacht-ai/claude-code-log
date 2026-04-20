@@ -10565,7 +10565,8 @@
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
-              'bash-output': { id: 'bash-output', content: '📄 Bash Output', style: 'background-color: #efebe9;' }
+              'bash-output': { id: 'bash-output', content: '📄 Bash Output', style: 'background-color: #efebe9;' },
+              'teammate': { id: 'teammate', content: '👥 Teammate', style: 'background-color: #e8f2fd;' }
           };
   
           // Build timeline data from messages
@@ -10599,6 +10600,11 @@
                       messageType = 'bash-input';
                   } else if (classList.includes('bash-output')) {
                       messageType = 'bash-output';
+                  } else if (classList.includes('teammate')) {
+                      // Must precede the generic `.find` below: a teammate
+                      // message also carries the `user` class (for styling),
+                      // and .find would return `user` first in DOM order.
+                      messageType = 'teammate';
                   } else {
                       // Look for standard message types
                       messageType = classList.find(cls =>
@@ -10809,7 +10815,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -11428,7 +11434,7 @@
       
       
       
-      <div class='message teammate sidechain d-0' data-message-id='d-17' id='msg-d-17'>
+      <div class='message user teammate sidechain d-0' data-message-id='d-17' id='msg-d-17'>
           <div class='header'>
               <span>Teammate</span>
               <div class='header-info'>
@@ -11442,7 +11448,7 @@
           <div class='content markdown'><div class="teammate-message" style="--cc-color: var(--cc-cyan); --cc-color-bg: var(--cc-cyan-bg);"><div class="teammate-message-header"><span class="teammate-badge" style="--cc-color: var(--cc-cyan); --cc-color-bg: var(--cc-cyan-bg);"><span class="teammate-icon">▎</span>team-lead</span><span class="teammate-summary">task spawn</span></div><div class="teammate-body"><p>You are <strong>bob</strong>, a teammate in the test-coverage team. Add unit tests for the server module and report back.</p>
   </div></div></div>
           
-          <div class='fold-bar' data-message-id='d-17' data-border-color='teammate sidechain'>
+          <div class='fold-bar' data-message-id='d-17' data-border-color='user teammate sidechain'>
               
               
               <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-17' data-title-unfolded='Fold 2 assistants' data-title-folded='Unfold (1st level) 2 assistants' title='Fold 2 assistants'>
@@ -11498,7 +11504,7 @@
       
       
       
-      <div class='message teammate d-0' data-message-id='d-20' id='msg-d-20'>
+      <div class='message user teammate d-0' data-message-id='d-20' id='msg-d-20'>
           <div class='header'>
               <span>Teammate</span>
               <div class='header-info'>
@@ -11522,7 +11528,7 @@
       
       
       
-      <div class='message teammate d-0' data-message-id='d-21' id='msg-d-21'>
+      <div class='message user teammate d-0' data-message-id='d-21' id='msg-d-21'>
           <div class='header'>
               <span>Teammate</span>
               <div class='header-info'>
@@ -11538,7 +11544,7 @@
   </div></div><div class="teammate-message teammate-system"><div class="teammate-message-header"><span class="teammate-badge" style="--cc-color: var(--cc-gray);"><span class="teammate-icon">▎</span>system</span></div><div class="teammate-body"><p>teammate_terminated: alice exited cleanly</p>
   </div></div></div>
           
-          <div class='fold-bar' data-message-id='d-21' data-border-color='teammate'>
+          <div class='fold-bar' data-message-id='d-21' data-border-color='user teammate'>
               
               
               <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-21' data-title-unfolded='Fold 3 tools, 1 assistant' data-title-folded='Unfold (1st level) 3 tools, 1 assistant' title='Fold 3 tools, 1 assistant'>
