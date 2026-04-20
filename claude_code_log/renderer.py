@@ -110,13 +110,17 @@ class RenderingContext:
     junction_targets: dict[str, list[str]] = field(
         default_factory=lambda: {}  # type: dict[str, list[str]]
     )
-    # teammate_id -> palette color name, accumulated from <teammate-message
-    # color="..."> blocks during the first pass. Downstream formatters
-    # (TaskUpdate owner badges, SendMessage recipient, TaskList rows) fall
-    # back to this map when the entry itself doesn't carry a color.
-    # First sighting wins (teammate colors are stable per-session).
-    teammate_colors: dict[str, str] = field(
-        default_factory=lambda: {}  # type: dict[str, str]
+    # Teammate-color map for per-session fallback when a <teammate-message>
+    # block lacks an inline `color=` or a TaskUpdate/SendMessage/TaskList
+    # row names a teammate without carrying the color itself.
+    #
+    # Scoped by session_id because combined_transcripts.html merges
+    # multiple sessions: session A's alice=blue must NOT override session
+    # B's alice=red. First sighting wins *within* a session.
+    #
+    # Shape: session_id -> { teammate_id -> palette color name }.
+    teammate_colors: dict[str, dict[str, str]] = field(
+        default_factory=lambda: {}  # type: dict[str, dict[str, str]]
     )
 
     def register(self, message: "TemplateMessage") -> int:
@@ -1723,9 +1727,10 @@ def _populate_teammate_colors(ctx: RenderingContext) -> None:
     Source of truth is the ``color`` attribute on each
     ``<teammate-message>`` block (parsed by teammate_factory into
     ``TeammateMessageBlock``). First sighting of a teammate_id with a
-    recognized color wins — teammate colors are stable per-session, and
-    any mismatch between two blocks for the same teammate_id would be a
-    transcript error rather than a rendering decision.
+    recognized color wins *within each session* — teammate colors are
+    stable per-session, and scoping by session_id avoids
+    combined-transcript cross-contamination (alice=blue in session A
+    must not override alice=red in session B).
     """
     from .models import TeammateMessage
 
@@ -1733,13 +1738,15 @@ def _populate_teammate_colors(ctx: RenderingContext) -> None:
         content = template_msg.content
         if not isinstance(content, TeammateMessage):
             continue
+        session_id = template_msg.meta.session_id if template_msg.meta else ""
+        session_colors = ctx.teammate_colors.setdefault(session_id, {})
         for block in content.blocks:
             if (
                 block.teammate_id
                 and block.color
-                and block.teammate_id not in ctx.teammate_colors
+                and block.teammate_id not in session_colors
             ):
-                ctx.teammate_colors[block.teammate_id] = block.color
+                session_colors[block.teammate_id] = block.color
 
 
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:

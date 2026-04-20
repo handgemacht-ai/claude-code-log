@@ -122,16 +122,19 @@ class MarkdownRenderer(Renderer):
         self._output_dir: Path | None = None
         self._image_counter = 0
         self._ctx: RenderingContext | None = None
-        # teammate_id -> color palette name; snapshotted from the rendering
-        # context at the start of each render so teammate-aware formatters
-        # (TaskUpdate owner, SendMessage recipient, TaskList rows,
-        # TeamDelete active members) can colorize names the entry itself
-        # doesn't annotate. See HtmlRenderer for the same pattern.
-        self._teammate_colors: dict[str, str] = {}
+        # session_id -> {teammate_id -> color}, snapshotted at render
+        # start. Scoped to avoid cross-session contamination in
+        # combined transcripts (see RenderingContext.teammate_colors).
+        self._teammate_colors_by_session: dict[str, dict[str, str]] = {}
 
     # -------------------------------------------------------------------------
     # Private Utility Methods
     # -------------------------------------------------------------------------
+
+    def _colors_for(self, message: TemplateMessage) -> dict[str, str]:
+        """Return the teammate_id→color map scoped to *message*'s session."""
+        sid = message.meta.session_id if message.meta else ""
+        return self._teammate_colors_by_session.get(sid, {})
 
     def _quote(self, text: str) -> str:
         """Prefix each line with '> ' to create a blockquote.
@@ -432,7 +435,7 @@ class MarkdownRenderer(Renderer):
         return self._code_fence(content.memory_text)
 
     def format_TeammateMessage(
-        self, content: TeammateMessage, _: TemplateMessage
+        self, content: TeammateMessage, message: TemplateMessage
     ) -> str:
         """Format → one blockquote per <teammate-message> block.
 
@@ -442,20 +445,23 @@ class MarkdownRenderer(Renderer):
         circle-emoji convention gives a quick visual cue in the plain
         rendering.
         """
+        session_colors = self._colors_for(message)
         parts: list[str] = []
         if content.leading_text:
             parts.append(content.leading_text)
         for block in content.blocks:
-            parts.append(self._format_teammate_block_markdown(block))
+            parts.append(self._format_teammate_block_markdown(block, session_colors))
         if content.trailing_text:
             parts.append(content.trailing_text)
         return "\n\n".join(p for p in parts if p)
 
-    def _format_teammate_block_markdown(self, block: Any) -> str:
-        # Inline color wins; fall back to the session-wide color map so
-        # later heartbeat/status blocks (which usually omit `color=`)
+    def _format_teammate_block_markdown(
+        self, block: Any, session_colors: dict[str, str]
+    ) -> str:
+        # Inline color wins; fall back to the session-scoped color map
+        # so later heartbeat/status blocks (which usually omit `color=`)
         # still get the right circle-emoji marker.
-        color = block.color or self._teammate_colors.get(block.teammate_id)
+        color = block.color or session_colors.get(block.teammate_id)
         emoji = _COLOR_CIRCLE.get((color or "").lower(), _COLOR_CIRCLE["default"])
         if block.is_system:
             emoji = _COLOR_CIRCLE["system"]
@@ -620,13 +626,15 @@ class MarkdownRenderer(Renderer):
             lines.append(f"- **Description:** {input.description}")
         return "\n".join(lines)
 
-    def format_TaskUpdateInput(self, input: TaskUpdateInput, _: TemplateMessage) -> str:
+    def format_TaskUpdateInput(
+        self, input: TaskUpdateInput, message: TemplateMessage
+    ) -> str:
         """Format → '#N status:foo owner:🔵 name'."""
         parts: list[str] = [f"`#{input.taskId}`"]
         if input.status:
             parts.append(f"**status:** `{input.status}`")
         if input.owner:
-            color = (self._teammate_colors or {}).get(input.owner)
+            color = self._colors_for(message).get(input.owner)
             parts.append(f"**owner:** {_teammate_marker(input.owner, color)}")
         return " · ".join(parts)
 
@@ -635,12 +643,12 @@ class MarkdownRenderer(Renderer):
         return ""
 
     def format_SendMessageInput(
-        self, input: SendMessageInput, _: TemplateMessage
+        self, input: SendMessageInput, message: TemplateMessage
     ) -> str:
         """Format → recipient marker + type + blockquoted content."""
         lines: list[str] = []
         if input.recipient:
-            color = (self._teammate_colors or {}).get(input.recipient)
+            color = self._colors_for(message).get(input.recipient)
             lines.append(f"**To:** {_teammate_marker(input.recipient, color)}")
         if input.type:
             lines.append(f"**Type:** `{input.type}`")
@@ -824,7 +832,7 @@ class MarkdownRenderer(Renderer):
         return "\n".join(lines)
 
     def format_TeamDeleteOutput(
-        self, output: TeamDeleteOutput, _: TemplateMessage
+        self, output: TeamDeleteOutput, message: TemplateMessage
     ) -> str:
         """Format → ✓/✗ status + message + active members (colored markers)."""
         status = "✓ Deleted" if output.success else "✗ Refused"
@@ -834,7 +842,7 @@ class MarkdownRenderer(Renderer):
         if output.message:
             lines.append(output.message)
         if output.active_members:
-            colors = self._teammate_colors or {}
+            colors = self._colors_for(message)
             markers = [
                 _teammate_marker(name, colors.get(name))
                 for name in output.active_members
@@ -869,11 +877,13 @@ class MarkdownRenderer(Renderer):
             )
         return prefix
 
-    def format_TaskListOutput(self, output: TaskListOutput, _: TemplateMessage) -> str:
+    def format_TaskListOutput(
+        self, output: TaskListOutput, message: TemplateMessage
+    ) -> str:
         """Format → Markdown table with id/status/subject/owner."""
         if not output.tasks:
             return "*No tasks*"
-        colors = self._teammate_colors or {}
+        colors = self._colors_for(message)
         lines: list[str] = [
             "| # | Status | Subject | Owner |",
             "|---|---|---|---|",
@@ -891,13 +901,13 @@ class MarkdownRenderer(Renderer):
         return "\n".join(lines)
 
     def format_SendMessageOutput(
-        self, output: SendMessageOutput, _: TemplateMessage
+        self, output: SendMessageOutput, message: TemplateMessage
     ) -> str:
         """Format → ✓/✗ status + target + request id + message."""
         status = "✓ Sent" if output.success else "✗ Failed"
         lines: list[str] = [status]
         if output.target:
-            colors = self._teammate_colors or {}
+            colors = self._colors_for(message)
             lines.append(
                 f"**To:** {_teammate_marker(output.target, colors.get(output.target))}"
             )
@@ -1137,7 +1147,9 @@ class MarkdownRenderer(Renderer):
             messages, session_tree=session_tree, detail=self.detail
         )
         self._ctx = ctx
-        self._teammate_colors = dict(ctx.teammate_colors)
+        self._teammate_colors_by_session = {
+            sid: dict(colors) for sid, colors in ctx.teammate_colors.items()
+        }
 
         parts = [f"<!-- Generated by claude-code-log v{get_library_version()} -->", ""]
         parts.append(f"# {title}")
