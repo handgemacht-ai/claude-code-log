@@ -412,6 +412,60 @@ class TestTeammateToolOutputs:
         out = parse_sendmessage_output(_tr_text(payload), None)
         assert out is None
 
+    def test_tasklist_markdown_escapes_pipes_and_newlines(self) -> None:
+        """Regression (monk #6 / coderabbit): every Markdown-table cell
+        must escape `|` and `\\n` — not just the subject.
+
+        A malformed transcript with `|` in status or `\\n` in owner
+        would previously split rows silently and shift subsequent cells.
+        """
+        from claude_code_log.markdown.renderer import MarkdownRenderer
+        from claude_code_log.models import (
+            MessageMeta,
+            TaskListItem,
+            TaskListOutput,
+            ToolResultMessage,
+            ToolResultContent,
+        )
+        from claude_code_log.renderer import TemplateMessage
+
+        output = TaskListOutput(
+            tasks=[
+                TaskListItem(
+                    id="1",
+                    subject="A | B",
+                    status="in|progress",
+                    owner=None,
+                ),
+                TaskListItem(
+                    id="2",
+                    subject="multi\nline",
+                    status="completed",
+                    owner=None,
+                ),
+            ],
+            raw_text="",
+        )
+        meta = MessageMeta(session_id="s", timestamp="t", uuid="u")
+        msg = ToolResultMessage(
+            meta=meta,
+            tool_use_id="tu",
+            output=ToolResultContent(type="tool_result", tool_use_id="tu", content=""),
+        )
+        template_msg = TemplateMessage(msg)
+
+        renderer = MarkdownRenderer()
+        table = renderer.format_TaskListOutput(output, template_msg)
+
+        # Pipes escaped in subject AND status
+        assert r"A \| B" in table
+        assert r"in\|progress" in table
+        # Newline converted to <br>, NOT left as a literal newline that
+        # would terminate the row
+        assert "multi<br>line" in table
+        # Row count still 2 (plus header + separator)
+        assert table.count("\n") == 3
+
     def test_teamdelete_active_members_without_trailing_period(self) -> None:
         """Defensive: the active-members regex must not require a period."""
         payload = (

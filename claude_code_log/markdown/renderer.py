@@ -108,6 +108,17 @@ def _teammate_marker(name: str, color: Optional[str]) -> str:
     return f"{circle} `{name}`"
 
 
+def _table_cell(value: Any) -> str:
+    """Escape a value for inclusion in a Markdown table cell.
+
+    `|` breaks the row into cells; `\\n` breaks the row entirely.
+    GitHub-flavored Markdown allows `<br>` inside table cells, so we
+    preserve line intent with `<br>` rather than stripping the newline.
+    None is rendered as an empty cell.
+    """
+    return str(value or "").replace("\n", "<br>").replace("|", r"\|")
+
+
 class MarkdownRenderer(Renderer):
     """Markdown renderer for Claude Code transcripts."""
 
@@ -889,15 +900,26 @@ class MarkdownRenderer(Renderer):
             "|---|---|---|---|",
         ]
         for task in output.tasks:
-            owner = (
+            owner_marker = (
                 _teammate_marker(task.owner, colors.get(task.owner))
                 if task.owner
                 else ""
             )
-            status = task.status or ""
-            # Escape pipe characters in subject to keep the table intact.
-            subject = task.subject.replace("|", r"\|")
-            lines.append(f"| #{task.id} | {status} | {subject} | {owner} |")
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        f"#{_table_cell(task.id)}",
+                        _table_cell(task.status),
+                        _table_cell(task.subject),
+                        # owner_marker is HTML-safe + colon-free by
+                        # construction (palette circle + backticked id),
+                        # so skip escaping to keep the backticks live.
+                        owner_marker,
+                    ]
+                )
+                + " |"
+            )
         return "\n".join(lines)
 
     def format_SendMessageOutput(
