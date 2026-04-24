@@ -190,6 +190,27 @@ def _meta() -> MessageMeta:
     return MessageMeta(session_id="s", timestamp="t", uuid="u")
 
 
+def test_agent_teammates_populated_from_task_pairs() -> None:
+    """End-to-end on the fixture: agent_teammates should map both alice
+    and bob's agent_ids to their teammate name + color (color falls back
+    from the session-wide cache when output.color is not set).
+    """
+    from claude_code_log.renderer import generate_template_messages
+
+    messages = load_transcript(MAIN_JSONL, cache_manager=None, silent=True)
+    _roots, _nav, ctx = generate_template_messages(messages)
+
+    assert ALICE_AGENT_ID in ctx.agent_teammates
+    assert ctx.agent_teammates[ALICE_AGENT_ID]["name"] == "alice"
+    # Color falls back to the teammate_colors cache (alice = "blue" from
+    # the fixture's <teammate-message teammate_id="alice" color="blue">).
+    assert ctx.agent_teammates[ALICE_AGENT_ID]["color"] == "blue"
+
+    assert BOB_AGENT_ID in ctx.agent_teammates
+    assert ctx.agent_teammates[BOB_AGENT_ID]["name"] == "bob"
+    assert ctx.agent_teammates[BOB_AGENT_ID]["color"] == "green"
+
+
 def test_prepare_session_team_names() -> None:
     """prepare_session_team_names collects first-non-None teamName per session."""
     from claude_code_log.renderer import prepare_session_team_names

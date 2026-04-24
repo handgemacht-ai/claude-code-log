@@ -122,6 +122,16 @@ class RenderingContext:
     teammate_colors: dict[str, dict[str, str]] = field(
         default_factory=lambda: {}  # type: dict[str, dict[str, str]]
     )
+    # Map from a subagent's agent_id to the teammate it represents (name +
+    # color), populated from Task tool_use/tool_result pairs after
+    # teammate_colors is built. Lets the subagent session header (whose
+    # synthetic sessionId is `{main}#agent-{agent_id}`) surface a colored
+    # teammate badge without a re-scan.
+    #
+    # Shape: agent_id -> {"name": str, "color": Optional[str]}.
+    agent_teammates: dict[str, dict[str, Optional[str]]] = field(
+        default_factory=lambda: {}  # type: dict[str, dict[str, Optional[str]]]
+    )
 
     def register(self, message: "TemplateMessage") -> int:
         """Register a TemplateMessage and assign its message_index.
@@ -764,6 +774,13 @@ def generate_template_messages(
     # annotate.
     with log_timing("Collect teammate colors", t_start):
         _populate_teammate_colors(ctx)
+
+    # Build agent_id -> {name, color} map from Task tool_use/tool_result
+    # pairs so subagent session headers can surface a teammate badge by
+    # looking up their agent_id directly. Depends on teammate_colors
+    # (above) for the color fallback path.
+    with log_timing("Map agent ids to teammates", t_start):
+        _populate_agent_teammates(ctx)
 
     return root_messages, session_nav, ctx
 
@@ -1773,6 +1790,66 @@ def _populate_teammate_colors(ctx: RenderingContext) -> None:
                 and block.teammate_id not in session_colors
             ):
                 session_colors[block.teammate_id] = block.color
+
+
+def _populate_agent_teammates(ctx: RenderingContext) -> None:
+    """Walk Task tool_use/tool_result pairs to build agent_id → teammate map.
+
+    For each ``Task`` tool_use whose paired tool_result carries
+    ``output.metadata.agent_id`` (parsed by the agent_metadata factory in
+    PR #117), record the teammate name (from the tool_use input's
+    ``name`` field, set by Claude Code when spawning a named teammate)
+    and the color. Color preference: explicit ``output.color`` wins, else
+    fall back to the session-wide ``ctx.teammate_colors`` cache (PR #122)
+    keyed by the spawning session.
+
+    Lets ``SessionHeaderMessage`` for a subagent (synthetic sessionId
+    ``{main}#agent-{agent_id}``) look up its teammate identity directly
+    instead of re-walking messages.
+
+    No-op when no Task tool_use carries an agent_id.
+    """
+    from .models import (
+        TaskInput,
+        TaskOutput,
+        ToolResultMessage,
+        ToolUseMessage,
+    )
+
+    for template_msg in ctx.messages:
+        content = template_msg.content
+        if not isinstance(content, ToolUseMessage):
+            continue
+        if content.tool_name != "Task":
+            continue
+        if not isinstance(content.input, TaskInput):
+            continue
+        teammate_name = content.input.name
+        if not teammate_name:
+            # Regular Task (sub-agent without a teammate name) — skip.
+            continue
+        if template_msg.pair_last is None:
+            continue
+        result_msg = ctx.get(template_msg.pair_last)
+        if result_msg is None or not isinstance(result_msg.content, ToolResultMessage):
+            continue
+        result_output = result_msg.content.output
+        if not isinstance(result_output, TaskOutput):
+            continue
+        meta = result_output.metadata
+        if meta is None or not meta.agent_id:
+            continue
+
+        # Color preference: explicit on output > session-cache lookup.
+        color: Optional[str] = result_output.color
+        if not color:
+            spawning_sid = template_msg.meta.session_id if template_msg.meta else ""
+            color = ctx.teammate_colors.get(spawning_sid, {}).get(teammate_name)
+
+        # First sighting wins (in case the same agent_id were spawned twice).
+        ctx.agent_teammates.setdefault(
+            meta.agent_id, {"name": teammate_name, "color": color}
+        )
 
 
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
