@@ -625,6 +625,11 @@ def generate_template_messages(
     with log_timing("Session summary processing", t_start):
         session_summaries = prepare_session_summaries(messages)
 
+    # Pre-process: collect teamName per session (teammates feature) so
+    # session headers can surface a team badge without re-scanning later.
+    with log_timing("Session team-name processing", t_start):
+        session_team_names = prepare_session_team_names(messages)
+
     # Extract session hierarchy from DAG (reuse pre-built tree when available)
     with log_timing("Extract session hierarchy", t_start):
         session_hierarchy, junction_targets = _extract_session_hierarchy(
@@ -657,6 +662,7 @@ def generate_template_messages(
             show_tokens_for_message,
             session_hierarchy,
             session_summaries,
+            session_team_names,
             junction_targets,
         )
 
@@ -816,6 +822,26 @@ def _extract_session_hierarchy(
         junction_targets[uuid] = jp.target_sessions
 
     return hierarchy, junction_targets
+
+
+def prepare_session_team_names(messages: list[TranscriptEntry]) -> dict[str, str]:
+    """Extract the teamName per session (teammates feature).
+
+    Returns:
+        Dict mapping session_id → team_name. First non-None ``teamName``
+        sighting per session wins (Claude Code stamps every entry with the
+        same teamName for the duration of a team's activity).
+    """
+    out: dict[str, str] = {}
+    for message in messages:
+        team_name = getattr(message, "teamName", None)
+        if not team_name:
+            continue
+        session_id = getattr(message, "sessionId", "")
+        if not session_id:
+            continue
+        out.setdefault(session_id, team_name)
+    return out
 
 
 def prepare_session_summaries(messages: list[TranscriptEntry]) -> dict[str, str]:
@@ -2262,6 +2288,7 @@ def _render_messages(
     show_tokens_for_message: set[str],
     session_hierarchy: dict[str, dict[str, Any]] | None = None,
     session_summaries: dict[str, str] | None = None,
+    session_team_names: dict[str, str] | None = None,
     junction_targets: dict[str, list[str]] | None = None,
 ) -> RenderingContext:
     """Pass 2: Render pre-filtered messages to TemplateMessage objects.
@@ -2380,6 +2407,13 @@ def _render_messages(
                             fork_context = _fork_point_preview(fmsg, ctx)
                             break
 
+                # Branches inherit the team_name of the original (pre-fork)
+                # session: a within-session fork doesn't change which team is
+                # active.
+                _team_names = session_team_names or {}
+                branch_team_name = _team_names.get(branch_sid) or _team_names.get(
+                    original_sid or ""
+                )
                 branch_header_content = SessionHeaderMessage(
                     branch_header_meta,
                     title=branch_title,
@@ -2393,6 +2427,7 @@ def _render_messages(
                     is_branch=True,
                     original_session_id=original_sid,
                     first_uuid=message_uuid,
+                    team_name=branch_team_name,
                 )
                 branch_header = TemplateMessage(branch_header_content)
                 branch_header.render_session_id = branch_sid
@@ -2490,6 +2525,7 @@ def _render_messages(
                     parent_message_index=parent_msg_idx,
                     depth=hier.get("depth", 0),
                     attachment_uuid=hier.get("attachment_uuid"),
+                    team_name=(session_team_names or {}).get(session_id),
                 )
                 # Register and track session's first message
                 session_header = TemplateMessage(session_header_content)

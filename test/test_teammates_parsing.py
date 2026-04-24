@@ -190,6 +190,28 @@ def _meta() -> MessageMeta:
     return MessageMeta(session_id="s", timestamp="t", uuid="u")
 
 
+def test_prepare_session_team_names() -> None:
+    """prepare_session_team_names collects first-non-None teamName per session."""
+    from claude_code_log.renderer import prepare_session_team_names
+
+    # Build minimal stand-ins — anything with sessionId+teamName attrs works.
+    class _Entry:
+        def __init__(self, sid: str, team: str | None) -> None:
+            self.sessionId = sid
+            self.teamName = team
+            self.uuid = "u"
+
+    msgs = [
+        _Entry("s1", None),
+        _Entry("s1", "alpha"),  # first team-tagged sighting wins
+        _Entry("s1", "beta"),  # ignored — already set
+        _Entry("s2", "gamma"),
+        _Entry("s3", None),  # no team
+    ]
+    out = prepare_session_team_names(msgs)  # type: ignore[arg-type]
+    assert out == {"s1": "alpha", "s2": "gamma"}
+
+
 SINGLE_BLOCK = (
     '<teammate-message teammate_id="alice" color="blue" '
     'summary="relay tests complete">\n'

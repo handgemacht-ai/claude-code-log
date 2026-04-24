@@ -246,3 +246,34 @@
 .teammate-tool-card.send-message-card .recipient .teammate-badge {
     font-size: 0.8em;
 }
+
+/* ----------------------------------------------------------------------
+   Session header badges (teammates feature).
+   - .session-team-badge: surfaces a session's `teamName` next to the title.
+   - .session-teammate-badge: surfaces a subagent session's teammate id.
+   Both pick up --cc-color via inline style so they match the surrounding
+   palette (purple for teams; whatever the teammate's color is for agents).
+   ---------------------------------------------------------------------- */
+.session-team-badge,
+.session-teammate-badge {
+    --cc-color: var(--cc-purple);
+    --cc-color-bg: var(--cc-purple-bg);
+
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    margin-left: 0.6em;
+    padding: 0.1em 0.55em;
+    border-radius: 999px;
+    background: var(--cc-color-bg);
+    color: var(--cc-color);
+    font-size: 0.78em;
+    font-weight: 600;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.session-team-icon,
+.session-teammate-icon {
+    font-size: 0.95em;
+}

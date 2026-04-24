@@ -5071,6 +5071,37 @@
   .teammate-tool-card.send-message-card .recipient .teammate-badge {
       font-size: 0.8em;
   }
+  
+  /* ----------------------------------------------------------------------
+     Session header badges (teammates feature).
+     - .session-team-badge: surfaces a session's `teamName` next to the title.
+     - .session-teammate-badge: surfaces a subagent session's teammate id.
+     Both pick up --cc-color via inline style so they match the surrounding
+     palette (purple for teams; whatever the teammate's color is for agents).
+     ---------------------------------------------------------------------- */
+  .session-team-badge,
+  .session-teammate-badge {
+      --cc-color: var(--cc-purple);
+      --cc-color-bg: var(--cc-purple-bg);
+  
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3em;
+      margin-left: 0.6em;
+      padding: 0.1em 0.55em;
+      border-radius: 999px;
+      background: var(--cc-color-bg);
+      color: var(--cc-color);
+      font-size: 0.78em;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: nowrap;
+  }
+  
+  .session-team-icon,
+  .session-teammate-icon {
+      font-size: 0.95em;
+  }
       </style>
   </head>
   
@@ -10543,6 +10574,37 @@
   .teammate-tool-card.send-message-card .recipient .teammate-badge {
       font-size: 0.8em;
   }
+  
+  /* ----------------------------------------------------------------------
+     Session header badges (teammates feature).
+     - .session-team-badge: surfaces a session's `teamName` next to the title.
+     - .session-teammate-badge: surfaces a subagent session's teammate id.
+     Both pick up --cc-color via inline style so they match the surrounding
+     palette (purple for teams; whatever the teammate's color is for agents).
+     ---------------------------------------------------------------------- */
+  .session-team-badge,
+  .session-teammate-badge {
+      --cc-color: var(--cc-purple);
+      --cc-color-bg: var(--cc-purple-bg);
+  
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3em;
+      margin-left: 0.6em;
+      padding: 0.1em 0.55em;
+      border-radius: 999px;
+      background: var(--cc-color-bg);
+      color: var(--cc-color);
+      font-size: 0.78em;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: nowrap;
+  }
+  
+  .session-team-icon,
+  .session-teammate-icon {
+      font-size: 0.95em;
+  }
       </style>
   </head>
   
@@ -11119,7 +11181,7 @@
       
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='d-0' data-session-id='ef000000-0000-4000-8000-000000000001' id='msg-d-0'>
-          <div class='header'>Session: ef000000</div>
+          <div class='header'>Session: ef000000<span class="session-team-badge" style="--cc-color: var(--cc-purple); --cc-color-bg: var(--cc-purple-bg);"><span class="session-team-icon">👥</span>Team: test-coverage</span></div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
               
@@ -16300,6 +16362,37 @@
   
   .teammate-tool-card.send-message-card .recipient .teammate-badge {
       font-size: 0.8em;
+  }
+  
+  /* ----------------------------------------------------------------------
+     Session header badges (teammates feature).
+     - .session-team-badge: surfaces a session's `teamName` next to the title.
+     - .session-teammate-badge: surfaces a subagent session's teammate id.
+     Both pick up --cc-color via inline style so they match the surrounding
+     palette (purple for teams; whatever the teammate's color is for agents).
+     ---------------------------------------------------------------------- */
+  .session-team-badge,
+  .session-teammate-badge {
+      --cc-color: var(--cc-purple);
+      --cc-color-bg: var(--cc-purple-bg);
+  
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3em;
+      margin-left: 0.6em;
+      padding: 0.1em 0.55em;
+      border-radius: 999px;
+      background: var(--cc-color-bg);
+      color: var(--cc-color);
+      font-size: 0.78em;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: nowrap;
+  }
+  
+  .session-team-icon,
+  .session-teammate-icon {
+      font-size: 0.95em;
   }
       </style>
   </head>
@@ -21871,6 +21964,37 @@
   
   .teammate-tool-card.send-message-card .recipient .teammate-badge {
       font-size: 0.8em;
+  }
+  
+  /* ----------------------------------------------------------------------
+     Session header badges (teammates feature).
+     - .session-team-badge: surfaces a session's `teamName` next to the title.
+     - .session-teammate-badge: surfaces a subagent session's teammate id.
+     Both pick up --cc-color via inline style so they match the surrounding
+     palette (purple for teams; whatever the teammate's color is for agents).
+     ---------------------------------------------------------------------- */
+  .session-team-badge,
+  .session-teammate-badge {
+      --cc-color: var(--cc-purple);
+      --cc-color-bg: var(--cc-purple-bg);
+  
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3em;
+      margin-left: 0.6em;
+      padding: 0.1em 0.55em;
+      border-radius: 999px;
+      background: var(--cc-color-bg);
+      color: var(--cc-color);
+      font-size: 0.78em;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: nowrap;
+  }
+  
+  .session-team-icon,
+  .session-teammate-icon {
+      font-size: 0.95em;
   }
       </style>
   </head>
@@ -27499,6 +27623,37 @@
   
   .teammate-tool-card.send-message-card .recipient .teammate-badge {
       font-size: 0.8em;
+  }
+  
+  /* ----------------------------------------------------------------------
+     Session header badges (teammates feature).
+     - .session-team-badge: surfaces a session's `teamName` next to the title.
+     - .session-teammate-badge: surfaces a subagent session's teammate id.
+     Both pick up --cc-color via inline style so they match the surrounding
+     palette (purple for teams; whatever the teammate's color is for agents).
+     ---------------------------------------------------------------------- */
+  .session-team-badge,
+  .session-teammate-badge {
+      --cc-color: var(--cc-purple);
+      --cc-color-bg: var(--cc-purple-bg);
+  
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3em;
+      margin-left: 0.6em;
+      padding: 0.1em 0.55em;
+      border-radius: 999px;
+      background: var(--cc-color-bg);
+      color: var(--cc-color);
+      font-size: 0.78em;
+      font-weight: 600;
+      vertical-align: middle;
+      white-space: nowrap;
+  }
+  
+  .session-team-icon,
+  .session-teammate-icon {
+      font-size: 0.95em;
   }
       </style>
   </head>
