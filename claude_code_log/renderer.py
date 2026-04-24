@@ -462,6 +462,10 @@ class TemplateProject:
         self.earliest_timestamp = project_data.get("earliest_timestamp", "")
         self.sessions = project_data.get("sessions", [])
         self.working_directories = project_data.get("working_directories", [])
+        # Teammates feature — distinct team names across this project's
+        # sessions. Computed in get_all_cached_projects from each
+        # SessionCacheData.team_name.
+        self.team_names: list[str] = sorted(project_data.get("team_names", []))
 
         # Format display name using shared logic
         self.display_name = get_project_display_name(

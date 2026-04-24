@@ -190,6 +190,63 @@ def _meta() -> MessageMeta:
     return MessageMeta(session_id="s", timestamp="t", uuid="u")
 
 
+def test_template_project_carries_team_names() -> None:
+    """TemplateProject reads `team_names` from the project_summaries dict
+    and exposes a sorted list. Empty list when the project has no teams.
+    """
+    from claude_code_log.renderer import TemplateProject
+
+    project_with_teams = TemplateProject(
+        {
+            "name": "x",
+            "html_file": "x/c.html",
+            "jsonl_count": 1,
+            "message_count": 1,
+            "last_modified": 0.0,
+            "team_names": {"beta", "alpha"},  # set → should sort
+        }
+    )
+    assert project_with_teams.team_names == ["alpha", "beta"]
+
+    project_without_teams = TemplateProject(
+        {
+            "name": "y",
+            "html_file": "y/c.html",
+            "jsonl_count": 1,
+            "message_count": 1,
+            "last_modified": 0.0,
+        }
+    )
+    assert project_without_teams.team_names == []
+
+
+def test_session_cache_data_round_trips_team_name() -> None:
+    """SessionCacheData.team_name survives serialisation: build with a value,
+    then read back to confirm Pydantic accepts and the field is present."""
+    from claude_code_log.cache import SessionCacheData
+
+    s = SessionCacheData(
+        session_id="abc",
+        first_timestamp="t",
+        last_timestamp="t",
+        message_count=1,
+        first_user_message="hi",
+        team_name="my-team",
+    )
+    assert s.team_name == "my-team"
+
+    # Backward-compat: old caches missing team_name still load (default
+    # Optional[str] = None).
+    s2 = SessionCacheData(
+        session_id="abc",
+        first_timestamp="t",
+        last_timestamp="t",
+        message_count=1,
+        first_user_message="hi",
+    )
+    assert s2.team_name is None
+
+
 def test_subagent_session_headers_carry_teammate_badge() -> None:
     """Subagent sessions get their own SessionHeaderMessage with teammate
     fields populated from agent_teammates.

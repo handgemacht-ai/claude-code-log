@@ -1065,12 +1065,20 @@ def _build_session_data_from_messages(
                 "total_output_tokens": 0,
                 "total_cache_creation_tokens": 0,
                 "total_cache_read_tokens": 0,
+                "team_name": None,
             }
 
         sessions[session_id]["message_count"] += 1
         current_timestamp = getattr(message, "timestamp", "")
         if current_timestamp:
             sessions[session_id]["last_timestamp"] = current_timestamp
+
+        # Capture the first non-None teamName seen in the session
+        # (teammates feature). Same shape as renderer.prepare_session_team_names.
+        if not sessions[session_id]["team_name"]:
+            tn = getattr(message, "teamName", None)
+            if tn:
+                sessions[session_id]["team_name"] = tn
 
         # Get first user message for preview
         if (
@@ -1117,6 +1125,7 @@ def _build_session_data_from_messages(
             total_output_tokens=data["total_output_tokens"],
             total_cache_creation_tokens=data["total_cache_creation_tokens"],
             total_cache_read_tokens=data["total_cache_read_tokens"],
+            team_name=data["team_name"],
         )
 
     return result
@@ -1739,6 +1748,12 @@ def _update_cache_with_session_data(
             current_timestamp = getattr(message, "timestamp", "")
             if current_timestamp:
                 session_cache.last_timestamp = current_timestamp
+
+            # Capture first non-None teamName per session (teammates feature).
+            if not session_cache.team_name:
+                tn = getattr(message, "teamName", None)
+                if tn:
+                    session_cache.team_name = tn
 
             # Get first user message for preview
             if (
@@ -2500,6 +2515,16 @@ def process_projects_hierarchy(
                                 if session_data.first_user_message
                                 and session_data.first_user_message != "Warmup"
                             ],
+                            # Distinct teamName values across this project's
+                            # sessions (teammates feature). Powers the
+                            # "Team: …" annotation on the project card.
+                            "team_names": sorted(
+                                {
+                                    s.team_name
+                                    for s in cached_project_data.sessions.values()
+                                    if s.team_name
+                                }
+                            ),
                         }
                     )
                     # Add project stats
@@ -2573,6 +2598,15 @@ def process_projects_hierarchy(
                         if usage.cache_read_input_tokens:
                             total_cache_read_tokens += usage.cache_read_input_tokens
 
+            # Distinct teamName values across this project's sessions —
+            # walked from raw messages so the no-cache fallback path
+            # gets the same "Team: …" annotation as the cached path.
+            team_names_set: set[str] = set()
+            for _msg in messages:
+                _tn = getattr(_msg, "teamName", None)
+                if _tn:
+                    team_names_set.add(_tn)
+
             project_summaries.append(
                 {
                     "name": project_dir.name,
@@ -2595,6 +2629,7 @@ def process_projects_hierarchy(
                     else [],
                     "is_archived": False,
                     "sessions": sessions_data,
+                    "team_names": sorted(team_names_set),
                 }
             )
             # Track session count in stats for fallback path
@@ -2666,6 +2701,15 @@ def process_projects_hierarchy(
                         if session_data.first_user_message
                         and session_data.first_user_message != "Warmup"
                     ],
+                    # Distinct teamName values across this archived project's
+                    # cached sessions (teammates feature).
+                    "team_names": sorted(
+                        {
+                            s.team_name
+                            for s in cached_project_data.sessions.values()
+                            if s.team_name
+                        }
+                    ),
                 }
             )
         except Exception as e:
