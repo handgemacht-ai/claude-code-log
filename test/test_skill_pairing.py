@@ -40,13 +40,14 @@ def _user(
     content: list[dict],
     is_meta: bool = False,
     source_tool_use_id: str | None = None,
+    session_id: str = "sess-skill",
 ) -> dict:
     e: dict = {
         "type": "user",
         "uuid": uid,
         "parentUuid": parent,
         "timestamp": ts,
-        "sessionId": "sess-skill",
+        "sessionId": session_id,
         "isSidechain": False,
         "userType": "external",
         "cwd": "/tmp",
@@ -67,13 +68,14 @@ def _assistant_tool_use(
     tool_name: str,
     tool_use_id: str,
     input_obj: dict,
+    session_id: str = "sess-skill",
 ) -> dict:
     return {
         "type": "assistant",
         "uuid": uid,
         "parentUuid": parent,
         "timestamp": ts,
-        "sessionId": "sess-skill",
+        "sessionId": session_id,
         "isSidechain": False,
         "userType": "external",
         "cwd": "/tmp",
@@ -98,13 +100,19 @@ def _assistant_tool_use(
     }
 
 
-def _assistant_text(uid: str, parent: str, ts: str, text: str) -> dict:
+def _assistant_text(
+    uid: str,
+    parent: str,
+    ts: str,
+    text: str,
+    session_id: str = "sess-skill",
+) -> dict:
     return {
         "type": "assistant",
         "uuid": uid,
         "parentUuid": parent,
         "timestamp": ts,
-        "sessionId": "sess-skill",
+        "sessionId": session_id,
         "isSidechain": False,
         "userType": "external",
         "cwd": "/tmp",
@@ -305,6 +313,252 @@ class TestSkillPairing:
         ]
         # No pair found → slash-command is not consumed, renders standalone.
         assert len(slash) == 1
+
+    def test_same_tool_use_id_across_sessions_does_not_cross_pair(
+        self, tmp_path: Path
+    ) -> None:
+        """Two independent sessions reusing the same tool_use_id keep their
+        Skill bodies separate. The lookup key must be (session_id, tool_use_id)
+        — combined transcripts traverse multiple sessions, and Anthropic
+        tool_use ids are only session-unique. A global key would let session
+        B's slash body fold into session A's Skill (or vice versa) on a stray
+        collision.
+        """
+        # Session A: Skill tool_use + body A.
+        session_a = "sess-a"
+        body_a = "# Body A\n\nfrom session A."
+        entries_a = [
+            _user(
+                "ua-001",
+                None,
+                "2026-01-01T10:00:00Z",
+                [{"type": "text", "text": "Go A"}],
+                session_id=session_a,
+            ),
+            _assistant_tool_use(
+                "aa-001",
+                "ua-001",
+                "2026-01-01T10:00:01Z",
+                "Skill",
+                "toolu_DUP",
+                {"skill": "alpha"},
+                session_id=session_a,
+            ),
+            _user(
+                "ua-002",
+                "aa-001",
+                "2026-01-01T10:00:02Z",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_DUP",
+                        "content": "Launching skill: alpha",
+                        "is_error": False,
+                    }
+                ],
+                session_id=session_a,
+            ),
+            _user(
+                "ua-003",
+                "ua-002",
+                "2026-01-01T10:00:03Z",
+                [{"type": "text", "text": body_a}],
+                is_meta=True,
+                source_tool_use_id="toolu_DUP",
+                session_id=session_a,
+            ),
+        ]
+        # Session B: same tool_use_id, different body.
+        session_b = "sess-b"
+        body_b = "# Body B\n\nfrom session B."
+        entries_b = [
+            _user(
+                "ub-001",
+                None,
+                "2026-01-01T11:00:00Z",
+                [{"type": "text", "text": "Go B"}],
+                session_id=session_b,
+            ),
+            _assistant_tool_use(
+                "ab-001",
+                "ub-001",
+                "2026-01-01T11:00:01Z",
+                "Skill",
+                "toolu_DUP",
+                {"skill": "beta"},
+                session_id=session_b,
+            ),
+            _user(
+                "ub-002",
+                "ab-001",
+                "2026-01-01T11:00:02Z",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_DUP",
+                        "content": "Launching skill: beta",
+                        "is_error": False,
+                    }
+                ],
+                session_id=session_b,
+            ),
+            _user(
+                "ub-003",
+                "ub-002",
+                "2026-01-01T11:00:03Z",
+                [{"type": "text", "text": body_b}],
+                is_meta=True,
+                source_tool_use_id="toolu_DUP",
+                session_id=session_b,
+            ),
+        ]
+        # Render both as a combined transcript.
+        messages = load_transcript(
+            _write_jsonl(tmp_path / "combined.jsonl", entries_a + entries_b)
+        )
+        _, _, ctx = generate_template_messages(messages)
+
+        skill_uses_by_session: dict[str, ToolUseMessage] = {}
+        for m in ctx.messages:
+            if isinstance(m.content, ToolUseMessage) and m.content.tool_name == "Skill":
+                skill_uses_by_session[m.meta.session_id] = m.content
+        assert set(skill_uses_by_session) == {session_a, session_b}, (
+            f"Both Skill tool_uses should survive — got {set(skill_uses_by_session)}"
+        )
+        # Each Skill keeps its OWN session's body, not the other session's.
+        assert skill_uses_by_session[session_a].skill_body == body_a
+        assert skill_uses_by_session[session_b].skill_body == body_b
+
+    def test_error_tool_result_with_same_id_is_preserved(self, tmp_path: Path) -> None:
+        """A real error tool_result sharing the Skill's tool_use_id must NOT
+        be silently dropped — even though the canonical 'Launching skill:'
+        result IS dropped. Without the is_error guard, a Skill that failed
+        to launch would lose the error message entirely.
+        """
+        skill_body = "# Real Body\n\npaired with the launch result."
+        entries = [
+            _user(
+                "u-001", None, "2026-01-01T10:00:00Z", [{"type": "text", "text": "Go"}]
+            ),
+            _assistant_tool_use(
+                "a-001",
+                "u-001",
+                "2026-01-01T10:00:01Z",
+                "Skill",
+                "toolu_ERR",
+                {"skill": "broken"},
+            ),
+            # Canonical "Launching skill:" result — should be dropped.
+            _user(
+                "u-002",
+                "a-001",
+                "2026-01-01T10:00:02Z",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_ERR",
+                        "content": "Launching skill: broken",
+                        "is_error": False,
+                    }
+                ],
+            ),
+            # Error result with the SAME tool_use_id — must survive.
+            _user(
+                "u-003",
+                "u-002",
+                "2026-01-01T10:00:03Z",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_ERR",
+                        "content": "Skill 'broken' not found",
+                        "is_error": True,
+                    }
+                ],
+            ),
+            _user(
+                "u-004",
+                "u-003",
+                "2026-01-01T10:00:04Z",
+                [{"type": "text", "text": skill_body}],
+                is_meta=True,
+                source_tool_use_id="toolu_ERR",
+            ),
+        ]
+        messages = load_transcript(_write_jsonl(tmp_path / "t.jsonl", entries))
+        _, _, ctx = generate_template_messages(messages)
+
+        results = [
+            m.content
+            for m in ctx.messages
+            if isinstance(m.content, ToolResultMessage)
+            and m.content.tool_use_id == "toolu_ERR"
+        ]
+        assert len(results) == 1, (
+            "Exactly the error result should survive; the canonical "
+            "'Launching skill:' result should be dropped"
+        )
+        assert results[0].is_error is True
+
+    def test_non_launching_skill_result_with_same_id_is_preserved(
+        self, tmp_path: Path
+    ) -> None:
+        """A tool_result with the Skill's tool_use_id but a payload that
+        does NOT start with 'Launching skill:' must NOT be dropped. The
+        canonical-payload prefix check defends against a malformed transcript
+        where some other content shares the id."""
+        skill_body = "# Body\n\nbody text."
+        entries = [
+            _user(
+                "u-001", None, "2026-01-01T10:00:00Z", [{"type": "text", "text": "Go"}]
+            ),
+            _assistant_tool_use(
+                "a-001",
+                "u-001",
+                "2026-01-01T10:00:01Z",
+                "Skill",
+                "toolu_ODD",
+                {"skill": "weird"},
+            ),
+            # Divergent (non-canonical) tool_result sharing the id — must survive.
+            _user(
+                "u-002",
+                "a-001",
+                "2026-01-01T10:00:02Z",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_ODD",
+                        "content": "Some unrelated payload",
+                        "is_error": False,
+                    }
+                ],
+            ),
+            _user(
+                "u-003",
+                "u-002",
+                "2026-01-01T10:00:03Z",
+                [{"type": "text", "text": skill_body}],
+                is_meta=True,
+                source_tool_use_id="toolu_ODD",
+            ),
+        ]
+        messages = load_transcript(_write_jsonl(tmp_path / "t.jsonl", entries))
+        _, _, ctx = generate_template_messages(messages)
+
+        results = [
+            m.content
+            for m in ctx.messages
+            if isinstance(m.content, ToolResultMessage)
+            and m.content.tool_use_id == "toolu_ODD"
+        ]
+        assert len(results) == 1
+        # The non-canonical payload survived.
+        from claude_code_log.models import ToolResultContent
+
+        output = results[0].output
+        assert isinstance(output, ToolResultContent)
+        assert output.content == "Some unrelated payload"
 
 
 # -- Renderer output ---------------------------------------------------------

@@ -2029,6 +2029,36 @@ def _filter_by_detail(
     return filtered
 
 
+_LAUNCHING_SKILL_PREFIX = "Launching skill:"
+
+
+def _is_launching_skill_payload(output: Any) -> bool:
+    """Whether *output* looks like Claude Code's redundant Skill marker.
+
+    Claude Code emits the literal ``"Launching skill: <name>"`` text for the
+    tool_result that pairs with a Skill tool_use. That pair gets folded into
+    the tool_use card; the tool_result is dropped. Anything else carrying the
+    same tool_use_id (an error result, a repurposed payload in a malformed
+    transcript) stays visible.
+
+    Handles both string- and list-shaped ToolResultContent.content.
+    """
+    if not isinstance(output, ToolResultContent):
+        return False
+    content = output.content
+    if isinstance(content, str):
+        return content.lstrip().startswith(_LAUNCHING_SKILL_PREFIX)
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text")
+                if isinstance(text, str) and text.lstrip().startswith(
+                    _LAUNCHING_SKILL_PREFIX
+                ):
+                    return True
+    return False
+
+
 def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
     """Fold the `isMeta=True` user body of a Skill invocation into its tool_use.
 
@@ -2043,16 +2073,26 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
     `skill_body` on the Skill `ToolUseMessage`, drop (2) and (3) from
     `ctx.messages`, and re-index so later passes see a clean slate.
 
+    The lookup is keyed by ``(render_session_id, source_tool_use_id)``:
+    combined transcripts traverse multiple sessions and tool_use ids are
+    only session-unique, so a global key risks folding the wrong body on
+    a stray id collision. Tool_result removal is similarly scoped and only
+    drops the canonical, non-error ``"Launching skill:"`` payload — an
+    error result or a divergent payload sharing the tool_use_id stays
+    visible.
+
     See issue #93.
     """
-    # Build the lookup: tool_use_id -> UserSlashCommandMessage template
-    slash_by_source: dict[str, TemplateMessage] = {}
+    # Build the lookup keyed by (render_session_id, tool_use_id) so combined
+    # transcripts spanning multiple sessions can't cross-pair via stray
+    # tool_use_id collisions.
+    slash_by_source: dict[tuple[str, str], TemplateMessage] = {}
     for msg in ctx.messages:
         if (
             isinstance(msg.content, UserSlashCommandMessage)
             and msg.meta.source_tool_use_id
         ):
-            slash_by_source[msg.meta.source_tool_use_id] = msg
+            slash_by_source[(msg.render_session_id, msg.meta.source_tool_use_id)] = msg
 
     if not slash_by_source:
         return
@@ -2063,7 +2103,7 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
             isinstance(msg.content, ToolUseMessage) and msg.content.tool_name == "Skill"
         ):
             continue
-        slash = slash_by_source.get(msg.content.tool_use_id)
+        slash = slash_by_source.get((msg.render_session_id, msg.content.tool_use_id))
         if slash is None or not isinstance(slash.content, UserSlashCommandMessage):
             continue
         # Fold the body into the Skill tool_use and mark the slash-command consumed.
@@ -2071,14 +2111,21 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
         if slash.message_index is not None:
             consumed_indices.add(slash.message_index)
         # The matching tool_result carries the redundant "Launching skill: ..."
-        # string; drop it too so the tool_use stands alone as one visual unit.
+        # string; drop it. Same-session, non-error, payload-prefix-checked
+        # so a real error result or a divergent payload sharing the
+        # tool_use_id stays visible.
         for other in ctx.messages:
             if (
-                other.type == "tool_result"
-                and other.tool_use_id == msg.content.tool_use_id
-                and other.message_index is not None
+                not isinstance(other.content, ToolResultMessage)
+                or other.render_session_id != msg.render_session_id
+                or other.content.tool_use_id != msg.content.tool_use_id
+                or other.content.is_error
+                or other.message_index is None
             ):
-                consumed_indices.add(other.message_index)
+                continue
+            if not _is_launching_skill_payload(other.content.output):
+                continue
+            consumed_indices.add(other.message_index)
 
     if not consumed_indices:
         return
