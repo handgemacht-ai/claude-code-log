@@ -768,6 +768,10 @@ class SessionHeaderMessage(MessageContent):
     # agent_id → teammate map. None for regular sessions.
     teammate_id: Optional[str] = None
     teammate_color: Optional[str] = None
+    # Render the session block inside a collapsed `<details>` element by
+    # default. Set True for subagent sessions so the parent transcript
+    # stays scannable; the user expands to see the subagent's work.
+    collapsed_by_default: bool = False
 
     @property
     def message_type(self) -> str:

@@ -245,6 +245,14 @@ class TemplateMessage:
         return isinstance(self.content, SessionHeaderMessage) and self.content.is_branch
 
     @property
+    def is_collapsed_session(self) -> bool:
+        """Subagent-style session header that should render collapsed by default."""
+        return (
+            isinstance(self.content, SessionHeaderMessage)
+            and self.content.collapsed_by_default
+        )
+
+    @property
     def branch_depth(self) -> int:
         """Depth of this branch header in the session tree (0 for non-branches)."""
         if isinstance(self.content, SessionHeaderMessage) and self.content.is_branch:
@@ -2655,6 +2663,10 @@ def _render_messages(
                 depth=hier.get("depth", 0),
                 attachment_uuid=hier.get("attachment_uuid"),
                 team_name=(session_team_names or {}).get(session_id),
+                # Subagent sessions render collapsed by default so the
+                # parent transcript stays scannable; expand to see the
+                # subagent's work inline.
+                collapsed_by_default=is_agent,
             )
             # Register and track session's first message
             session_header = TemplateMessage(session_header_content)

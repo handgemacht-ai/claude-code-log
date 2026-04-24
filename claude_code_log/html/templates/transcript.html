@@ -97,11 +97,17 @@
     {{ render_session_nav(sessions, "toc") }}
     {% endif %}
 
+    {# Track open <details> for subagent session blocks: a subagent
+       session opens one when its header is encountered, and we close it
+       when the next session header (any kind) appears OR at end of loop. #}
+    {% set _state = namespace(in_collapsed_session=False) %}
     {% for message, message_title, html_content, formatted_timestamp in messages %}
     {% if is_session_header(message) %}
-    {% if not message.is_branch_header %}<div class="session-divider"></div>{% endif %}
-    <div class='message session-header{% if message.is_branch_header %} branch-header{% endif %}{% for ancestor_index in message.ancestry %} d-{{ ancestor_index }}{% endfor %}' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}' id='msg-{{ message.message_id }}'{% if message.branch_depth %} style='margin-left: {{ message.branch_depth * 2 }}em'{% endif %}>
-        <div class='header'>{% if message.is_branch_header %}&#x21b3; {% else %}Session: {% endif %}{{ html_content|safe }}</div>
+    {%- if _state.in_collapsed_session %}</details>{% set _state.in_collapsed_session = False %}{% endif %}
+    {%- if not message.is_branch_header %}<div class="session-divider"></div>{% endif %}
+    {%- if message.is_collapsed_session %}<details class="subagent-session-block"><summary class="subagent-session-summary">{{ html_content|safe }}</summary>{% set _state.in_collapsed_session = True %}{% endif %}
+    <div class='message session-header{% if message.is_branch_header %} branch-header{% endif %}{% if message.is_collapsed_session %} subagent-session-header{% endif %}{% for ancestor_index in message.ancestry %} d-{{ ancestor_index }}{% endfor %}' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}' id='msg-{{ message.message_id }}'{% if message.branch_depth %} style='margin-left: {{ message.branch_depth * 2 }}em'{% endif %}>
+        <div class='header'>{% if message.is_branch_header %}&#x21b3; {% elif message.is_collapsed_session %}{% else %}Session: {% endif %}{{ html_content|safe }}</div>
         {% if message.has_children %}
         <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='session-header'>
             {% if message.immediate_children_count == message.total_descendants_count %}
@@ -179,6 +185,7 @@
     </div>
     {% endif %}
     {% endfor %}
+    {%- if _state.in_collapsed_session %}</details>{% set _state.in_collapsed_session = False %}{% endif %}
 
     <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
     <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>

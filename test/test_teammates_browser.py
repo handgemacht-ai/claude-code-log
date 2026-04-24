@@ -14,16 +14,14 @@ from typing import List
 import pytest
 from playwright.sync_api import Page
 
-from claude_code_log.converter import load_transcript
+from claude_code_log.converter import load_directory_transcripts
 from claude_code_log.html.renderer import generate_html
-from claude_code_log.models import TranscriptEntry
 
 
 pytestmark = pytest.mark.browser
 
 
 FIXTURE_DIR = Path(__file__).parent / "test_data" / "teammates"
-MAIN_JSONL = FIXTURE_DIR / "ef000000-0000-4000-8000-000000000001.jsonl"
 
 
 class TestTeammatesBrowser:
@@ -40,8 +38,13 @@ class TestTeammatesBrowser:
                 pass
 
     def _render(self) -> Path:
-        messages: List[TranscriptEntry] = load_transcript(MAIN_JSONL)
-        html = generate_html(messages, "Teammates Fixture")
+        # Use load_directory_transcripts so _integrate_agent_entries
+        # runs and assigns synthetic sessionIds — the path that creates
+        # the subagent session boundaries the rendering depends on.
+        messages, session_tree = load_directory_transcripts(
+            FIXTURE_DIR, cache_manager=None, silent=True
+        )
+        html = generate_html(messages, "Teammates Fixture", session_tree=session_tree)
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".html", delete=False, encoding="utf-8"
         ) as f:
@@ -100,6 +103,23 @@ class TestTeammatesBrowser:
         # Header labels present in the DOM (content may be folded)
         assert table.locator("thead th", has_text="Status").count() == 1
         assert table.locator("thead th", has_text="Owner").count() == 1
+
+    def test_subagent_sessions_collapsed_by_default(self, page: Page) -> None:
+        """Subagent session blocks render inside a `<details>` that is
+        collapsed by default; user can expand to see the agent's work.
+
+        The fixture has alice + bob subagents — expect 2 details blocks,
+        none open (`open` attribute absent).
+        """
+        page.goto(f"file://{self._render()}")
+
+        details = page.locator("details.subagent-session-block")
+        count = details.count()
+        assert count == 2, f"expected 2 subagent session blocks, got {count}"
+
+        for i in range(count):
+            is_open = details.nth(i).evaluate("el => el.hasAttribute('open')")
+            assert not is_open, f"subagent session block #{i} unexpectedly open"
 
     def test_teammate_badge_color_matches_teammate_id(self, page: Page) -> None:
         """The alice badge carries the blue token (via inline --cc-color).
