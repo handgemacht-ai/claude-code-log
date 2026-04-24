@@ -412,6 +412,60 @@ class TestTeammateToolOutputs:
         out = parse_sendmessage_output(_tr_text(payload), None)
         assert out is None
 
+    def test_tasklist_markdown_escapes_pipes_and_newlines(self) -> None:
+        """Regression (monk #6 / coderabbit): every Markdown-table cell
+        must escape `|` and `\\n` — not just the subject.
+
+        A malformed transcript with `|` in status or `\\n` in owner
+        would previously split rows silently and shift subsequent cells.
+        """
+        from claude_code_log.markdown.renderer import MarkdownRenderer
+        from claude_code_log.models import (
+            MessageMeta,
+            TaskListItem,
+            TaskListOutput,
+            ToolResultMessage,
+            ToolResultContent,
+        )
+        from claude_code_log.renderer import TemplateMessage
+
+        output = TaskListOutput(
+            tasks=[
+                TaskListItem(
+                    id="1",
+                    subject="A | B",
+                    status="in|progress",
+                    owner=None,
+                ),
+                TaskListItem(
+                    id="2",
+                    subject="multi\nline",
+                    status="completed",
+                    owner=None,
+                ),
+            ],
+            raw_text="",
+        )
+        meta = MessageMeta(session_id="s", timestamp="t", uuid="u")
+        msg = ToolResultMessage(
+            meta=meta,
+            tool_use_id="tu",
+            output=ToolResultContent(type="tool_result", tool_use_id="tu", content=""),
+        )
+        template_msg = TemplateMessage(msg)
+
+        renderer = MarkdownRenderer()
+        table = renderer.format_TaskListOutput(output, template_msg)
+
+        # Pipes escaped in subject AND status
+        assert r"A \| B" in table
+        assert r"in\|progress" in table
+        # Newline converted to <br>, NOT left as a literal newline that
+        # would terminate the row
+        assert "multi<br>line" in table
+        # Row count still 2 (plus header + separator)
+        assert table.count("\n") == 3
+
     def test_teamdelete_active_members_without_trailing_period(self) -> None:
         """Defensive: the active-members regex must not require a period."""
         payload = (
@@ -641,6 +695,64 @@ class TestTeammatesFactoryIntegration:
                     assert "agentId:" not in result_text
                     found_alice_metadata = True
         assert found_alice_metadata
+
+    def test_teammate_colors_are_session_scoped(self, tmp_path: Path) -> None:
+        """Regression (monk #5 / coderabbit): same teammate_id in two
+        sessions of a combined transcript must keep distinct colors.
+
+        Before the fix, RenderingContext.teammate_colors was
+        ``dict[teammate_id, color]`` so first-sighting-wins silently
+        cross-contaminated: session A's alice=blue overrode session B's
+        alice=red. With per-session scoping each session looks up its
+        own map keyed by session_id.
+        """
+        import json as _json
+
+        from claude_code_log.converter import load_directory_transcripts
+        from claude_code_log.renderer import generate_template_messages
+
+        def build_session(sid: str, color: str) -> list[dict]:
+            return [
+                {
+                    "parentUuid": None,
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/t",
+                    "sessionId": sid,
+                    "version": "2.1.34",
+                    "uuid": f"{sid[:8]}-0000-4000-8000-000000000001",
+                    "timestamp": "2026-04-20T10:00:00Z",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": (
+                            f'<teammate-message teammate_id="alice" color="{color}">\n'
+                            f"working ({color})\n"
+                            f"</teammate-message>"
+                        ),
+                    },
+                },
+            ]
+
+        # Session A: alice=blue. Session B: alice=red.
+        (tmp_path / "session_a.jsonl").write_text(
+            "\n".join(_json.dumps(e) for e in build_session("ssn-a-0001", "blue"))
+            + "\n"
+        )
+        (tmp_path / "session_b.jsonl").write_text(
+            "\n".join(_json.dumps(e) for e in build_session("ssn-b-0001", "red")) + "\n"
+        )
+
+        messages, _ = load_directory_transcripts(
+            tmp_path, cache_manager=None, silent=True
+        )
+        _roots, _nav, ctx = generate_template_messages(messages)
+
+        # Per-session scoped map
+        assert ctx.teammate_colors == {
+            "ssn-a-0001": {"alice": "blue"},
+            "ssn-b-0001": {"alice": "red"},
+        }
 
     def test_identical_prompts_do_not_collide(self, tmp_path: Path) -> None:
         """Regression: two Tasks with identical prompts must link to
