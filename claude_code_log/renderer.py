@@ -782,6 +782,12 @@ def generate_template_messages(
     with log_timing("Map agent ids to teammates", t_start):
         _populate_agent_teammates(ctx)
 
+    # Use the agent_teammates map to annotate subagent session headers
+    # in-place: each `{main}#agent-{id}` header gets the teammate name +
+    # color so the formatter can render a colored teammate badge.
+    with log_timing("Annotate subagent session headers", t_start):
+        _annotate_subagent_session_headers(ctx)
+
     return root_messages, session_nav, ctx
 
 
@@ -1792,6 +1798,41 @@ def _populate_teammate_colors(ctx: RenderingContext) -> None:
                 session_colors[block.teammate_id] = block.color
 
 
+def _annotate_subagent_session_headers(ctx: RenderingContext) -> None:
+    """Fill in teammate_id / teammate_color on subagent session headers.
+
+    Synthetic sessionIds for subagent sessions follow the
+    ``{main_session_id}#agent-{agent_id}`` shape (assigned by
+    ``_integrate_agent_entries`` in converter.py). Look up each
+    subagent header's agent_id in ``ctx.agent_teammates`` (built by
+    ``_populate_agent_teammates``) and set the teammate fields so the
+    header formatter can render a colored teammate badge.
+
+    Skips non-subagent headers; no-op when ``agent_teammates`` is empty.
+    """
+    from .models import SessionHeaderMessage
+
+    for template_msg in ctx.messages:
+        content = template_msg.content
+        if not isinstance(content, SessionHeaderMessage):
+            continue
+        sid = content.session_id
+        marker = "#agent-"
+        marker_idx = sid.find(marker)
+        if marker_idx < 0:
+            continue
+        agent_id = sid[marker_idx + len(marker) :]
+        info = ctx.agent_teammates.get(agent_id)
+        if info is None:
+            continue
+        # First sighting from the agent_teammates pass wins; don't
+        # overwrite a header that was already annotated (defensive
+        # against re-rendering scenarios).
+        if content.teammate_id is None:
+            content.teammate_id = info.get("name")
+            content.teammate_color = info.get("color")
+
+
 def _populate_agent_teammates(ctx: RenderingContext) -> None:
     """Walk Task tool_use/tool_result pairs to build agent_id → teammate map.
 
@@ -2565,49 +2606,60 @@ def _render_messages(
         session_id = meta.session_id or "unknown"
         session_summary = sessions.get(session_id, {}).get("summary")
 
-        # Add session header if this is a new session
-        # Skip headers for agent sidechain sessions (they appear inline)
+        # Add session header if this is a new session.
+        # Subagent sidechain sessions (synthetic sessionId
+        # `{main}#agent-{id}`) now also get a header so their teammate
+        # badge has somewhere to land. For trunk sessions only, reset
+        # current_render_session — agent sessions stay grouped with the
+        # parent's render flow.
         is_agent = is_agent_session(session_id)
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
             if not is_agent:
                 current_render_session = None  # Reset branch tracking
-                current_session_summary = session_summary
+            current_session_summary = session_summary
+            if is_agent:
+                # Subagent header title: short agent id; the teammate
+                # badge added by _annotate_subagent_session_headers
+                # will carry the human-readable identity.
+                short_id = session_id.rsplit("#agent-", 1)[-1][:8]
+                session_title = f"Subagent • {short_id}"
+            else:
                 session_title = (
                     f"{current_session_summary} • {session_id[:8]}"
                     if current_session_summary
                     else session_id[:8]
                 )
 
-                # Create meta with session_id for the session header
-                session_header_meta = MessageMeta(
-                    session_id=session_id,
-                    timestamp="",
-                    uuid="",
-                )
-                hier = (session_hierarchy or {}).get(session_id, {})
-                parent_sid = hier.get("parent_session_id")
-                parent_msg_idx = (
-                    ctx.session_first_message.get(parent_sid) if parent_sid else None
-                )
-                session_header_content = SessionHeaderMessage(
-                    session_header_meta,
-                    title=session_title,
-                    session_id=session_id,
-                    summary=current_session_summary,
-                    parent_session_id=parent_sid,
-                    parent_session_summary=(session_summaries or {}).get(parent_sid)
-                    if parent_sid
-                    else None,
-                    parent_message_index=parent_msg_idx,
-                    depth=hier.get("depth", 0),
-                    attachment_uuid=hier.get("attachment_uuid"),
-                    team_name=(session_team_names or {}).get(session_id),
-                )
-                # Register and track session's first message
-                session_header = TemplateMessage(session_header_content)
-                msg_index = ctx.register(session_header)
-                ctx.session_first_message[session_id] = msg_index
+            # Create meta with session_id for the session header
+            session_header_meta = MessageMeta(
+                session_id=session_id,
+                timestamp="",
+                uuid="",
+            )
+            hier = (session_hierarchy or {}).get(session_id, {})
+            parent_sid = hier.get("parent_session_id")
+            parent_msg_idx = (
+                ctx.session_first_message.get(parent_sid) if parent_sid else None
+            )
+            session_header_content = SessionHeaderMessage(
+                session_header_meta,
+                title=session_title,
+                session_id=session_id,
+                summary=current_session_summary,
+                parent_session_id=parent_sid,
+                parent_session_summary=(session_summaries or {}).get(parent_sid)
+                if parent_sid
+                else None,
+                parent_message_index=parent_msg_idx,
+                depth=hier.get("depth", 0),
+                attachment_uuid=hier.get("attachment_uuid"),
+                team_name=(session_team_names or {}).get(session_id),
+            )
+            # Register and track session's first message
+            session_header = TemplateMessage(session_header_content)
+            msg_index = ctx.register(session_header)
+            ctx.session_first_message[session_id] = msg_index
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates

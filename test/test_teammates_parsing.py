@@ -190,6 +190,45 @@ def _meta() -> MessageMeta:
     return MessageMeta(session_id="s", timestamp="t", uuid="u")
 
 
+def test_subagent_session_headers_carry_teammate_badge() -> None:
+    """Subagent sessions get their own SessionHeaderMessage with teammate
+    fields populated from agent_teammates.
+
+    Uses load_directory_transcripts so _integrate_agent_entries runs and
+    assigns synthetic sessionIds — the path that actually creates the
+    subagent session boundaries.
+    """
+    from claude_code_log.renderer import generate_template_messages
+    from claude_code_log.models import SessionHeaderMessage
+
+    messages, _tree = load_directory_transcripts(
+        FIXTURE_DIR, cache_manager=None, silent=True
+    )
+    _roots, _nav, ctx = generate_template_messages(messages)
+
+    # Collect all session headers, indexed by session_id
+    headers: dict[str, SessionHeaderMessage] = {}
+    for tm in ctx.messages:
+        if isinstance(tm.content, SessionHeaderMessage):
+            headers[tm.content.session_id] = tm.content
+
+    # Main session: team badge, no teammate
+    main_sid = "ef000000-0000-4000-8000-000000000001"
+    assert main_sid in headers
+    assert headers[main_sid].team_name == "test-coverage"
+    assert headers[main_sid].teammate_id is None
+
+    # Subagent sessions: teammate badge populated, color from cache
+    alice_sid = f"{main_sid}#agent-{ALICE_AGENT_ID}"
+    bob_sid = f"{main_sid}#agent-{BOB_AGENT_ID}"
+    assert alice_sid in headers, f"missing alice subagent header: {list(headers)}"
+    assert bob_sid in headers
+    assert headers[alice_sid].teammate_id == "alice"
+    assert headers[alice_sid].teammate_color == "blue"
+    assert headers[bob_sid].teammate_id == "bob"
+    assert headers[bob_sid].teammate_color == "green"
+
+
 def test_agent_teammates_populated_from_task_pairs() -> None:
     """End-to-end on the fixture: agent_teammates should map both alice
     and bob's agent_ids to their teammate name + color (color falls back

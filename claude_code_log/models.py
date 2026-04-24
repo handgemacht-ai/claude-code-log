@@ -761,6 +761,13 @@ class SessionHeaderMessage(MessageContent):
     # Teammates feature — set when the session was active in a team. Sourced
     # from the first non-None ``teamName`` of any entry in the session.
     team_name: Optional[str] = None
+    # For subagent session headers (synthetic sessionId
+    # ``{main}#agent-{agent_id}``): the spawning teammate's name + color
+    # so the header can render a colored teammate badge. Filled by a
+    # post-pass after ``_populate_agent_teammates`` builds the
+    # agent_id → teammate map. None for regular sessions.
+    teammate_id: Optional[str] = None
+    teammate_color: Optional[str] = None
 
     @property
     def message_type(self) -> str:

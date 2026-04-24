@@ -879,8 +879,17 @@ class TestAgentDagIntegration:
         assert "s1" in tree.roots
         assert agent_sids[0] not in tree.roots
 
-    def test_agent_no_session_header(self, tmp_path: Path) -> None:
-        """Agent sessions don't generate session headers in rendering."""
+    def test_agent_session_gets_its_own_header(self, tmp_path: Path) -> None:
+        """Agent (sidechain) sessions now get their own SessionHeaderMessage.
+
+        Updated for the teammates PR 3 work (#91): subagent sessions need a
+        header so their teammate badge has somewhere to render. The
+        synthetic ``{main}#agent-{agent_id}`` sessionId from
+        ``_integrate_agent_entries`` produces a "Subagent • <short id>"
+        title — a teammate badge is added later by
+        ``_annotate_subagent_session_headers`` when the agent_id maps to
+        a known teammate.
+        """
         from claude_code_log.renderer import generate_template_messages
         from claude_code_log.models import SessionHeaderMessage
 
@@ -923,14 +932,18 @@ class TestAgentDagIntegration:
             messages, session_tree=session_tree
         )
 
-        # Only one session header (for the main session), not for the agent
+        # Two headers: main session + the subagent session.
         headers = [
             m for m in context.messages if isinstance(m.content, SessionHeaderMessage)
         ]
-        assert len(headers) == 1
-        header_content = headers[0].content
-        assert isinstance(header_content, SessionHeaderMessage)
-        assert header_content.session_id == "s1"
+        assert len(headers) == 2
+        header_session_ids = {
+            h.content.session_id
+            for h in headers
+            if isinstance(h.content, SessionHeaderMessage)
+        }
+        assert "s1" in header_session_ids
+        assert "s1#agent-agent-xyz" in header_session_ids
 
     def test_multiple_agents_ordered(self, tmp_path: Path) -> None:
         """Multiple agents are each placed at their respective anchor points."""
