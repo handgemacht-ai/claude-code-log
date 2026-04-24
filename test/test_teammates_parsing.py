@@ -190,6 +190,31 @@ def _meta() -> MessageMeta:
     return MessageMeta(session_id="s", timestamp="t", uuid="u")
 
 
+def test_agent_teammates_are_session_scoped() -> None:
+    """Regression (PR #125 review fix #2): agent_teammates must scope by
+    spawning session_id so combined transcripts don't collide on
+    coincident agent_ids across sessions.
+
+    Mirrors test_teammate_colors_are_session_scoped (PR #122 fix).
+    """
+    from claude_code_log.renderer import generate_template_messages
+
+    main_sid = "ef000000-0000-4000-8000-000000000001"
+    messages = load_transcript(MAIN_JSONL, cache_manager=None, silent=True)
+    _roots, _nav, ctx = generate_template_messages(messages)
+
+    # Outer key is the spawning session (the Task tool_use's session,
+    # which is the main session in the fixture).
+    assert main_sid in ctx.agent_teammates
+    assert isinstance(ctx.agent_teammates[main_sid], dict)
+    inner = ctx.agent_teammates[main_sid]
+    # Both alice and bob spawned from the main session
+    assert ALICE_AGENT_ID in inner
+    assert BOB_AGENT_ID in inner
+    # NOT keyed by agent_id at the top level (the old shape)
+    assert ALICE_AGENT_ID not in ctx.agent_teammates
+
+
 def test_template_project_carries_team_names() -> None:
     """TemplateProject reads `team_names` from the project_summaries dict
     and exposes a sorted list. Empty list when the project has no teams.
@@ -290,21 +315,28 @@ def test_agent_teammates_populated_from_task_pairs() -> None:
     """End-to-end on the fixture: agent_teammates should map both alice
     and bob's agent_ids to their teammate name + color (color falls back
     from the session-wide cache when output.color is not set).
+
+    The map is session-scoped (PR #125 review fix #2) for parity with
+    teammate_colors: outer key is the spawning session, inner key is
+    the agent_id.
     """
     from claude_code_log.renderer import generate_template_messages
 
     messages = load_transcript(MAIN_JSONL, cache_manager=None, silent=True)
     _roots, _nav, ctx = generate_template_messages(messages)
 
-    assert ALICE_AGENT_ID in ctx.agent_teammates
-    assert ctx.agent_teammates[ALICE_AGENT_ID]["name"] == "alice"
+    main_sid = "ef000000-0000-4000-8000-000000000001"
+    session_map = ctx.agent_teammates.get(main_sid, {})
+
+    assert ALICE_AGENT_ID in session_map
+    assert session_map[ALICE_AGENT_ID]["name"] == "alice"
     # Color falls back to the teammate_colors cache (alice = "blue" from
     # the fixture's <teammate-message teammate_id="alice" color="blue">).
-    assert ctx.agent_teammates[ALICE_AGENT_ID]["color"] == "blue"
+    assert session_map[ALICE_AGENT_ID]["color"] == "blue"
 
-    assert BOB_AGENT_ID in ctx.agent_teammates
-    assert ctx.agent_teammates[BOB_AGENT_ID]["name"] == "bob"
-    assert ctx.agent_teammates[BOB_AGENT_ID]["color"] == "green"
+    assert BOB_AGENT_ID in session_map
+    assert session_map[BOB_AGENT_ID]["name"] == "bob"
+    assert session_map[BOB_AGENT_ID]["color"] == "green"
 
 
 def test_prepare_session_team_names() -> None:

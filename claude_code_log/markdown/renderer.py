@@ -344,12 +344,33 @@ class MarkdownRenderer(Renderer):
     def title_SessionHeaderMessage(
         self, content: SessionHeaderMessage, _: TemplateMessage
     ) -> str:
-        """Title → '📋 Session `abc12345`: summary'."""
-        # Return the title with session ID and optional summary
+        """Title → '📋 Session `abc12345`: summary — Team: `t`'.
+
+        Mirrors the HTML session-header badges (PR #125): surfaces
+        ``teammate_id`` (with a colored-circle marker) for subagent
+        sessions and ``team_name`` as a trailing tag for any team-
+        active session. Markdown can't carry color, so the
+        teammate-circle convention from PR #122 carries it.
+        """
         session_short = content.session_id[:8]
-        if content.summary:
-            return f"📋 Session `{session_short}`: {content.summary}"
-        return f"📋 Session `{session_short}`"
+        if content.teammate_id:
+            # Subagent session: lead with the colored teammate marker
+            # (matches HTML's "Subagent • <id>  ▎teammate" — the
+            # synthetic short id is opaque, the teammate name is what
+            # the reader cares about).
+            marker = _teammate_marker(content.teammate_id, content.teammate_color)
+            title = f"📋 Subagent {marker}"
+        elif content.summary:
+            title = f"📋 Session `{session_short}`: {content.summary}"
+        else:
+            title = f"📋 Session `{session_short}`"
+        if content.team_name:
+            # Boundary hygiene: a malformed transcript could in theory
+            # carry a backtick in teamName; escape pre-emptively so the
+            # surrounding code-span stays well-formed.
+            safe_team = content.team_name.replace("`", r"\`")
+            title = f"{title} — Team: `{safe_team}`"
+        return title
 
     # -------------------------------------------------------------------------
     # User Content Formatters

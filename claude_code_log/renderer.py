@@ -128,9 +128,16 @@ class RenderingContext:
     # synthetic sessionId is `{main}#agent-{agent_id}`) surface a colored
     # teammate badge without a re-scan.
     #
-    # Shape: agent_id -> {"name": str, "color": Optional[str]}.
-    agent_teammates: dict[str, dict[str, Optional[str]]] = field(
-        default_factory=lambda: {}  # type: dict[str, dict[str, Optional[str]]]
+    # Scoped by *spawning* session_id (the Task tool_use's session) for
+    # the same reason as ``teammate_colors``: combined transcripts merge
+    # multiple sessions, and an agent_id collision across sessions would
+    # silently cross-contaminate. agent_ids are random ~64-bit hex, so
+    # the practical collision risk is negligible — but the architectural
+    # consistency with teammate_colors is the primary reason.
+    #
+    # Shape: spawning_session_id -> { agent_id -> {"name", "color"} }.
+    agent_teammates: dict[str, dict[str, dict[str, Optional[str]]]] = field(
+        default_factory=lambda: {}  # type: dict[str, dict[str, dict[str, Optional[str]]]]
     )
 
     def register(self, message: "TemplateMessage") -> int:
@@ -1833,8 +1840,12 @@ def _annotate_subagent_session_headers(ctx: RenderingContext) -> None:
         marker_idx = sid.find(marker)
         if marker_idx < 0:
             continue
+        # Synthetic format is `{spawning_session}#agent-{agent_id}`;
+        # split into the two halves to look up the (now session-scoped)
+        # agent_teammates map.
+        spawning_sid = sid[:marker_idx]
         agent_id = sid[marker_idx + len(marker) :]
-        info = ctx.agent_teammates.get(agent_id)
+        info = ctx.agent_teammates.get(spawning_sid, {}).get(agent_id)
         if info is None:
             continue
         # First sighting from the agent_teammates pass wins; don't
@@ -1858,7 +1869,10 @@ def _populate_agent_teammates(ctx: RenderingContext) -> None:
 
     Lets ``SessionHeaderMessage`` for a subagent (synthetic sessionId
     ``{main}#agent-{agent_id}``) look up its teammate identity directly
-    instead of re-walking messages.
+    instead of re-walking messages. The map is scoped by the spawning
+    session_id (the Task tool_use's session) — combined transcripts
+    merge multiple sessions, and an agent_id collision across sessions
+    would silently cross-contaminate without the scope.
 
     No-op when no Task tool_use carries an agent_id.
     """
@@ -1893,16 +1907,21 @@ def _populate_agent_teammates(ctx: RenderingContext) -> None:
         if meta is None or not meta.agent_id:
             continue
 
+        # The Task tool_use's session is the *spawning* session — use
+        # that as the outer key so combined transcripts don't share an
+        # agent_id across sessions.
+        spawning_sid = template_msg.meta.session_id if template_msg.meta else ""
+
         # Color preference: explicit on output > session-cache lookup.
         color: Optional[str] = result_output.color
         if not color:
-            spawning_sid = template_msg.meta.session_id if template_msg.meta else ""
             color = ctx.teammate_colors.get(spawning_sid, {}).get(teammate_name)
 
-        # First sighting wins (in case the same agent_id were spawned twice).
-        ctx.agent_teammates.setdefault(
-            meta.agent_id, {"name": teammate_name, "color": color}
-        )
+        session_map = ctx.agent_teammates.setdefault(spawning_sid, {})
+        # First sighting wins (defensive — duplicate spawn within a
+        # session shouldn't happen but a re-render on the same ctx
+        # might re-process; setdefault makes that idempotent).
+        session_map.setdefault(meta.agent_id, {"name": teammate_name, "color": color})
 
 
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
