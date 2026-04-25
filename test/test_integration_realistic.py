@@ -1880,12 +1880,10 @@ class TestExperimentsWorktreesTeammates:
         silently dropped out of low-detail rendering.
 
         The fixture has six ``Agent`` spawns total (wave-1 + wave-2
-        alice/bob/carol), but two of them — both carols — currently
-        get pruned upstream by the DAG walker's fork handling on
-        nested-Task parents (a separate, pre-existing issue). The
-        directory loader surfaces the surviving four; we assert that
-        threshold here so the regression catches the LOW filter
-        re-stripping ``Agent`` again.
+        alice/bob/carol). All six must survive at LOW detail — the
+        nested-spawn assistant entries are surfaced via
+        ``_collect_agent_anchors`` so the DAG walker doesn't drop
+        them when the parent fork lands on the dead-end side.
         """
         from claude_code_log.models import DetailLevel
         from claude_code_log.converter import convert_jsonl_to
@@ -1899,15 +1897,15 @@ class TestExperimentsWorktreesTeammates:
         # Title formatter for TaskInput emits "🔧 Agent <description>"
         # since Agent is aliased to TaskInput in the tool factory.
         agent_titles = html.count("🔧 Agent ")
-        assert agent_titles >= 4, (
-            f"expected ≥4 Agent tool_use titles at --detail low, got {agent_titles}"
+        assert agent_titles >= 6, (
+            f"expected ≥6 Agent tool_use titles at --detail low, got {agent_titles}"
         )
 
         # Pair_last tool_result counterparts must also be there
         # (one ``teammate-spawn-card`` per Agent tool_result).
         agent_results = html.count("teammate-tool-card teammate-spawn-card")
-        assert agent_results >= 4, (
-            f"expected ≥4 Agent tool_result cards at --detail low, got {agent_results}"
+        assert agent_results >= 6, (
+            f"expected ≥6 Agent tool_result cards at --detail low, got {agent_results}"
         )
 
         # Sanity: TaskCreate / TaskUpdate (not in ``_LOW_KEEP_TOOLS``)
