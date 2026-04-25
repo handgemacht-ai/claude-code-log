@@ -611,17 +611,19 @@ def _normalize_prompt(text: str) -> str:
 
 
 def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
-    """Parent agent entries and assign synthetic session IDs.
+    """Parent subagent entries and stamp them with a per-agent session id.
 
-    Agent (sidechain) entries share sessionId with their parent session
-    but form separate conversation threads. This function:
-
-    1. Builds a map of agentId -> anchor UUID (the main-session User entry
-       whose agentId matches, i.e. the tool_result that references the agent)
-    2. For each agent's root entry (parentUuid=None, isSidechain=True),
-       sets parentUuid to the anchor UUID
-    3. Assigns a synthetic sessionId ("{sessionId}#agent-{agentId}") to all
-       agent entries so they form separate DAG-lines
+    Two adjustments per subagent:
+      1. Re-parent the sidechain root (parentUuid=None) to the trunk
+         tool_result that referenced this agentId — so the DAG threads
+         the subagent's conversation under its spawning Agent/Task call.
+      2. Rewrite ``sessionId`` for every sidechain entry of that agent
+         to ``{trunk}#agent-{agentId}``. Without this all subagents
+         share the trunk's sessionId, and ``_walk_session_with_forks``
+         folds subagent UUIDs into the trunk DAG-line — its anchor
+         logic then can't separate one subagent's content from another's.
+         The synthetic id splits each subagent into its own DAG-line that
+         attaches at the anchor uuid, rendering as a sub-session branch.
 
     Mutates entries in place (Pydantic v2 models are mutable by default).
     """
@@ -648,18 +650,15 @@ def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
     if not agent_anchors:
         return
 
-    # Process sidechain entries: parent roots and assign synthetic sessionIds
     for msg in messages:
         if not isinstance(msg, (BaseTranscriptEntry, PassthroughTranscriptEntry)):
             continue
         if not msg.isSidechain or not msg.agentId:
             continue
         agent_id = msg.agentId
-        # Assign synthetic session ID to separate from main session
-        msg.sessionId = f"{msg.sessionId}#agent-{agent_id}"
-        # Parent the root entry to the anchor
         if msg.parentUuid is None and agent_id in agent_anchors:
             msg.parentUuid = agent_anchors[agent_id]
+        msg.sessionId = f"{msg.sessionId}#agent-{agent_id}"
 
 
 def load_directory_transcripts(

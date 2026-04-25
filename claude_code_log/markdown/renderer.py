@@ -370,23 +370,9 @@ class MarkdownRenderer(Renderer):
     def title_SessionHeaderMessage(
         self, content: SessionHeaderMessage, _: TemplateMessage
     ) -> str:
-        """Title → '📋 Session `abc12345`: summary — Team: `t`'.
-
-        Mirrors the HTML session-header badges (PR #125): surfaces
-        ``teammate_id`` (with a colored-circle marker) for subagent
-        sessions and ``team_name`` as a trailing tag for any team-
-        active session. Markdown can't carry color, so the
-        teammate-circle convention from PR #122 carries it.
-        """
+        """Title → '📋 Session `abc12345`: summary — Team: `t`'."""
         session_short = content.session_id[:8]
-        if content.teammate_id:
-            # Subagent session: lead with the colored teammate marker
-            # (matches HTML's "Subagent • <id>  ▎teammate" — the
-            # synthetic short id is opaque, the teammate name is what
-            # the reader cares about).
-            marker = _teammate_marker(content.teammate_id, content.teammate_color)
-            title = f"📋 Subagent {marker}"
-        elif content.summary:
+        if content.summary:
             title = f"📋 Session `{session_short}`: {content.summary}"
         else:
             title = f"📋 Session `{session_short}`"

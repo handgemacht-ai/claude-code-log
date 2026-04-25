@@ -122,23 +122,6 @@ class RenderingContext:
     teammate_colors: dict[str, dict[str, str]] = field(
         default_factory=lambda: {}  # type: dict[str, dict[str, str]]
     )
-    # Map from a subagent's agent_id to the teammate it represents (name +
-    # color), populated from Task tool_use/tool_result pairs after
-    # teammate_colors is built. Lets the subagent session header (whose
-    # synthetic sessionId is `{main}#agent-{agent_id}`) surface a colored
-    # teammate badge without a re-scan.
-    #
-    # Scoped by *spawning* session_id (the Task tool_use's session) for
-    # the same reason as ``teammate_colors``: combined transcripts merge
-    # multiple sessions, and an agent_id collision across sessions would
-    # silently cross-contaminate. agent_ids are random ~64-bit hex, so
-    # the practical collision risk is negligible — but the architectural
-    # consistency with teammate_colors is the primary reason.
-    #
-    # Shape: spawning_session_id -> { agent_id -> {"name", "color"} }.
-    agent_teammates: dict[str, dict[str, dict[str, Optional[str]]]] = field(
-        default_factory=lambda: {}  # type: dict[str, dict[str, dict[str, Optional[str]]]]
-    )
 
     def register(self, message: "TemplateMessage") -> int:
         """Register a TemplateMessage and assign its message_index.
@@ -250,14 +233,6 @@ class TemplateMessage:
     def is_branch_header(self) -> bool:
         """Check if this is a branch (within-session fork) header."""
         return isinstance(self.content, SessionHeaderMessage) and self.content.is_branch
-
-    @property
-    def is_collapsed_session(self) -> bool:
-        """Subagent-style session header that should render collapsed by default."""
-        return (
-            isinstance(self.content, SessionHeaderMessage)
-            and self.content.collapsed_by_default
-        )
 
     @property
     def branch_depth(self) -> int:
@@ -793,19 +768,6 @@ def generate_template_messages(
     # annotate.
     with log_timing("Collect teammate colors", t_start):
         _populate_teammate_colors(ctx)
-
-    # Build agent_id -> {name, color} map from Task tool_use/tool_result
-    # pairs so subagent session headers can surface a teammate badge by
-    # looking up their agent_id directly. Depends on teammate_colors
-    # (above) for the color fallback path.
-    with log_timing("Map agent ids to teammates", t_start):
-        _populate_agent_teammates(ctx)
-
-    # Use the agent_teammates map to annotate subagent session headers
-    # in-place: each `{main}#agent-{id}` header gets the teammate name +
-    # color so the formatter can render a colored teammate badge.
-    with log_timing("Annotate subagent session headers", t_start):
-        _annotate_subagent_session_headers(ctx)
 
     return root_messages, session_nav, ctx
 
@@ -1817,127 +1779,6 @@ def _populate_teammate_colors(ctx: RenderingContext) -> None:
                 session_colors[block.teammate_id] = block.color
 
 
-def _annotate_subagent_session_headers(ctx: RenderingContext) -> None:
-    """Fill in teammate_id / teammate_color on subagent session headers.
-
-    Synthetic sessionIds for subagent sessions follow the
-    ``{main_session_id}#agent-{agent_id}`` shape (assigned by
-    ``_integrate_agent_entries`` in converter.py). Look up each
-    subagent header's agent_id in ``ctx.agent_teammates`` (built by
-    ``_populate_agent_teammates``) and set the teammate fields so the
-    header formatter can render a colored teammate badge.
-
-    Skips non-subagent headers; no-op when ``agent_teammates`` is empty.
-    """
-    from .models import SessionHeaderMessage
-
-    for template_msg in ctx.messages:
-        content = template_msg.content
-        if not isinstance(content, SessionHeaderMessage):
-            continue
-        sid = content.session_id
-        # Synthetic format is `{spawning_session}#agent-{agent_id}`.
-        # Use rpartition so that:
-        #   - Today's flat ids `main#agent-X` split into ("main", "X").
-        #   - Future deeply-nested ids like `main#agent-A#agent-B` split
-        #     into ("main#agent-A", "B"), keeping consistency with the
-        #     title-generation parse at line ~2660.
-        spawning_sid, marker, agent_id = sid.rpartition("#agent-")
-        if not marker or not agent_id:
-            continue
-        info = ctx.agent_teammates.get(spawning_sid, {}).get(agent_id)
-        # Fallback for nested agents under today's converter: it
-        # produces a flat `{trunk}#agent-{id}` synthetic id regardless
-        # of nesting (the nesting lives in the parentUuid chain, not
-        # the sessionId). `_populate_agent_teammates` records a nested
-        # agent under its actual spawning session's synthetic id, so
-        # the rpartition-derived spawning_sid above misses. Scan the
-        # outer dict for any session that knows this agent_id and use
-        # the first match — agent_ids are random ~64-bit hex so the
-        # scan is unambiguous in practice.
-        if info is None:
-            for _candidate_sid, agents in ctx.agent_teammates.items():
-                if agent_id in agents:
-                    info = agents[agent_id]
-                    break
-        if info is None:
-            continue
-        # First sighting from the agent_teammates pass wins; don't
-        # overwrite a header that was already annotated (defensive
-        # against re-rendering scenarios).
-        if content.teammate_id is None:
-            content.teammate_id = info.get("name")
-            content.teammate_color = info.get("color")
-
-
-def _populate_agent_teammates(ctx: RenderingContext) -> None:
-    """Walk Task tool_use/tool_result pairs to build agent_id → teammate map.
-
-    For each ``Task`` tool_use whose paired tool_result carries
-    ``output.metadata.agent_id`` (parsed by the agent_metadata factory in
-    PR #117), record the teammate name (from the tool_use input's
-    ``name`` field, set by Claude Code when spawning a named teammate)
-    and the color. Color preference: explicit ``output.color`` wins, else
-    fall back to the session-wide ``ctx.teammate_colors`` cache (PR #122)
-    keyed by the spawning session.
-
-    Lets ``SessionHeaderMessage`` for a subagent (synthetic sessionId
-    ``{main}#agent-{agent_id}``) look up its teammate identity directly
-    instead of re-walking messages. The map is scoped by the spawning
-    session_id (the Task tool_use's session) — combined transcripts
-    merge multiple sessions, and an agent_id collision across sessions
-    would silently cross-contaminate without the scope.
-
-    No-op when no Task tool_use carries an agent_id.
-    """
-    from .models import (
-        TaskInput,
-        TaskOutput,
-        ToolResultMessage,
-        ToolUseMessage,
-    )
-
-    for template_msg in ctx.messages:
-        content = template_msg.content
-        if not isinstance(content, ToolUseMessage):
-            continue
-        if content.tool_name != "Task":
-            continue
-        if not isinstance(content.input, TaskInput):
-            continue
-        teammate_name = content.input.name
-        if not teammate_name:
-            # Regular Task (sub-agent without a teammate name) — skip.
-            continue
-        if template_msg.pair_last is None:
-            continue
-        result_msg = ctx.get(template_msg.pair_last)
-        if result_msg is None or not isinstance(result_msg.content, ToolResultMessage):
-            continue
-        result_output = result_msg.content.output
-        if not isinstance(result_output, TaskOutput):
-            continue
-        meta = result_output.metadata
-        if meta is None or not meta.agent_id:
-            continue
-
-        # The Task tool_use's session is the *spawning* session — use
-        # that as the outer key so combined transcripts don't share an
-        # agent_id across sessions.
-        spawning_sid = template_msg.meta.session_id if template_msg.meta else ""
-
-        # Color preference: explicit on output > session-cache lookup.
-        color: Optional[str] = result_output.color
-        if not color:
-            color = ctx.teammate_colors.get(spawning_sid, {}).get(teammate_name)
-
-        session_map = ctx.agent_teammates.setdefault(spawning_sid, {})
-        # First sighting wins (defensive — duplicate spawn within a
-        # session shouldn't happen but a re-render on the same ctx
-        # might re-process; setdefault makes that idempotent).
-        session_map.setdefault(meta.agent_id, {"name": teammate_name, "color": color})
-
-
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
     """Clean up duplicate content in sidechains after tree is built.
 
@@ -1978,19 +1819,21 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
 
         children = message.children
 
-        # Remove first sidechain UserTextMessage (duplicate of Task input prompt)
-        # Must be specifically UserTextMessage, not ToolResultMessage or other user types
-        # When removing, adopt its children to preserve sidechain tool messages
-        if (
-            children
-            and children[0].is_sidechain
-            and isinstance(children[0].content, UserTextMessage)
-        ):
-            removed = children.pop(0)
-            # Adopt orphaned children (tool_use/tool_result from sidechain)
-            if removed.children:
-                # Insert at beginning to maintain order
-                children[:0] = removed.children
+        # Remove the first sidechain UserTextMessage child (duplicate of the
+        # Task/Agent input prompt). Scan the full children list rather than
+        # just position 0: under parallel-Task spawning, the parent
+        # tool_use's first DAG child is the next sibling tool_use (per
+        # parentUuid chain), so the sidechain user appears later in the
+        # children list.
+        for sidechain_idx, child in enumerate(children):
+            if child.is_sidechain and isinstance(child.content, UserTextMessage):
+                removed = children.pop(sidechain_idx)
+                # Adopt orphaned children (tool_use/tool_result from sidechain)
+                # at the same position so the sidechain content threads in
+                # the right place.
+                if removed.children:
+                    children[sidechain_idx:sidechain_idx] = removed.children
+                break
 
         # For tool_result only: replace last matching AssistantTextMessage with dedup
         if not is_task_tool_result:
@@ -2654,12 +2497,10 @@ def _render_messages(
         session_id = meta.session_id or "unknown"
         session_summary = sessions.get(session_id, {}).get("summary")
 
-        # Add session header if this is a new session.
-        # Subagent sidechain sessions (synthetic sessionId
-        # `{main}#agent-{id}`) now also get a header so their teammate
-        # badge has somewhere to land. For trunk sessions only, reset
-        # current_render_session — agent sessions stay grouped with the
-        # parent's render flow.
+        # Add session header if this is a new session. Subagent sidechain
+        # entries get a ``{trunk}#agent-{agentId}`` synthetic sessionId
+        # via ``_integrate_agent_entries``; they trigger their own
+        # session header here, with a short ``Subagent • <id>`` title.
         is_agent = is_agent_session(session_id)
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
@@ -2667,9 +2508,6 @@ def _render_messages(
                 current_render_session = None  # Reset branch tracking
             current_session_summary = session_summary
             if is_agent:
-                # Subagent header title: short agent id; the teammate
-                # badge added by _annotate_subagent_session_headers
-                # will carry the human-readable identity.
                 short_id = session_id.rsplit("#agent-", 1)[-1][:8]
                 session_title = f"Subagent • {short_id}"
             else:
@@ -2703,10 +2541,6 @@ def _render_messages(
                 depth=hier.get("depth", 0),
                 attachment_uuid=hier.get("attachment_uuid"),
                 team_name=(session_team_names or {}).get(session_id),
-                # Subagent sessions render collapsed by default so the
-                # parent transcript stays scannable; expand to see the
-                # subagent's work inline.
-                collapsed_by_default=is_agent,
             )
             # Register and track session's first message
             session_header = TemplateMessage(session_header_content)

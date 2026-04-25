@@ -9,7 +9,6 @@ Part of the thematic formatter organization:
 """
 
 import html
-from typing import Optional
 
 from .ansi_colors import convert_ansi_to_html
 from ..models import (
@@ -94,32 +93,6 @@ def _team_badge(team_name: str) -> str:
     )
 
 
-def _subagent_teammate_badge(teammate_id: str, color: Optional[str]) -> str:
-    """Render a colored teammate pill for a subagent session header.
-
-    Mirrors `_team_badge` shape but uses the teammate's color when known
-    (palette token from PR #122; falls back to gray for unknown colors).
-    """
-    palette = (color or "").strip().lower()
-    palette_var = palette if palette in _CC_PALETTE else "gray"
-    style = (
-        f'style="--cc-color: var(--cc-{palette_var}); '
-        f'--cc-color-bg: var(--cc-{palette_var}-bg);"'
-    )
-    return (
-        f'<span class="session-teammate-badge" {style}>'
-        f'<span class="session-teammate-icon">▎</span>'
-        f"{html.escape(teammate_id)}</span>"
-    )
-
-
-# Palette names recognised by teammate_styles.css. Anything else falls
-# back to gray (kept in sync with html/teammate_formatter.py::_PALETTE).
-_CC_PALETTE: frozenset[str] = frozenset(
-    {"blue", "cyan", "green", "yellow", "orange", "red", "pink", "purple", "gray"}
-)
-
-
 def format_session_header_content(content: SessionHeaderMessage) -> str:
     """Format a session header as HTML.
 
@@ -131,14 +104,6 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
     """
     escaped_title = html.escape(content.title)
     badges = _team_badge(content.team_name) if content.team_name else ""
-    teammate_badge_html = (
-        _subagent_teammate_badge(content.teammate_id, content.teammate_color)
-        if content.teammate_id
-        else ""
-    )
-    # Compose both in display order (team badge first if both present —
-    # team scope is broader than the teammate within it).
-    badges = f"{badges}{teammate_badge_html}"
     if content.is_branch and content.parent_message_index is not None:
         # Branch header: compact with back-reference to fork point
         # Show session info for cross-session branches (different real session)
