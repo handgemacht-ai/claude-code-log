@@ -190,6 +190,68 @@ def _meta() -> MessageMeta:
     return MessageMeta(session_id="s", timestamp="t", uuid="u")
 
 
+def test_annotate_subagent_handles_nested_agents() -> None:
+    """Regression (CodeRabbit #5 on PR #125): the subagent-header lookup
+    must find a nested agent (B spawned by A, who was spawned by main)
+    even though today's converter produces a flat synthetic sessionId
+    `main#agent-B` for B (not `main#agent-A#agent-B`).
+
+    Two scenarios verified:
+
+    1. **Future deeply-nested ids** (`main#agent-A#agent-B`): rpartition
+       splits into spawning_sid="main#agent-A", agent_id="B" so the
+       direct lookup hits.
+    2. **Today's flat ids** (`main#agent-B` even for nested B): the
+       direct lookup at spawning_sid="main" misses, so the scan
+       fallback finds B under `agent_teammates["main#agent-A"]["B"]`.
+
+    Both scenarios should annotate the subagent header with the right
+    teammate identity.
+    """
+    from claude_code_log.models import MessageMeta, SessionHeaderMessage
+    from claude_code_log.renderer import (
+        RenderingContext,
+        TemplateMessage,
+        _annotate_subagent_session_headers,
+    )
+
+    def _setup(synthetic_sid: str) -> SessionHeaderMessage:
+        ctx = RenderingContext()
+        # Record agent A spawned from main, agent B spawned from A.
+        ctx.agent_teammates = {
+            "main": {"agent-a": {"name": "alice", "color": "blue"}},
+            "main#agent-agent-a": {"agent-b": {"name": "bob", "color": "green"}},
+        }
+        # Build a session header with the synthetic id under test.
+        meta = MessageMeta(session_id=synthetic_sid, timestamp="t", uuid="u")
+        header_content = SessionHeaderMessage(
+            meta=meta,
+            title="Subagent",
+            session_id=synthetic_sid,
+        )
+        ctx.register(TemplateMessage(header_content))
+        _annotate_subagent_session_headers(ctx)
+        return header_content
+
+    # Scenario 1: future deeply-nested id splits cleanly via rpartition.
+    deep = _setup("main#agent-agent-a#agent-agent-b")
+    assert deep.teammate_id == "bob"
+    assert deep.teammate_color == "green"
+
+    # Scenario 2: today's flat id needs the scan fallback to find bob.
+    flat = _setup("main#agent-agent-b")
+    assert flat.teammate_id == "bob", (
+        "scan fallback should find nested agent_id even when the synthetic "
+        "id flattens away the parent agent's segment"
+    )
+    assert flat.teammate_color == "green"
+
+    # Sanity check: a regular (non-nested) lookup still works directly.
+    direct = _setup("main#agent-agent-a")
+    assert direct.teammate_id == "alice"
+    assert direct.teammate_color == "blue"
+
+
 def test_agent_teammates_are_session_scoped() -> None:
     """Regression (PR #125 review fix #2): agent_teammates must scope by
     spawning session_id so combined transcripts don't collide on

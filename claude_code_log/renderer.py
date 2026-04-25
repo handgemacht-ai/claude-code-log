@@ -1836,16 +1836,30 @@ def _annotate_subagent_session_headers(ctx: RenderingContext) -> None:
         if not isinstance(content, SessionHeaderMessage):
             continue
         sid = content.session_id
-        marker = "#agent-"
-        marker_idx = sid.find(marker)
-        if marker_idx < 0:
+        # Synthetic format is `{spawning_session}#agent-{agent_id}`.
+        # Use rpartition so that:
+        #   - Today's flat ids `main#agent-X` split into ("main", "X").
+        #   - Future deeply-nested ids like `main#agent-A#agent-B` split
+        #     into ("main#agent-A", "B"), keeping consistency with the
+        #     title-generation parse at line ~2660.
+        spawning_sid, marker, agent_id = sid.rpartition("#agent-")
+        if not marker or not agent_id:
             continue
-        # Synthetic format is `{spawning_session}#agent-{agent_id}`;
-        # split into the two halves to look up the (now session-scoped)
-        # agent_teammates map.
-        spawning_sid = sid[:marker_idx]
-        agent_id = sid[marker_idx + len(marker) :]
         info = ctx.agent_teammates.get(spawning_sid, {}).get(agent_id)
+        # Fallback for nested agents under today's converter: it
+        # produces a flat `{trunk}#agent-{id}` synthetic id regardless
+        # of nesting (the nesting lives in the parentUuid chain, not
+        # the sessionId). `_populate_agent_teammates` records a nested
+        # agent under its actual spawning session's synthetic id, so
+        # the rpartition-derived spawning_sid above misses. Scan the
+        # outer dict for any session that knows this agent_id and use
+        # the first match — agent_ids are random ~64-bit hex so the
+        # scan is unambiguous in practice.
+        if info is None:
+            for _candidate_sid, agents in ctx.agent_teammates.items():
+                if agent_id in agents:
+                    info = agents[agent_id]
+                    break
         if info is None:
             continue
         # First sighting from the agent_teammates pass wins; don't
