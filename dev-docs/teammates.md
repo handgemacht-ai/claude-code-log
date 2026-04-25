@@ -664,14 +664,14 @@ deterministic.
 `title_SessionHeaderMessage` (PR #125 cea8896, simplified by `27e43fb`)
 surfaces the team_name when present:
 
-- Plain trunk session: `📋 Session \`abc12345\``
-- With summary: `📋 Session \`abc12345\`: <summary>`
-- Team-active session: appends ` — Team: \`<name>\``
+- Plain trunk session: ``📋 Session `abc12345` ``
+- With summary: ``📋 Session `abc12345`: <summary>``
+- Team-active session: appends `` — Team: `<name>` ``
 
-The earlier `📋 Subagent 🔵 \`alice\`` variant from the first wave of
-PR #125 was removed when synthetic-subagent session headers stopped
-being created. Backtick handling on the team_name suffix uses the same
-`_inline_code` helper.
+The earlier ``📋 Subagent 🔵 `alice` `` variant from the first wave
+of PR #125 was removed when synthetic-subagent session headers
+stopped being created. Backtick handling on the team_name suffix
+uses the same `_inline_code` helper.
 
 ---
 
