@@ -1630,7 +1630,8 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
 
     Correct hierarchy based on logical nesting:
     - Level 0: Session headers
-    - Level 1: User messages
+    - Level 1: User messages (including ``TeammateMessage`` — a User
+      whose content is one or more ``<teammate-message>`` blocks)
     - Level 2: System commands/errors, Assistant, Thinking
     - Level 3: Tool use/result, System info/warning (nested under assistant)
     - Level 4: Sidechain user/assistant/thinking (nested under Task tool result)
@@ -1646,8 +1647,15 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
     msg_type = msg.type
     is_sidechain = msg.is_sidechain
 
-    # User messages at level 1 (under session), level 4 for sidechain
-    if msg_type == "user":
+    # User messages at level 1 (under session), level 4 for sidechain.
+    # ``"teammate"`` shares the User's level: a TeammateMessage is just
+    # a User entry whose content is a stack of <teammate-message>
+    # blocks (see TeammateMessage.message_type). Pre-fix, the
+    # fall-through to level 1 placed sidechain Teammate prompts (the
+    # team-lead's wrapped prompt to a teammate) ABOVE their spawning
+    # Task tool_result, swallowing every subsequent Task tool_use as
+    # a child.
+    if msg_type in ("user", "teammate"):
         return 4 if is_sidechain else 1
 
     # System info/warning at level 3 (tool-related, e.g., hook notifications)

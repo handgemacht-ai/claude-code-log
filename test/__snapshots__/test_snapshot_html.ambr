@@ -11238,11 +11238,11 @@
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-0' data-title-unfolded='Fold (all levels) all 19 descendants' data-title-folded='Unfold (1st level) 3 teammates, 1 user' title='Fold (all levels) all 19 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-0' data-title-unfolded='Fold (all levels) all 19 descendants' data-title-folded='Unfold (1st level) 2 teammates, 1 user' title='Fold (all levels) all 19 descendants'>
                   <span class='fold-icon'>▼</span>
-                  <span class='fold-label'>3 teammates, 1 user</span>
+                  <span class='fold-label'>2 teammates, 1 user</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-0' data-title-unfolded='Fold (to 1st level) 3 teammates, 1 user' data-title-folded='Unfold (all levels) all 19 descendants' title='Fold (to 1st level) 3 teammates, 1 user'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-0' data-title-unfolded='Fold (to 1st level) 2 teammates, 1 user' data-title-folded='Unfold (all levels) all 19 descendants' title='Fold (to 1st level) 2 teammates, 1 user'>
                   <span class='fold-icon'>▼▼</span>
                   <span class='fold-label'>9 tools, 5 assistants, 8 more total</span>
               </div>
@@ -11271,13 +11271,13 @@
           <div class='fold-bar' data-message-id='d-1' data-border-color='user'>
               
               
-              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-1' data-title-unfolded='Fold (all levels) all 9 descendants' data-title-folded='Unfold (1st level) 6 tools' title='Fold (all levels) all 9 descendants'>
+              <div class='fold-bar-section fold-one-level' data-action='fold-one' data-target='d-1' data-title-unfolded='Fold (all levels) all 12 descendants' data-title-folded='Unfold (1st level) 6 tools' title='Fold (all levels) all 12 descendants'>
                   <span class='fold-icon'>▼</span>
                   <span class='fold-label'>6 tools</span>
               </div>
-              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-1' data-title-unfolded='Fold (to 1st level) 6 tools' data-title-folded='Unfold (all levels) all 9 descendants' title='Fold (to 1st level) 6 tools'>
+              <div class='fold-bar-section fold-all-levels' data-action='fold-all' data-target='d-1' data-title-unfolded='Fold (to 1st level) 6 tools' data-title-folded='Unfold (all levels) all 12 descendants' title='Fold (to 1st level) 6 tools'>
                   <span class='fold-icon'>▼▼</span>
-                  <span class='fold-label'>6 tools, 2 assistants, 2 more total</span>
+                  <span class='fold-label'>6 tools, 4 assistants, 5 more total</span>
               </div>
               
           </div>
@@ -11511,13 +11511,23 @@
           <div class='content markdown'><div class="task-result markdown"><p>Server tests added. Coverage 22% → 88%.</p>
   </div><dl class="teammate-tool-card teammate-spawn-card"><dt>Agent</dt><dd><code>bbbb222222222222</code></dd><dt>Worktree</dt><dd><code>/home/synthetic/worktrees/agent-bbbb2222</code></dd><dt>Branch</dt><dd><code>worktree-agent-bbbb2222</code></dd><dt>Usage</dt><dd>9,876 tokens · 4 tool uses · 42.0s</dd></dl></div>
           
+          <div class='fold-bar' data-message-id='d-16' data-border-color='tool_result'>
+              
+              
+              <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-16' data-title-unfolded='Fold 2 assistants, 1 teammate' data-title-folded='Unfold (1st level) 2 assistants, 1 teammate' title='Fold 2 assistants, 1 teammate'>
+                  <span class='fold-icon'>▼</span>
+                  <span class='fold-label'>2 assistants, 1 teammate</span>
+              </div>
+              
+          </div>
+          
       </div>
       
       
       
       
       
-      <div class='message user teammate sidechain d-0' data-message-id='d-17' id='msg-d-17'>
+      <div class='message user teammate sidechain d-0 d-1 d-16' data-message-id='d-17' id='msg-d-17'>
           <div class='header'>
               <span>Teammate</span>
               <div class='header-info'>
@@ -11531,23 +11541,13 @@
           <div class='content markdown'><div class="teammate-message" style="--cc-color: var(--cc-cyan); --cc-color-bg: var(--cc-cyan-bg);"><div class="teammate-message-header"><span class="teammate-badge" style="--cc-color: var(--cc-cyan); --cc-color-bg: var(--cc-cyan-bg);"><span class="teammate-icon">▎</span>team-lead</span><span class="teammate-summary">task spawn</span></div><div class="teammate-body"><p>You are <strong>bob</strong>, a teammate in the test-coverage team. Add unit tests for the server module and report back.</p>
   </div></div></div>
           
-          <div class='fold-bar' data-message-id='d-17' data-border-color='user teammate sidechain'>
-              
-              
-              <div class='fold-bar-section fold-one-level full-width' data-action='fold-one' data-target='d-17' data-title-unfolded='Fold 2 assistants' data-title-folded='Unfold (1st level) 2 assistants' title='Fold 2 assistants'>
-                  <span class='fold-icon'>▼</span>
-                  <span class='fold-label'>2 assistants</span>
-              </div>
-              
-          </div>
-          
       </div>
       
       
       
       
       
-      <div class='message assistant sidechain d-0 d-17' data-message-id='d-18' id='msg-d-18'>
+      <div class='message assistant sidechain d-0 d-1 d-16' data-message-id='d-18' id='msg-d-18'>
           <div class='header'>
               <span>🔗 Sub-assistant</span>
               <div class='header-info'>
@@ -11567,7 +11567,7 @@
       
       
       
-      <div class='message assistant sidechain d-0 d-17' data-message-id='d-19' id='msg-d-19'>
+      <div class='message assistant sidechain d-0 d-1 d-16' data-message-id='d-19' id='msg-d-19'>
           <div class='header'>
               <span>🔗 Sub-assistant</span>
               <div class='header-info'>

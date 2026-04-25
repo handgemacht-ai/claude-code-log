@@ -502,6 +502,50 @@ class TestTeammateMessageParser:
         html = format_teammate_content(content)
         assert 'class="teammate-json"' not in html
 
+    def test_sidechain_teammate_at_level_4(self) -> None:
+        """Regression: a sidechain ``TeammateMessage`` (team-lead's
+        wrapped prompt to a teammate) must dispatch to level 4, not
+        the default level 1.
+
+        Pre-fix the type "teammate" wasn't recognised by
+        ``_get_message_hierarchy_level`` so it fell through to level
+        1. Level 1 popped the level stack down past the spawning Task
+        (level 3) — the next Task tool_use ended up nested as a
+        descendant of the Teammate, swallowing the rest of the
+        sidechain content into the wrong slot.
+        """
+        from claude_code_log.models import MessageMeta
+        from claude_code_log.renderer import (
+            TemplateMessage,
+            _get_message_hierarchy_level,
+        )
+
+        # Trunk teammate (team-lead receives messages from teammates):
+        # level 1, alongside regular user.
+        trunk_meta = MessageMeta(session_id="s", timestamp="t", uuid="u-1")
+        trunk_msg = TemplateMessage(
+            create_teammate_message(
+                trunk_meta,
+                '<teammate-message teammate_id="alice">hi</teammate-message>',
+            )  # type: ignore[arg-type]
+        )
+        assert _get_message_hierarchy_level(trunk_msg) == 1
+
+        # Sidechain teammate (team-lead's wrapped prompt to a
+        # teammate, found inside a subagent transcript): level 4,
+        # nested under the spawning Task tool_result.
+        sidechain_meta = MessageMeta(
+            session_id="s#agent-x", timestamp="t", uuid="u-2", is_sidechain=True
+        )
+        sidechain_msg = TemplateMessage(
+            create_teammate_message(
+                sidechain_meta,
+                '<teammate-message teammate_id="team-lead">'
+                "do the thing</teammate-message>",
+            )  # type: ignore[arg-type]
+        )
+        assert _get_message_hierarchy_level(sidechain_msg) == 4
+
     def test_system_block_flagged(self) -> None:
         blocks = list(iter_teammate_blocks(MULTI_BLOCK))
         system_block = blocks[-1]
