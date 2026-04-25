@@ -1958,16 +1958,19 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
         for child in message.children:
             process_message(child)
 
-        # Check if this is a Task tool_use or tool_result with sidechain children
+        # Check if this is a Task/Agent tool_use or tool_result with sidechain
+        # children. ``Agent`` is the teammates-feature spawn tool name; same
+        # subagent dedup semantics as ``Task``.
+        _spawn_tool_names = {"Task", "Agent"}
         is_task_tool_use = (
             message.type == "tool_use"
             and isinstance(message.content, ToolUseMessage)
-            and message.content.tool_name == "Task"
+            and message.content.tool_name in _spawn_tool_names
         )
         is_task_tool_result = (
             message.type == "tool_result"
             and isinstance(message.content, ToolResultMessage)
-            and message.content.tool_name == "Task"
+            and message.content.tool_name in _spawn_tool_names
         )
 
         if not ((is_task_tool_use or is_task_tool_result) and message.children):
