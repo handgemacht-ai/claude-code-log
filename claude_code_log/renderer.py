@@ -1387,10 +1387,25 @@ def _try_pair_adjacent(
     Returns True if messages were paired, False otherwise.
 
     Adjacent pairing rules:
+    - slash-command invocation + slash-command expanded prompt (either order)
     - user slash-command + user command-output
     - bash-input + bash-output
     - thinking + assistant
     """
+    # Slash command invocation + expanded prompt — represent one logical
+    # event (the typed `/cmd` and the prompt-text the harness sent in its
+    # place) and may appear in either order: `/init` shows Slash → UserSlash,
+    # while `/exit` shows UserSlash (caveat) → Slash.
+    if (
+        isinstance(current.content, SlashCommandMessage)
+        and isinstance(next_msg.content, UserSlashCommandMessage)
+    ) or (
+        isinstance(current.content, UserSlashCommandMessage)
+        and isinstance(next_msg.content, SlashCommandMessage)
+    ):
+        _mark_pair(current, next_msg)
+        return True
+
     # Slash command + command output (both are user messages)
     if isinstance(
         current.content, (SlashCommandMessage, UserSlashCommandMessage)
