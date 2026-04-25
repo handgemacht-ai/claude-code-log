@@ -2095,14 +2095,15 @@ def _is_launching_skill_payload(output: Any) -> bool:
     content = output.content
     if isinstance(content, str):
         return content.lstrip().startswith(_LAUNCHING_SKILL_PREFIX)
-    if isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text = item.get("text")
-                if isinstance(text, str) and text.lstrip().startswith(
-                    _LAUNCHING_SKILL_PREFIX
-                ):
-                    return True
+    # Pydantic typed `content` as Union[str, list[dict[str, Any]]] — after
+    # the str-check, content is the list shape. Iterate text items and
+    # match the prefix on the first one that carries it.
+    for item in content:
+        if item.get("type") != "text":
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text.lstrip().startswith(_LAUNCHING_SKILL_PREFIX):
+            return True
     return False
 
 
