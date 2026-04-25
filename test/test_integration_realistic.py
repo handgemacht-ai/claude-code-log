@@ -1816,7 +1816,7 @@ class TestExperimentsWorktreesTeammates:
 
         project = self._project_dir(temp_projects_copy)
         convert_jsonl_to_html(project)
-        html = (project / "combined_transcripts.html").read_text()
+        html = (project / "combined_transcripts.html").read_text(encoding="utf-8")
 
         # Every `assistant sidechain` row carries an ancestry tail like
         # `d-0 d-1 d-26 d-<anchor>`. Collect the immediate parent (last
@@ -1839,7 +1839,7 @@ class TestExperimentsWorktreesTeammates:
         ``27e43fb`` removed them)."""
         project = self._project_dir(temp_projects_copy)
         convert_jsonl_to_html(project)
-        html = (project / "combined_transcripts.html").read_text()
+        html = (project / "combined_transcripts.html").read_text(encoding="utf-8")
 
         assert "subagent-session-block" not in html
         assert "session-teammate-badge" not in html
@@ -1851,7 +1851,7 @@ class TestExperimentsWorktreesTeammates:
         any rendered session-header div."""
         project = self._project_dir(temp_projects_copy)
         convert_jsonl_to_html(project)
-        html = (project / "combined_transcripts.html").read_text()
+        html = (project / "combined_transcripts.html").read_text(encoding="utf-8")
 
         assert "data-session-id='" + self.SESSION_ID + "#agent-" not in html
         assert 'data-session-id="' + self.SESSION_ID + "#agent-" not in html
@@ -1861,7 +1861,7 @@ class TestExperimentsWorktreesTeammates:
         (commits ``7c364bc`` and ``47bc50e``)."""
         project = self._project_dir(temp_projects_copy)
         convert_jsonl_to_html(project)
-        html = (project / "combined_transcripts.html").read_text()
+        html = (project / "combined_transcripts.html").read_text(encoding="utf-8")
 
         # TaskCreate compaction → `Task <code>#N</code> ... [created]`
         assert "task-action'>[created]" in html
