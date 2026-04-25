@@ -1869,3 +1869,75 @@ class TestExperimentsWorktreesTeammates:
         assert "task-action'>[updated]" in html
         # SendMessage gets the ✉️ emoji + "to <badge>" inline title
         assert "✉️ SendMessage" in html
+
+    def test_low_detail_preserves_agent_spawns(self, temp_projects_copy: Path) -> None:
+        """``--detail low`` must keep ``Agent`` tool_use/tool_result
+        pairs visible (commit ``dc134bf``).
+
+        Real teammate transcripts emit the spawn under the ``Agent``
+        tool name, not ``Task``. ``Agent`` was missing from
+        ``_LOW_KEEP_TOOLS``, so every teammate spawn-and-result pair
+        silently dropped out of low-detail rendering.
+
+        The fixture has six ``Agent`` spawns total (wave-1 + wave-2
+        alice/bob/carol), but two of them — both carols — currently
+        get pruned upstream by the DAG walker's fork handling on
+        nested-Task parents (a separate, pre-existing issue). The
+        directory loader surfaces the surviving four; we assert that
+        threshold here so the regression catches the LOW filter
+        re-stripping ``Agent`` again.
+        """
+        from claude_code_log.models import DetailLevel
+        from claude_code_log.converter import convert_jsonl_to
+
+        project = self._project_dir(temp_projects_copy)
+        out_path = convert_jsonl_to(
+            "html", project, silent=True, detail=DetailLevel.LOW
+        )
+        html = out_path.read_text(encoding="utf-8")
+
+        # Title formatter for TaskInput emits "🔧 Agent <description>"
+        # since Agent is aliased to TaskInput in the tool factory.
+        agent_titles = html.count("🔧 Agent ")
+        assert agent_titles >= 4, (
+            f"expected ≥4 Agent tool_use titles at --detail low, got {agent_titles}"
+        )
+
+        # Pair_last tool_result counterparts must also be there
+        # (one ``teammate-spawn-card`` per Agent tool_result).
+        agent_results = html.count("teammate-tool-card teammate-spawn-card")
+        assert agent_results >= 4, (
+            f"expected ≥4 Agent tool_result cards at --detail low, got {agent_results}"
+        )
+
+        # Sanity: TaskCreate / TaskUpdate (not in ``_LOW_KEEP_TOOLS``)
+        # are stripped — their compact ``[created]`` / ``[updated]``
+        # action tag is a unique marker.
+        assert "task-action'>[created]" not in html
+        assert "task-action'>[updated]" not in html
+
+    def test_minimal_detail_strips_agent_spawns(self, temp_projects_copy: Path) -> None:
+        """``--detail minimal`` strips all tool content — ``Agent``
+        included. Only user/assistant text survives, so the spawn
+        titles and result cards must be absent.
+
+        Pairs with ``test_low_detail_preserves_agent_spawns`` to lock
+        in both halves of the contract: LOW keeps the Agent pair, but
+        MINIMAL goes further and strips every tool.
+        """
+        from claude_code_log.models import DetailLevel
+        from claude_code_log.converter import convert_jsonl_to
+
+        project = self._project_dir(temp_projects_copy)
+        out_path = convert_jsonl_to(
+            "html", project, silent=True, detail=DetailLevel.MINIMAL
+        )
+        html = out_path.read_text(encoding="utf-8")
+
+        # No Agent tool_use titles, no Agent tool_result cards.
+        assert "🔧 Agent " not in html
+        assert "teammate-tool-card teammate-spawn-card" not in html
+        # Web tools are kept at LOW but not at MINIMAL — verify the
+        # filter actually escalates between levels.
+        assert "🔎 WebSearch" not in html
+        assert "🌐 WebFetch" not in html
