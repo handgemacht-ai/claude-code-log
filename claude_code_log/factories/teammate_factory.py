@@ -33,11 +33,19 @@ from ..models import (
 )
 
 
+# Attribute run inside the opening tag — a sequence of
+# ``name="value"`` (or single-quoted) pairs separated by whitespace.
+# Per the XML spec [10], attribute values may contain ``>``; only
+# ``<``, ``&``, and the matching quote are forbidden. So the earlier
+# naïve ``[^>]*`` truncated openings like
+# ``summary="15% -> 96% coverage"`` at the literal ``>``.
+_ATTR_RUN = r'(?:\s+[\w][\w-]*(?:\s*=\s*(?:"[^"<&]*"|\'[^\'<&]*\'))?)*\s*'
+
 # One full <teammate-message ...>...</teammate-message> block. Attribute
 # parsing happens on the opening tag's attribute run (captured group 1).
 # Using DOTALL so the body may contain newlines (typically does).
 _BLOCK_RE = re.compile(
-    r"<teammate-message\b([^>]*)>(.*?)</teammate-message>",
+    rf"<teammate-message\b({_ATTR_RUN})>(.*?)</teammate-message>",
     re.DOTALL,
 )
 

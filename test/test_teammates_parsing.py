@@ -447,6 +447,61 @@ class TestTeammateMessageParser:
         assert b.summary is None
         assert b.color == "blue"
 
+    def test_summary_with_unescaped_gt_is_preserved(self) -> None:
+        """XML allows literal ``>`` inside attribute values. The earlier
+        ``[^>]*`` attribute-run regex truncated the opening tag at the
+        first ``>``, leaking the rest of the summary into the body."""
+        text = (
+            '<teammate-message teammate_id="alice" color="blue" '
+            'summary="coverage 15% -> 96%">\n'
+            "all good\n"
+            "</teammate-message>"
+        )
+        b = next(iter(iter_teammate_blocks(text)))
+        assert b.summary == "coverage 15% -> 96%"
+        assert b.body == "all good"
+
+    def test_json_body_renders_as_key_value_dl(self) -> None:
+        """Notification-shaped teammate bodies (``{"type":"...",...}``)
+        render as a ``<dl class="teammate-json">`` key/value list, not as
+        a Markdown code-blob."""
+        from claude_code_log.html.teammate_formatter import format_teammate_content
+
+        text = (
+            '<teammate-message teammate_id="alice" color="blue">\n'
+            '{"type":"idle_notification","from":"alice",'
+            '"timestamp":"2026-02-06T10:36:50.559Z",'
+            '"idleReason":"available"}\n'
+            "</teammate-message>"
+        )
+        content = create_teammate_message(_meta(), text)
+        assert content is not None
+        html = format_teammate_content(content)
+        assert 'class="teammate-json"' in html
+        assert "<dt>type</dt>" in html
+        assert "idle_notification" in html
+        assert "<dt>idleReason</dt>" in html
+        # Markdown rendering would produce a `<p>` or `<pre>`; ensure
+        # the JSON path won.
+        assert (
+            "<p>" not in html.split('class="teammate-json"', 1)[1].split("</dl>", 1)[0]
+        )
+
+    def test_non_json_body_falls_back_to_markdown(self) -> None:
+        """A body that just happens to start with ``{`` but isn't valid
+        JSON still routes through the Markdown renderer."""
+        from claude_code_log.html.teammate_formatter import format_teammate_content
+
+        text = (
+            '<teammate-message teammate_id="alice" color="blue">\n'
+            "{not really json, missing quotes}\n"
+            "</teammate-message>"
+        )
+        content = create_teammate_message(_meta(), text)
+        assert content is not None
+        html = format_teammate_content(content)
+        assert 'class="teammate-json"' not in html
+
     def test_system_block_flagged(self) -> None:
         blocks = list(iter_teammate_blocks(MULTI_BLOCK))
         system_block = blocks[-1]

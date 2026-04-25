@@ -107,6 +107,24 @@
     margin-bottom: 0;
 }
 
+/* JSON-shaped teammate notifications (e.g. idle_notification payloads)
+   render as a compact key:value list rather than a code blob. */
+.teammate-body .teammate-json {
+    display: grid;
+    grid-template-columns: max-content auto;
+    gap: 0.15em 0.6em;
+    margin: 0;
+}
+
+.teammate-body .teammate-json dt {
+    color: var(--cc-gray);
+    font-weight: 600;
+}
+
+.teammate-body .teammate-json dd {
+    margin: 0;
+}
+
 /* System teammate messages (teammate_id="system") render with a neutral
    palette and an italicized body to signal out-of-band notifications
    (teammate_terminated, etc.). */
