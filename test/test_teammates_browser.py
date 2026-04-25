@@ -104,22 +104,31 @@ class TestTeammatesBrowser:
         assert table.locator("thead th", has_text="Status").count() == 1
         assert table.locator("thead th", has_text="Owner").count() == 1
 
-    def test_subagent_sessions_collapsed_by_default(self, page: Page) -> None:
-        """Subagent session blocks render inside a `<details>` that is
-        collapsed by default; user can expand to see the agent's work.
+    def test_subagent_content_inlined_under_anchor(self, page: Page) -> None:
+        """Subagent content is inlined under its spawning Task/Agent
+        tool_result, not wrapped in a separate `<details>` block.
 
-        The fixture has alice + bob subagents — expect 2 details blocks,
-        none open (`open` attribute absent).
+        The post-merge refactor (commits ``27e43fb`` / ``fdd28ec``)
+        dropped the `<details class="subagent-session-block">` wrap and
+        the standalone subagent session header. Each subagent's
+        sidechain assistant rows must now render directly in the
+        document, threaded under their respective trunk anchors via
+        ``_relocate_subagent_blocks``.
         """
         page.goto(f"file://{self._render()}")
 
-        details = page.locator("details.subagent-session-block")
-        count = details.count()
-        assert count == 2, f"expected 2 subagent session blocks, got {count}"
+        # The legacy collapse markup must be gone.
+        assert page.locator("details.subagent-session-block").count() == 0
+        assert page.locator(".session-teammate-badge").count() == 0
 
-        for i in range(count):
-            is_open = details.nth(i).evaluate("el => el.hasAttribute('open')")
-            assert not is_open, f"subagent session block #{i} unexpectedly open"
+        # The fixture has alice + bob subagents; their sidechain
+        # assistant rows should be present and visible without any
+        # expand action.
+        sidechain_assistants = page.locator(".message.assistant.sidechain")
+        assert sidechain_assistants.count() >= 2, (
+            "expected ≥2 subagent assistant rows inlined; got "
+            f"{sidechain_assistants.count()}"
+        )
 
     def test_teammate_badge_color_matches_teammate_id(self, page: Page) -> None:
         """The alice badge carries the blue token (via inline --cc-color).
