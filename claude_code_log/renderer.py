@@ -2165,7 +2165,10 @@ def _filter_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntry]:
 # shouldn't appear at the given level (bash I/O, slash commands, etc.).
 
 # Tool names kept at --detail low (interaction + key signals).
-_LOW_KEEP_TOOLS = {"WebSearch", "WebFetch", "Task"}
+# ``Agent`` is the teammates-feature spawn name (aliased to TaskInput
+# in the tool factory); it must be paired with ``Task`` so real
+# teammate transcripts keep their spawn-and-result pairs at low detail.
+_LOW_KEEP_TOOLS = {"WebSearch", "WebFetch", "Task", "Agent"}
 
 # Post-render classes excluded per level (cumulative: each level adds to the
 # previous). HIGH excludes system/hook noise; LOW adds bash and tools; MINIMAL
@@ -2202,7 +2205,8 @@ def _filter_by_detail(
     """Pre-render filter: strip content items per detail level.
 
     - MINIMAL: keep only user/assistant text (no tools, thinking, system).
-    - LOW: keep user/assistant text + WebSearch/WebFetch/Task tools.
+    - LOW: keep user/assistant text + WebSearch / WebFetch / Task / Agent
+      tools (Agent is the teammates spawn alias for Task).
     - HIGH: keep user/assistant + all tools/thinking, drop system entries.
     """
     from copy import copy
