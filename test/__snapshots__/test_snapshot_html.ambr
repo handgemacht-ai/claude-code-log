@@ -5075,14 +5075,10 @@
   }
   
   /* ----------------------------------------------------------------------
-     Session header badges (teammates feature).
-     - .session-team-badge: surfaces a session's `teamName` next to the title.
-     - .session-teammate-badge: surfaces a subagent session's teammate id.
-     Both pick up --cc-color via inline style so they match the surrounding
-     palette (purple for teams; whatever the teammate's color is for agents).
+     Session header team badge (teammates feature).
+     .session-team-badge surfaces a session's `teamName` next to the title.
      ---------------------------------------------------------------------- */
-  .session-team-badge,
-  .session-teammate-badge {
+  .session-team-badge {
       --cc-color: var(--cc-purple);
       --cc-color-bg: var(--cc-purple-bg);
   
@@ -5100,52 +5096,8 @@
       white-space: nowrap;
   }
   
-  .session-team-icon,
-  .session-teammate-icon {
+  .session-team-icon {
       font-size: 0.95em;
-  }
-  
-  /* ----------------------------------------------------------------------
-     Subagent session block (collapsed by default).
-  
-     The transcript template wraps each subagent session — header through
-     to the next session header — in a `<details class="subagent-session-
-     block">` so the parent transcript stays scannable. The summary line
-     carries the same teammate badge / title content as the inner header.
-     The inner header is hidden when collapsed (the summary already shows
-     it) and re-revealed when the user expands the details.
-     ---------------------------------------------------------------------- */
-  details.subagent-session-block {
-      margin: 0.4em 0;
-      border-left: 3px dashed rgba(0, 0, 0, 0.15);
-      padding-left: 0.7em;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary {
-      cursor: pointer;
-      padding: 0.4em 0.6em;
-      font-weight: 600;
-      font-size: 0.95em;
-      color: var(--cc-color, var(--cc-gray));
-      list-style: none;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary::before {
-      content: "▶ ";
-      display: inline-block;
-      margin-right: 0.3em;
-      transition: transform 0.15s ease;
-  }
-  
-  details.subagent-session-block[open] > summary.subagent-session-summary::before {
-      content: "▼ ";
-  }
-  
-  /* Hide the inner session-header div when collapsed so the summary alone
-     reads as the entry point; show it when expanded for full context. */
-  details.subagent-session-block:not([open])
-      > .message.session-header.subagent-session-header {
-      display: none;
   }
       </style>
   </head>
@@ -5721,7 +5673,6 @@
   
       
       
-      
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='d-0' data-session-id='test_session' id='msg-d-0'>
           <div class='header'>Session: test_ses</div>
@@ -6221,11 +6172,8 @@
   
               // Toggle details functionality
               // Selector for all collapsible details elements (multiple classes)
-              // Include `.subagent-session-block` (PR #125) so the global
-              // "Toggle all details" button affects subagent collapsed
-              // sections too.
-              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible, details.subagent-session-block';
-              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible, details[open].subagent-session-block';
+              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible';
+              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible';
   
               function updateToggleButton() {
                   const allDetails = document.querySelectorAll(collapsibleSelector);
@@ -10625,14 +10573,10 @@
   }
   
   /* ----------------------------------------------------------------------
-     Session header badges (teammates feature).
-     - .session-team-badge: surfaces a session's `teamName` next to the title.
-     - .session-teammate-badge: surfaces a subagent session's teammate id.
-     Both pick up --cc-color via inline style so they match the surrounding
-     palette (purple for teams; whatever the teammate's color is for agents).
+     Session header team badge (teammates feature).
+     .session-team-badge surfaces a session's `teamName` next to the title.
      ---------------------------------------------------------------------- */
-  .session-team-badge,
-  .session-teammate-badge {
+  .session-team-badge {
       --cc-color: var(--cc-purple);
       --cc-color-bg: var(--cc-purple-bg);
   
@@ -10650,52 +10594,8 @@
       white-space: nowrap;
   }
   
-  .session-team-icon,
-  .session-teammate-icon {
+  .session-team-icon {
       font-size: 0.95em;
-  }
-  
-  /* ----------------------------------------------------------------------
-     Subagent session block (collapsed by default).
-  
-     The transcript template wraps each subagent session — header through
-     to the next session header — in a `<details class="subagent-session-
-     block">` so the parent transcript stays scannable. The summary line
-     carries the same teammate badge / title content as the inner header.
-     The inner header is hidden when collapsed (the summary already shows
-     it) and re-revealed when the user expands the details.
-     ---------------------------------------------------------------------- */
-  details.subagent-session-block {
-      margin: 0.4em 0;
-      border-left: 3px dashed rgba(0, 0, 0, 0.15);
-      padding-left: 0.7em;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary {
-      cursor: pointer;
-      padding: 0.4em 0.6em;
-      font-weight: 600;
-      font-size: 0.95em;
-      color: var(--cc-color, var(--cc-gray));
-      list-style: none;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary::before {
-      content: "▶ ";
-      display: inline-block;
-      margin-right: 0.3em;
-      transition: transform 0.15s ease;
-  }
-  
-  details.subagent-session-block[open] > summary.subagent-session-summary::before {
-      content: "▼ ";
-  }
-  
-  /* Hide the inner session-header div when collapsed so the summary alone
-     reads as the entry point; show it when expanded for full context. */
-  details.subagent-session-block:not([open])
-      > .message.session-header.subagent-session-header {
-      display: none;
   }
       </style>
   </head>
@@ -11269,7 +11169,6 @@
   
       
   
-      
       
       
       <div class="session-divider"></div>
@@ -12057,11 +11956,8 @@
   
               // Toggle details functionality
               // Selector for all collapsible details elements (multiple classes)
-              // Include `.subagent-session-block` (PR #125) so the global
-              // "Toggle all details" button affects subagent collapsed
-              // sections too.
-              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible, details.subagent-session-block';
-              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible, details[open].subagent-session-block';
+              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible';
+              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible';
   
               function updateToggleButton() {
                   const allDetails = document.querySelectorAll(collapsibleSelector);
@@ -16461,14 +16357,10 @@
   }
   
   /* ----------------------------------------------------------------------
-     Session header badges (teammates feature).
-     - .session-team-badge: surfaces a session's `teamName` next to the title.
-     - .session-teammate-badge: surfaces a subagent session's teammate id.
-     Both pick up --cc-color via inline style so they match the surrounding
-     palette (purple for teams; whatever the teammate's color is for agents).
+     Session header team badge (teammates feature).
+     .session-team-badge surfaces a session's `teamName` next to the title.
      ---------------------------------------------------------------------- */
-  .session-team-badge,
-  .session-teammate-badge {
+  .session-team-badge {
       --cc-color: var(--cc-purple);
       --cc-color-bg: var(--cc-purple-bg);
   
@@ -16486,52 +16378,8 @@
       white-space: nowrap;
   }
   
-  .session-team-icon,
-  .session-teammate-icon {
+  .session-team-icon {
       font-size: 0.95em;
-  }
-  
-  /* ----------------------------------------------------------------------
-     Subagent session block (collapsed by default).
-  
-     The transcript template wraps each subagent session — header through
-     to the next session header — in a `<details class="subagent-session-
-     block">` so the parent transcript stays scannable. The summary line
-     carries the same teammate badge / title content as the inner header.
-     The inner header is hidden when collapsed (the summary already shows
-     it) and re-revealed when the user expands the details.
-     ---------------------------------------------------------------------- */
-  details.subagent-session-block {
-      margin: 0.4em 0;
-      border-left: 3px dashed rgba(0, 0, 0, 0.15);
-      padding-left: 0.7em;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary {
-      cursor: pointer;
-      padding: 0.4em 0.6em;
-      font-weight: 600;
-      font-size: 0.95em;
-      color: var(--cc-color, var(--cc-gray));
-      list-style: none;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary::before {
-      content: "▶ ";
-      display: inline-block;
-      margin-right: 0.3em;
-      transition: transform 0.15s ease;
-  }
-  
-  details.subagent-session-block[open] > summary.subagent-session-summary::before {
-      content: "▼ ";
-  }
-  
-  /* Hide the inner session-header div when collapsed so the summary alone
-     reads as the entry point; show it when expanded for full context. */
-  details.subagent-session-block:not([open])
-      > .message.session-header.subagent-session-header {
-      display: none;
   }
       </style>
   </head>
@@ -17107,7 +16955,6 @@
   
       
       
-      
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='d-0' data-session-id='edge_cases' id='msg-d-0'>
           <div class='header'>Session: Tested various edge cases including markdown formatting, long text, tool errors, system messages, command outputs, special characters and emojis. All message types render correctly in the transcript viewer. • edge_cas</div>
@@ -17439,6 +17286,7 @@
       
       
       
+      
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='d-11' data-session-id='todowrite_session' id='msg-d-11'>
           <div class='header'>Session: todowrit</div>
@@ -17705,11 +17553,8 @@
   
               // Toggle details functionality
               // Selector for all collapsible details elements (multiple classes)
-              // Include `.subagent-session-block` (PR #125) so the global
-              // "Toggle all details" button affects subagent collapsed
-              // sections too.
-              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible, details.subagent-session-block';
-              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible, details[open].subagent-session-block';
+              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible';
+              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible';
   
               function updateToggleButton() {
                   const allDetails = document.querySelectorAll(collapsibleSelector);
@@ -22109,14 +21954,10 @@
   }
   
   /* ----------------------------------------------------------------------
-     Session header badges (teammates feature).
-     - .session-team-badge: surfaces a session's `teamName` next to the title.
-     - .session-teammate-badge: surfaces a subagent session's teammate id.
-     Both pick up --cc-color via inline style so they match the surrounding
-     palette (purple for teams; whatever the teammate's color is for agents).
+     Session header team badge (teammates feature).
+     .session-team-badge surfaces a session's `teamName` next to the title.
      ---------------------------------------------------------------------- */
-  .session-team-badge,
-  .session-teammate-badge {
+  .session-team-badge {
       --cc-color: var(--cc-purple);
       --cc-color-bg: var(--cc-purple-bg);
   
@@ -22134,52 +21975,8 @@
       white-space: nowrap;
   }
   
-  .session-team-icon,
-  .session-teammate-icon {
+  .session-team-icon {
       font-size: 0.95em;
-  }
-  
-  /* ----------------------------------------------------------------------
-     Subagent session block (collapsed by default).
-  
-     The transcript template wraps each subagent session — header through
-     to the next session header — in a `<details class="subagent-session-
-     block">` so the parent transcript stays scannable. The summary line
-     carries the same teammate badge / title content as the inner header.
-     The inner header is hidden when collapsed (the summary already shows
-     it) and re-revealed when the user expands the details.
-     ---------------------------------------------------------------------- */
-  details.subagent-session-block {
-      margin: 0.4em 0;
-      border-left: 3px dashed rgba(0, 0, 0, 0.15);
-      padding-left: 0.7em;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary {
-      cursor: pointer;
-      padding: 0.4em 0.6em;
-      font-weight: 600;
-      font-size: 0.95em;
-      color: var(--cc-color, var(--cc-gray));
-      list-style: none;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary::before {
-      content: "▶ ";
-      display: inline-block;
-      margin-right: 0.3em;
-      transition: transform 0.15s ease;
-  }
-  
-  details.subagent-session-block[open] > summary.subagent-session-summary::before {
-      content: "▼ ";
-  }
-  
-  /* Hide the inner session-header div when collapsed so the summary alone
-     reads as the entry point; show it when expanded for full context. */
-  details.subagent-session-block:not([open])
-      > .message.session-header.subagent-session-header {
-      display: none;
   }
       </style>
   </head>
@@ -22818,7 +22615,6 @@
   
       
       
-      
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='d-0' data-session-id='session_b' id='msg-d-0'>
           <div class='header'>Session: session_</div>
@@ -22908,6 +22704,7 @@
           <div class='content'><pre>Perfect! This should appear without any session divider above it.</pre></div>
           
       </div>
+      
       
       
       
@@ -23410,11 +23207,8 @@
   
               // Toggle details functionality
               // Selector for all collapsible details elements (multiple classes)
-              // Include `.subagent-session-block` (PR #125) so the global
-              // "Toggle all details" button affects subagent collapsed
-              // sections too.
-              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible, details.subagent-session-block';
-              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible, details[open].subagent-session-block';
+              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible';
+              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible';
   
               function updateToggleButton() {
                   const allDetails = document.querySelectorAll(collapsibleSelector);
@@ -27814,14 +27608,10 @@
   }
   
   /* ----------------------------------------------------------------------
-     Session header badges (teammates feature).
-     - .session-team-badge: surfaces a session's `teamName` next to the title.
-     - .session-teammate-badge: surfaces a subagent session's teammate id.
-     Both pick up --cc-color via inline style so they match the surrounding
-     palette (purple for teams; whatever the teammate's color is for agents).
+     Session header team badge (teammates feature).
+     .session-team-badge surfaces a session's `teamName` next to the title.
      ---------------------------------------------------------------------- */
-  .session-team-badge,
-  .session-teammate-badge {
+  .session-team-badge {
       --cc-color: var(--cc-purple);
       --cc-color-bg: var(--cc-purple-bg);
   
@@ -27839,52 +27629,8 @@
       white-space: nowrap;
   }
   
-  .session-team-icon,
-  .session-teammate-icon {
+  .session-team-icon {
       font-size: 0.95em;
-  }
-  
-  /* ----------------------------------------------------------------------
-     Subagent session block (collapsed by default).
-  
-     The transcript template wraps each subagent session — header through
-     to the next session header — in a `<details class="subagent-session-
-     block">` so the parent transcript stays scannable. The summary line
-     carries the same teammate badge / title content as the inner header.
-     The inner header is hidden when collapsed (the summary already shows
-     it) and re-revealed when the user expands the details.
-     ---------------------------------------------------------------------- */
-  details.subagent-session-block {
-      margin: 0.4em 0;
-      border-left: 3px dashed rgba(0, 0, 0, 0.15);
-      padding-left: 0.7em;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary {
-      cursor: pointer;
-      padding: 0.4em 0.6em;
-      font-weight: 600;
-      font-size: 0.95em;
-      color: var(--cc-color, var(--cc-gray));
-      list-style: none;
-  }
-  
-  details.subagent-session-block > summary.subagent-session-summary::before {
-      content: "▶ ";
-      display: inline-block;
-      margin-right: 0.3em;
-      transition: transform 0.15s ease;
-  }
-  
-  details.subagent-session-block[open] > summary.subagent-session-summary::before {
-      content: "▼ ";
-  }
-  
-  /* Hide the inner session-header div when collapsed so the summary alone
-     reads as the entry point; show it when expanded for full context. */
-  details.subagent-session-block:not([open])
-      > .message.session-header.subagent-session-header {
-      display: none;
   }
       </style>
   </head>
@@ -28460,7 +28206,6 @@
   
       
       
-      
       <div class="session-divider"></div>
       <div class='message session-header' data-message-id='d-0' data-session-id='test_session' id='msg-d-0'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
@@ -28960,11 +28705,8 @@
   
               // Toggle details functionality
               // Selector for all collapsible details elements (multiple classes)
-              // Include `.subagent-session-block` (PR #125) so the global
-              // "Toggle all details" button affects subagent collapsed
-              // sections too.
-              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible, details.subagent-session-block';
-              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible, details[open].subagent-session-block';
+              const collapsibleSelector = 'details.collapsible-details, details.collapsible-code, details.tool-param-collapsible';
+              const collapsibleOpenSelector = 'details[open].collapsible-details, details[open].collapsible-code, details[open].tool-param-collapsible';
   
               function updateToggleButton() {
                   const allDetails = document.querySelectorAll(collapsibleSelector);

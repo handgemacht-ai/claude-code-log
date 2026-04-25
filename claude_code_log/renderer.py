@@ -741,6 +741,13 @@ def generate_template_messages(
     with log_timing("Reorder paired messages", t_start):
         template_messages = _reorder_paired_messages(template_messages)
 
+    # Pull each subagent's thread back next to its trunk Task/Agent
+    # tool_result. Pair-reordering left them stranded at the trunk tail,
+    # which would collapse every agent's content under whichever
+    # tool_result rendered last.
+    with log_timing("Relocate subagent blocks", t_start):
+        template_messages = _relocate_subagent_blocks(template_messages)
+
     # Build hierarchy (message_id and ancestry) based on final order
     # This must happen AFTER all reordering to get correct parent-child relationships
     with log_timing("Build message hierarchy", t_start):
@@ -1434,6 +1441,69 @@ def _identify_message_pairs(messages: list[TemplateMessage]) -> None:
         _try_pair_by_index(current, indices)
 
         i += 1
+
+
+def _relocate_subagent_blocks(
+    messages: list[TemplateMessage],
+) -> list[TemplateMessage]:
+    """Move each subagent's content to immediately follow its trunk anchor.
+
+    After ``_reorder_paired_messages`` brings each Task/Agent tool_use ↔
+    tool_result pair adjacent, the subagent thread that conceptually
+    nests under the tool_result (its sidechain entries via parentUuid)
+    has been pushed to the tail of the trunk section. Without
+    relocation, ``_build_message_hierarchy``'s level-stack collapses
+    every subagent thread under whichever anchor sits last in render
+    order — alice/bob/carol all end up as children of one tool_result.
+
+    This pass walks the message list, identifies each subagent block by
+    its synthetic ``{trunk}#agent-{agentId}`` sessionId (stamped by
+    ``_integrate_agent_entries``), and re-inserts the block right after
+    the trunk Task/Agent tool_result whose ``meta.agent_id`` matches.
+    The block keeps its parentUuid-derived order; only its position in
+    the linear message list moves.
+
+    Empty subagent session headers (which ``_reorder_session_template_
+    messages`` leaves at the end) are excluded from blocks and stay
+    where they are — the level-stack ignores them at level 0 anyway.
+    """
+    from .models import ToolResultMessage
+
+    blocks: dict[str, list[TemplateMessage]] = {}
+    block_ids: set[int] = set()
+    for msg in messages:
+        if msg.is_session_header:
+            continue
+        sid = msg.meta.session_id or ""
+        if "#agent-" in sid:
+            agent_id = sid.rsplit("#agent-", 1)[-1]
+            blocks.setdefault(agent_id, []).append(msg)
+            block_ids.add(id(msg))
+
+    if not blocks:
+        return messages
+
+    result: list[TemplateMessage] = []
+    for msg in messages:
+        if id(msg) in block_ids:
+            continue
+        result.append(msg)
+        if (
+            isinstance(msg.content, ToolResultMessage)
+            and msg.content.tool_name in ("Task", "Agent")
+            and msg.meta.agent_id
+            and "#agent-" not in (msg.meta.session_id or "")
+        ):
+            block = blocks.pop(msg.meta.agent_id, None)
+            if block:
+                result.extend(block)
+
+    # Defensive: emit any subagent block whose anchor we never saw, so
+    # content is never silently dropped.
+    for block in blocks.values():
+        result.extend(block)
+
+    return result
 
 
 def _reorder_paired_messages(messages: list[TemplateMessage]) -> list[TemplateMessage]:
@@ -2497,55 +2567,52 @@ def _render_messages(
         session_id = meta.session_id or "unknown"
         session_summary = sessions.get(session_id, {}).get("summary")
 
-        # Add session header if this is a new session. Subagent sidechain
-        # entries get a ``{trunk}#agent-{agentId}`` synthetic sessionId
-        # via ``_integrate_agent_entries``; they trigger their own
-        # session header here, with a short ``Subagent • <id>`` title.
+        # Add session header if this is a new session. Subagent sessions
+        # (synthetic ``{trunk}#agent-{agentId}`` sessionId from
+        # ``_integrate_agent_entries``) get NO header — their chunks are
+        # relocated under the trunk Task/Agent tool_result by
+        # ``_relocate_subagent_blocks`` and render inline as part of the
+        # trunk session.
         is_agent = is_agent_session(session_id)
         if session_id not in seen_sessions:
             seen_sessions.add(session_id)
             if not is_agent:
                 current_render_session = None  # Reset branch tracking
-            current_session_summary = session_summary
-            if is_agent:
-                short_id = session_id.rsplit("#agent-", 1)[-1][:8]
-                session_title = f"Subagent • {short_id}"
-            else:
+                current_session_summary = session_summary
                 session_title = (
                     f"{current_session_summary} • {session_id[:8]}"
                     if current_session_summary
                     else session_id[:8]
                 )
 
-            # Create meta with session_id for the session header
-            session_header_meta = MessageMeta(
-                session_id=session_id,
-                timestamp="",
-                uuid="",
-            )
-            hier = (session_hierarchy or {}).get(session_id, {})
-            parent_sid = hier.get("parent_session_id")
-            parent_msg_idx = (
-                ctx.session_first_message.get(parent_sid) if parent_sid else None
-            )
-            session_header_content = SessionHeaderMessage(
-                session_header_meta,
-                title=session_title,
-                session_id=session_id,
-                summary=current_session_summary,
-                parent_session_id=parent_sid,
-                parent_session_summary=(session_summaries or {}).get(parent_sid)
-                if parent_sid
-                else None,
-                parent_message_index=parent_msg_idx,
-                depth=hier.get("depth", 0),
-                attachment_uuid=hier.get("attachment_uuid"),
-                team_name=(session_team_names or {}).get(session_id),
-            )
-            # Register and track session's first message
-            session_header = TemplateMessage(session_header_content)
-            msg_index = ctx.register(session_header)
-            ctx.session_first_message[session_id] = msg_index
+                session_header_meta = MessageMeta(
+                    session_id=session_id,
+                    timestamp="",
+                    uuid="",
+                )
+                hier = (session_hierarchy or {}).get(session_id, {})
+                parent_sid = hier.get("parent_session_id")
+                parent_msg_idx = (
+                    ctx.session_first_message.get(parent_sid) if parent_sid else None
+                )
+                session_header_content = SessionHeaderMessage(
+                    session_header_meta,
+                    title=session_title,
+                    session_id=session_id,
+                    summary=current_session_summary,
+                    parent_session_id=parent_sid,
+                    parent_session_summary=(session_summaries or {}).get(parent_sid)
+                    if parent_sid
+                    else None,
+                    parent_message_index=parent_msg_idx,
+                    depth=hier.get("depth", 0),
+                    attachment_uuid=hier.get("attachment_uuid"),
+                    team_name=(session_team_names or {}).get(session_id),
+                )
+                # Register and track session's first message
+                session_header = TemplateMessage(session_header_content)
+                msg_index = ctx.register(session_header)
+                ctx.session_first_message[session_id] = msg_index
 
         # Extract token usage for assistant messages
         # Only show token usage for the first message with each requestId to avoid duplicates
