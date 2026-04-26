@@ -400,7 +400,7 @@ class TestAsyncAgentsRenderingPipeline:
 
         # Walk the rendered tree and count sub-assistants that carry the
         # final-answer text. Phase 3 should have removed the duplicate.
-        def walk(msg) -> int:  # type: ignore[no-untyped-def]
+        def walk(msg) -> int:
             count = 0
             content = msg.content
             if isinstance(content, AssistantTextMessage) and msg.is_sidechain:
@@ -423,7 +423,7 @@ class TestAsyncAgentsRenderingPipeline:
         be suppressed."""
         roots, _ctx = render
 
-        def walk(msg) -> int:  # type: ignore[no-untyped-def]
+        def walk(msg) -> int:
             count = 0
             content = msg.content
             # Folded answer on the spawning Task tool_result.
@@ -463,7 +463,7 @@ class TestAsyncAgentsDetailLevels:
     """
 
     @staticmethod
-    def _spawning_task_output(ctx) -> TaskOutput | None:  # type: ignore[no-untyped-def]
+    def _spawning_task_output(ctx) -> TaskOutput | None:
         for tm in ctx.messages:
             content = tm.content
             if (
@@ -477,7 +477,7 @@ class TestAsyncAgentsDetailLevels:
         return None
 
     @staticmethod
-    def _notification(ctx) -> TaskNotificationMessage | None:  # type: ignore[no-untyped-def]
+    def _notification(ctx) -> TaskNotificationMessage | None:
         for tm in ctx.messages:
             if (
                 isinstance(tm.content, TaskNotificationMessage)
