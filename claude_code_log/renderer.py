@@ -2362,8 +2362,16 @@ def _drop_duplicate_notifications_at_low(ctx: RenderingContext) -> None:
     Indices on surviving messages are remapped via
     ``_reindex_filtered_context`` so downstream passes that look up
     by ``message_index`` (session navigation, pair identification)
-    still resolve correctly. Tree children are also pruned so the
-    notification doesn't linger as a sub-message of its parent.
+    still resolve correctly. ``_reindex_filtered_context`` also
+    *clears* every message's pair_first/pair_middle/pair_last fields
+    on the assumption the caller will re-run pair identification —
+    so we re-run ``_identify_message_pairs`` here to restore the
+    Task tool_use ↔ tool_result links that the Markdown renderer's
+    ``is_first_in_pair`` walk depends on (and that the HTML
+    renderer needs for the visual ``pair_first``/``pair_last`` CSS
+    classes that flush adjacent cards together). Tree children are
+    also pruned so the notification doesn't linger as a sub-message
+    of its parent.
     """
     survivors: list[TemplateMessage] = []
     dropped_ids: set[int] = set()
@@ -2381,6 +2389,7 @@ def _drop_duplicate_notifications_at_low(ctx: RenderingContext) -> None:
         return
 
     _reindex_filtered_context(ctx, survivors)
+    _identify_message_pairs(ctx.messages)
 
     # Tree children also need pruning — the notification would
     # otherwise still appear as a child of whatever parent the
