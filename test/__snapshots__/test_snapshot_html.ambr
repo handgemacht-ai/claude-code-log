@@ -5258,6 +5258,14 @@
       margin-left: 0.3em;
   }
   
+  /* Cancel the tool_result negative-margin pull-up on the async-answer
+     collapsible — that rule is meant to tuck the *first* collapsible under
+     the tool title, but here the collapsible follows a label and would
+     otherwise overlap it. */
+  .task-async-answer .collapsible-code {
+      margin-top: 0;
+  }
+  
   /* ----------------------------------------------------------------------
      Async-agent cards (issue #90).
   
@@ -11028,6 +11036,14 @@
       color: var(--cc-gray);
       font-weight: 400;
       margin-left: 0.3em;
+  }
+  
+  /* Cancel the tool_result negative-margin pull-up on the async-answer
+     collapsible — that rule is meant to tuck the *first* collapsible under
+     the tool title, but here the collapsible follows a label and would
+     otherwise overlap it. */
+  .task-async-answer .collapsible-code {
+      margin-top: 0;
   }
   
   /* ----------------------------------------------------------------------
@@ -17033,6 +17049,14 @@
       margin-left: 0.3em;
   }
   
+  /* Cancel the tool_result negative-margin pull-up on the async-answer
+     collapsible — that rule is meant to tuck the *first* collapsible under
+     the tool title, but here the collapsible follows a label and would
+     otherwise overlap it. */
+  .task-async-answer .collapsible-code {
+      margin-top: 0;
+  }
+  
   /* ----------------------------------------------------------------------
      Async-agent cards (issue #90).
   
@@ -22902,6 +22926,14 @@
       color: var(--cc-gray);
       font-weight: 400;
       margin-left: 0.3em;
+  }
+  
+  /* Cancel the tool_result negative-margin pull-up on the async-answer
+     collapsible — that rule is meant to tuck the *first* collapsible under
+     the tool title, but here the collapsible follows a label and would
+     otherwise overlap it. */
+  .task-async-answer .collapsible-code {
+      margin-top: 0;
   }
   
   /* ----------------------------------------------------------------------
@@ -28832,6 +28864,14 @@
       color: var(--cc-gray);
       font-weight: 400;
       margin-left: 0.3em;
+  }
+  
+  /* Cancel the tool_result negative-margin pull-up on the async-answer
+     collapsible — that rule is meant to tuck the *first* collapsible under
+     the tool title, but here the collapsible follows a label and would
+     otherwise overlap it. */
+  .task-async-answer .collapsible-code {
+      margin-top: 0;
   }
   
   /* ----------------------------------------------------------------------
