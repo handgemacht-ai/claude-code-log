@@ -497,8 +497,7 @@ class TestAsyncAgentsDetailLevels:
     def test_fold_present_when_spawn_target_kept(self, detail: DetailLevel) -> None:
         """At FULL/HIGH/LOW the spawning Task tool_result survives the
         detail filters, so the notification's ``result_text`` is folded
-        onto its ``async_final_answer`` and the notification card is
-        flagged ``result_is_duplicate`` (collapses to backlink stub).
+        onto its ``async_final_answer``.
 
         Regression guard for the "fold lost at --detail low" report:
         before Plan A, the fold relied on the sidechain assistant
@@ -516,10 +515,29 @@ class TestAsyncAgentsDetailLevels:
         )
         assert FINAL_ANSWER_NEEDLE in spawn_output.async_final_answer
 
+    def test_notification_flagged_duplicate_at_full_and_high(self) -> None:
+        """At FULL/HIGH the notification card stays in ctx, flagged
+        ``result_is_duplicate`` and wired with a spawn backlink. The
+        formatter still emits the full metadata card — keeping it for
+        transcript fidelity is the documented FULL/HIGH behavior."""
+        for detail in (DetailLevel.FULL, DetailLevel.HIGH):
+            _roots, _nav, ctx = self._render_at(detail)
+            notif = self._notification(ctx)
+            assert notif is not None, f"notification missing at {detail.value}"
+            assert notif.result_is_duplicate is True
+            assert notif.spawning_task_message_index is not None
+
+    def test_duplicate_notification_dropped_at_low(self) -> None:
+        """At LOW, ``_drop_duplicate_notifications_at_low`` removes
+        every ``TaskNotificationMessage`` flagged ``result_is_duplicate``.
+        The spawn-fold already shows the answer in place, so the
+        standalone card is pure redundancy at this terse level.
+        """
+        _roots, _nav, ctx = self._render_at(DetailLevel.LOW)
         notif = self._notification(ctx)
-        assert notif is not None
-        assert notif.result_is_duplicate is True
-        assert notif.spawning_task_message_index is not None
+        assert notif is None, (
+            "duplicate notification card should be dropped from ctx at LOW"
+        )
 
     @pytest.mark.parametrize(
         "detail",
