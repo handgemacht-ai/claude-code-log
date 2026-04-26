@@ -46,6 +46,7 @@ from ..models import (
     TeamDeleteInput,
     TodoWriteInput,
     ToolUseContent,
+    SkillInput,
     WebSearchInput,
     WebFetchInput,
     WriteInput,
@@ -393,6 +394,10 @@ class HtmlRenderer(Renderer):
         """Format → search query display."""
         return format_websearch_input(input)
 
+    def format_SkillInput(self, _input: SkillInput, _: TemplateMessage) -> str:
+        """Format → empty: skill name moves to the title, body folds in via skill_body."""
+        return ""
+
     # --- Teammate-feature tool inputs --------------------------------------
 
     def format_TeamCreateInput(self, input: TeamCreateInput, _: TemplateMessage) -> str:
@@ -631,6 +636,10 @@ class HtmlRenderer(Renderer):
     ) -> str:
         """Title → '🌐 WebFetch <url>'."""
         return self._tool_title(message, "🌐", input.url)
+
+    def title_SkillInput(self, input: SkillInput, message: TemplateMessage) -> str:
+        """Title → '💡 Skill <skill_name>'."""
+        return self._tool_title(message, "💡", input.skill)
 
     def _task_title(
         self, message: TemplateMessage, action: str, subject: str, task_id: str

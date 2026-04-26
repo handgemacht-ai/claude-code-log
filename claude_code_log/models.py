@@ -1001,6 +1001,17 @@ class WebFetchInput(BaseModel):
     prompt: str
 
 
+class SkillInput(BaseModel):
+    """Input parameters for the Skill tool."""
+
+    skill: str
+
+    # Skill calls may carry an optional ``args`` string and Claude Code
+    # has shipped variants over time; tolerate unknown fields rather than
+    # falling back to the generic params table.
+    model_config = {"extra": "allow"}
+
+
 # =============================================================================
 # Teammates feature tool inputs
 # =============================================================================
@@ -1077,6 +1088,7 @@ ToolInput = Union[
     ExitPlanModeInput,
     WebSearchInput,
     WebFetchInput,
+    SkillInput,
     TeamCreateInput,
     TeamDeleteInput,
     TaskCreateInput,

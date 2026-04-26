@@ -48,6 +48,7 @@ from ..models import (
     TeamDeleteInput,
     TodoWriteInput,
     ToolUseContent,
+    SkillInput,
     WebSearchInput,
     WebFetchInput,
     WriteInput,
@@ -647,6 +648,10 @@ class MarkdownRenderer(Renderer):
             return self._code_fence(input.prompt)
         return ""
 
+    def format_SkillInput(self, _input: SkillInput, _: TemplateMessage) -> str:
+        """Format → '' (skill name in title; body folded in via skill_body)."""
+        return ""
+
     # --- Teammate-feature tool inputs --------------------------------------
 
     def format_TeamCreateInput(self, input: TeamCreateInput, _: TemplateMessage) -> str:
@@ -1073,6 +1078,10 @@ class MarkdownRenderer(Renderer):
         """Title → '🌐 WebFetch `url`' (truncated if > 60 chars)."""
         url = input.url[:60] + "…" if len(input.url) > 60 else input.url
         return f"🌐 WebFetch `{url}`"
+
+    def title_SkillInput(self, input: SkillInput, _: TemplateMessage) -> str:
+        """Title → '💡 Skill `<skill_name>`'."""
+        return f"💡 Skill `{input.skill}`"
 
     def title_ThinkingMessage(
         self, _content: ThinkingMessage, _message: TemplateMessage

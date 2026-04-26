@@ -3013,13 +3013,13 @@
   }
   
   /* Skill-tool body folded into the Skill tool_use block (issue #93).
-     The expanded skill markdown renders below the params table, offset
-     so it reads as a nested part of the tool invocation rather than a
-     sibling message. */
+     The expanded skill markdown renders below the title; the green left
+     border on the outer .tool_use already frames the block, so the body
+     needs no separate accent — just gentle padding to keep it from
+     touching the title row. */
   .skill-body {
       margin-top: 8px;
-      padding: 8px 12px;
-      border-left: 2px solid var(--tool-param-sep-color);
+      padding: 4px 0;
       font-size: 90%;
   }
   
@@ -8557,13 +8557,13 @@
   }
   
   /* Skill-tool body folded into the Skill tool_use block (issue #93).
-     The expanded skill markdown renders below the params table, offset
-     so it reads as a nested part of the tool invocation rather than a
-     sibling message. */
+     The expanded skill markdown renders below the title; the green left
+     border on the outer .tool_use already frames the block, so the body
+     needs no separate accent — just gentle padding to keep it from
+     touching the title row. */
   .skill-body {
       margin-top: 8px;
-      padding: 8px 12px;
-      border-left: 2px solid var(--tool-param-sep-color);
+      padding: 4px 0;
       font-size: 90%;
   }
   
@@ -14335,13 +14335,13 @@
   }
   
   /* Skill-tool body folded into the Skill tool_use block (issue #93).
-     The expanded skill markdown renders below the params table, offset
-     so it reads as a nested part of the tool invocation rather than a
-     sibling message. */
+     The expanded skill markdown renders below the title; the green left
+     border on the outer .tool_use already frames the block, so the body
+     needs no separate accent — just gentle padding to keep it from
+     touching the title row. */
   .skill-body {
       margin-top: 8px;
-      padding: 8px 12px;
-      border-left: 2px solid var(--tool-param-sep-color);
+      padding: 4px 0;
       font-size: 90%;
   }
   
@@ -19978,13 +19978,13 @@
   }
   
   /* Skill-tool body folded into the Skill tool_use block (issue #93).
-     The expanded skill markdown renders below the params table, offset
-     so it reads as a nested part of the tool invocation rather than a
-     sibling message. */
+     The expanded skill markdown renders below the title; the green left
+     border on the outer .tool_use already frames the block, so the body
+     needs no separate accent — just gentle padding to keep it from
+     touching the title row. */
   .skill-body {
       margin-top: 8px;
-      padding: 8px 12px;
-      border-left: 2px solid var(--tool-param-sep-color);
+      padding: 4px 0;
       font-size: 90%;
   }
   
@@ -25678,13 +25678,13 @@
   }
   
   /* Skill-tool body folded into the Skill tool_use block (issue #93).
-     The expanded skill markdown renders below the params table, offset
-     so it reads as a nested part of the tool invocation rather than a
-     sibling message. */
+     The expanded skill markdown renders below the title; the green left
+     border on the outer .tool_use already frames the block, so the body
+     needs no separate accent — just gentle padding to keep it from
+     touching the title row. */
   .skill-body {
       margin-top: 8px;
-      padding: 8px 12px;
-      border-left: 2px solid var(--tool-param-sep-color);
+      padding: 4px 0;
       font-size: 90%;
   }
   

@@ -44,6 +44,7 @@ from ..models import (
     ToolUseContent,
     ToolUseMessage,
     ToolUseResult,
+    SkillInput,
     WebSearchInput,
     WebFetchInput,
     WriteInput,
@@ -96,6 +97,7 @@ TOOL_INPUT_MODELS: dict[str, type[BaseModel]] = {
     "ExitPlanMode": ExitPlanModeInput,
     "WebSearch": WebSearchInput,
     "WebFetch": WebFetchInput,
+    "Skill": SkillInput,
     # Teammates feature tools
     "TeamCreate": TeamCreateInput,
     "TeamDelete": TeamDeleteInput,

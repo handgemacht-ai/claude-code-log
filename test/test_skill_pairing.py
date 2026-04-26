@@ -584,6 +584,36 @@ class TestSkillPairingHtml:
         # The redundant "Launching skill" string is gone too.
         assert "Launching skill" not in html
 
+    def test_skill_title_folds_skill_name(self, tmp_path: Path) -> None:
+        """Title surfaces ``💡 Skill <name>`` and the params row is suppressed."""
+        messages = load_transcript(
+            _skill_invocation_jsonl(
+                tmp_path / "t.jsonl", skill_name="clmail:read", skill_body="# body"
+            )
+        )
+        html = HtmlRenderer().generate(messages, "Skill pairing HTML")
+
+        # Title carries the skill-name as the tool-summary span next to "Skill"
+        assert "💡 Skill" in html
+        assert "clmail:read" in html
+        # No params table row labelled "skill"
+        assert ">skill</td>" not in html
+
+    def test_skill_with_extra_args_field_still_typed(self, tmp_path: Path) -> None:
+        """Real Skill invocations carry an ``args`` string alongside ``skill``;
+        the typed model must accept that without falling back to ToolUseContent."""
+        messages = load_transcript(
+            _skill_invocation_jsonl(
+                tmp_path / "t.jsonl", skill_name="my-worktree-actors", skill_body="x"
+            )
+        )
+        html = HtmlRenderer().generate(messages, "Skill pairing HTML")
+        # The fixture passes `{"skill": skill_name, "args": ""}` (see
+        # `_skill_invocation_jsonl`); without `extra="allow"` on SkillInput,
+        # validation would fail and the message would render with the generic
+        # tool emoji 🛠️ instead of the skill-specific 💡.
+        assert "💡 Skill" in html
+
 
 class TestSkillPairingMarkdown:
     def test_skill_body_appears_under_tool_use(self, tmp_path: Path) -> None:
@@ -599,3 +629,12 @@ class TestSkillPairingMarkdown:
         assert "# Mail reader" in md
         assert "**id**" in md
         assert "Launching skill" not in md
+
+    def test_skill_title_folds_skill_name(self, tmp_path: Path) -> None:
+        messages = load_transcript(
+            _skill_invocation_jsonl(
+                tmp_path / "t.jsonl", skill_name="clmail:read", skill_body="# body"
+            )
+        )
+        md = MarkdownRenderer().generate(messages, "Skill pairing MD")
+        assert "💡 Skill `clmail:read`" in md
