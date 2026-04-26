@@ -1057,9 +1057,23 @@ class MarkdownRenderer(Renderer):
         return "\n\n".join(parts).rstrip()
 
     def format_TaskOutput(self, output: TaskOutput, _: TemplateMessage) -> str:
-        """Format → collapsible 'Report' with blockquoted result."""
-        # TaskOutput contains markdown, wrap in collapsible Report
-        return self._collapsible("Report", self._quote(output.result))
+        """Format → collapsible 'Report' with blockquoted result.
+
+        For async-spawned Tasks (issue #90), ``output.result`` is just
+        the "Async agent launched successfully…" stub. The real answer
+        is folded onto ``output.async_final_answer`` by
+        ``_link_async_notifications``; emit it as a second collapsible
+        block so the spawn carries the actual agent answer.
+        """
+        parts: list[str] = [self._collapsible("Report", self._quote(output.result))]
+        if output.async_final_answer:
+            parts.append(
+                self._collapsible(
+                    "Result (from async notification)",
+                    output.async_final_answer,
+                )
+            )
+        return "\n\n".join(parts)
 
     def format_ExitPlanModeOutput(
         self, output: ExitPlanModeOutput, _: TemplateMessage

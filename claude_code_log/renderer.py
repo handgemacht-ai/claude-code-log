@@ -2209,8 +2209,8 @@ _ASYNC_AGENT_ID_LINE_RE = re.compile(
 
 
 def _link_async_notifications(ctx: RenderingContext) -> None:
-    """Mark ``TaskNotificationMessage`` bodies that duplicate the spawning
-    Task's last sidechain sub-assistant (issue #90).
+    """Stitch the async-agent flow into a single coherent rendering
+    (issue #90).
 
     Async-agent flow:
 
@@ -2224,12 +2224,25 @@ def _link_async_notifications(ctx: RenderingContext) -> None:
        ``<task-notification>`` whose ``<result>`` body duplicates that
        same answer.
 
-    Without dedup, the answer renders twice — once inline (sidechain)
-    and once below in the notification card. Mark the notification
-    when the duplication is real so the formatter renders the
-    backlink-only variant. ``spawning_task_message_index`` is set on
-    every match (whether or not the body is a duplicate) so the
-    formatter can always wire the back-anchor.
+    Without stitching, the agent's answer is buried at the tail of the
+    sidechain and duplicated again much later in the notification
+    card. This pass:
+
+    - Folds the agent's final answer into the spawning Task's
+      ``TaskOutput.async_final_answer`` so ``format_task_output``
+      renders it as a "Result" section right under the spawn.
+    - Removes the matching last sub-assistant from the sidechain tree
+      (similar to ``_cleanup_sidechain_duplicates`` for sync Tasks)
+      so the answer doesn't appear twice.
+    - Wires ``spawning_task_message_index`` on the notification so
+      its card carries a backlink anchor to the spawn, then flags
+      ``result_is_duplicate`` so the formatter collapses the
+      duplicated body.
+
+    Three views — spawn / sidechain / notification — converge on a
+    single visible copy of the answer at the spawn, with a sidechain
+    that shows the agent's *work* (not its final summary), and a
+    notification reduced to a navigation card.
     """
     # Index notifications by task_id so we can find them in O(1).
     notifications: dict[str, TaskNotificationMessage] = {}
@@ -2264,15 +2277,32 @@ def _link_async_notifications(ctx: RenderingContext) -> None:
             notification.spawning_task_message_index = spawn_idx
 
         # Walk the tool_result's descendants for the last sidechain
-        # AssistantTextMessage; compare with the notification's
-        # result_text. Match → flag as duplicate so the renderer
-        # collapses the body.
-        last_text = _last_sidechain_assistant_text(tm)
-        if last_text and notification.result_text:
-            if _normalize_for_dedup(last_text) == _normalize_for_dedup(
-                notification.result_text
-            ):
-                notification.result_is_duplicate = True
+        # AssistantTextMessage. When it matches the notification's
+        # result_text, fold it into the tool_result's
+        # ``async_final_answer`` so the spawn renders the answer in
+        # place, drop the duplicate from the sidechain tree, and
+        # collapse the notification's body to a backlink stub.
+        located = _last_sidechain_assistant(tm)
+        if located is None:
+            continue
+        last_msg, parent, idx = located
+        last_text = _assistant_text(last_msg)
+        if not last_text or not notification.result_text:
+            continue
+        if _normalize_for_dedup(last_text) != _normalize_for_dedup(
+            notification.result_text
+        ):
+            continue
+
+        # Match → fold + dedup.
+        if isinstance(content.output, TaskOutput):
+            content.output.async_final_answer = last_text
+        # Drop the duplicate sub-assistant from the sidechain so the
+        # answer only appears once (folded into the spawn). Mirror of
+        # ``_cleanup_sidechain_duplicates``'s ``del children[i]``.
+        if 0 <= idx < len(parent.children) and parent.children[idx] is last_msg:
+            del parent.children[idx]
+        notification.result_is_duplicate = True
 
 
 def _async_agent_id_from_tool_result(content: ToolResultMessage) -> Optional[str]:
@@ -2324,34 +2354,45 @@ def _tool_result_raw_text(content: ToolResultMessage) -> str:
     return ""
 
 
-def _last_sidechain_assistant_text(message: TemplateMessage) -> Optional[str]:
-    """Return the text of the last sidechain ``AssistantTextMessage``
-    descendant of *message*, or ``None`` if no such descendant exists.
+def _last_sidechain_assistant(
+    message: TemplateMessage,
+) -> Optional[tuple[TemplateMessage, TemplateMessage, int]]:
+    """Find the last sidechain ``AssistantTextMessage`` descendant of
+    *message* in document order.
 
-    Used to compare against ``TaskNotificationMessage.result_text`` for
-    dedup. Walks children depth-first in reverse, so the "last" is in
-    document order.
+    Returns ``(msg, parent, index_in_parent)`` so the caller can both
+    inspect the message's text AND remove it from its parent's
+    children — used by ``_link_async_notifications`` to fold the
+    agent's final answer into the spawning Task and drop the
+    duplicate from the sidechain.
+
+    Walks the tree depth-first, scanning each node's direct children
+    for a candidate so the (parent, index) pair stays available
+    without threading auxiliary state through the stack.
     """
-    last: Optional[str] = None
+    last: Optional[tuple[TemplateMessage, TemplateMessage, int]] = None
     stack: list[TemplateMessage] = [message]
     while stack:
         current = stack.pop()
-        # Push children REVERSED so popping from the end yields a
-        # left-to-right pre-order walk in document order. The naive
-        # ``extend(children)`` reversed traversal, returning the FIRST
-        # sidechain assistant rather than the LAST.
+        for idx, child in enumerate(current.children):
+            if child.is_sidechain and isinstance(child.content, AssistantTextMessage):
+                last = (child, current, idx)
+        # Push children REVERSED so popping yields document-order
+        # traversal — the naive ``extend(children)`` reversed it and
+        # returned the FIRST sidechain assistant rather than the LAST.
         stack.extend(reversed(current.children))
-        if current is message:
-            continue
-        if current.is_sidechain and isinstance(current.content, AssistantTextMessage):
-            text_parts: list[str] = [
-                item.text
-                for item in current.content.items
-                if isinstance(item, TextContent)
-            ]
-            if text_parts:
-                last = "\n".join(text_parts)
     return last
+
+
+def _assistant_text(message: TemplateMessage) -> str:
+    """Concatenate all ``TextContent`` items from an
+    ``AssistantTextMessage``; ``""`` for non-assistant content.
+    """
+    if not isinstance(message.content, AssistantTextMessage):
+        return ""
+    return "\n".join(
+        item.text for item in message.content.items if isinstance(item, TextContent)
+    )
 
 
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:

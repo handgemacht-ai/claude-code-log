@@ -230,6 +230,22 @@
     font-weight: 500;
 }
 
+/* "Result (from async notification)" label that introduces the
+   folded agent-answer section in an async Task tool_result body
+   (issue #90 Phase 3). */
+.task-async-answer-label {
+    margin-top: 0.6em;
+    color: var(--cc-blue);
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.task-async-answer-label small {
+    color: var(--cc-gray);
+    font-weight: 400;
+    margin-left: 0.3em;
+}
+
 /* ----------------------------------------------------------------------
    Async-agent cards (issue #90).
 

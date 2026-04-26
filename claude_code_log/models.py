@@ -1304,6 +1304,16 @@ class TaskOutput:
     teammate_id: Optional[str] = None
     agent_id: Optional[str] = None
     color: Optional[str] = None
+    # Async-agent (issue #90) fold: when the spawn's ``result`` body is
+    # just the "Async agent launched successfully…" stub, the actual
+    # answer arrives later via the ``<task-notification>`` User entry
+    # AND lives at the end of the spawned agent's sidechain.
+    # ``_link_async_notifications`` copies it here from the matching
+    # last sub-assistant so the renderer can fold the answer into the
+    # spawn's tool_result card. The same pass removes the duplicated
+    # sub-assistant from the sidechain rendering so the answer doesn't
+    # appear twice.
+    async_final_answer: Optional[str] = None
 
 
 @dataclass
