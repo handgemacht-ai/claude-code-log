@@ -3993,7 +3993,7 @@
       
       
       
-      <div class='message task_notification d-0 d-1' data-message-id='d-9' id='msg-d-9'>
+      <div class='message user task_notification d-0 d-1' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span>🔄 Async result <span class='tool-summary'>Agent &quot;Coverage analysis&quot; completed</span></span>
               <div class='header-info'>

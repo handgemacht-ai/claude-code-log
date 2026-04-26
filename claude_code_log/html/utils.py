@@ -33,6 +33,7 @@ from ..models import (
     SessionHeaderMessage,
     SlashCommandMessage,
     SystemMessage,
+    TaskNotificationMessage,
     TeammateMessage,
     ThinkingMessage,
     ToolResultMessage,
@@ -67,6 +68,12 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     CompactedSummaryMessage: ["user", "compacted"],
     CommandOutputMessage: ["user", "command-output"],
     TeammateMessage: ["user", "teammate"],
+    # Async-agent <task-notification> entry (issue #90). Carries the
+    # `user` class so the runtime "User" filter toggle keeps it visible
+    # — without it, the rendered <div> only had `task_notification`,
+    # which matches no filter toolbar type and is permanently flagged
+    # `filtered-hidden`.
+    TaskNotificationMessage: ["user", "task_notification"],
     # Assistant message types
     AssistantTextMessage: ["assistant"],
     # Tool message types
