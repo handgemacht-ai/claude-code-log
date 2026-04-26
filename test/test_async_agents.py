@@ -5,9 +5,13 @@ Covers:
 - ``has_task_notification`` detection.
 - ``create_task_notification_message`` parsing (positive cases + edge cases).
 - ``parse_taskoutput_output`` parsing of the polling tool result body.
-- End-to-end fixture loading: Phase 3 fold (last sub-assistant -> spawning
-  ``Task`` ``tool_result`` ``async_final_answer``), notification body
+- End-to-end fixture loading: Phase 3 fold (notification ``result_text`` ->
+  spawning ``Task`` ``tool_result`` ``async_final_answer``), notification
   flagged as duplicate, sub-assistant duplicate dropped from the tree.
+- Detail-level invariants: the fold is present at LOW (regression
+  guard), and the notification body is the surviving copy at
+  MINIMAL/USER_ONLY where the spawning Task tool_result is filtered
+  out by the post-render pass.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from claude_code_log.factories.tool_factory import (
 from claude_code_log.models import (
     AssistantTextMessage,
     AssistantTranscriptEntry,
+    DetailLevel,
     MessageMeta,
     TaskNotificationMessage,
     TaskNotificationUsage,
@@ -443,3 +448,102 @@ class TestAsyncAgentsRenderingPipeline:
             return count
 
         assert sum(walk(r) for r in roots) == 1
+
+
+class TestAsyncAgentsDetailLevels:
+    """Detail-level invariants for the async-agent fold (issue #90).
+
+    Plan A (mail #2620 → #2622): the spawn-fold sources from the
+    notification's ``result_text`` (not from the sidechain assistant),
+    so it survives the LOW detail level where ``_filter_by_detail``
+    has stripped sidechain entries before the renderer ever runs.
+    At MINIMAL / USER_ONLY the spawning Task tool_result itself is
+    filtered out post-render — there's nothing to fold onto, so the
+    notification card retains its body as the surviving copy.
+    """
+
+    @staticmethod
+    def _spawning_task_output(ctx) -> TaskOutput | None:  # type: ignore[no-untyped-def]
+        for tm in ctx.messages:
+            content = tm.content
+            if (
+                isinstance(content, ToolResultMessage)
+                and content.tool_name == "Task"
+                and isinstance(content.output, TaskOutput)
+                and content.output.metadata is not None
+                and content.output.metadata.agent_id == ASYNC_AGENT_ID
+            ):
+                return content.output
+        return None
+
+    @staticmethod
+    def _notification(ctx) -> TaskNotificationMessage | None:  # type: ignore[no-untyped-def]
+        for tm in ctx.messages:
+            if (
+                isinstance(tm.content, TaskNotificationMessage)
+                and tm.content.task_id == ASYNC_AGENT_ID
+            ):
+                return tm.content
+        return None
+
+    def _render_at(self, detail: DetailLevel) -> tuple:
+        messages = load_transcript(MAIN_JSONL, cache_manager=None, silent=True)
+        return generate_template_messages(messages, detail=detail)
+
+    @pytest.mark.parametrize(
+        "detail",
+        [DetailLevel.FULL, DetailLevel.HIGH, DetailLevel.LOW],
+    )
+    def test_fold_present_when_spawn_target_kept(self, detail: DetailLevel) -> None:
+        """At FULL/HIGH/LOW the spawning Task tool_result survives the
+        detail filters, so the notification's ``result_text`` is folded
+        onto its ``async_final_answer`` and the notification card is
+        flagged ``result_is_duplicate`` (collapses to backlink stub).
+
+        Regression guard for the "fold lost at --detail low" report:
+        before Plan A, the fold relied on the sidechain assistant
+        being present; LOW strips sidechain entries, so the fold went
+        missing despite the spawn surviving.
+        """
+        _roots, _nav, ctx = self._render_at(detail)
+
+        spawn_output = self._spawning_task_output(ctx)
+        assert spawn_output is not None, (
+            f"spawning Task tool_result missing at detail={detail.value}"
+        )
+        assert spawn_output.async_final_answer is not None, (
+            f"async_final_answer not folded at detail={detail.value}"
+        )
+        assert FINAL_ANSWER_NEEDLE in spawn_output.async_final_answer
+
+        notif = self._notification(ctx)
+        assert notif is not None
+        assert notif.result_is_duplicate is True
+        assert notif.spawning_task_message_index is not None
+
+    @pytest.mark.parametrize(
+        "detail",
+        [DetailLevel.MINIMAL, DetailLevel.USER_ONLY],
+    )
+    def test_fold_skipped_when_spawn_target_filtered(self, detail: DetailLevel) -> None:
+        """At MINIMAL/USER_ONLY the post-render filter drops every
+        ``ToolResultMessage`` (only user/assistant text survives). The
+        spawn fold is skipped so the notification body remains the
+        only surviving copy of the agent's answer.
+        """
+        _roots, _nav, ctx = self._render_at(detail)
+
+        # Spawning Task tool_result was filtered out post-render.
+        spawn_output = self._spawning_task_output(ctx)
+        assert spawn_output is None, (
+            f"Task tool_result should be filtered at detail={detail.value}"
+        )
+
+        # Notification card still in ctx; body is NOT marked duplicate
+        # so the result_text renders as the visible answer.
+        notif = self._notification(ctx)
+        assert notif is not None
+        assert notif.result_is_duplicate is False, (
+            f"notification body must remain visible at detail={detail.value}"
+        )
+        assert FINAL_ANSWER_NEEDLE in notif.result_text

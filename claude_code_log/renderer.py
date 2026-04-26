@@ -848,7 +848,7 @@ def generate_template_messages(
     # spawning Task's sidechain — the renderer collapses it to a
     # backlink-only stub instead of doubling the content.
     with log_timing("Link async notifications", t_start):
-        _link_async_notifications(ctx)
+        _link_async_notifications(ctx, detail)
 
     return root_messages, session_nav, ctx
 
@@ -2208,7 +2208,9 @@ _ASYNC_AGENT_ID_LINE_RE = re.compile(
 )
 
 
-def _link_async_notifications(ctx: RenderingContext) -> None:
+def _link_async_notifications(
+    ctx: RenderingContext, detail: DetailLevel = DetailLevel.FULL
+) -> None:
     """Stitch the async-agent flow into a single coherent rendering
     (issue #90).
 
@@ -2243,7 +2245,30 @@ def _link_async_notifications(ctx: RenderingContext) -> None:
     single visible copy of the answer at the spawn, with a sidechain
     that shows the agent's *work* (not its final summary), and a
     notification reduced to a navigation card.
+
+    The pass splits in two so it stays correct at every detail level:
+
+    - **Spawn-fold (FULL/HIGH/LOW):** when a notification's
+      ``task_id`` matches a Task/Agent tool_result's ``agent_id``,
+      fold the notification's ``result_text`` onto the tool_result's
+      ``TaskOutput.async_final_answer`` and flag the notification
+      ``result_is_duplicate`` (so its card collapses to a backlink).
+      The notification body is the canonical source of the agent's
+      answer; pairing by ``agent_id`` is enough — sidechain text
+      doesn't need to match.
+    - **Sidechain-only dedup:** when the last sub-assistant text
+      matches the notification's ``result_text``, drop it from the
+      tree. This branch is a no-op at LOW/MINIMAL/USER_ONLY where
+      ``_filter_by_detail`` has already removed sidechain entries —
+      and that's fine, because there's no duplicate left to remove.
+
+    At MINIMAL/USER_ONLY the spawn fold is skipped entirely: the
+    Task tool_result is dropped by ``_filter_template_by_detail``,
+    so there's nothing to fold onto. We leave the notification card
+    intact so the agent's answer remains visible somewhere — the
+    notification body becomes the only surviving copy.
     """
+    spawn_target_kept = detail not in (DetailLevel.MINIMAL, DetailLevel.USER_ONLY)
     # Index notifications by task_id so we can find them in O(1).
     notifications: dict[str, TaskNotificationMessage] = {}
     for tm in ctx.messages:
@@ -2252,9 +2277,9 @@ def _link_async_notifications(ctx: RenderingContext) -> None:
     if not notifications:
         return
 
-    # Walk Task/Agent tool_results, find the async-agent's id, capture
-    # the spawning tool_use's message_index + the tool_result's
-    # children for last-subasst comparison.
+    # Walk Task/Agent tool_results, find the async-agent's id, link
+    # the notification, and (when the sidechain is present) drop its
+    # duplicate tail.
     for tm in ctx.messages:
         content = tm.content
         if not isinstance(content, ToolResultMessage):
@@ -2267,42 +2292,51 @@ def _link_async_notifications(ctx: RenderingContext) -> None:
         notification = notifications.get(agent_id)
         if notification is None:
             continue
+        if not notification.result_text:
+            continue
 
+        # ---- Branch 1: spawn-fold from the notification --------------
         # Wire the backlink anchor on the notification: prefer the
         # spawning tool_use (where the reader expects the spawn to
         # live in the rendered transcript). pair_first holds that
-        # index when the pair was matched.
+        # index when the pair was matched. Set this even at
+        # MINIMAL/USER_ONLY — when the spawn is filtered the index is
+        # harmless, and at LOW it lets us link back to the surviving
+        # tool_use card.
         spawn_idx = tm.pair_first if tm.pair_first is not None else tm.message_index
         if spawn_idx is not None:
             notification.spawning_task_message_index = spawn_idx
 
-        # Walk the tool_result's descendants for the last sidechain
-        # AssistantTextMessage. When it matches the notification's
-        # result_text, fold it into the tool_result's
-        # ``async_final_answer`` so the spawn renders the answer in
-        # place, drop the duplicate from the sidechain tree, and
-        # collapse the notification's body to a backlink stub.
+        # Skip the actual fold when the spawning Task tool_result will
+        # be dropped post-render — without a target, the fold has no
+        # place to land and the notification body becomes the only
+        # surviving copy of the agent's answer.
+        if spawn_target_kept:
+            if isinstance(content.output, TaskOutput):
+                content.output.async_final_answer = notification.result_text
+            notification.result_is_duplicate = True
+
+        # ---- Branch 2: sidechain-only dedup --------------------------
+        # When the last sub-assistant text matches the notification's
+        # result body, drop the duplicate from the sidechain tree so
+        # the answer only appears once (folded into the spawn). This
+        # branch is the only piece that needs the sidechain — at
+        # LOW/MINIMAL/USER_ONLY ``_filter_by_detail`` has already
+        # removed sidechain entries, so ``_last_sidechain_assistant``
+        # returns None and we skip this branch.
         located = _last_sidechain_assistant(tm)
         if located is None:
             continue
         last_msg, parent, idx = located
         last_text = _assistant_text(last_msg)
-        if not last_text or not notification.result_text:
+        if not last_text:
             continue
         if _normalize_for_dedup(last_text) != _normalize_for_dedup(
             notification.result_text
         ):
             continue
-
-        # Match → fold + dedup.
-        if isinstance(content.output, TaskOutput):
-            content.output.async_final_answer = last_text
-        # Drop the duplicate sub-assistant from the sidechain so the
-        # answer only appears once (folded into the spawn). Mirror of
-        # ``_cleanup_sidechain_duplicates``'s ``del children[i]``.
         if 0 <= idx < len(parent.children) and parent.children[idx] is last_msg:
             del parent.children[idx]
-        notification.result_is_duplicate = True
 
 
 def _async_agent_id_from_tool_result(content: ToolResultMessage) -> Optional[str]:
