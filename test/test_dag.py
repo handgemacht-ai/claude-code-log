@@ -1441,6 +1441,60 @@ class TestRootClassification:
             f"Expected a multi-root warning; got: {[r.message for r in warnings]}"
         )
 
+    def test_progress_passthrough_roots_are_expected(self, caplog) -> None:
+        """`progress` passthrough roots — both the SessionStart shape
+        (parentUuid:null naturally) and the orphan-promoted shape (a
+        PostToolUse hook whose spawning tool_use was compacted away) —
+        must NOT trigger the multi-root warning. Both are routine
+        async-hook artifacts; treating them as expected matches the
+        reality on long-running real-world sessions."""
+        import logging
+
+        def _passthrough(uuid: str, parent: str | None, ts: str) -> dict:
+            return {
+                "type": "progress",
+                "timestamp": ts,
+                "parentUuid": parent,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": uuid,
+            }
+
+        data = [
+            # Root 1: SessionStart hook firing before any user turn
+            # (parentUuid:null naturally).
+            _passthrough("p_start", None, "2025-07-01T10:00:00.000Z"),
+            _make_entry("user", "u1", "p_start", "2025-07-01T10:00:01.000Z"),
+            _make_entry("assistant", "a1", "u1", "2025-07-01T10:01:00.000Z"),
+            # Compact in the middle.
+            _make_system_entry(
+                "cb",
+                None,
+                "2025-07-01T11:00:00.000Z",
+                subtype="compact_boundary",
+            ),
+            _make_entry("user", "u2", "cb", "2025-07-01T11:00:01.000Z"),
+            # Root 3: a PostToolUse-shaped passthrough whose parent
+            # uuid points outside the session (compacted-out tool_use).
+            _passthrough("p_orphan", "missing-parent", "2025-07-01T10:59:55.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        # The orphan-promotion warning (one per orphan, fires from
+        # `build_dag` for any missing parent) is fine — it's the
+        # multi-root "X roots found (Y unexpected)" warning that
+        # progress passthroughs must NOT trigger.
+        multi_root_warnings = [r for r in warnings if "roots found" in r.message]
+        assert not multi_root_warnings, (
+            f"Expected no multi-root warning for progress passthroughs; "
+            f"got: {[r.message for r in multi_root_warnings]}"
+        )
+
 
 class TestMixedStructuralCollapse:
     """A structural (passthrough) sibling of a conversational child should
@@ -1533,3 +1587,104 @@ class TestMixedStructuralCollapse:
 
         branches = [s for s in tree.sessions.values() if s.is_branch]
         assert len(branches) == 2
+
+
+class TestParallelToolUseViaPassthrough:
+    """Parallel-tool_use chains threaded through ``progress`` passthroughs.
+
+    Real Claude Code teammate transcripts emit each parallel tool_use under
+    its own assistant message, then chain them together via `progress`
+    passthrough callbacks rather than as direct siblings. The dead-end
+    user(tool_result) for the first parallel tool_use sits beside that
+    passthrough chain, producing a 2-child fork at every parallel turn:
+
+        A(tool_use₁)
+        ├── U(tool_result₁) → progress (structural, dead end)
+        └── progress → A(tool_use₂) → U(tool_result₂) → progress → A(tool_use₃) → ...
+
+    The passthrough subtree carries the live continuation; the
+    user(tool_result) carries only structural callbacks. Without the
+    Variant 3 stitch each turn becomes a spurious 2-branch fork.
+    """
+
+    def _passthrough(self, uuid: str, parent: str, ts: str) -> dict:
+        return {
+            "type": "progress",
+            "timestamp": ts,
+            "parentUuid": parent,
+            "isSidechain": False,
+            "userType": "external",
+            "cwd": "/tmp",
+            "sessionId": "s1",
+            "version": "1.0.0",
+            "uuid": uuid,
+        }
+
+    def test_passthrough_with_live_subtree_collapses(self) -> None:
+        """user(tool_result) subtree is structural, passthrough chain is live."""
+        data = [
+            _make_entry("user", "u1", None, "2025-07-01T10:00:00.000Z"),
+            # Assistant emits two parallel tool_uses.
+            _make_entry("assistant", "a1", "u1", "2025-07-01T10:01:00.000Z"),
+            # First tool_result + its dead-end progress callback.
+            _make_entry("user", "tr1", "a1", "2025-07-01T10:01:02.000Z"),
+            self._passthrough("p_tr1", "tr1", "2025-07-01T10:01:02.500Z"),
+            # Live progress chain leading to the second parallel tool_use.
+            self._passthrough("p_chain", "a1", "2025-07-01T10:01:01.000Z"),
+            _make_entry("assistant", "a2", "p_chain", "2025-07-01T10:01:03.000Z"),
+            _make_entry("user", "tr2", "a2", "2025-07-01T10:01:04.000Z"),
+            _make_entry("assistant", "a3", "tr2", "2025-07-01T10:01:05.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        tree = build_dag_from_entries(entries)
+
+        # Spurious fork elided: trunk threads through the passthrough chain.
+        # tr1 is appended to the trunk as a dead-end side entry; its
+        # passthrough descendant is collected into ``skipped`` and absent.
+        uuids = tree.sessions["s1"].uuids
+        assert uuids == ["u1", "a1", "tr1", "p_chain", "a2", "tr2", "a3"]
+        branch_count = sum(1 for s in tree.sessions.values() if s.is_branch)
+        assert branch_count == 0
+
+    def test_deep_passthrough_chain_classified_structural(self) -> None:
+        """Exercises the depth-unboundedness invariant Variant 3 *depends
+        on*, not Variant 3 itself. Live continuation here flows through
+        the user child ``u2`` (the structural-side-branch collapse path —
+        Shape B in dev-docs/dag.md), with a >20-deep ``progress`` chain
+        as the structural sibling.
+
+        ``_is_structural_subtree`` no longer clamps at depth=20 — the
+        ``seen`` set + ``session_uuids`` filter still bound termination,
+        but the depth cap previously misclassified long passthrough
+        chains as live (returning ``False`` for "too deep to tell"),
+        which suppressed both this Shape B collapse and Variant 3.
+        Without the cap removal a parallel-tool_use anchor whose
+        passthrough sibling unfolds into >20 chained ``progress``
+        callbacks would falsely appear "live" — leaving a spurious
+        1-branch fork.
+        """
+        data = [
+            _make_entry("user", "u1", None, "2025-07-01T10:00:00.000Z"),
+            _make_entry("assistant", "a1", "u1", "2025-07-01T10:01:00.000Z"),
+            # Live continuation through the user child.
+            _make_entry("user", "u2", "a1", "2025-07-01T10:02:00.000Z"),
+        ]
+        # Sibling passthrough chain of 25 entries, all structural.
+        prev = "a1"
+        for i in range(25):
+            uuid = f"p{i:02d}"
+            data.append(
+                self._passthrough(uuid, prev, f"2025-07-01T10:01:{30 + i:02d}.000Z")
+            )
+            prev = uuid
+        entries = [create_transcript_entry(d) for d in data]
+        tree = build_dag_from_entries(entries)
+
+        # The deep passthrough chain is structural; the existing
+        # passthrough-collapse path absorbs p00 (and skips its descendants),
+        # the chain follows u2.
+        uuids = tree.sessions["s1"].uuids
+        assert "u1" in uuids and "a1" in uuids and "u2" in uuids
+        assert "p00" in uuids  # stitched in as the structural sibling
+        branch_count = sum(1 for s in tree.sessions.values() if s.is_branch)
+        assert branch_count == 0

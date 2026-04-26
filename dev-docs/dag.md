@@ -389,12 +389,56 @@ Today passthrough entries are always leaves, but if a future passthrough
 type ever carries conversational descendants, it will correctly fall
 through to the normal fork logic instead of masking the content.
 
+#### Variant 3 — Parallel-tool_use chain via passthrough
+
+Real Claude Code teammate transcripts (CC 2.1.32+) thread parallel
+tool_uses through `progress` passthroughs rather than as direct
+`tool_use` siblings. Each parallel turn produces a 2-child fork at the
+spawning assistant: the user(tool_result) for the first parallel call
+sits beside a passthrough that chains into the next assistant tool_use.
+The passthrough subtree carries the live continuation; the
+user(tool_result) carries only structural callbacks (a hook
+acknowledgement leaf), so it dead-ends.
+
+```mermaid
+graph TD
+    A1["A(tool_use₁)"] --> U1["U(tool_result₁)"]
+    A1 --> P1["🗿 progress (passthrough)"]
+    U1 --> H1["🗿 hook callback (leaf)"]
+    P1 --> A2["A(tool_use₂)"]
+    A2 --> U2["U(tool_result₂)"]
+    A2 --> P2["🗿 progress"]
+    P2 --> rest["..."]
+    classDef structural fill:#eef,stroke:#99c
+    class P1,H1,P2 structural
+```
+
+Detection in `_walk_session_with_forks`: exactly one passthrough child
+has a non-structural subtree (live continuation), and every other
+sibling has a structural subtree (no user/assistant descendants). The
+passthrough sibling becomes the chain continuation; the dead-end
+user/assistant siblings are appended to the chain inline and their
+descendants are collected into `skipped`.
+
+Variants 1 and 2 in `_stitch_tool_results` share the same
+"user-tool_result vs assistant-tool_use" framing and don't fire when
+the live continuation is a passthrough; the earlier
+structural-side-branch collapse (which only treats *passthrough* kids
+as structural) doesn't fire when the structural sibling is a
+user(tool_result). Variant 3 fills that gap. Distinct from real user
+rewinds, which never include passthrough children.
+
+The fix also relies on `_is_structural_subtree` being unbounded over
+the subtree (no depth cap): real `progress` chains under a
+parallel-tool_use anchor regularly run >20 entries deep.
+
 #### Summary of detection criteria
 
 | Pattern | Detection | Action |
 |---------|-----------|--------|
 | Variant 1 | `_is_structural_subtree(U)` true for every user child; exactly one assistant continuation | Splice user children ahead of assistant continuation |
 | Variant 2 | `_is_subtree_dead_end(A)` true for every assistant child; exactly one user continuation | Splice assistant children ahead of user continuation |
+| Variant 3 | Exactly one passthrough child with non-structural subtree; every other child has a structural subtree | Append dead-end siblings to chain; continue through the live passthrough |
 | Structural side-branch collapse | At least one structural passthrough child; ≤1 non-structural child | Collapse structural children into chain; continue via the single non-structural (or terminate) |
 | Real rewind | Multiple non-structural children at different timestamps | Real within-session fork → branch pseudo-sessions |
 | Compaction replay | Multiple children sharing the same timestamp | Follow first, skip rest (see next section) |
@@ -439,12 +483,37 @@ graph TB
    by `first_timestamp`.
 3. Classify roots to decide log level:
    - `_EXPECTED_ROOT_SYSTEM_SUBTYPES = {"compact_boundary", "local_command"}`
-   - If every non-primary root is an expected system subtype → `logger.debug`
+     covers system entries; `_EXPECTED_ROOT_PASSTHROUGH_TYPES = {"progress"}`
+     covers passthrough entries. See [Expected Root Types](#expected-root-types)
+     below for the full taxonomy.
+   - If every non-primary root is one of the expected types → `logger.debug`
    - Otherwise (orphan user/assistant hinting at a missing parent) →
      `logger.warning` with unexpected count
 
 This keeps the signal useful: orphan user/assistant entries still surface
-as warnings; routine `/compact` multi-root sessions stay quiet.
+as warnings; routine `/compact` multi-root sessions and async-hook
+remnants stay quiet.
+
+#### Expected Root Types
+
+Six known shapes legitimately appear as parentless (or orphan-promoted)
+roots within a session. Long-running sessions that span multiple
+`/compact` runs accumulate roots from several of these categories.
+
+| Shape | parentUuid in JSONL | Why it lands as a root |
+|---|---|---|
+| **The session's actual first `user` prompt** | `null` | It's the earliest message — no preceding turn exists. |
+| `SystemTranscriptEntry` `subtype="compact_boundary"` | `null` | Each `/compact` run writes a fresh boundary entry with no parent. The pre-compaction context is replaced by a summary. |
+| `SystemTranscriptEntry` `subtype="local_command"` | sometimes `null` | Early `/memory`, `/config` etc. occasionally land before any user prompt has been recorded. |
+| `PassthroughTranscriptEntry` `type="progress"` from a session-start hook (e.g. `SessionStart:clear`) | `null` | Hooks fire **before** the first user turn has a uuid to point at — so the very first entry of a session can be a session-start hook rather than the user prompt. |
+| `PassthroughTranscriptEntry` `type="progress"` from an in-flight tool hook (e.g. `PostToolUse:Read`) | promoted from missing parent | A hook still in flight when `/compact` fires loses its spawning `tool_use` to the discarded pre-compaction context. `build_dag` clears the dangling parent and promotes the entry to a root. Always temporally adjacent to a following `compact_boundary`. |
+| **Subagent root** (first entry of an agent transcript) | `null` (in the agent file), then back-patched | Subagent transcripts live in `<session>/subagents/agent-*.jsonl` with `parentUuid: null` on entry zero. `_integrate_agent_entries` re-points it at the spawning Task/Agent `tool_result` and assigns a synthetic sessionId `{trunk}#agent-{agentId}`, so by the time `extract_session_dag_lines` runs the subagent has a proper parent and a per-agent root in its own DAG-line — not in the trunk's root list. |
+
+The first five all sit in the trunk's session and feed into the
+`extract_session_dag_lines` multi-root warning logic. The subagent shape
+is structurally similar but resolved one layer earlier — the trunk
+never sees these as orphans because `_integrate_agent_entries` runs
+first; see [Agent Transcripts](#agent-transcripts).
 
 **Nav landmarks** (`prepare_session_navigation` in renderer.py): each
 `CompactedSummaryMessage` in a session becomes an `is_compaction_point`

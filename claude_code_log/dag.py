@@ -165,12 +165,30 @@ def build_dag(
                 parent.children_uuids.append(node.uuid)
             else:
                 if node.parent_uuid not in _sidechain_uuids:
-                    logger.warning(
-                        "Orphan node %s: parentUuid %s not found in loaded"
-                        " data (promoting to root)",
-                        node.uuid,
-                        node.parent_uuid,
-                    )
+                    # Progress passthroughs are async hooks: their parent
+                    # tool_use is routinely lost to ``/compact`` (the
+                    # spawning turn is in the discarded pre-compaction
+                    # context). Log at debug — the multi-root warning
+                    # already classifies them as expected roots; per-node
+                    # warnings here would just multiply the noise on long
+                    # compacted sessions. See ``_is_expected_root_type``.
+                    if (
+                        isinstance(node.entry, PassthroughTranscriptEntry)
+                        and node.entry.type in _EXPECTED_ROOT_PASSTHROUGH_TYPES
+                    ):
+                        logger.debug(
+                            "Orphan progress hook %s: parentUuid %s not "
+                            "found in loaded data (promoting to root)",
+                            node.uuid,
+                            node.parent_uuid,
+                        )
+                    else:
+                        logger.warning(
+                            "Orphan node %s: parentUuid %s not found in "
+                            "loaded data (promoting to root)",
+                            node.uuid,
+                            node.parent_uuid,
+                        )
                 # Clear the dangling parent so this node becomes a root
                 # and can participate in DAG walks
                 node.parent_uuid = None
@@ -294,7 +312,6 @@ def _is_structural_subtree(
     uuid: str,
     session_uuids: set[str],
     nodes: dict[str, MessageNode],
-    max_depth: int = 20,
 ) -> bool:
     """Check if the subtree below `uuid` contains only structural entries.
 
@@ -308,21 +325,25 @@ def _is_structural_subtree(
     The root itself is not inspected — only its descendants — because this
     check is used to decide whether a child of a fork point represents
     continuing conversation.
+
+    Traversal is bounded by ``session_uuids`` and the ``seen`` set, so a
+    long passthrough chain still terminates without a depth cap. Earlier
+    versions clamped at depth=20 and returned False for deeper chains;
+    that misclassified pure-passthrough tails (e.g. >20 chained
+    ``progress`` callbacks under a parallel-tool_use anchor) as live and
+    suppressed the spurious-fork collapse.
     """
-    stack: list[tuple[str, int]] = [(c, 1) for c in nodes[uuid].children_uuids]
+    stack: list[str] = list(nodes[uuid].children_uuids)
     seen: set[str] = set()
     while stack:
-        current, depth = stack.pop()
+        current = stack.pop()
         if current in seen or current not in session_uuids:
             continue
         seen.add(current)
         entry = nodes[current].entry
         if isinstance(entry, (UserTranscriptEntry, AssistantTranscriptEntry)):
             return False  # Found conversational content
-        if depth >= max_depth:
-            return False  # Too deep to tell — be conservative
-        for c in nodes[current].children_uuids:
-            stack.append((c, depth + 1))
+        stack.extend(nodes[current].children_uuids)
     return True
 
 
@@ -332,11 +353,22 @@ def _is_structural_subtree(
 # noteworthy.
 _EXPECTED_ROOT_SYSTEM_SUBTYPES = frozenset({"compact_boundary", "local_command"})
 
+# Passthrough subtypes that legitimately appear as roots:
+#   - ``progress`` — hook callbacks (``SessionStart``, ``PostToolUse``,
+#     ``UserPromptSubmit``, …) are async by nature. The first hook of a
+#     session has no preceding turn (parentUuid:null naturally). Hooks
+#     still in flight when ``/compact`` fires lose their spawning
+#     tool_use to the discarded pre-compaction context, so ``build_dag``
+#     promotes them to root. Both shapes are routine, not noteworthy.
+_EXPECTED_ROOT_PASSTHROUGH_TYPES = frozenset({"progress"})
+
 
 def _is_expected_root_type(entry: TranscriptEntry) -> bool:
     """Whether a multi-root entry is one of Claude Code's expected patterns."""
     if isinstance(entry, SystemTranscriptEntry):
         return entry.subtype in _EXPECTED_ROOT_SYSTEM_SUBTYPES
+    if isinstance(entry, PassthroughTranscriptEntry):
+        return entry.type in _EXPECTED_ROOT_PASSTHROUGH_TYPES
     return False
 
 
@@ -530,24 +562,65 @@ def _walk_session_with_forks(
                         _collect_descendants(su, session_uuids, nodes, skipped)
                     chain.extend(stitched[:-1])
                     current = nodes[stitched[-1]]
+                    continue
+
+                # Parallel-tool_use chain via passthrough sibling.
+                # When the assistant emits multiple parallel tool_uses,
+                # Claude Code threads them through `progress` passthroughs:
+                # A(tool_use₁) has children U(tool_result₁) and a progress
+                # passthrough that chains to A(tool_use₂), etc. The
+                # passthrough subtree carries assistant continuation; the
+                # User(tool_result) subtree only has structural descendants
+                # (hook callbacks). The earlier structural-collapse path
+                # doesn't catch this because the live continuation IS the
+                # passthrough; _stitch_tool_results doesn't catch it
+                # because there's no assistant sibling at this level.
+                # Distinct from real rewinds, which never include
+                # passthrough children.
+                #
+                # Predicate breadth: the only ``PassthroughTranscriptEntry``
+                # type observed to coexist with a parallel-tool_use anchor
+                # is ``progress`` (async hook callbacks). The check below
+                # accepts *any* passthrough type with a live subtree to
+                # stay forward-compatible if Claude Code adds new
+                # passthrough shapes — but in practice ``progress`` is
+                # the only one that matters today, and a real rewind
+                # produces user/assistant siblings, never passthroughs.
+                passthrough_lives = [
+                    c
+                    for c in same_session_children
+                    if isinstance(nodes[c].entry, PassthroughTranscriptEntry)
+                    and not _is_structural_subtree(c, session_uuids, nodes)
+                ]
+                if len(passthrough_lives) == 1:
+                    live = passthrough_lives[0]
+                    others = [c for c in same_session_children if c != live]
+                    if others and all(
+                        _is_structural_subtree(o, session_uuids, nodes) for o in others
+                    ):
+                        for o in sorted(others, key=lambda c: nodes[c].timestamp):
+                            if is_branch:
+                                nodes[o].session_id = line_id
+                            _collect_descendants(o, session_uuids, nodes, skipped)
+                            chain.append(o)
+                        current = nodes[live]
+                        continue
+
+                unique_timestamps = {nodes[c].timestamp for c in same_session_children}
+                if len(unique_timestamps) == 1:
+                    # Same timestamp = compaction replay: follow only
+                    # the first child (original chain), skip replays
+                    # and all their descendants.
+                    current = nodes[same_session_children[0]]
+                    for sc in same_session_children[1:]:
+                        _collect_descendants(sc, session_uuids, nodes, skipped)
                 else:
-                    unique_timestamps = {
-                        nodes[c].timestamp for c in same_session_children
-                    }
-                    if len(unique_timestamps) == 1:
-                        # Same timestamp = compaction replay: follow only
-                        # the first child (original chain), skip replays
-                        # and all their descendants.
-                        current = nodes[same_session_children[0]]
-                        for sc in same_session_children[1:]:
-                            _collect_descendants(sc, session_uuids, nodes, skipped)
-                    else:
-                        # Different timestamps = real fork (rewind).
-                        # Stop chain here, push each child as a branch.
-                        for child_uuid in same_session_children:
-                            branch_id = f"{line_id}@{child_uuid[:12]}"
-                            queue.append((child_uuid, branch_id, line_id))
-                        current = None
+                    # Different timestamps = real fork (rewind).
+                    # Stop chain here, push each child as a branch.
+                    for child_uuid in same_session_children:
+                        branch_id = f"{line_id}@{child_uuid[:12]}"
+                        queue.append((child_uuid, branch_id, line_id))
+                    current = None
 
         if chain:
             first_ts = nodes[chain[0]].timestamp
