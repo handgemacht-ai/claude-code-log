@@ -706,6 +706,17 @@ def generate_template_messages(
     with log_timing("Pair Skill tool_uses", t_start):
         _pair_skill_tool_uses(ctx)
 
+    # Branch headers were composed by ``_render_messages`` based on the
+    # branch's first message — but real branches sometimes start with an
+    # assistant entry (e.g. "No response requested." after a `/exit`),
+    # leaving the body header bare ``Branch • <uuid8>``. Walk the branch
+    # contents now that ``ctx.messages`` is final, lift the first
+    # UserTextMessage's text as the preview, and re-label the branch
+    # header. This keeps the body header, the session/graph index, and
+    # the fork-point box all carrying the same ``Branch • <uuid8> •
+    # <preview>`` string.
+    _enrich_branch_titles(ctx)
+
     # Populate junction forward links on fork-point messages
     if ctx.junction_targets:
         # Build UUID → TemplateMessage index for fast lookup
@@ -726,26 +737,40 @@ def generate_template_messages(
                 for branch_sid in branch_targets:
                     branch_idx = ctx.session_first_message.get(branch_sid)
                     if branch_idx is not None:
-                        # Get branch preview from the branch header title
-                        branch_preview = ""
+                        # Read the branch's preview directly from the
+                        # SessionHeaderMessage rather than parsing its
+                        # composed title — the body header, the index
+                        # nav and this fork-point box all read the same
+                        # raw ``preview`` field and re-compose via
+                        # ``_branch_label`` / ``_branch_label_suffix``
+                        # independently.
+                        preview_text = ""
                         branch_header = idx_to_msg.get(branch_idx)
                         if branch_header and isinstance(
                             branch_header.content, SessionHeaderMessage
                         ):
-                            # Extract preview from branch title (e.g. "Branch • preview...")
-                            title = branch_header.content.title
-                            if " • " in title:
-                                preview = title.split(" • ", 1)[1]
-                                # Distinguish real content from UUID fallback
-                                uuid_fragment = branch_sid.split("@")[-1][:8]
-                                if preview != uuid_fragment:
-                                    branch_preview = preview
+                            preview_text = branch_header.content.preview or ""
+                        # The fork-point template prepends
+                        # ``Branch &bull; ...`` itself, so we hand it
+                        # only the suffix — single source of truth for
+                        # the format keeps the index nav, the body
+                        # header and this link aligned even if the
+                        # ``Branch • `` head ever changes.
+                        link_suffix = _branch_label_suffix(branch_sid, preview_text)
                         fork_msg.junction_forward_links.append(
-                            (branch_sid, branch_idx, branch_preview)
+                            (branch_sid, branch_idx, link_suffix)
                         )
-                # Elide fork points without at least 2 non-empty branches
-                non_empty = sum(1 for _, _, p in fork_msg.junction_forward_links if p)
-                if non_empty < 2:
+                # A real fork has ≥ 2 navigable branches. Drop the
+                # indicator when the DAG-level layer left only a
+                # single-branch shell (e.g. a passthrough sibling whose
+                # first message was filtered out — the spurious
+                # parallel-tool_use forks are now collapsed at the DAG
+                # level, but defense-in-depth here covers any residual
+                # cases). When ≥ 2 branches remain, surface the
+                # indicator regardless of whether titles are
+                # human-readable previews or UUID-only fallbacks — the
+                # backlinks are useful navigation either way.
+                if len(fork_msg.junction_forward_links) < 2:
                     fork_msg.junction_forward_links.clear()
                     fork_msg.fork_point_preview = ""
 
@@ -934,6 +959,140 @@ def prepare_session_summaries(messages: list[TranscriptEntry]) -> dict[str, str]
     return session_summaries
 
 
+def _enrich_branch_titles(ctx: RenderingContext) -> None:
+    """Lift each branch's first UserTextMessage as the header preview.
+
+    ``_render_messages`` sets the branch header title from the branch's
+    very first transcript entry. That fails when a branch starts with an
+    assistant turn (a "No response requested." after ``/exit``) or with a
+    tool_result — the user content arrives later. This pass scans the
+    final ``ctx.messages`` list, picks the first ``UserTextMessage``
+    associated with each branch's render_session_id, and re-labels the
+    header (sets both ``content.preview`` and ``content.title``) only
+    when the original pass left no preview behind. We never overwrite a
+    real preview the original pass captured — including short
+    slash-command captures like ``"/exit"`` — because the scanned
+    UserTextMessage may be less informative even when longer.
+
+    Run after ``_pair_skill_tool_uses`` so the message set is stable
+    (skill-folded slash commands removed, indices re-mapped). Idempotent.
+    """
+    branch_headers: dict[str, "TemplateMessage"] = {}
+    for msg in ctx.messages:
+        if isinstance(msg.content, SessionHeaderMessage) and msg.content.is_branch:
+            branch_headers.setdefault(msg.content.session_id, msg)
+
+    if not branch_headers:
+        return
+
+    # First user-text per branch sid (preserves chronological order from ctx.messages).
+    first_user_text: dict[str, str] = {}
+    for msg in ctx.messages:
+        rsid = msg.render_session_id
+        if rsid not in branch_headers or rsid in first_user_text:
+            continue
+        if not isinstance(msg.content, UserTextMessage):
+            continue
+        # Skip sub-agent / sidechain user prompts. ``render_session_id``
+        # for an agent's wrapped messages can be set to the agent's
+        # parent_session_id (i.e. a branch sid), so without this guard
+        # an agent's first inner user prompt could be lifted as the
+        # branch's preview instead of the actual branch-local human
+        # turn. See ``_render_messages`` agent-parent handling.
+        if msg.is_sidechain:
+            continue
+        parts = [
+            item.text for item in msg.content.items if isinstance(item, TextContent)
+        ]
+        text = " ".join(p for p in parts if p).strip()
+        if text:
+            first_user_text[rsid] = create_session_preview(text)
+
+    for sid, header in branch_headers.items():
+        scanned = first_user_text.get(sid, "")
+        if not scanned:
+            continue
+        # Only widen when the existing preview is empty or is the
+        # bare UUID-only fallback (i.e. the original
+        # ``_render_messages`` pass found nothing useful — the branch
+        # started with an assistant or tool_result). A real preview
+        # already on the header — including short slash-command bodies
+        # like ``"/exit"`` (5 chars) — must not be replaced by a longer
+        # but less informative scan result. The earlier
+        # length-comparison heuristic conflated "longer" with "more
+        # informative" and lost slash-command captures in pathological
+        # cases.
+        content = header.content
+        assert isinstance(content, SessionHeaderMessage)  # branch_headers filter
+        if content.preview:
+            continue
+        content.preview = scanned
+        content.title = _branch_label(sid, scanned)
+
+
+def branch_short_uuid(branch_sid: str) -> str:
+    """Return the 8-char prefix of the branch root's UUID.
+
+    Branch session IDs follow the ``{trunk}@{first_uuid_prefix}`` shape; the
+    last segment after ``@`` is the branch root's UUID truncated to 12
+    chars by ``_walk_session_with_forks``. We surface its first 8 chars as
+    the stable identifier in branch labels.
+
+    Cross-module helper — the markdown renderer composes
+    ``branch-<uuid8>`` anchor keys and a defensive heading fallback off
+    the same rule, and centralising them here prevents drift if the
+    suffix length or splitting convention ever changes (e.g. if branch
+    sids ever switch separators).
+    """
+    return branch_sid.split("@")[-1][:8]
+
+
+def _branch_label_suffix(branch_sid: str, preview: str) -> str:
+    """The ``<uuid8>`` or ``<uuid8> • <preview>`` tail of a branch label.
+
+    Single source of truth for the format that follows the literal
+    ``"Branch "`` head in :func:`_branch_label`. The fork-point box's
+    template renders ``Branch &bull; {{ branch_preview }}`` on its own
+    side, so it needs only this suffix — composing the full
+    :func:`_branch_label` and slicing off ``"Branch • "`` would couple
+    the consumer to the head's exact literal, which makes future
+    tweaks (i18n, an icon, separator change) silently breaking.
+
+    Truncates ``preview`` to 80 chars plus a single ``…`` (U+2026)
+    when the source is longer.
+    """
+    short_uuid = branch_short_uuid(branch_sid)
+    if not preview:
+        return short_uuid
+    short = preview[:80]
+    if len(preview) > 80:
+        short += "…"
+    return f"{short_uuid} • {short}"
+
+
+def _branch_label(branch_sid: str, preview: str) -> str:
+    """Compose the consistent ``Branch • <uuid8> • <preview>`` label.
+
+    Used in three places that all need to agree:
+    - the body branch-header title (``SessionHeaderMessage.title``),
+    - the session/graph index nav (``first_user_message``),
+    - the fork-point box's per-branch link (the trailing-text portion,
+      via :func:`_branch_label_suffix`).
+
+    Always includes the 8-char UUID — both as a stable navigation handle
+    when the preview is missing or generic, and to disambiguate two
+    branches whose previews happen to start the same way (two `/exit`
+    branches, two slash-command branches with similar prefixes, …).
+
+    Truncates ``preview`` to 80 chars plus a single ``…`` (U+2026) when
+    the source is longer, keeping the body header on one line. The
+    single-character ellipsis matters: ``"..."`` (3 chars) would push
+    the truncated preview to 83 visible chars and contradict the
+    docstring's "80 + ellipsis" cap.
+    """
+    return f"Branch • {_branch_label_suffix(branch_sid, preview)}"
+
+
 def _fork_point_preview(fork_msg: "TemplateMessage", ctx: RenderingContext) -> str:
     """Get a meaningful preview for a fork point message.
 
@@ -1060,22 +1219,26 @@ def prepare_session_navigation(
 
     # Add branch pseudo-sessions from hierarchy
     if session_hierarchy:
-        # Collect first user message preview for each branch
+        # Lift each branch's raw ``preview`` directly off its
+        # SessionHeaderMessage. The body header path
+        # (``_render_messages``) already extracted text from the
+        # branch's first user entry — handling plain text, slash
+        # commands and other user shapes uniformly via
+        # ``extract_text_content`` — and stored the result; the
+        # ``_enrich_branch_titles`` post-pass widens it when the first
+        # entry was an assistant. We just read what's there.
         branch_previews: dict[str, str] = {}
         for msg in ctx.messages:
-            rsid = msg.render_session_id
-            if rsid in branch_previews or not isinstance(msg.content, UserTextMessage):
+            if not isinstance(msg.content, SessionHeaderMessage):
                 continue
-            hier = session_hierarchy.get(rsid, {})
-            if hier.get("is_branch"):
-                # Extract text from UserTextMessage items
-                preview_parts: list[str] = []
-                for item in msg.content.items:
-                    if isinstance(item, TextContent):
-                        preview_parts.append(item.text)
-                preview = " ".join(preview_parts).strip()
-                if preview:
-                    branch_previews[rsid] = create_session_preview(preview)
+            if not msg.content.is_branch:
+                continue
+            sid = msg.content.session_id
+            if sid in branch_previews:
+                continue
+            preview = msg.content.preview or ""
+            if preview:
+                branch_previews[sid] = preview
 
         # Group branches by their junction point (attachment_uuid)
         junction_branches: dict[str, list[dict[str, Any]]] = {}
@@ -1167,9 +1330,8 @@ def prepare_session_navigation(
                     "first_timestamp": "",
                     "last_timestamp": "",
                     "message_count": 0,
-                    "first_user_message": branch_previews.get(
-                        branch_sid,
-                        f"Branch {branch_sid.split('@')[-1][:8]}",
+                    "first_user_message": _branch_label(
+                        branch_sid, branch_previews.get(branch_sid, "")
                     ),
                     "token_summary": "",
                     "parent_session_id": parent_sid,
@@ -2536,6 +2698,43 @@ def _reindex_filtered_context(
         if (new_idx := index_remap.get(old_idx)) is not None
     }
 
+    # Branch / child session headers cache the fork-point's index in
+    # ``parent_message_index`` (set at register time, drives the
+    # "from ⑂ Fork point" backlink). The reindex must update those
+    # references too — otherwise the backlink jumps to whatever message
+    # ends up at the stale index after the reindex shift, which manifests
+    # as the "Branch • c36e76a6 from #msg-d-510" mismatch when
+    # ``_pair_skill_tool_uses`` drops slash-command bodies.
+    #
+    # Same fix applies to ``junction_forward_links`` cached on fork-point
+    # template messages — populated in ``generate_template_messages``
+    # *before* the optional detail-level filter calls _reindex again, so
+    # the second reindex must remap each tuple's ``branch_idx`` (or drop
+    # the tuple if its target was filtered out) to keep the fork-point
+    # box's per-branch links pointing at the right ``msg-d-{N}`` anchor.
+    for msg in filtered:
+        if isinstance(msg.content, SessionHeaderMessage):
+            old_parent_idx = msg.content.parent_message_index
+            if old_parent_idx is not None:
+                msg.content.parent_message_index = index_remap.get(old_parent_idx)
+        if msg.junction_forward_links:
+            remapped: list[tuple[str, Optional[int], str]] = []
+            for branch_sid, old_branch_idx, link_suffix in msg.junction_forward_links:
+                if old_branch_idx is None:
+                    remapped.append((branch_sid, None, link_suffix))
+                    continue
+                new_branch_idx = index_remap.get(old_branch_idx)
+                if new_branch_idx is None:
+                    # Target message filtered out — drop the link.
+                    continue
+                remapped.append((branch_sid, new_branch_idx, link_suffix))
+            msg.junction_forward_links = remapped
+            # If the fork now has fewer than 2 navigable branches, mirror
+            # the elision the population pass does and drop the indicator.
+            if len(msg.junction_forward_links) < 2:
+                msg.junction_forward_links = []
+                msg.fork_point_preview = ""
+
 
 def _filter_template_by_detail(
     messages: list[TemplateMessage],
@@ -2803,14 +3002,7 @@ def _render_messages(
                     branch_text = extract_text_content(user_entry.message.content)
                     if branch_text:
                         branch_preview = create_session_preview(branch_text)
-                # Truncate for header title (keep full preview for nav)
-                if branch_preview:
-                    short = branch_preview[:80]
-                    if len(branch_preview) > 80:
-                        short += "..."
-                    branch_title = f"Branch • {short}"
-                else:
-                    branch_title = f"Branch • {branch_sid.split('@')[-1][:8]}"
+                branch_title = _branch_label(branch_sid, branch_preview)
 
                 branch_header_meta = MessageMeta(
                     session_id=branch_sid,
@@ -2846,6 +3038,7 @@ def _render_messages(
                     original_session_id=original_sid,
                     first_uuid=message_uuid,
                     team_name=branch_team_name,
+                    preview=branch_preview or None,
                 )
                 branch_header = TemplateMessage(branch_header_content)
                 branch_header.render_session_id = branch_sid
