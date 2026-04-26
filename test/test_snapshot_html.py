@@ -82,6 +82,28 @@ class TestTeammatesHTMLSnapshots:
         assert html == html_snapshot
 
 
+class TestAsyncAgentsHTMLSnapshots:
+    """Snapshot tests for the async-agents feature rendering (issue #90)."""
+
+    def test_async_agents_fixture_html(self, html_snapshot, test_data_dir):
+        """Snapshot the async-agents fixture rendered end-to-end.
+
+        Locks in:
+        - the [async] hint badge on the spawning Task tool_use title
+        - the ``Async agent launched successfully`` stub on the tool_result
+        - the ``Result (from async notification)`` fold rendered below
+          the stub when the last sub-assistant matches the notification
+        - the TaskOutput poll card (cyan border, retrieval_status row)
+        - the <task-notification> card collapsed to a backlink stub
+          when its result_text was folded into the spawn
+        """
+        async_dir = test_data_dir / "async_agents"
+        main_jsonl = async_dir / "eb000000-0000-4000-8000-000000000001.jsonl"
+        messages = load_transcript(main_jsonl)
+        html = generate_html(messages, "Async Agents Fixture")
+        assert html == html_snapshot
+
+
 class TestIndexHTMLSnapshots:
     """Snapshot tests for project index HTML output."""
 
