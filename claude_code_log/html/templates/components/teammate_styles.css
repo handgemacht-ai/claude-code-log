@@ -252,6 +252,16 @@
     border-left: 4px solid var(--cc-color);
 }
 
+.task-notification-backlink {
+    color: var(--cc-blue);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.task-notification-backlink:hover {
+    text-decoration: underline;
+}
+
 /* ----------------------------------------------------------------------
    Teammate-aware tool cards.
    Used by TeamCreate / TeamDelete / TaskCreate / TaskUpdate / SendMessage

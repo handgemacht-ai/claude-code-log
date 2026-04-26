@@ -122,10 +122,10 @@ def format_task_notification_content(content: TaskNotificationMessage) -> str:
     collapsible Markdown body for ``<result>``.
 
     Title is set by ``HtmlRenderer.title_TaskNotificationMessage``
-    (``🔄 Async result • <summary>``). Phase 3 will collapse / link
-    this card when the result content duplicates the spawning
-    sidechain's last sub-assistant; for now we render everything so
-    the parser can be exercised end-to-end.
+    (``🔄 Async result • <summary>``). When the renderer's Phase 3
+    pass (`_link_async_notifications`) flagged the body as a duplicate
+    of the spawning Task's last sidechain sub-assistant, the body
+    collapses to a backlink-only stub instead of doubling the content.
     """
     rows: list[str] = []
     if content.task_id:
@@ -146,6 +146,18 @@ def format_task_notification_content(content: TaskNotificationMessage) -> str:
     rows.extend(_format_usage_rows(content.usage))
     if content.transcript_path:
         rows.append(_row("Transcript", _code(content.transcript_path)))
+    if content.spawning_task_message_index is not None:
+        # Backlink anchor format matches the rest of the renderer
+        # ("d-{N}" → "msg-d-{N}"; the template emits the corresponding
+        # id on every message div).
+        anchor = f"msg-d-{content.spawning_task_message_index}"
+        rows.append(
+            _row(
+                "Spawn",
+                f"<a class='task-notification-backlink' href='#{anchor}'>"
+                f"&#x21b1; Task</a>",
+            )
+        )
 
     parts: list[str] = []
     if rows:
@@ -153,7 +165,7 @@ def format_task_notification_content(content: TaskNotificationMessage) -> str:
             f'<dl class="teammate-tool-card task-notification-card">'
             f"{''.join(rows)}</dl>"
         )
-    if content.result_text:
+    if content.result_text and not content.result_is_duplicate:
         parts.append(
             render_markdown_collapsible(content.result_text, "task-notification-result")
         )

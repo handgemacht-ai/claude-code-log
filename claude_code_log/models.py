@@ -702,6 +702,14 @@ class TaskNotificationMessage(MessageContent):
     usage: Optional[TaskNotificationUsage] = None
     transcript_path: Optional[str] = None
     raw_text: Optional[str] = None  # Original content if parsing dropped fields
+    # Phase 3 dedup marker: when True, ``result_text`` duplicates the
+    # last sub-assistant in the spawning Task's sidechain (which is
+    # already rendered inline). The renderer should then collapse the
+    # body to a backlink-only stub pointing at the spawning Task's
+    # message_index, preserving the uuid chain without doubling the
+    # content.
+    result_is_duplicate: bool = False
+    spawning_task_message_index: Optional[int] = None
 
     @property
     def message_type(self) -> str:
@@ -710,7 +718,7 @@ class TaskNotificationMessage(MessageContent):
     @property
     def has_markdown(self) -> bool:
         # The <result> body is typically Markdown.
-        return bool(self.result_text)
+        return bool(self.result_text) and not self.result_is_duplicate
 
 
 # =============================================================================

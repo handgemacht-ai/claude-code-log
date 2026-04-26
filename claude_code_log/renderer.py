@@ -44,6 +44,7 @@ from .models import (
     SessionHeaderMessage,
     SlashCommandMessage,
     SystemMessage,
+    TaskNotificationMessage,
     TaskOutput,
     ThinkingMessage,
     ToolResultMessage,
@@ -841,6 +842,13 @@ def generate_template_messages(
     # tool_use titles can surface the human-readable subject + assigned id.
     with log_timing("Collect task metadata", t_start):
         _populate_task_metadata(ctx)
+
+    # Async-agents (#90): mark each ``<task-notification>`` whose
+    # ``<result>`` body duplicates the last sub-assistant in the
+    # spawning Task's sidechain — the renderer collapses it to a
+    # backlink-only stub instead of doubling the content.
+    with log_timing("Link async notifications", t_start):
+        _link_async_notifications(ctx)
 
     return root_messages, session_nav, ctx
 
@@ -2176,6 +2184,162 @@ def _populate_task_metadata(ctx: RenderingContext) -> None:
             for task in output.tasks:
                 if task.id and task.subject:
                     subjects.setdefault(task.id, task.subject)
+
+
+# Pattern for the agentId line that Claude Code emits on async-Task
+# tool_results, e.g.::
+#
+#     agentId: a8b740b (internal ID - do not mention to user. ...)
+_ASYNC_AGENT_ID_LINE_RE = re.compile(
+    r"^\s*agentId:\s*(?P<agent_id>\w+)\s*\(",
+    re.MULTILINE,
+)
+
+
+def _link_async_notifications(ctx: RenderingContext) -> None:
+    """Mark ``TaskNotificationMessage`` bodies that duplicate the spawning
+    Task's last sidechain sub-assistant (issue #90).
+
+    Async-agent flow:
+
+    1. Assistant emits ``Task`` tool_use with ``run_in_background=True``.
+    2. Tool_result body says "Async agent launched successfully" + an
+       ``agentId: <id>`` line.
+    3. Sidechain entries from ``subagents/agent-<id>.jsonl`` get
+       relocated under that tool_result by ``_relocate_subagent_blocks``.
+       The last sub-assistant carries the agent's actual answer.
+    4. Some time later, Claude Code injects a User entry with a
+       ``<task-notification>`` whose ``<result>`` body duplicates that
+       same answer.
+
+    Without dedup, the answer renders twice — once inline (sidechain)
+    and once below in the notification card. Mark the notification
+    when the duplication is real so the formatter renders the
+    backlink-only variant. ``spawning_task_message_index`` is set on
+    every match (whether or not the body is a duplicate) so the
+    formatter can always wire the back-anchor.
+    """
+    # Index notifications by task_id so we can find them in O(1).
+    notifications: dict[str, TaskNotificationMessage] = {}
+    for tm in ctx.messages:
+        if isinstance(tm.content, TaskNotificationMessage) and tm.content.task_id:
+            notifications.setdefault(tm.content.task_id, tm.content)
+    if not notifications:
+        return
+
+    # Walk Task/Agent tool_results, find the async-agent's id, capture
+    # the spawning tool_use's message_index + the tool_result's
+    # children for last-subasst comparison.
+    for tm in ctx.messages:
+        content = tm.content
+        if not isinstance(content, ToolResultMessage):
+            continue
+        if content.tool_name not in ("Task", "Agent"):
+            continue
+        agent_id = _async_agent_id_from_tool_result(content)
+        if agent_id is None:
+            continue
+        notification = notifications.get(agent_id)
+        if notification is None:
+            continue
+
+        # Wire the backlink anchor on the notification: prefer the
+        # spawning tool_use (where the reader expects the spawn to
+        # live in the rendered transcript). pair_first holds that
+        # index when the pair was matched.
+        spawn_idx = tm.pair_first if tm.pair_first is not None else tm.message_index
+        if spawn_idx is not None:
+            notification.spawning_task_message_index = spawn_idx
+
+        # Walk the tool_result's descendants for the last sidechain
+        # AssistantTextMessage; compare with the notification's
+        # result_text. Match → flag as duplicate so the renderer
+        # collapses the body.
+        last_text = _last_sidechain_assistant_text(tm)
+        if last_text and notification.result_text:
+            if _normalize_for_dedup(last_text) == _normalize_for_dedup(
+                notification.result_text
+            ):
+                notification.result_is_duplicate = True
+
+
+def _async_agent_id_from_tool_result(content: ToolResultMessage) -> Optional[str]:
+    """Return the async-agent ``agent_id`` of a Task/Agent tool_result, if any.
+
+    Three sources, in order:
+
+    1. ``TaskOutput.metadata.agent_id`` — ``parse_agent_result_metadata``
+       extracts the ``agentId: <id>`` line from any Task tool_result
+       tail; the async-agent flow always emits one.
+    2. ``TaskOutput.agent_id`` — set by the teammates pathway.
+    3. Fallback regex on the raw output text — covers older transcripts
+       or shapes the parser hasn't fully captured.
+    """
+    output = content.output
+    if isinstance(output, TaskOutput):
+        if output.metadata is not None and output.metadata.agent_id:
+            return output.metadata.agent_id
+        if output.agent_id:
+            return output.agent_id
+    raw = _tool_result_raw_text(content)
+    if not raw:
+        return None
+    match = _ASYNC_AGENT_ID_LINE_RE.search(raw)
+    return match.group("agent_id") if match else None
+
+
+def _tool_result_raw_text(content: ToolResultMessage) -> str:
+    """Best-effort string body of a ToolResultMessage's parsed output.
+
+    Most paths set ``raw_text`` on the parsed dataclass; the
+    fully-generic ``ToolResultContent`` keeps the original ``content``
+    field instead. Tries both so the agentId line can be located
+    regardless of which parser path the tool_result took.
+    """
+    output = content.output
+    raw = getattr(output, "raw_text", None)
+    if isinstance(raw, str) and raw:
+        return raw
+    if isinstance(output, ToolResultContent):
+        if isinstance(output.content, str):
+            return output.content
+        # list[dict] shape — pull text items out
+        return "\n".join(
+            str(item.get("text", ""))
+            for item in output.content
+            if item.get("type") == "text"
+        )
+    return ""
+
+
+def _last_sidechain_assistant_text(message: TemplateMessage) -> Optional[str]:
+    """Return the text of the last sidechain ``AssistantTextMessage``
+    descendant of *message*, or ``None`` if no such descendant exists.
+
+    Used to compare against ``TaskNotificationMessage.result_text`` for
+    dedup. Walks children depth-first in reverse, so the "last" is in
+    document order.
+    """
+    last: Optional[str] = None
+    stack: list[TemplateMessage] = [message]
+    while stack:
+        current = stack.pop()
+        # Push children REVERSED so popping from the end yields a
+        # left-to-right pre-order walk in document order. The naive
+        # ``extend(children)`` reversed traversal, returning the FIRST
+        # sidechain assistant rather than the LAST.
+        stack.extend(reversed(current.children))
+        if current is message:
+            continue
+        if current.is_sidechain and isinstance(current.content, AssistantTextMessage):
+            text_parts: list[str] = [
+                item.text
+                for item in current.content.items
+                if isinstance(item, TextContent)
+            ]
+            if text_parts:
+                last = "\n".join(text_parts)
+    return last
 
 
 def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:

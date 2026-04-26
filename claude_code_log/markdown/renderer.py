@@ -911,7 +911,14 @@ class MarkdownRenderer(Renderer):
         self, content: TaskNotificationMessage, _: TemplateMessage
     ) -> str:
         """Format → metadata bullets + collapsible Markdown body for an
-        async-agent ``<task-notification>`` user entry (issue #90)."""
+        async-agent ``<task-notification>`` user entry (issue #90).
+
+        When ``_link_async_notifications`` flagged the body as a
+        duplicate of the spawning Task's last sub-assistant, the body
+        is dropped and only metadata + a "Spawn" reference remains so
+        the Markdown reader still has navigation context without
+        doubling the result content.
+        """
         lines: list[str] = []
         if content.task_id:
             lines.append(f"- **Task ID:** `{content.task_id}`")
@@ -927,8 +934,12 @@ class MarkdownRenderer(Renderer):
                 lines.append(f"- **Duration:** `{usage.duration_ms / 1000:.1f}s`")
         if content.transcript_path:
             lines.append(f"- **Transcript:** `{content.transcript_path}`")
+        if content.spawning_task_message_index is not None:
+            lines.append(
+                f"- **Spawn:** ↱ Task `#d-{content.spawning_task_message_index}`"
+            )
         head = "\n".join(lines)
-        if content.result_text:
+        if content.result_text and not content.result_is_duplicate:
             body = self._collapsible("Result", content.result_text)
             return f"{head}\n\n{body}" if head else body
         return head
