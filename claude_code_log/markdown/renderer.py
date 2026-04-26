@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import functools
+import html as _html
 import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+import mistune
+from mistune.renderers.markdown import MarkdownRenderer as _MistuneMarkdownRenderer
+
 from ..cache import get_library_version
+from ..html.utils import is_well_formed_html, render_user_markdown
 from ..utils import generate_unified_diff, strip_error_tags
 from ..models import (
     AssistantTextMessage,
@@ -144,6 +150,68 @@ def _table_cell(value: Any) -> str:
     None is rendered as an empty cell.
     """
     return str(value or "").replace("\n", "<br>").replace("|", r"\|")
+
+
+class _TagProtectingMarkdownRenderer(_MistuneMarkdownRenderer):
+    """Mistune re-emitter that neutralises raw HTML tokens.
+
+    Mistune's stock ``MarkdownRenderer`` round-trips a parsed Markdown
+    document back to Markdown text. We inherit it and override the two
+    HTML hooks — ``inline_html`` (tags like ``<br>``, ``<script>``) and
+    ``block_html`` (block-level HTML chunks) — to emit the token's raw
+    content HTML-escaped to entities instead of passing the tag through
+    verbatim.
+
+    Escaping to entities sidesteps the class of edge cases that any
+    backtick-wrapping strategy has to contend with (stray backticks in
+    the surrounding text merging with the wrapper delimiter, attribute
+    values carrying backticks, block HTML containing a fence inside,
+    …). The tradeoff is that in very strict downstream renderers the
+    entities can end up visible as literal text; permissive renderers
+    like GitHub correctly display the tag text. Either way the tag
+    itself never reaches the HTML output as live markup.
+    """
+
+    def inline_html(self, token: dict[str, Any], state: Any) -> str:
+        return _html.escape(token.get("raw", ""))
+
+    def block_html(self, token: dict[str, Any], state: Any) -> str:
+        return _html.escape(token.get("raw", ""))
+
+
+@functools.lru_cache(maxsize=1)
+def _get_tag_protecting_markdown() -> mistune.Markdown:
+    """Cache the mistune pipeline used by :func:`_protect_html_tags`."""
+    return mistune.create_markdown(renderer=_TagProtectingMarkdownRenderer())
+
+
+def _protect_html_tags(text: str) -> str:
+    """Wrap raw HTML/XML tags in inline code backticks.
+
+    Mirrors the HTML renderer's ``escape=True`` policy for user content:
+    tags that a user typed (``<script>``, ``<details>``, bare ``<br>``,
+    …) are rendered as literal text in any downstream Markdown viewer
+    rather than interpreted as HTML. Without this, a permissive viewer
+    could execute ``<script>`` or interpret ``<iframe>`` — the HTML
+    output escapes them via mistune's ``escape=True``; the Markdown
+    output delegates to the viewer, so we need to neutralise tags at
+    emission time.
+
+    Parses the text with mistune and re-emits it through a
+    tag-protecting renderer. Because the parser already distinguishes
+    raw HTML from inline code spans (``` `x <br> y` ```), fenced blocks,
+    and indented code blocks, all of those are preserved unchanged and
+    only the actual HTML tokens are wrapped. The round-trip may apply
+    minor cosmetic normalisation (e.g. indented HTML becomes a fenced
+    block), which is acceptable since the goal is tag-neutralisation,
+    not byte-for-byte source preservation.
+    """
+    if not text:
+        return text
+    # `mistune.Markdown.__call__` is typed as returning a union of `str`
+    # and a token list; with a renderer set it always returns a string.
+    rendered = _get_tag_protecting_markdown()(text)
+    return str(rendered).rstrip("\n")
 
 
 class MarkdownRenderer(Renderer):
@@ -395,15 +463,30 @@ class MarkdownRenderer(Renderer):
     def format_UserTextMessage(
         self, content: UserTextMessage, _: TemplateMessage
     ) -> str:
-        """Format → fenced code block(s) with user text."""
+        """Format → user text as Markdown when clean, else fenced code.
+
+        Mirrors the HTML renderer's dual-view gate: try rendering the
+        text as Markdown; if mistune produces well-formed HTML the
+        source was recognisable Markdown (or plain text that happens not
+        to conflict with Markdown syntax), so emit the raw text inline
+        (headings/bold/lists render naturally downstream). Otherwise
+        wrap in a code fence so the literal content is preserved.
+
+        When emitting inline, raw HTML-like tags are wrapped in backticks
+        (see :func:`_protect_html_tags`) to keep parity with the HTML
+        path's ``escape=True`` safety posture.
+        """
         parts: list[str] = []
         for item in content.items:
             if isinstance(item, ImageContent):
                 parts.append(self._format_image(item))
             elif isinstance(item, TextContent):
                 if item.text.strip():
-                    # Use code fence to protect embedded markdown
-                    parts.append(self._code_fence(item.text))
+                    rendered = render_user_markdown(item.text)
+                    if is_well_formed_html(rendered):
+                        parts.append(_protect_html_tags(item.text))
+                    else:
+                        parts.append(self._code_fence(item.text))
         return "\n\n".join(parts)
 
     def title_UserTextMessage(

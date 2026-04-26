@@ -346,13 +346,21 @@ class TestContentFormatters:
     """Tests for content formatter functions (user and assistant text)."""
 
     def test_format_user_text_content(self):
-        """Test that user text is formatted as preformatted HTML."""
+        """User text now emits a dual-view container (rendered Markdown
+        + raw `<pre>`) so a per-message / global toggle can switch
+        views. The raw view must still preserve the original text."""
         html = format_user_text_content("Simple user message")
 
-        # Should be wrapped in <pre> for user messages
-        assert html.startswith("<pre>")
-        assert html.endswith("</pre>")
-        assert "Simple user message" in html
+        # Dual-view wrapper present. No `data-user-view` attribute by
+        # default — the per-message toggle JS sets it after a click, and
+        # the global-raw CSS selector (`:not([data-user-view="md"])`)
+        # depends on that attribute being absent on untouched messages.
+        assert "class='user-content'>" in html
+        assert "data-user-view" not in html
+        # Raw <pre> preserved for toggle-back and accessibility.
+        assert "<pre class='user-raw'>Simple user message</pre>" in html
+        # Markdown rendering wraps the text in a paragraph.
+        assert "<div class='user-md'><p>Simple user message</p>" in html
 
     def test_format_assistant_text_content(self):
         """Test that assistant text is formatted as markdown."""

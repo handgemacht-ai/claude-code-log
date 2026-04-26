@@ -5,7 +5,7 @@ Tests for the private utility methods that handle content escaping and formattin
 
 import pytest
 
-from claude_code_log.markdown.renderer import MarkdownRenderer
+from claude_code_log.markdown.renderer import MarkdownRenderer, _protect_html_tags
 from claude_code_log.utils import strip_error_tags
 
 
@@ -300,3 +300,183 @@ class TestExcerpt:
         """Adds ellipsis when truncated."""
         result = renderer._excerpt("A very long text that exceeds limit", max_len=15)
         assert result.endswith("…")
+
+
+class TestProtectHtmlTags:
+    """Tests for the _protect_html_tags() module-level helper.
+
+    The helper parses with mistune and re-emits through a tag-protecting
+    renderer. Inline and block HTML tokens get HTML-entity-escaped, so
+    the tag text survives but no downstream Markdown renderer can
+    interpret it as live markup. All non-HTML Markdown is preserved —
+    including inline code spans, fenced blocks, and indented code
+    blocks the author may have used specifically to quote HTML.
+    """
+
+    # -- Outputs that must be exactly the escaped form -------------------
+
+    def test_plain_text_unchanged(self):
+        """Text with no tags is returned verbatim."""
+        assert _protect_html_tags("just some prose") == "just some prose"
+
+    def test_escapes_bare_inline_tag(self):
+        """Bare inline ``<br>`` is entity-escaped."""
+        assert (
+            _protect_html_tags("line one<br>line two") == "line one&lt;br&gt;line two"
+        )
+
+    def test_escapes_inline_open_and_close(self):
+        """Both opening and closing inline tags are escaped."""
+        assert (
+            _protect_html_tags("some <b>bold</b> text")
+            == "some &lt;b&gt;bold&lt;/b&gt; text"
+        )
+
+    def test_escapes_tag_with_attributes(self):
+        """Inline tags with attributes escape the whole tag including attrs."""
+        assert (
+            _protect_html_tags('say <a href="x">link</a> please')
+            == "say &lt;a href=&quot;x&quot;&gt;link&lt;/a&gt; please"
+        )
+
+    def test_escapes_self_closing_tag(self):
+        """XHTML-style ``<br />`` is escaped whole."""
+        assert _protect_html_tags("text<br />more") == "text&lt;br /&gt;more"
+
+    def test_escapes_multiple_inline_tags_on_one_line(self):
+        """Multiple inline tags on the same line are each escaped."""
+        assert (
+            _protect_html_tags("text <b>bold</b> and <i>italic</i>")
+            == "text &lt;b&gt;bold&lt;/b&gt; and &lt;i&gt;italic&lt;/i&gt;"
+        )
+
+    # -- The user's key concern: already-quoted HTML must survive --------
+
+    def test_inline_code_already_wrapped(self):
+        """A tag already inside inline code isn't re-written.
+
+        This is the user-flagged concern from the coderabbit review:
+        ``use `x <br> y` here`` must not be corrupted.
+        """
+        assert _protect_html_tags("use `x <br> y` here") == "use `x <br> y` here"
+
+    # -- Edge cases that used to leak with adaptive-backtick delimiters --
+
+    def test_stray_backtick_before_tag_does_not_leak(self):
+        """A lone ``\\``` adjacent to a tag can't merge with a wrapper
+        delimiter — there isn't one to merge with.
+        """
+        import mistune
+
+        permissive = mistune.create_markdown(
+            renderer=mistune.HTMLRenderer(escape=False)
+        )
+        rendered = str(permissive(_protect_html_tags("x `<br> y"))).strip()
+        assert "&lt;br&gt;" in rendered
+        # No live <br>.
+        assert rendered.replace("&lt;br&gt;", "").count("<br") == 0
+
+    def test_backtick_in_attribute_does_not_leak(self):
+        """Tags with backticks in attributes don't break either."""
+        import mistune
+
+        permissive = mistune.create_markdown(
+            renderer=mistune.HTMLRenderer(escape=False)
+        )
+        rendered = str(
+            permissive(_protect_html_tags('<span title="`">x</span>'))
+        ).strip()
+        assert "&lt;span" in rendered
+        # No live <span>.
+        assert "<span" not in rendered.replace("&lt;span", "")
+
+    def test_block_html_with_inner_fence_does_not_leak(self):
+        """Block HTML containing a ``` fence doesn't break."""
+        import mistune
+
+        permissive = mistune.create_markdown(
+            renderer=mistune.HTMLRenderer(escape=False)
+        )
+        rendered = str(permissive(_protect_html_tags("<div>\n```\n</div>"))).strip()
+        assert "&lt;div&gt;" in rendered
+        assert "<div" not in rendered.replace("&lt;div", "")
+
+    # -- Markdown constructs that must pass through ----------------------
+
+    def test_autolink_not_wrapped(self):
+        """CommonMark autolink ``<https://...>`` is preserved."""
+        assert (
+            _protect_html_tags("see <https://example.com/path> for info")
+            == "see <https://example.com/path> for info"
+        )
+
+    def test_email_autolink_not_wrapped(self):
+        """CommonMark email autolink ``<you@example.com>`` is preserved."""
+        assert (
+            _protect_html_tags("email <you@example.com> directly")
+            == "email <you@example.com> directly"
+        )
+
+    def test_less_than_not_wrapped(self):
+        """Bare ``<3`` and ``<=`` aren't mistaken for tags."""
+        assert _protect_html_tags("x < 3 and x <= 5") == "x < 3 and x <= 5"
+
+    def test_inside_fenced_code_block(self):
+        """Tags inside a ``` fence stay literal (code-block token, not HTML)."""
+        text = "Here is code:\n\n```html\n<script>x</script>\n```"
+        # The fence contents survive intact — the `<script>` inside is
+        # a code-block token, not an inline-HTML one, so our overrides
+        # don't touch it.
+        result = _protect_html_tags(text)
+        assert "```html\n<script>x</script>\n```" in result
+
+    def test_inside_tilde_fence(self):
+        """~~~ fences are respected just like ``` fences."""
+        text = "~~~\n<br>\n~~~"
+        assert _protect_html_tags(text) == text
+
+
+class TestFormatUserTextMessage:
+    """Integration tests for MarkdownRenderer.format_UserTextMessage().
+
+    These cover the Markdown dual-view gate introduced in the user-
+    markdown PR: clean Markdown is emitted inline (with HTML-tag
+    protection), ill-formed output falls back to a code fence.
+    """
+
+    def _make(self, text: str):
+        from claude_code_log.models import MessageMeta, TextContent, UserTextMessage
+
+        return UserTextMessage(
+            meta=MessageMeta.empty(),
+            items=[TextContent(type="text", text=text)],
+        )
+
+    def test_clean_markdown_emitted_inline(self, renderer):
+        """`# heading` and `**bold**` pass the gate → raw Markdown out."""
+        content = self._make("# Hi\n\n**bold**")
+        result = renderer.format_UserTextMessage(content, None)
+        assert result == "# Hi\n\n**bold**"
+
+    def test_plain_text_emitted_inline(self, renderer):
+        """Plain prose renders cleanly → emitted as-is (no code fence)."""
+        content = self._make("please review the PR when you have time")
+        result = renderer.format_UserTextMessage(content, None)
+        assert result == "please review the PR when you have time"
+
+    def test_raw_html_tags_escaped_inline(self, renderer):
+        """Clean Markdown with bare ``<script>`` gets the tag entity-escaped."""
+        content = self._make("Please run <script>alert(1)</script> safely.")
+        result = renderer.format_UserTextMessage(content, None)
+        assert result == "Please run &lt;script&gt;alert(1)&lt;/script&gt; safely."
+
+    def test_ill_formed_falls_back_to_code_fence(self, renderer, monkeypatch):
+        """When the Markdown gate rejects the output, code-fence it."""
+        # Force the gate to fail by monkey-patching render_user_markdown
+        # to return deliberately ill-formed HTML.
+        import claude_code_log.markdown.renderer as mr
+
+        monkeypatch.setattr(mr, "render_user_markdown", lambda _t: "<p>unclosed")
+        content = self._make("anything")
+        result = renderer.format_UserTextMessage(content, None)
+        assert result == "```\nanything\n```"
