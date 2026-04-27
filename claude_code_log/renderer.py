@@ -860,6 +860,16 @@ def generate_template_messages(
     if detail == DetailLevel.LOW:
         with log_timing("Drop duplicate async notifications", t_start):
             _drop_duplicate_notifications_at_low(ctx)
+            # Rebuild session_nav: the drop pass remapped
+            # ctx.session_first_message but the nav structure built at
+            # line 764 has the pre-drop indices baked into its
+            # ``message_index`` and ``parent_message_index`` fields.
+            # Without this rebuild, nav anchors for any session whose
+            # header sits past a dropped notification would point one
+            # (or more) message slot off after the LOW reindex.
+            session_nav = prepare_session_navigation(
+                sessions, session_order, ctx, session_hierarchy
+            )
 
     return root_messages, session_nav, ctx
 
@@ -2321,10 +2331,14 @@ def _link_async_notifications(
         # Skip the actual fold when the spawning Task tool_result will
         # be dropped post-render — without a target, the fold has no
         # place to land and the notification body becomes the only
-        # surviving copy of the agent's answer.
-        if spawn_target_kept:
-            if isinstance(content.output, TaskOutput):
-                content.output.async_final_answer = notification.result_text
+        # surviving copy of the agent's answer. Same logic when the
+        # output isn't a parsed ``TaskOutput`` (path 3 of
+        # ``_async_agent_id_from_tool_result`` matches via raw-text
+        # regex on shapes the parser couldn't structure): there's no
+        # ``async_final_answer`` field to write into, so suppressing
+        # the notification body would silently lose the answer.
+        if spawn_target_kept and isinstance(content.output, TaskOutput):
+            content.output.async_final_answer = notification.result_text
             notification.result_is_duplicate = True
 
         # ---- Branch 2: sidechain-only dedup --------------------------
