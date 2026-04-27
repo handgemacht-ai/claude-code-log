@@ -766,6 +766,13 @@ class SessionHeaderMessage(MessageContent):
     is_branch: bool = False  # True for within-session fork branches
     original_session_id: Optional[str] = None  # Original session_id before fork split
     first_uuid: Optional[str] = None  # First UUID in this branch (for forward links)
+    # Branch preview text *before* it is composed into ``title`` by
+    # ``_branch_label``. Stored separately so downstream sites
+    # (fork-point box per-branch link, session/graph index nav) can
+    # recompose the label from ``(session_id, preview)`` rather than
+    # parsing the title string. Empty / None means "no preview" — the
+    # composed title is then ``Branch • <uuid8>`` only.
+    preview: Optional[str] = None
     # Teammates feature — set when the session was active in a team. Sourced
     # from the first non-None ``teamName`` of any entry in the session.
     team_name: Optional[str] = None

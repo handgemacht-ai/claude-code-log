@@ -81,6 +81,7 @@ from ..renderer import (
     Renderer,
     RenderingContext,
     TemplateMessage,
+    branch_short_uuid,
     generate_template_messages,
     prepare_projects_index,
     title_for_projects_index,
@@ -150,6 +151,31 @@ def _table_cell(value: Any) -> str:
     None is rendered as an empty cell.
     """
     return str(value or "").replace("\n", "<br>").replace("|", r"\|")
+
+
+def _session_anchor(session_or_id: "SessionHeaderMessage | str") -> str:
+    """Compose a unique Markdown anchor key for a session header.
+
+    Trunk session ids look like ``d602eb5f-...`` and we render them as
+    ``session-d602eb5f``. Branch session ids look like
+    ``d602eb5f-...@0e09007a-cd8`` (or deeper nestings with multiple
+    ``@`` segments). They all *start* with the trunk uuid, so the
+    naive ``session_id[:8]`` collides across every branch under the
+    same trunk and TOC links can only land on the first matching
+    heading.
+
+    Branches use ``branch-<uuid8>`` where ``<uuid8>`` is the first 8
+    chars of the deepest ``@`` segment (the branch root's UUID
+    prefix). Mirrors the visible ``Branch • <uuid8>`` label so a
+    reader can correlate the TOC entry with the inline header.
+
+    Accepts either a ``SessionHeaderMessage`` or a raw session id
+    string.
+    """
+    sid = session_or_id if isinstance(session_or_id, str) else session_or_id.session_id
+    if "@" in sid:
+        return f"branch-{branch_short_uuid(sid)}"
+    return f"session-{sid[:8]}"
 
 
 class _TagProtectingMarkdownRenderer(_MistuneMarkdownRenderer):
@@ -431,15 +457,43 @@ class MarkdownRenderer(Renderer):
     def format_SessionHeaderMessage(
         self, content: SessionHeaderMessage, _: TemplateMessage
     ) -> str:
-        """Format → '<a id="session-abc12345"></a>'."""
-        # Return just the anchor - it will be placed before the heading
-        session_short = content.session_id[:8]
-        return f'<a id="session-{session_short}"></a>'
+        """Format → '<a id="session-abc12345"></a>' (or '<a id="branch-…"></a>')."""
+        # Return just the anchor - it will be placed before the heading.
+        # Branches need a per-branch-unique key because every branch's
+        # session_id starts with the trunk's uuid, so ``session_id[:8]``
+        # collides across branches and the TOC could only land on the
+        # first matching heading.
+        return f'<a id="{_session_anchor(content)}"></a>'
 
     def title_SessionHeaderMessage(
         self, content: SessionHeaderMessage, _: TemplateMessage
     ) -> str:
-        """Title → '📋 Session `abc12345`: summary — Team: `t`'."""
+        """Title → '📋 Session `abc12345`: summary — Team: `t`' (or '🌿 Branch …').
+
+        Branch session headers surface the ``Branch • <uuid8> • <preview>``
+        shape that the renderer's ``_branch_label`` helper composes for
+        HTML output (stored on ``content.title``). Without this, a branch
+        would render as ``📋 Session `<trunk-uuid>`: <summary>``,
+        indistinguishable from the trunk session it forked from — the
+        synthetic branch session_id starts with the trunk's uuid and the
+        ``[:8]`` slice can't see past it.
+        """
+        if content.is_branch:
+            # ``_render_messages`` always composes ``content.title`` via
+            # ``_branch_label``, so the empty-title path is purely
+            # defensive — but if it ever fires we still need a
+            # branch-flavoured heading. Falling through to the trunk
+            # path below would surface ``📋 Session `<trunk-uuid>``` for
+            # a branch (the ``[:8]`` slice can't see past the shared
+            # trunk prefix), which is exactly the duplicate-anchor /
+            # confusable-heading shape we just fixed.
+            if content.title:
+                title = f"🌿 {content.title}"
+            else:
+                title = f"🌿 Branch • {branch_short_uuid(content.session_id)}"
+            if content.team_name:
+                title = f"{title} — Team: {_inline_code(content.team_name)}"
+            return title
         session_short = content.session_id[:8]
         if content.summary:
             title = f"📋 Session `{session_short}`: {content.summary}"
@@ -1235,15 +1289,39 @@ class MarkdownRenderer(Renderer):
         lines = ["## Sessions", ""]
         for session in session_nav:
             session_id = session.get("id", "")
-            session_short = session_id[:8]
-            anchor = f"session-{session_short}"
+            # Skip fork-point and compact-point nav items: both navigate
+            # the index in HTML via ``msg-d-{N}`` anchors, but Markdown
+            # only has session-level ``<a id="…">`` anchors and neither
+            # creates one of their own. Compact items also carry an
+            # ``id`` shaped like ``compact-{message_index}`` whose
+            # ``[:8]`` slice (``"compact-"``) collapses to a single
+            # malformed ``session-compact-`` anchor key for every
+            # compact event in a long compacted session.
+            if session.get("is_fork_point") or session.get("is_compaction_point"):
+                continue
+            anchor = _session_anchor(session_id)
             summary = session.get("summary")
-            # Use summary if available, otherwise just the session ID
-            label = (
-                f"Session `{session_short}`: {summary}"
-                if summary
-                else f"Session `{session_short}`"
-            )
+            if session.get("is_branch"):
+                # Branches reuse the rich ``Branch • <uuid8> • <preview>``
+                # label that ``prepare_session_navigation`` already
+                # composed via ``_branch_label`` and stored on
+                # ``first_user_message`` — keeps the TOC entry aligned
+                # with the body branch header and the HTML index nav.
+                # Fallback (defensive — ``first_user_message`` is always
+                # populated for branches today) mirrors the
+                # ``_branch_label`` shape rather than diverging into a
+                # backtick-quoted variant.
+                label = session.get(
+                    "first_user_message",
+                    f"Branch • {branch_short_uuid(session_id)}",
+                )
+            else:
+                session_short = session_id[:8]
+                label = (
+                    f"Session `{session_short}`: {summary}"
+                    if summary
+                    else f"Session `{session_short}`"
+                )
             lines.append(f"- [{label}](#{anchor})")
         lines.append("")
         return "\n".join(lines)
