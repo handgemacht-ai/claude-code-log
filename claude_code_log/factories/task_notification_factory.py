@@ -111,15 +111,28 @@ def create_task_notification_message(
 
     body = notification.group("body")
 
-    fields: dict[str, str] = {}
-    for match in _FIELD_RE.finditer(body):
-        fields[match.group("tag")] = match.group("body").strip()
-
+    # Extract ``<result>`` and ``<usage>`` first, then strip their full
+    # match text from the search surface before scanning for the
+    # single-tag header fields. ``<result>`` bodies are agent-authored
+    # markdown and frequently contain literal HTML/XML — a
+    # ``<summary>demo</summary>`` snippet inside ``<result>`` would
+    # otherwise clobber the real notification ``<summary>`` field
+    # (and similarly for ``<status>`` / ``<task-id>``), poisoning the
+    # downstream fold/dedup path.
     result_match = _RESULT_RE.search(body)
     result_text = result_match.group("body") if result_match else ""
 
     usage_match = _USAGE_RE.search(body)
     usage = _parse_usage(usage_match.group("body")) if usage_match else None
+
+    header_body = body
+    for block_match in (result_match, usage_match):
+        if block_match is not None:
+            header_body = header_body.replace(block_match.group(0), "", 1)
+
+    fields: dict[str, str] = {}
+    for match in _FIELD_RE.finditer(header_body):
+        fields[match.group("tag")] = match.group("body").strip()
 
     transcript_match = _TRANSCRIPT_RE.search(text)
     transcript_path = (

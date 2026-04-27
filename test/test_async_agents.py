@@ -168,6 +168,39 @@ class TestCreateTaskNotificationMessage:
             is None
         )
 
+    def test_result_body_with_xmlish_text_does_not_clobber_metadata(self) -> None:
+        """Regression (CodeRabbit on PR #132): the ``<result>`` body
+        is agent-authored markdown and may contain literal XML-shaped
+        snippets (for instance, an agent quoting a `<summary>` HTML
+        tag verbatim). The header-field scan must run on the body
+        *minus* ``<result>`` and ``<usage>`` so a ``<summary>`` (or
+        ``<status>`` / ``<task-id>``) inside the result text can't
+        overwrite the real notification metadata.
+        """
+        text = (
+            "<task-notification>\n"
+            "<task-id>real123</task-id>\n"
+            "<status>completed</status>\n"
+            "<summary>Real summary</summary>\n"
+            "<result>The agent's body shows: "
+            "<task-id>fake999</task-id> "
+            "<status>failed</status> "
+            "<summary>Bogus summary</summary> "
+            "and continues here.</result>\n"
+            "</task-notification>"
+        )
+        msg = create_task_notification_message(_meta(), text)
+        assert msg is not None
+        # Real header metadata wins; the inline copies inside <result>
+        # don't bleed through.
+        assert msg.task_id == "real123"
+        assert msg.status == "completed"
+        assert msg.summary == "Real summary"
+        # The inline tags are preserved verbatim in result_text — they
+        # were the agent's content, not metadata.
+        assert "fake999" in msg.result_text
+        assert "Bogus summary" in msg.result_text
+
     def test_partial_usage_block_keeps_known_fields(self) -> None:
         text = (
             "<task-notification>"
