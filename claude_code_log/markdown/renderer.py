@@ -1289,11 +1289,15 @@ class MarkdownRenderer(Renderer):
         lines = ["## Sessions", ""]
         for session in session_nav:
             session_id = session.get("id", "")
-            # Skip fork-point nav items: they navigate the index in HTML
-            # via ``msg-d-{N}`` anchors, but Markdown only has session-
-            # level ``<a id="…">`` anchors and fork points don't create
-            # one of their own.
-            if session.get("is_fork_point"):
+            # Skip fork-point and compact-point nav items: both navigate
+            # the index in HTML via ``msg-d-{N}`` anchors, but Markdown
+            # only has session-level ``<a id="…">`` anchors and neither
+            # creates one of their own. Compact items also carry an
+            # ``id`` shaped like ``compact-{message_index}`` whose
+            # ``[:8]`` slice (``"compact-"``) collapses to a single
+            # malformed ``session-compact-`` anchor key for every
+            # compact event in a long compacted session.
+            if session.get("is_fork_point") or session.get("is_compaction_point"):
                 continue
             anchor = _session_anchor(session_id)
             summary = session.get("summary")
