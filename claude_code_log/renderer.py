@@ -2285,17 +2285,29 @@ def _link_async_notifications(
     if not notifications:
         return
 
-    # Walk Task/Agent tool_results, find the async-agent's id, link
-    # the notification, and (when the sidechain is present) drop its
-    # duplicate tail.
+    # Walk every tool_result, find the async-agent's id, link the
+    # notification, and (when the sidechain is present) drop its
+    # duplicate tail. We don't gate on ``tool_name == "Task"|"Agent"``
+    # up front because that field comes from pair-id, which can leave
+    # a tool_result orphaned in fork/branch shapes where the spawning
+    # tool_use sits in a different branch — yet the tool_result still
+    # carries the canonical ``agentId:`` line, so
+    # ``_async_agent_id_from_tool_result`` can recover the link. After
+    # the agent-id matches, gate the non-Task/Agent path on a stronger
+    # signal — a parsed ``TaskOutput`` output or an ``agentId`` already
+    # tagged on the entry's meta — so an unrelated tool_result that
+    # happens to mention "agentId:" in its raw text doesn't hijack a
+    # notification meant for a real spawn.
     for tm in ctx.messages:
         content = tm.content
         if not isinstance(content, ToolResultMessage):
             continue
-        if content.tool_name not in ("Task", "Agent"):
-            continue
         agent_id = _async_agent_id_from_tool_result(content)
         if agent_id is None:
+            continue
+        if content.tool_name not in ("Task", "Agent") and not (
+            isinstance(content.output, TaskOutput) or tm.meta.agent_id
+        ):
             continue
         notification = notifications.get(agent_id)
         if notification is None:
