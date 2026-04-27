@@ -15,6 +15,7 @@ from ..models import (
     BashOutputMessage,
     CommandOutputMessage,
     CompactedSummaryMessage,
+    DetailLevel,
     HookSummaryMessage,
     ImageContent,
     SessionHeaderMessage,
@@ -331,7 +332,17 @@ class HtmlRenderer(Renderer):
         self, content: TaskNotificationMessage, _: TemplateMessage
     ) -> str:
         """Format → metadata `<dl>` + collapsible Markdown body for an
-        async-agent ``<task-notification>`` user entry (issue #90)."""
+        async-agent ``<task-notification>`` user entry (issue #90).
+
+        At ``DetailLevel.LOW`` a duplicate-flagged notification renders
+        empty so the rendering loop's "skip empty messages" elision
+        drops the card — the spawn-fold already shows the answer in
+        place, and "ghosting" via empty output avoids the index-remap
+        cascade that deleting the message would trigger (ancestry
+        classes, backlinks, session nav anchors).
+        """
+        if self.detail == DetailLevel.LOW and content.result_is_duplicate:
+            return ""
         return _format_task_notification_content(content)
 
     # -------------------------------------------------------------------------
@@ -771,7 +782,15 @@ class HtmlRenderer(Renderer):
         """Title → '🔄 Async result • <summary>' for an async-agent
         completion notification (issue #90). The summary is the most
         useful at-a-glance hint; the rest of the metadata renders in
-        the body card."""
+        the body card.
+
+        Empty at ``DetailLevel.LOW`` for duplicate-flagged
+        notifications — pairs with ``format_TaskNotificationMessage``
+        to "ghost" the card while keeping the message in
+        ``ctx.messages``.
+        """
+        if self.detail == DetailLevel.LOW and content.result_is_duplicate:
+            return ""
         if content.summary:
             return (
                 "🔄 Async result "

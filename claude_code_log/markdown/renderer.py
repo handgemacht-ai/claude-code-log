@@ -21,6 +21,7 @@ from ..models import (
     BashOutputMessage,
     CommandOutputMessage,
     CompactedSummaryMessage,
+    DetailLevel,
     HookSummaryMessage,
     ImageContent,
     SessionHeaderMessage,
@@ -917,8 +918,15 @@ class MarkdownRenderer(Renderer):
         duplicate of the spawning Task's last sub-assistant, the body
         is dropped and only metadata + a "Spawn" reference remains so
         the Markdown reader still has navigation context without
-        doubling the result content.
+        doubling the result content. At ``DetailLevel.LOW`` the
+        whole card is "ghosted" (returns ``""``) — paired with
+        ``title_TaskNotificationMessage`` returning ``""`` too,
+        ``_render_message``'s "no title, no content" elision drops
+        the entry from the rendered output without touching
+        ``ctx.messages``.
         """
+        if self.detail == DetailLevel.LOW and content.result_is_duplicate:
+            return ""
         lines: list[str] = []
         if content.task_id:
             lines.append(f"- **Task ID:** `{content.task_id}`")
@@ -1319,7 +1327,14 @@ class MarkdownRenderer(Renderer):
         self, content: TaskNotificationMessage, _: TemplateMessage
     ) -> str:
         """Title → '🔄 Async result · *<summary>*' for an async-agent
-        completion notification (issue #90)."""
+        completion notification (issue #90).
+
+        Empty at ``DetailLevel.LOW`` for duplicate-flagged
+        notifications — pairs with
+        ``format_TaskNotificationMessage`` to "ghost" the entry.
+        """
+        if self.detail == DetailLevel.LOW and content.result_is_duplicate:
+            return ""
         if content.summary:
             return f"🔄 Async result · *{self._escape_stars(content.summary)}*"
         if content.task_id:

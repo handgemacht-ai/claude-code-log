@@ -843,33 +843,20 @@ def generate_template_messages(
     with log_timing("Collect task metadata", t_start):
         _populate_task_metadata(ctx)
 
-    # Async-agents (#90): mark each ``<task-notification>`` whose
+    # Async-agents (#90): pair each ``<task-notification>`` whose
     # ``<result>`` body duplicates the last sub-assistant in the
-    # spawning Task's sidechain — the renderer collapses it to a
-    # backlink-only stub instead of doubling the content.
+    # spawning Task's sidechain with that spawn, fold the answer onto
+    # ``TaskOutput.async_final_answer``, and flag the notification
+    # ``result_is_duplicate``. The format-specific renderers honour the
+    # flag — at ``DetailLevel.LOW`` they return empty for the
+    # duplicate's title and body, so the rendering loop's existing
+    # "skip empty messages" elision drops the card without us having
+    # to delete + reindex (which would invalidate ancestry classes,
+    # backlink fields, and session nav anchors). The notification
+    # itself stays in ``ctx.messages`` — only its rendered output
+    # disappears at LOW.
     with log_timing("Link async notifications", t_start):
         _link_async_notifications(ctx, detail)
-
-    # At LOW, drop notifications the linker just flagged as duplicate:
-    # the spawn-fold already shows the answer in place, so the
-    # standalone card is pure redundancy at this terse level. Runs
-    # after ``_link_async_notifications`` because that's when
-    # ``result_is_duplicate`` gets set; a separate small pass keeps
-    # the broad ``_filter_template_by_detail`` (which runs earlier in
-    # the pipeline, before the link pass) clean of late-bound state.
-    if detail == DetailLevel.LOW:
-        with log_timing("Drop duplicate async notifications", t_start):
-            _drop_duplicate_notifications_at_low(ctx)
-            # Rebuild session_nav: the drop pass remapped
-            # ctx.session_first_message but the nav structure built at
-            # line 764 has the pre-drop indices baked into its
-            # ``message_index`` and ``parent_message_index`` fields.
-            # Without this rebuild, nav anchors for any session whose
-            # header sits past a dropped notification would point one
-            # (or more) message slot off after the LOW reindex.
-            session_nav = prepare_session_navigation(
-                sessions, session_order, ctx, session_hierarchy
-            )
 
     return root_messages, session_nav, ctx
 
@@ -2362,59 +2349,6 @@ def _link_async_notifications(
             continue
         if 0 <= idx < len(parent.children) and parent.children[idx] is last_msg:
             del parent.children[idx]
-
-
-def _drop_duplicate_notifications_at_low(ctx: RenderingContext) -> None:
-    """Remove ``TaskNotificationMessage`` entries flagged as duplicates.
-
-    Runs only at ``DetailLevel.LOW`` (callers gate the pass). At LOW
-    the spawn-fold survives — see ``_link_async_notifications``'s
-    ``spawn_target_kept`` branch — so the standalone notification
-    card duplicates the answer the reader already sees folded under
-    the spawning Task tool_result.
-
-    Indices on surviving messages are remapped via
-    ``_reindex_filtered_context`` so downstream passes that look up
-    by ``message_index`` (session navigation, pair identification)
-    still resolve correctly. ``_reindex_filtered_context`` also
-    *clears* every message's pair_first/pair_middle/pair_last fields
-    on the assumption the caller will re-run pair identification —
-    so we re-run ``_identify_message_pairs`` here to restore the
-    Task tool_use ↔ tool_result links that the Markdown renderer's
-    ``is_first_in_pair`` walk depends on (and that the HTML
-    renderer needs for the visual ``pair_first``/``pair_last`` CSS
-    classes that flush adjacent cards together). Tree children are
-    also pruned so the notification doesn't linger as a sub-message
-    of its parent.
-    """
-    survivors: list[TemplateMessage] = []
-    dropped_ids: set[int] = set()
-    for tm in ctx.messages:
-        if (
-            isinstance(tm.content, TaskNotificationMessage)
-            and tm.content.result_is_duplicate
-        ):
-            if tm.message_index is not None:
-                dropped_ids.add(id(tm))
-            continue
-        survivors.append(tm)
-
-    if not dropped_ids:
-        return
-
-    _reindex_filtered_context(ctx, survivors)
-    _identify_message_pairs(ctx.messages)
-
-    # Tree children also need pruning — the notification would
-    # otherwise still appear as a child of whatever parent the
-    # hierarchy assigned it (typically a system/hook entry).
-    def prune_children(msg: TemplateMessage) -> None:
-        msg.children = [c for c in msg.children if id(c) not in dropped_ids]
-        for child in msg.children:
-            prune_children(child)
-
-    for tm in ctx.messages:
-        prune_children(tm)
 
 
 def _async_agent_id_from_tool_result(content: ToolResultMessage) -> Optional[str]:

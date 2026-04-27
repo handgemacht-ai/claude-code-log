@@ -527,17 +527,40 @@ class TestAsyncAgentsDetailLevels:
             assert notif.result_is_duplicate is True
             assert notif.spawning_task_message_index is not None
 
-    def test_duplicate_notification_dropped_at_low(self) -> None:
-        """At LOW, ``_drop_duplicate_notifications_at_low`` removes
-        every ``TaskNotificationMessage`` flagged ``result_is_duplicate``.
-        The spawn-fold already shows the answer in place, so the
-        standalone card is pure redundancy at this terse level.
+    def test_duplicate_notification_ghosted_at_low(self) -> None:
+        """At LOW, the duplicate-flagged notification is "ghosted" —
+        it stays in ``ctx.messages`` (so `message_index`, ancestry
+        classes, backlink fields, and session nav anchors all remain
+        valid) but its format/title return ``""``, so the rendering
+        loop's "skip empty messages" elision drops the card from
+        the visible output.
+
+        This avoids the index-remap cascade that deleting the
+        message would have triggered (CodeRabbit review on PR #132).
         """
+        from claude_code_log.html.renderer import HtmlRenderer
+        from claude_code_log.markdown.renderer import MarkdownRenderer
+
         _roots, _nav, ctx = self._render_at(DetailLevel.LOW)
         notif = self._notification(ctx)
-        assert notif is None, (
-            "duplicate notification card should be dropped from ctx at LOW"
+        assert notif is not None, (
+            "notification should remain in ctx.messages even when ghosted"
         )
+        assert notif.result_is_duplicate is True
+
+        # Find the TemplateMessage wrapping the notification so we
+        # can drive the formatters at LOW directly.
+        tm_notif = next(
+            tm
+            for tm in ctx.messages
+            if isinstance(tm.content, TaskNotificationMessage)
+            and tm.content.task_id == ASYNC_AGENT_ID
+        )
+
+        for renderer in (HtmlRenderer(), MarkdownRenderer()):
+            renderer.detail = DetailLevel.LOW
+            assert renderer.format_TaskNotificationMessage(notif, tm_notif) == ""
+            assert renderer.title_TaskNotificationMessage(notif, tm_notif) == ""
 
     @pytest.mark.parametrize(
         "detail",

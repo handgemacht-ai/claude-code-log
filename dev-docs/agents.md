@@ -103,10 +103,19 @@ identification and tree building. For every Task tool_result whose
   text matches the notification's `result_text`, drops the duplicate
   from the sidechain tree. No-op at LOW (sidechain already gone).
 
-`_drop_duplicate_notifications_at_low` then removes the now
-duplicate-flagged notification cards entirely at LOW only — the
-spawn-fold already carries the answer in place; the standalone card
-is pure redundancy at this terse level.
+At `DetailLevel.LOW` the format-specific renderers honor the flag
+by **ghosting** the duplicate notification — `format_TaskNotificationMessage`
+and `title_TaskNotificationMessage` (in both `HtmlRenderer` and
+`MarkdownRenderer`) return `""` when `self.detail == LOW and
+content.result_is_duplicate`. The rendering loop's existing
+"skip empty messages" elision (HTML's
+`if title or html or msg.children:` and Markdown's
+`_render_message` returning `""` for no-title-no-content) drops the
+card from the visible output. The notification stays in
+`ctx.messages` with its original `message_index`, so ancestry classes
+(`d-N`), backlink fields (`spawning_task_message_index`,
+`SessionHeaderMessage.parent_message_index`), and session navigation
+anchors all stay valid — no index-remap cascade required.
 
 ### 2.4 Detail-level matrix
 
@@ -135,18 +144,20 @@ notification card retains its body as the surviving copy.
 - `factories/user_factory.py` — dispatch hook before teammate
   detection.
 - `renderer.py` — `_link_async_notifications`,
-  `_drop_duplicate_notifications_at_low`,
   `_async_agent_id_from_tool_result`, `_last_sidechain_assistant`.
 - `html/async_formatter.py` — notification card HTML +
   TaskOutput poll card HTML.
+- `html/renderer.py::HtmlRenderer.format_TaskNotificationMessage` /
+  `title_TaskNotificationMessage` — return `""` at LOW for
+  duplicate-flagged notifications (ghost mechanism).
 - `html/tool_formatters.py::format_task_output` — renders
   `async_final_answer` as a collapsible below the launch stub.
-- `markdown/renderer.py` — `format_TaskOutput`,
-  `format_TaskNotificationMessage`, `format_TaskOutputResult` and
-  their titles.
+- `markdown/renderer.py::MarkdownRenderer.format_TaskNotificationMessage` /
+  `title_TaskNotificationMessage` — same ghost-at-LOW gate.
+  Plus `format_TaskOutput`, `format_TaskOutputResult`, and titles.
 - `html/utils.py::CSS_CLASS_REGISTRY` —
-  `TaskNotificationMessage: ["user", "task_notification"]` so the
-  runtime "User" filter toggle keeps the card visible.
+  `TaskNotificationMessage: ["user", "task-notification"]` so the
+  runtime "User" filter toggle keeps the card visible at FULL/HIGH.
 
 ### 2.6 Test fixture
 
