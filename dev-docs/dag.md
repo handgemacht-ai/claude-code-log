@@ -1,5 +1,7 @@
 # DAG-Based Message Architecture
 
+> See [application_model.md](application_model.md) for the system overview.
+
 Replaces timestamp-based ordering with `parentUuid` → `uuid` graph traversal.
 
 Reference: [Messages as Commits: Claude Code's Git-Like DAG of Conversations](https://piebald.ai/blog/messages-as-commits-claude-codes-git-like-dag-of-conversations)
@@ -655,4 +657,4 @@ validate DAG construction against known transcripts.
 
 - [rendering-architecture.md](rendering-architecture.md) — Current pipeline
 - [messages.md](messages.md) — Message type reference
-- [rendering-next.md](rendering-next.md) — Future rendering improvements
+- [../work/rendering-next.md](../work/rendering-next.md) — Future rendering improvements

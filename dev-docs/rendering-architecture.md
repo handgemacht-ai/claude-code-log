@@ -1,5 +1,7 @@
 # Rendering Architecture
 
+> See [application_model.md](application_model.md) for the system overview.
+
 This document describes how Claude Code transcript data flows from raw JSONL entries to final output (HTML, Markdown). The architecture separates concerns into distinct layers:
 
 1. **Parsing Layer** - Raw JSONL to typed transcript entries
@@ -343,5 +345,5 @@ Note that `meta.uuid` is the original transcript entry's UUID. Since a single en
 
 - [messages.md](messages.md) - Complete message type reference
 - [css-classes.md](css-classes.md) - CSS class combinations and rules
-- [FOLD_STATE_DIAGRAM.md](FOLD_STATE_DIAGRAM.md) - Fold/unfold state machine
+- [message-hierarchy.md](message-hierarchy.md) - Fold/unfold state machine
 - [dag.md](dag.md) - DAG-based message architecture (replaces timestamp-based ordering)

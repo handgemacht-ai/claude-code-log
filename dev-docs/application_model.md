@@ -1,0 +1,339 @@
+# Application Model
+
+`claude-code-log` reads Claude Code transcript files (JSONL on disk) and
+produces readable HTML and Markdown views, with optional caching, a
+TUI for navigation, and per-project aggregate pages.
+
+This document is the entry point for `dev-docs/`: a high-level view of
+the parts, what each does, and where to read about them in detail. For
+end-user documentation see the project [`README.md`](../README.md);
+for contributor onboarding see [`CONTRIBUTING.md`](../CONTRIBUTING.md);
+for user-facing operations docs see [`docs/`](../docs/).
+
+---
+
+## 1. Subsystems at a glance
+
+| Subsystem | Owner module(s) | Deep-dive |
+|---|---|---|
+| CLI | [`cli.py`](../claude_code_log/cli.py) | inlined below (§ 2.1) |
+| TUI | [`tui.py`](../claude_code_log/tui.py) | inlined below (§ 2.2) |
+| Cache (SQLite) | [`cache.py`](../claude_code_log/cache.py) + [`migrations/`](../claude_code_log/migrations/) | inlined below (§ 2.3); user-facing in [`docs/restoring-archived-sessions.md`](../docs/restoring-archived-sessions.md) |
+| Migrations | [`migrations/`](../claude_code_log/migrations/) + `migrations/runner.py` | inlined below (§ 2.4) |
+| Parsing | [`parser.py`](../claude_code_log/parser.py), [`factories/`](../claude_code_log/factories/) | [rendering-architecture.md § 3](rendering-architecture.md) |
+| Message taxonomy | [`models.py`](../claude_code_log/models.py) | [messages.md](messages.md) |
+| DAG (sessions, forks, agents) | [`dag.py`](../claude_code_log/dag.py) | [dag.md](dag.md) |
+| Sync sub-agents (#79) | [`converter.py`](../claude_code_log/converter.py), `factories/agent_metadata_factory.py` | [agents.md § 1](agents.md) |
+| Async task agents (#90) | `converter.py`, `factories/task_notification_factory.py` | [agents.md § 2](agents.md) |
+| Teammates (#91) | `renderer.py`, `factories/teammate_factory.py`, `html/teammate_formatter.py` | [teammates.md](teammates.md) |
+| Rendering pipeline | [`renderer.py`](../claude_code_log/renderer.py), `html/`, `markdown/` | [rendering-architecture.md](rendering-architecture.md) |
+| Fold-bar / message hierarchy | `html/templates/components/`, JS in `transcript.html` | [message-hierarchy.md](message-hierarchy.md) |
+| CSS class taxonomy | `html/templates/components/*.css` | [css-classes.md](css-classes.md) |
+| Detail-level filter | renderer.py § Detail-level filtering, `models.DetailLevel` | inlined below (§ 2.5) |
+| Image export | [`image_export.py`](../claude_code_log/image_export.py) | inlined below (§ 2.6) |
+| Performance profiling | [`renderer_timings.py`](../claude_code_log/renderer_timings.py) | inlined below (§ 2.7) |
+| Adding a new tool renderer | [`factories/tool_factory.py`](../claude_code_log/factories/tool_factory.py), `html/tool_formatters.py` | [implementing-a-tool-renderer.md](implementing-a-tool-renderer.md) (how-to) |
+
+---
+
+## 2. Subsystems without their own deep-dive
+
+The subsystems above with "inlined below" pointers don't have a
+dedicated dev-doc — the paragraph here is the canonical reference.
+
+### 2.1 CLI
+
+[`cli.py`](../claude_code_log/cli.py) is the command-line entry point
+(`claude-code-log`) built on Click. The default invocation processes
+the entire `~/.claude/projects/` hierarchy; explicit paths target a
+single transcript or directory. Major flags:
+
+- `--tui` — launch the interactive TUI (§ 2.2).
+- `--detail {full,low,minimal,user-only}` — drop content from the
+  rendered output (§ 2.5).
+- `--from-date "yesterday"`, `--to-date "today"` — natural-language
+  date filtering via `dateparser`.
+- `--open-browser` — open the generated `index.html` after rendering.
+- `--no-cache` / `--update-cache` — bypass or force-refresh the
+  SQLite cache (§ 2.3).
+- `--format {html,markdown}` — switch output format (HTML is the
+  default; Markdown is mainly used for sharing transcripts inline).
+- `--compact` — Markdown-only; suppresses repeated headings.
+- `--page-size N` — split per-session HTML into N-message pages.
+
+CLI orchestration delegates to `converter.py` (which owns the
+high-level "load + render + write" flow) and never touches `renderer.py`
+directly. Output paths follow a stable convention so the cache and
+re-renders can find existing files: `combined_transcripts.html`,
+`session-{id}.html`, `index.html`, with `--detail` and `--compact`
+adding suffixes per `utils.variant_suffix`.
+
+### 2.2 TUI
+
+[`tui.py`](../claude_code_log/tui.py) is a Textual application that
+browses the projects index, drills into individual sessions, and
+exposes quick actions: render session to HTML, resume a session via
+`claude --resume`, archive a session (move to cache-only), and so on.
+
+Architecture is straightforward Textual: a few `Screen` subclasses,
+a `DataTable` for the session list, key bindings dispatched through
+Textual's `BINDINGS` mechanism. The TUI reads through `cache.py`
+exclusively (never re-parses JSONL itself) — opening a 50-project
+hierarchy takes milliseconds because cache hydration is incremental.
+
+The "archive" action is interesting: it moves a session's source JSONL
+out of `~/.claude/projects/` while keeping the cache row intact. The
+session then renders from cache only. See
+[`docs/restoring-archived-sessions.md`](../docs/restoring-archived-sessions.md)
+for the user-facing behaviour and recovery flow.
+
+### 2.3 Cache (SQLite)
+
+[`cache.py`](../claude_code_log/cache.py) maintains a SQLite database
+at `~/.claude/projects/claude-code-log-cache.db` (or
+`$CLAUDE_CODE_LOG_CACHE_PATH`). Stored data:
+
+- Per-session: id, summary, first/last timestamps, message count,
+  per-role token totals, `team_name` (added in migration 005).
+- Per-message: a denormalised view used by archived-session
+  restoration (the cache holds enough to re-render even after the
+  source JSONL is deleted).
+- Per-rendered-HTML: the HTML output itself, indexed by source file
+  mtime + detail-level + compact flag (migrations 002–004) — so
+  re-runs with unchanged inputs serve the cached HTML directly.
+
+Invalidation is mtime-based: when a JSONL's mtime is newer than its
+cache row, the session is reparsed. The schema-version row also
+invalidates the entire HTML cache when migrations bump the version,
+since rendered output may have changed even when source data hasn't.
+
+For the operations / recovery side (archived sessions, manual
+deletion, `cleanupPeriodDays`), see
+[`docs/restoring-archived-sessions.md`](../docs/restoring-archived-sessions.md).
+
+### 2.4 Migrations
+
+[`claude_code_log/migrations/`](../claude_code_log/migrations/) is a
+small migration system. Each migration is a `NNN_description.sql` file
+applied in numeric order by `migrations/runner.py`. The schema-version
+table tracks which migrations have run; `cache.py` invokes the runner
+on every connection open, so a fresh checkout running against an old
+cache DB transparently upgrades.
+
+Current migrations:
+
+- `001_initial_schema.sql` — sessions table + per-message metadata.
+- `002_html_cache.sql` — adds the rendered-HTML cache layer.
+- `003_html_pagination.sql` / `004_html_pagination_variant.sql` —
+  per-page HTML chunks for `--page-size`.
+- `005_session_team_name.sql` — adds `team_name` to sessions for the
+  teammates feature (PR #125).
+
+Recreating-tables migrations toggle `PRAGMA foreign_keys = OFF/ON`
+around the rebuild to avoid losing rows to cascade-deletes during the
+swap.
+
+### 2.5 Detail-level filter
+
+The `--detail` flag (and `models.DetailLevel`) lets users dial down
+how much of the transcript renders:
+
+- `full` (default) — everything.
+- `low` — drops most tool I/O, keeps the conversation plus a curated
+  set of "interaction signal" tools (WebSearch, WebFetch, Task, Agent —
+  the ones that show *what the agent did*, not *what it read*). See
+  `_LOW_KEEP_TOOLS` in [`renderer.py`](../claude_code_log/renderer.py).
+- `minimal` — drops all tool I/O.
+- `user-only` — drops everything except user messages.
+
+Filtering happens in two passes: a *pre-render* pass on `TranscriptEntry`
+that strips content items (e.g., tool_use blocks from assistant turns),
+and a *post-render* pass on `TemplateMessage` that drops whole content
+types created by factories (`BashInputMessage`, `BashOutputMessage`,
+`CommandOutputMessage` at low/minimal). The two-pass shape exists
+because some content is identifiable only after factory dispatch (e.g.,
+distinguishing `BashInputMessage` from the tool_use that produced it).
+
+Important interaction: `_filter_template_by_detail` runs **before**
+`_pair_skill_tool_uses` and other reorder passes, so paired-message
+indices need re-mapping (`_reindex_filtered_context`). The reindex
+pass also has to update cached parent-message references on
+`SessionHeaderMessage` (see PR #131 fix).
+
+### 2.6 Image export
+
+[`image_export.py`](../claude_code_log/image_export.py) is
+format-agnostic: HTML and Markdown both call into it. Three modes:
+
+- `inline` — base64-encode the image directly into the output.
+- `referenced` — write the image to disk next to the output, embed
+  a `src=` reference.
+- `dropped` — replace the image with a placeholder string.
+
+Default is `referenced` for HTML (small files, no inline payload
+bloat) and `inline` for Markdown (single self-contained file).
+
+### 2.7 Performance profiling
+
+[`renderer_timings.py`](../claude_code_log/renderer_timings.py)
+provides `log_timing(label, t_start)` context managers used throughout
+`renderer.py`. Set `CLAUDE_CODE_LOG_DEBUG_TIMING=1` to print per-phase
+times to stderr — useful for spotting which phase regressed when a
+large transcript suddenly takes seconds longer than before.
+
+---
+
+## 3. Data lifecycle
+
+```
+                 ┌──────────────────┐
+                 │  JSONL file(s)   │
+                 │ (~/.claude/...)  │
+                 └────────┬─────────┘
+                          │
+                  parser.py + factories/
+                          │
+                          ▼
+              ┌───────────────────────┐
+              │ list[TranscriptEntry] │  (typed Pydantic models)
+              └───────────┬───────────┘
+                          │
+                  factories/ dispatch
+                          │
+                          ▼
+            ┌─────────────────────────┐
+            │ list[TemplateMessage]   │  (each carrying a typed
+            │  with MessageContent    │   MessageContent variant)
+            └─────────────┬───────────┘
+                          │
+              renderer.py (generate_template_messages):
+                build DAG → pair → reorder → relocate
+                subagent blocks → build hierarchy →
+                cleanup sidechain dups → populate caches
+                          │
+                          ▼
+               ┌──────────────────────┐
+               │ Tree of TemplateMsg  │
+               │  + RenderingContext  │  (caches: teammate_colors,
+               │  + nav data          │   task_subjects, etc.)
+               └──────────┬───────────┘
+                          │
+            ┌─────────────┴──────────────┐
+            ▼                            ▼
+     html/renderer.py            markdown/renderer.py
+            │                            │
+            ▼                            ▼
+       index.html +                 *.md
+       session-*.html               (single file)
+            │                            │
+            └────┬───────────┬───────────┘
+                 │           │
+                 ▼           ▼
+           cache.py     image_export.py
+           (SQLite)     (assets next to output)
+```
+
+Cache reads/writes happen *in parallel* with the main pipeline:
+`cache.py` is consulted before parsing (cache hit → skip parse), after
+rendering (write the rendered HTML), and during TUI navigation (the
+TUI never re-parses).
+
+---
+
+## 4. Cross-cutting glossary
+
+Terms that appear across multiple subsystems — defined once here.
+
+- **TranscriptEntry**: typed Pydantic model for a single line in the
+  source JSONL. Variants: `User`, `Assistant`, `Summary`, `System`,
+  `Passthrough`, `QueueOperation`. See
+  [`parser.py`](../claude_code_log/parser.py) and
+  [`models.py`](../claude_code_log/models.py).
+
+- **MessageContent**: render-time content variant produced by the
+  factories from `TranscriptEntry`. Many flavours
+  (`UserTextMessage`, `ToolUseMessage`, `TeammateMessage`, …). One
+  `TranscriptEntry` may yield multiple `MessageContent`s (a single
+  assistant turn with N tool_uses produces N+1 messages). See
+  [messages.md](messages.md) for the full taxonomy.
+
+- **TemplateMessage**: the render-time wrapper around a
+  `MessageContent`. Carries `message_index`, parent/child links,
+  pair_first/pair_middle/pair_last, ancestry, and the renderer-format
+  CSS classes. Defined in [`renderer.py`](../claude_code_log/renderer.py).
+
+- **RenderingContext**: mutable cache attached to one render pass.
+  Holds the message registry plus nested per-session caches
+  (`teammate_colors`, `task_subjects`, `task_id_for_tool_use`,
+  `session_first_message`, etc.). Caches are session-scoped because
+  combined-transcripts mode merges multiple sessions and per-session
+  identifiers (teammate_id, task_id) aren't globally unique.
+
+- **session_id**: the JSONL's `sessionId` field. Often a UUID string.
+  In some renderer paths a *synthetic* form is used:
+  - `{trunk}#agent-{agentId}` for sub-agent transcripts (so they
+    form a separate DAG-line attached to their spawning trunk).
+  - `{trunk}@{first_uuid_prefix}` for branch sessions (rewinds /
+    parallel-tool_use forks). See [dag.md](dag.md).
+
+- **render_session_id**: the session id that should be used when
+  walking `ctx.messages` to find content for rendering, accounting
+  for synthetic rewrites.
+
+- **sidechain**: a sub-agent's transcript entries are flagged
+  `isSidechain: true`. The DAG layer integrates them into the parent
+  session's tree under the spawning Task/Agent tool_use anchor. See
+  [agents.md](agents.md), [dag.md](dag.md).
+
+- **agent_id**: identifier copied from a Task/Agent tool_result
+  (either `toolUseResult.agentId` or parsed from the Markdown
+  metadata tail). Used to stitch sub-agent JSONL files into the
+  trunk DAG. See [agents.md](agents.md).
+
+- **fork point** / **branch**: when a session has multiple children
+  with the same parent, the parent is the fork point and each child
+  initiates a branch. Real forks come from `/exit` rewinds; spurious
+  forks (parallel tool_uses, structural-only siblings) are collapsed
+  by `_walk_session_with_forks`. See [dag.md](dag.md).
+
+- **pair_first / pair_middle / pair_last**: a pair of messages
+  rendered as one logical unit (tool_use + tool_result, Slash + UserSlash,
+  thinking + assistant). `pair_middle` exists for triples — currently
+  the slash-command `(UserSlash → Slash → CommandOutput)` shape.
+
+- **detail level**: see § 2.5.
+
+- **detail-aware tools**: the curated set of tools whose I/O survives
+  `--detail low` because they convey *what the agent did*, not *what
+  it read* (`WebSearch`, `WebFetch`, `Task`, `Agent`).
+
+- **passthrough**: a `PassthroughTranscriptEntry` is a non-conversation
+  entry (hook callbacks, progress updates, last-prompt markers). The
+  DAG layer keeps them in the structure but the renderer typically
+  hides them.
+
+---
+
+## 5. Where to start reading
+
+Common entry questions and their best first stop:
+
+- "How does a JSONL line become an HTML row?"
+  → [rendering-architecture.md](rendering-architecture.md).
+- "Why are forks rendered weirdly / what is a branch session?"
+  → [dag.md](dag.md).
+- "What message types exist and what do they look like?"
+  → [messages.md](messages.md) plus the samples in `messages/`.
+- "I want to add support for a new Claude Code tool."
+  → [implementing-a-tool-renderer.md](implementing-a-tool-renderer.md).
+- "How does folding / collapsible content work?"
+  → [message-hierarchy.md](message-hierarchy.md).
+- "What CSS classes does a message div get?"
+  → [css-classes.md](css-classes.md).
+- "How are sub-agent transcripts (sync, async, teammates) integrated?"
+  → [agents.md](agents.md), then [teammates.md](teammates.md) for the
+  teammates-specific machinery.
+- "I want to extend the cache / change the schema."
+  → § 2.3, § 2.4 here, then read the migration files in order.
+- "What's planned but not implemented?"
+  → [`work/`](../work/) — each `.md` is an in-flight or proposed plan.

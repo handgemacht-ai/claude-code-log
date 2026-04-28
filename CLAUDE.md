@@ -95,7 +95,17 @@ The interactive timeline is implemented in JavaScript within `claude_code_log/te
 
 ## Architecture
 
-For detailed architecture documentation, see:
+Start with [dev-docs/application_model.md](dev-docs/application_model.md)
+— the entry point covering subsystems, data lifecycle, and a glossary,
+with pointers to the deep-dive docs:
+
 - [dev-docs/rendering-architecture.md](dev-docs/rendering-architecture.md) - Data flow and rendering pipeline
 - [dev-docs/messages.md](dev-docs/messages.md) - Message type reference
 - [dev-docs/css-classes.md](dev-docs/css-classes.md) - CSS class combinations
+- [dev-docs/dag.md](dev-docs/dag.md) - DAG-based session/fork architecture
+- [dev-docs/agents.md](dev-docs/agents.md) - Sync/async/teammate agent integration
+- [dev-docs/teammates.md](dev-docs/teammates.md) - Teammates feature deep-dive
+- [dev-docs/message-hierarchy.md](dev-docs/message-hierarchy.md) - Fold/unfold state machine
+- [dev-docs/implementing-a-tool-renderer.md](dev-docs/implementing-a-tool-renderer.md) - How-to: add a new tool
+
+User-facing docs live in [docs/](docs/); plans and TODOs live in [work/](work/).

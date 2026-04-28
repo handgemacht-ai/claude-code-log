@@ -1,5 +1,7 @@
 # Implementing a Tool Renderer
 
+> See [application_model.md](application_model.md) for the system overview.
+
 This guide walks through adding rendering support for a new Claude Code tool, using WebSearch as an example.
 
 ## Overview
