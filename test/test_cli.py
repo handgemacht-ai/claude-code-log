@@ -12,6 +12,7 @@ from claude_code_log.cli import (
     _clear_caches,
     _clear_output_files,
     _discover_projects,
+    _install_stack_dump_signal,
     get_default_projects_dir,
     main,
 )
@@ -574,3 +575,113 @@ class TestCLIErrorHandling:
 
         # Should not crash
         assert result.exit_code in (0, 1)
+
+
+class TestStackDumpSignal:
+    """SIGUSR1 must dump a Python traceback to stderr without exiting."""
+
+    @pytest.mark.skipif(
+        not hasattr(__import__("signal"), "SIGUSR1"),
+        reason="SIGUSR1 only available on POSIX systems",
+    )
+    def test_sigusr1_dumps_stack_to_stderr(self) -> None:
+        """Send SIGUSR1 to a child process and assert traceback hits stderr."""
+        import os
+        import signal
+        import subprocess
+        import sys
+        import threading
+        import time
+
+        # Child runs claude_code_log.cli helper, then loops forever so we
+        # can signal it. The faulthandler signal handler writes the dump
+        # to stderr synchronously, but signal *delivery* is asynchronous
+        # — after os.kill returns, the child may not have run the handler
+        # yet. Polling stderr until the dump appears (rather than a fixed
+        # sleep) avoids both the SIGUSR1/SIGTERM race and CI-runner
+        # timing flake.
+        script = (
+            "from claude_code_log.cli import _install_stack_dump_signal\n"
+            "import time, sys\n"
+            "_install_stack_dump_signal()\n"
+            "sys.stdout.write('ready\\n'); sys.stdout.flush()\n"
+            "while True:\n"
+            "    time.sleep(0.05)\n"
+        )
+        # Binary mode for stderr: text-mode ``read(n)`` blocks trying to
+        # *fill* its buffer, so a small (~150 byte) faulthandler dump
+        # stays trapped in Python's buffer until EOF. Binary
+        # ``BufferedReader.read1(n)`` returns whatever is available from
+        # one underlying syscall, which is what we want here.
+        proc = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        # Drain stderr in a background thread so the child can never
+        # block on a full pipe and so we can poll for the marker without
+        # racing against proc.communicate() at teardown.
+        captured: list[bytes] = []
+        captured_lock = threading.Lock()
+
+        def drain_stderr() -> None:
+            # typeshed types proc.stderr as IO[bytes]; the actual object
+            # in binary mode is a BufferedReader which exposes read1.
+            from io import BufferedReader
+            from typing import cast
+
+            stderr = cast(BufferedReader, proc.stderr)
+            while True:
+                chunk = stderr.read1(1024)
+                if not chunk:
+                    return
+                with captured_lock:
+                    captured.append(chunk)
+
+        drainer = threading.Thread(target=drain_stderr, daemon=True)
+        drainer.start()
+
+        found = False
+        try:
+            assert proc.stdout is not None
+            # Wait for the child to install the handler.
+            line = proc.stdout.readline()
+            assert line.strip() == b"ready"
+
+            os.kill(proc.pid, signal.SIGUSR1)
+
+            # Poll for traceback markers up to a generous deadline. The
+            # handler usually fires within a few ms; we allow much more
+            # so a loaded CI machine never trips the test.
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                with captured_lock:
+                    joined = b"".join(captured)
+                if b"Thread" in joined or b"File " in joined:
+                    found = True
+                    break
+                time.sleep(0.05)
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            # Drain thread exits when the child closes stderr on exit.
+            drainer.join(timeout=5)
+
+        with captured_lock:
+            stderr_text = b"".join(captured).decode(errors="replace")
+        # faulthandler.dump_traceback writes "Current thread 0x...:"
+        # followed by Python "File ..." frames. Either token proves a
+        # Python stack dump happened.
+        assert found, (
+            f"Expected traceback in stderr within 5s of SIGUSR1, got: {stderr_text!r}"
+        )
+
+    def test_install_is_idempotent(self) -> None:
+        """Calling the installer twice must not raise."""
+        _install_stack_dump_signal()
+        _install_stack_dump_signal()

@@ -186,6 +186,17 @@ CLAUDE_CODE_LOG_DEBUG_TIMING=1 claude-code-log path/to/file.jsonl
 
 This outputs detailed timing for each rendering phase. The timing module is in `claude_code_log/renderer_timings.py`.
 
+## Diagnosing Hangs
+
+If `claude-code-log` appears stuck (100% CPU, no output), send `SIGUSR1` to print the live Python stack to stderr without killing the process:
+
+```bash
+# In another terminal
+kill -USR1 $(pgrep -f claude-code-log | head -1)
+```
+
+The handler is installed in `cli.py` via `faulthandler.register(SIGUSR1)`. POSIX-only; no-op on Windows. Unlike `py-spy`, it needs no root and no extra install.
+
 ## Architecture
 
 For detailed architecture documentation, see [dev-docs/rendering-architecture.md](dev-docs/rendering-architecture.md).

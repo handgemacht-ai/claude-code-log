@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """CLI interface for claude-code-log."""
 
+import faulthandler
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 from typing import Optional
@@ -25,6 +27,25 @@ from .cache import (
     get_cache_db_path,
     get_library_version,
 )
+
+
+def _install_stack_dump_signal() -> None:
+    """Make ``kill -USR1 <pid>`` print the live Python stack to stderr.
+
+    Useful for diagnosing apparent hangs without killing the process —
+    py-spy needs root on macOS, but this only needs the signal. SIGUSR1
+    is POSIX-only; on Windows we silently skip.
+    """
+    sigusr1 = getattr(signal, "SIGUSR1", None)
+    if sigusr1 is None:
+        return
+    try:
+        faulthandler.register(sigusr1, all_threads=True, chain=False)
+    except (RuntimeError, ValueError, OSError):
+        # E.g. signal already taken, no-tty environments, or platforms
+        # where faulthandler.register raises. Diagnostics shouldn't
+        # break the CLI — silently skip.
+        pass
 
 
 def get_default_projects_dir() -> Path:
@@ -568,6 +589,10 @@ def main(
 
     INPUT_PATH: Path to a Claude transcript JSONL file, directory containing JSONL files, or project path to convert. If not provided, defaults to ~/.claude/projects/ and --all-projects is used.
     """
+    # Install signal-based stack dumper before any heavy work, so a hang
+    # can be diagnosed with `kill -USR1 <pid>` without root or restart.
+    _install_stack_dump_signal()
+
     # Configure logging to show warnings and above
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 

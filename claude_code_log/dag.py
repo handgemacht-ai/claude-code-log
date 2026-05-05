@@ -157,43 +157,45 @@ def build_dag(
     for node in nodes.values():
         node.children_uuids = []
 
-    # Build parent→children links
+    # Step 1: clear dangling parent_uuids (orphans become roots).
+    # Done before children population so orphan nodes never appear in a
+    # missing parent's nonexistent children list.
     for node in nodes.values():
-        if node.parent_uuid is not None:
-            parent = nodes.get(node.parent_uuid)
-            if parent is not None:
-                parent.children_uuids.append(node.uuid)
-            else:
-                if node.parent_uuid not in _sidechain_uuids:
-                    # Progress passthroughs are async hooks: their parent
-                    # tool_use is routinely lost to ``/compact`` (the
-                    # spawning turn is in the discarded pre-compaction
-                    # context). Log at debug — the multi-root warning
-                    # already classifies them as expected roots; per-node
-                    # warnings here would just multiply the noise on long
-                    # compacted sessions. See ``_is_expected_root_type``.
-                    if (
-                        isinstance(node.entry, PassthroughTranscriptEntry)
-                        and node.entry.type in _EXPECTED_ROOT_PASSTHROUGH_TYPES
-                    ):
-                        logger.debug(
-                            "Orphan progress hook %s: parentUuid %s not "
-                            "found in loaded data (promoting to root)",
-                            node.uuid,
-                            node.parent_uuid,
-                        )
-                    else:
-                        logger.warning(
-                            "Orphan node %s: parentUuid %s not found in "
-                            "loaded data (promoting to root)",
-                            node.uuid,
-                            node.parent_uuid,
-                        )
-                # Clear the dangling parent so this node becomes a root
-                # and can participate in DAG walks
-                node.parent_uuid = None
+        if node.parent_uuid is not None and node.parent_uuid not in nodes:
+            if node.parent_uuid not in _sidechain_uuids:
+                # Progress passthroughs are async hooks: their parent
+                # tool_use is routinely lost to ``/compact`` (the
+                # spawning turn is in the discarded pre-compaction
+                # context). Log at debug — the multi-root warning
+                # already classifies them as expected roots; per-node
+                # warnings here would just multiply the noise on long
+                # compacted sessions. See ``_is_expected_root_type``.
+                if (
+                    isinstance(node.entry, PassthroughTranscriptEntry)
+                    and node.entry.type in _EXPECTED_ROOT_PASSTHROUGH_TYPES
+                ):
+                    logger.debug(
+                        "Orphan progress hook %s: parentUuid %s not "
+                        "found in loaded data (promoting to root)",
+                        node.uuid,
+                        node.parent_uuid,
+                    )
+                else:
+                    logger.warning(
+                        "Orphan node %s: parentUuid %s not found in "
+                        "loaded data (promoting to root)",
+                        node.uuid,
+                        node.parent_uuid,
+                    )
+            # Clear the dangling parent so this node becomes a root
+            # and can participate in DAG walks
+            node.parent_uuid = None
 
-    # Validate: no cycles (walk parent chain for each node)
+    # Step 2: break any parent_uuid cycles BEFORE populating
+    # children_uuids. If we built children first, cyclic edges would
+    # become cyclic child links — and downstream walks via
+    # children_uuids would loop forever. Each cycle is broken by nulling
+    # the parent_uuid of the first revisited node, promoting it to root.
     for node in nodes.values():
         visited: set[str] = set()
         current: Optional[str] = node.uuid
@@ -207,6 +209,21 @@ def build_dag(
             if parent is None:
                 break
             current = parent.parent_uuid
+
+    # Step 3: build parent→children links from the now-acyclic parent
+    # pointers. Defensive guards: skip self-edges and skip duplicates so
+    # a malformed input still produces a tree.
+    for node in nodes.values():
+        if node.parent_uuid is None:
+            continue
+        if node.parent_uuid == node.uuid:
+            # Self-loop survived cycle-breaking only if a node's own
+            # uuid was the only entry on its chain — defensive belt.
+            node.parent_uuid = None
+            continue
+        parent = nodes[node.parent_uuid]
+        if node.uuid not in parent.children_uuids:
+            parent.children_uuids.append(node.uuid)
 
 
 # =============================================================================
@@ -491,6 +508,11 @@ def _walk_session_with_forks(
     queue: list[tuple[str, str, Optional[str]]] = [(root.uuid, session_id, None)]
     result: list[SessionDAGLine] = []
     skipped: set[str] = set()  # Compaction replay UUIDs
+    # Defence-in-depth: even though build_dag breaks parent cycles before
+    # populating children_uuids, a future bug or malformed input could
+    # reintroduce a cyclic edge. Track visited uuids across the whole
+    # walk so we can never enter an unbounded loop here.
+    walk_visited: set[str] = set()
 
     while queue:
         start_uuid, line_id, parent_line_id = queue.pop(0)
@@ -499,6 +521,16 @@ def _walk_session_with_forks(
         is_branch = line_id != session_id
 
         while current is not None:
+            if current.uuid in walk_visited:
+                logger.warning(
+                    "Cycle in children_uuids detected at %s while walking "
+                    "session %s (line %s); truncating chain",
+                    current.uuid,
+                    session_id,
+                    line_id,
+                )
+                break
+            walk_visited.add(current.uuid)
             chain.append(current.uuid)
             # Update session_id for branch nodes (needed for build_session_tree)
             if is_branch:
