@@ -2,10 +2,12 @@
 
 import json
 from pathlib import Path
+from typing import Callable, Optional, TypeVar
 
 import pytest
 
 from claude_code_log.dag import (
+    MessageNode,
     SessionTree,
     build_dag,
     build_dag_from_entries,
@@ -18,6 +20,8 @@ from claude_code_log.models import (
     SummaryTranscriptEntry,
     TranscriptEntry,
 )
+
+T = TypeVar("T")
 
 TEST_DATA = Path(__file__).parent / "test_data"
 REAL_PROJECTS = TEST_DATA / "real_projects"
@@ -630,6 +634,138 @@ class TestExtractSessionDAGLines:
         sessions = extract_session_dag_lines(nodes)
         assert sessions["s1"].uuids == ["a", "b", "c", "d", "e"]
         assert sessions["s2"].uuids == ["f", "g", "h"]
+
+
+# =============================================================================
+# Test: Cyclic parentUuid chains (regression for memory-exhaustion hang)
+# =============================================================================
+
+
+class TestCyclicParentChain:
+    """Regression: cyclic parentUuid must not produce cyclic children_uuids.
+
+    Real-world JSONL files occasionally contain cyclic parentUuid chains
+    (e.g. A claims B as parent, B claims A as parent, or A claims itself).
+    Earlier versions of build_dag detected the cycle in the parent chain
+    and nulled one node's parent_uuid, but children_uuids had already been
+    populated from the cyclic edges. Downstream walks (e.g.
+    _walk_session_with_forks) followed children_uuids without a visited
+    guard and looped forever, accumulating gigabytes of state.
+    """
+
+    @staticmethod
+    def _make_entry(
+        uuid: str, parent_uuid: str | None, sid: str = "s1", i: int = 0
+    ) -> TranscriptEntry:
+        data: dict[str, object] = {
+            "type": "user",
+            "timestamp": f"2025-07-01T10:00:{i:02d}.000Z",
+            "parentUuid": parent_uuid,
+            "isSidechain": False,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": sid,
+            "version": "1.0.0",
+            "uuid": uuid,
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": f"msg {uuid}"}],
+            },
+        }
+        return create_transcript_entry(data)
+
+    @staticmethod
+    def _assert_no_child_cycle(nodes: dict[str, MessageNode]) -> None:
+        """Walk children_uuids from every node; fail if any node revisits itself."""
+        for start in nodes.values():
+            visited: set[str] = set()
+            stack: list[str] = [start.uuid]
+            while stack:
+                u = stack.pop()
+                if u in visited:
+                    pytest.fail(
+                        f"Cycle in children_uuids reached {u} starting from {start.uuid}"
+                    )
+                visited.add(u)
+                stack.extend(nodes[u].children_uuids)
+
+    @staticmethod
+    def _run_with_timeout(fn: Callable[[], T], seconds: float = 5.0) -> Optional[T]:
+        """Run fn() in a thread; fail the test if it does not terminate in time.
+
+        Without a timeout, a regression of this bug would hang the entire
+        suite (and exhaust memory). The thread is left to die with the
+        process — acceptable for a regression guard.
+        """
+        import threading
+
+        result: list[T] = []
+        error: list[BaseException] = []
+
+        def runner() -> None:
+            try:
+                result.append(fn())
+            except BaseException as e:  # noqa: BLE001
+                error.append(e)
+
+        t = threading.Thread(target=runner, daemon=True)
+        t.start()
+        t.join(timeout=seconds)
+        if t.is_alive():
+            pytest.fail(
+                f"call did not terminate within {seconds}s — likely cyclic walk"
+            )
+        if error:
+            raise error[0]
+        return result[0] if result else None
+
+    def test_self_cycle_does_not_create_self_child(self) -> None:
+        """A node whose parentUuid points to itself must not list itself as a child."""
+        a = self._make_entry("a", parent_uuid=None, i=0)
+        b = self._make_entry("b", parent_uuid="b", i=1)
+        nodes = build_message_index([a, b])
+        build_dag(nodes)
+        assert "b" not in nodes["b"].children_uuids
+        self._assert_no_child_cycle(nodes)
+
+    def test_two_cycle_produces_acyclic_children(self) -> None:
+        """A two-node cycle (A→B→A) must yield acyclic children_uuids."""
+        a = self._make_entry("a", parent_uuid="b", i=0)
+        b = self._make_entry("b", parent_uuid="a", i=1)
+        nodes = build_message_index([a, b])
+        build_dag(nodes)
+        self._assert_no_child_cycle(nodes)
+
+    def test_three_cycle_produces_acyclic_children(self) -> None:
+        """A three-node cycle (A→B→C→A) must yield acyclic children_uuids."""
+        a = self._make_entry("a", parent_uuid="c", i=0)
+        b = self._make_entry("b", parent_uuid="a", i=1)
+        c = self._make_entry("c", parent_uuid="b", i=2)
+        nodes = build_message_index([a, b, c])
+        build_dag(nodes)
+        self._assert_no_child_cycle(nodes)
+
+    def test_extract_session_dag_lines_terminates_on_self_cycle(self) -> None:
+        """End-to-end: cyclic input must not hang extract_session_dag_lines."""
+        a = self._make_entry("a", parent_uuid=None, i=0)
+        b = self._make_entry("b", parent_uuid="b", i=1)
+        nodes = build_message_index([a, b])
+        build_dag(nodes)
+        sessions = self._run_with_timeout(lambda: extract_session_dag_lines(nodes))
+        assert sessions is not None
+        assert "s1" in sessions
+        assert set(sessions["s1"].uuids) == {"a", "b"}
+
+    def test_extract_session_dag_lines_terminates_on_two_cycle(self) -> None:
+        """End-to-end: two-node cycle must not hang extract_session_dag_lines."""
+        a = self._make_entry("a", parent_uuid="b", i=0)
+        b = self._make_entry("b", parent_uuid="a", i=1)
+        nodes = build_message_index([a, b])
+        build_dag(nodes)
+        sessions = self._run_with_timeout(lambda: extract_session_dag_lines(nodes))
+        assert sessions is not None
+        assert "s1" in sessions
+        assert set(sessions["s1"].uuids) == {"a", "b"}
 
 
 # =============================================================================

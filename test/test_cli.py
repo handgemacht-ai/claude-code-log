@@ -12,6 +12,7 @@ from claude_code_log.cli import (
     _clear_caches,
     _clear_output_files,
     _discover_projects,
+    _install_stack_dump_signal,
     get_default_projects_dir,
     main,
 )
@@ -574,3 +575,63 @@ class TestCLIErrorHandling:
 
         # Should not crash
         assert result.exit_code in (0, 1)
+
+
+class TestStackDumpSignal:
+    """SIGUSR1 must dump a Python traceback to stderr without exiting."""
+
+    @pytest.mark.skipif(
+        not hasattr(__import__("signal"), "SIGUSR1"),
+        reason="SIGUSR1 only available on POSIX systems",
+    )
+    def test_sigusr1_dumps_stack_to_stderr(self) -> None:
+        """Send SIGUSR1 to a child process and assert traceback hits stderr."""
+        import os
+        import subprocess
+        import sys
+        import time
+
+        # Child runs claude_code_log.cli helper, then loops forever so we
+        # can signal it. Stack dump goes to stderr; we read after killing.
+        script = (
+            "from claude_code_log.cli import _install_stack_dump_signal\n"
+            "import time, sys\n"
+            "_install_stack_dump_signal()\n"
+            "sys.stdout.write('ready\\n'); sys.stdout.flush()\n"
+            "while True:\n"
+            "    time.sleep(0.05)\n"
+        )
+        proc = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            assert proc.stdout is not None
+            # Wait for the child to install the handler.
+            line = proc.stdout.readline()
+            assert line.strip() == "ready"
+
+            os.kill(proc.pid, __import__("signal").SIGUSR1)
+            # Give faulthandler a moment to flush its dump.
+            time.sleep(0.2)
+        finally:
+            proc.terminate()
+            try:
+                _, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                _, stderr = proc.communicate()
+
+        # faulthandler.dump_traceback writes lines like
+        # "Current thread 0x...:" followed by Python frames. Look for
+        # something that proves a Python stack dump happened.
+        assert "Thread" in stderr or "File " in stderr, (
+            f"Expected traceback in stderr, got: {stderr!r}"
+        )
+
+    def test_install_is_idempotent(self) -> None:
+        """Calling the installer twice must not raise."""
+        _install_stack_dump_signal()
+        _install_stack_dump_signal()
