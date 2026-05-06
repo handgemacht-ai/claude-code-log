@@ -956,6 +956,62 @@ class TestSystemMessageLocalCommandCleanup:
         assert msg.text == "Conversation compacted (115k tokens)"
 
 
+class TestFormatSystemContent:
+    """``format_system_content`` adapts to single-line vs multi-line text.
+
+    Multi-line system content (ASCII visualisations from ``/context``,
+    ``/cost``, etc.) renders inside ``<pre class='system-content'>`` so
+    grid alignment is preserved (#137). Single-line content keeps the
+    existing inline rendering — wrapping a one-liner in a block-level
+    ``<pre>`` is needless vertical noise.
+    """
+
+    @staticmethod
+    def _make_system_message(text: str, level: str = "info"):
+        from claude_code_log.models import MessageMeta, SystemMessage
+
+        return SystemMessage(
+            level=level,
+            text=text,
+            meta=MessageMeta(
+                session_id="s", timestamp="2026-04-28T10:00:00Z", uuid="u"
+            ),
+        )
+
+    def test_single_line_renders_inline(self):
+        from claude_code_log.html.system_formatters import format_system_content
+
+        out = format_system_content(self._make_system_message("/status"))
+        # Inline shape: icon followed by space then text — no block wrapper.
+        assert "<pre" not in out
+        assert out == "<strong>ℹ️</strong> /status"
+
+    def test_multiline_renders_in_pre_block(self):
+        """Real-world: ``/context`` output is multi-line ANSI grid."""
+        from claude_code_log.html.system_formatters import format_system_content
+
+        # Use plain newline content (no ANSI) to keep the assertion stable.
+        text = "Context Usage\nline 1\nline 2\nline 3"
+        out = format_system_content(self._make_system_message(text))
+        assert "<pre class='system-content'>" in out
+        assert "</pre>" in out
+        # Lines preserved verbatim inside the <pre>.
+        assert "line 1" in out
+        assert "line 2" in out
+        assert "line 3" in out
+        # The level icon precedes the <pre> block (visible header).
+        assert out.startswith("<strong>ℹ️</strong>")
+
+    def test_multiline_warning_uses_warning_icon(self):
+        from claude_code_log.html.system_formatters import format_system_content
+
+        out = format_system_content(
+            self._make_system_message("warn: line 1\nwarn: line 2", level="warning")
+        )
+        assert "<pre class='system-content'>" in out
+        assert out.startswith("<strong>⚠️</strong>")
+
+
 class TestGetWarmupSessionIds:
     """Test bulk warmup session ID detection."""
 

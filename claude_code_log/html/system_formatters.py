@@ -21,6 +21,14 @@ from ..models import (
 def format_system_content(content: SystemMessage) -> str:
     """Format a system message with level-specific icon.
 
+    Multi-line content (ASCII visualisations from ``/context``,
+    ``/cost``, etc., or any system entry whose cleaned text spans more
+    than one line) renders inside a ``<pre>`` block so whitespace and
+    grid alignment are preserved. Single-line system messages
+    (``/status`` dialog hints, ``/init`` cleaned-name forms, …) keep
+    the existing inline rendering — adding a block-level ``<pre>`` to a
+    one-liner would cost vertical space without benefit.
+
     Args:
         content: SystemMessage with level and text
 
@@ -29,6 +37,11 @@ def format_system_content(content: SystemMessage) -> str:
     """
     level_icon = {"warning": "⚠️", "error": "❌", "info": "ℹ️"}.get(content.level, "ℹ️")
     html_content = convert_ansi_to_html(content.text)
+    if "\n" in content.text:
+        return (
+            f"<strong>{level_icon}</strong>"
+            f"<pre class='system-content'>{html_content}</pre>"
+        )
     return f"<strong>{level_icon}</strong> {html_content}"
 
 

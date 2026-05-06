@@ -1680,10 +1680,25 @@ def _try_pair_by_index(
         if key in indices.tool_result:
             _mark_pair(current, indices.tool_result[key])
 
-    # System child message finding its parent (by parent_uuid)
+    # System child message finding its parent (by parent_uuid).
+    # The uuid index only contains system messages, so this is a
+    # system→system pairing path. Skip when the candidate parent is
+    # itself already a child in some other pair (``pair_first`` set):
+    # chained system entries (each one's ``parentUuid`` = the previous
+    # system entry's ``uuid`` — common with ``/context`` / ``/cost``
+    # multi-step output) would otherwise call ``_mark_pair`` on every
+    # link, leaving each interior node with both ``pair_first`` and
+    # ``pair_last`` set, which ``is_middle_in_pair`` reads as a
+    # triple-middle. The result was a fake N-tuple rendering as
+    # ``pair_first → pair_middle × (N-2) → pair_last`` instead of
+    # N/2 discrete pairs (#137). Skipping pre-paired parents breaks
+    # chains into pairs of two from the leading edge — the natural
+    # shape for command/result rhythms like ``/color`` invoked +
+    # confirmation, ``/context`` invoked + grid.
     if current.type == "system" and current.parent_uuid:
-        if current.parent_uuid in indices.uuid:
-            _mark_pair(indices.uuid[current.parent_uuid], current)
+        parent = indices.uuid.get(current.parent_uuid)
+        if parent is not None and parent.pair_first is None:
+            _mark_pair(parent, current)
 
 
 def _identify_message_pairs(messages: list[TemplateMessage]) -> None:

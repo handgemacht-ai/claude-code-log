@@ -762,6 +762,25 @@
       overflow-x: auto;
   }
   
+  /* Multi-line system content — ASCII visualisations from /context, /cost
+   * etc. preserve their grid alignment via white-space: pre (no wrapping)
+   * and horizontal-scroll on narrow viewports. The pre-wrap + break-word
+   * combo used for command-output is wrong here: even a single overlong
+   * line in a grid breaks the visualisation when it wraps mid-row. */
+  .system-content {
+      background-color: #1e1e1e08;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #00000011;
+      margin-top: 8px;
+      font-family: var(--font-monospace);
+      font-size: 0.9em;
+      line-height: 1.4;
+      white-space: pre;
+      color: var(--text-primary);
+      overflow-x: auto;
+  }
+  
   .command-output-content td {
       border-left: 1px dotted #bbb;
       padding: 0 1em;
@@ -6441,6 +6460,25 @@
       line-height: 1.4;
       white-space: pre-wrap;
       word-wrap: break-word;
+      color: var(--text-primary);
+      overflow-x: auto;
+  }
+  
+  /* Multi-line system content — ASCII visualisations from /context, /cost
+   * etc. preserve their grid alignment via white-space: pre (no wrapping)
+   * and horizontal-scroll on narrow viewports. The pre-wrap + break-word
+   * combo used for command-output is wrong here: even a single overlong
+   * line in a grid breaks the visualisation when it wraps mid-row. */
+  .system-content {
+      background-color: #1e1e1e08;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #00000011;
+      margin-top: 8px;
+      font-family: var(--font-monospace);
+      font-size: 0.9em;
+      line-height: 1.4;
+      white-space: pre;
       color: var(--text-primary);
       overflow-x: auto;
   }
@@ -14175,6 +14213,25 @@
       overflow-x: auto;
   }
   
+  /* Multi-line system content — ASCII visualisations from /context, /cost
+   * etc. preserve their grid alignment via white-space: pre (no wrapping)
+   * and horizontal-scroll on narrow viewports. The pre-wrap + break-word
+   * combo used for command-output is wrong here: even a single overlong
+   * line in a grid breaks the visualisation when it wraps mid-row. */
+  .system-content {
+      background-color: #1e1e1e08;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #00000011;
+      margin-top: 8px;
+      font-family: var(--font-monospace);
+      font-size: 0.9em;
+      line-height: 1.4;
+      white-space: pre;
+      color: var(--text-primary);
+      overflow-x: auto;
+  }
+  
   .command-output-content td {
       border-left: 1px dotted #bbb;
       padding: 0 1em;
@@ -19959,6 +20016,25 @@
       line-height: 1.4;
       white-space: pre-wrap;
       word-wrap: break-word;
+      color: var(--text-primary);
+      overflow-x: auto;
+  }
+  
+  /* Multi-line system content — ASCII visualisations from /context, /cost
+   * etc. preserve their grid alignment via white-space: pre (no wrapping)
+   * and horizontal-scroll on narrow viewports. The pre-wrap + break-word
+   * combo used for command-output is wrong here: even a single overlong
+   * line in a grid breaks the visualisation when it wraps mid-row. */
+  .system-content {
+      background-color: #1e1e1e08;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #00000011;
+      margin-top: 8px;
+      font-family: var(--font-monospace);
+      font-size: 0.9em;
+      line-height: 1.4;
+      white-space: pre;
       color: var(--text-primary);
       overflow-x: auto;
   }
@@ -25982,6 +26058,25 @@
       overflow-x: auto;
   }
   
+  /* Multi-line system content — ASCII visualisations from /context, /cost
+   * etc. preserve their grid alignment via white-space: pre (no wrapping)
+   * and horizontal-scroll on narrow viewports. The pre-wrap + break-word
+   * combo used for command-output is wrong here: even a single overlong
+   * line in a grid breaks the visualisation when it wraps mid-row. */
+  .system-content {
+      background-color: #1e1e1e08;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #00000011;
+      margin-top: 8px;
+      font-family: var(--font-monospace);
+      font-size: 0.9em;
+      line-height: 1.4;
+      white-space: pre;
+      color: var(--text-primary);
+      overflow-x: auto;
+  }
+  
   .command-output-content td {
       border-left: 1px dotted #bbb;
       padding: 0 1em;
@@ -31865,6 +31960,25 @@
       line-height: 1.4;
       white-space: pre-wrap;
       word-wrap: break-word;
+      color: var(--text-primary);
+      overflow-x: auto;
+  }
+  
+  /* Multi-line system content — ASCII visualisations from /context, /cost
+   * etc. preserve their grid alignment via white-space: pre (no wrapping)
+   * and horizontal-scroll on narrow viewports. The pre-wrap + break-word
+   * combo used for command-output is wrong here: even a single overlong
+   * line in a grid breaks the visualisation when it wraps mid-row. */
+  .system-content {
+      background-color: #1e1e1e08;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #00000011;
+      margin-top: 8px;
+      font-family: var(--font-monospace);
+      font-size: 0.9em;
+      line-height: 1.4;
+      white-space: pre;
       color: var(--text-primary);
       overflow-x: auto;
   }
@@ -37811,6 +37925,25 @@
       line-height: 1.4;
       white-space: pre-wrap;
       word-wrap: break-word;
+      color: var(--text-primary);
+      overflow-x: auto;
+  }
+  
+  /* Multi-line system content — ASCII visualisations from /context, /cost
+   * etc. preserve their grid alignment via white-space: pre (no wrapping)
+   * and horizontal-scroll on narrow viewports. The pre-wrap + break-word
+   * combo used for command-output is wrong here: even a single overlong
+   * line in a grid breaks the visualisation when it wraps mid-row. */
+  .system-content {
+      background-color: #1e1e1e08;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #00000011;
+      margin-top: 8px;
+      font-family: var(--font-monospace);
+      font-size: 0.9em;
+      line-height: 1.4;
+      white-space: pre;
       color: var(--text-primary);
       overflow-x: auto;
   }

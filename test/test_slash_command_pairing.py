@@ -357,3 +357,130 @@ class TestMarkdownRender:
         assert f"``{args_payload}``" in md, (
             f"Expected widened fence to wrap args verbatim, got: {md!r}"
         )
+
+
+class TestSystemMessageChainPairing:
+    """Regression: chained system messages must not produce N-tuples (#137).
+
+    A chain of N system messages (each one's ``parentUuid`` equal to
+    the previous system message's ``uuid`` — common with ``/context`` /
+    ``/cost`` multi-step output) used to render as
+    ``pair_first → pair_middle × (N-2) → pair_last``: a fake N-tuple.
+    Mechanism: the parent-child indexed pairing called ``_mark_pair``
+    on every link in the chain, leaving every interior node with both
+    ``pair_first`` and ``pair_last`` set, which ``is_middle_in_pair``
+    reads as a triple-middle. The fix skips ``_mark_pair`` when the
+    candidate parent is itself already paired as a child, breaking
+    chains into pairs of two from the leading edge.
+    """
+
+    @staticmethod
+    def _build_chain(tmp_path, n: int):
+        """Write a JSONL with one user root + ``n`` chained system entries.
+
+        Each system entry's ``parentUuid`` equals the previous one's
+        ``uuid``; the first system entry parents the user root. This is
+        the exact shape produced by real-world ``/context``-style output
+        when the harness writes multi-step status into chained system
+        entries.
+        """
+        import json
+        from claude_code_log.converter import load_transcript
+
+        ts = "2026-05-06T10:00:00Z"
+        lines: list[dict[str, object]] = [
+            {
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "2.0.0",
+                "type": "user",
+                "message": {"role": "user", "content": "hello"},
+                "uuid": "root",
+                "timestamp": ts,
+            },
+        ]
+        prev_uuid = "root"
+        for i in range(n):
+            uuid = f"sys{i}"
+            lines.append(
+                {
+                    "parentUuid": prev_uuid,
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp",
+                    "sessionId": "s1",
+                    "version": "2.0.0",
+                    "type": "system",
+                    "level": "info",
+                    "subtype": "local_command",
+                    "content": f"system entry {i}",
+                    "uuid": uuid,
+                    "timestamp": ts,
+                }
+            )
+            prev_uuid = uuid
+        fn = tmp_path / "chain.jsonl"
+        fn.write_text("\n".join(json.dumps(line) for line in lines))
+        return load_transcript(fn)
+
+    @staticmethod
+    def _system_pair_classes(html: str) -> list[str]:
+        """Extract pair-role keywords from each system message div."""
+        import re
+
+        roles: list[str] = []
+        for m in re.finditer(r"<div class='message system [^']*'", html):
+            cls = m.group(0)
+            for role in ("pair_first", "pair_middle", "pair_last"):
+                if role in cls:
+                    roles.append(role)
+                    break
+            else:
+                roles.append("none")
+        return roles
+
+    def test_chain_of_four_pairs_into_two_doubles(self, tmp_path) -> None:
+        """4-system chain → ``[pair_first, pair_last, pair_first, pair_last]``.
+
+        Pre-fix shape was ``[pair_first, pair_middle, pair_middle, pair_last]``.
+        """
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        msgs = self._build_chain(tmp_path, n=4)
+        html = HtmlRenderer().generate(msgs, "Test")
+        assert self._system_pair_classes(html) == [
+            "pair_first",
+            "pair_last",
+            "pair_first",
+            "pair_last",
+        ]
+
+    def test_chain_of_three_pairs_first_two_only(self, tmp_path) -> None:
+        """3-system chain → ``[pair_first, pair_last, none]``: the third
+        system stands alone because its parent is already paired."""
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        msgs = self._build_chain(tmp_path, n=3)
+        html = HtmlRenderer().generate(msgs, "Test")
+        assert self._system_pair_classes(html) == [
+            "pair_first",
+            "pair_last",
+            "none",
+        ]
+
+    def test_no_middle_role_in_chain(self, tmp_path) -> None:
+        """Even longer chains never produce a ``pair_middle`` role —
+        the only legitimate source of ``pair_middle`` is the
+        ``UserSlash → Slash → CommandOutput`` triple, which is a
+        different code path."""
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        msgs = self._build_chain(tmp_path, n=8)
+        html = HtmlRenderer().generate(msgs, "Test")
+        roles = self._system_pair_classes(html)
+        assert "pair_middle" not in roles, (
+            f"Chains must not produce pair_middle, got: {roles}"
+        )
