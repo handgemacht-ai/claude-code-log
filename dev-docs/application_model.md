@@ -1,8 +1,9 @@
 # Application Model
 
 `claude-code-log` reads Claude Code transcript files (JSONL on disk) and
-produces readable HTML and Markdown views, with optional caching, a
-TUI for navigation, and per-project aggregate pages.
+produces readable HTML, Markdown, and structured JSON views, with
+optional caching, a TUI for navigation, and per-project aggregate
+pages.
 
 This document is the entry point for `dev-docs/`: a high-level view of
 the parts, what each does, and where to read about them in detail. For
@@ -26,12 +27,14 @@ for user-facing operations docs see [`docs/`](../docs/).
 | Sync sub-agents (#79) | [`converter.py`](../claude_code_log/converter.py), `factories/agent_metadata_factory.py` | [agents.md § 1](agents.md) |
 | Async task agents (#90) | `converter.py`, `factories/task_notification_factory.py` | [agents.md § 2](agents.md) |
 | Teammates (#91) | `renderer.py`, `factories/teammate_factory.py`, `html/teammate_formatter.py` | [teammates.md](teammates.md) |
-| Rendering pipeline | [`renderer.py`](../claude_code_log/renderer.py), `html/`, `markdown/` | [rendering-architecture.md](rendering-architecture.md) |
+| Rendering pipeline | [`renderer.py`](../claude_code_log/renderer.py), `html/`, `markdown/`, `json/` | [rendering-architecture.md](rendering-architecture.md) |
 | Fold-bar / message hierarchy | `html/templates/components/`, JS in `transcript.html` | [message-hierarchy.md](message-hierarchy.md) |
 | CSS class taxonomy | `html/templates/components/*.css` | [css-classes.md](css-classes.md) |
-| Detail-level filter | renderer.py § Detail-level filtering, `models.DetailLevel` | inlined below (§ 2.5) |
-| Image export | [`image_export.py`](../claude_code_log/image_export.py) | inlined below (§ 2.6) |
-| Performance profiling | [`renderer_timings.py`](../claude_code_log/renderer_timings.py) | inlined below (§ 2.7) |
+| JSON export (#36) | [`json/`](../claude_code_log/json/) | inlined below (§ 2.5) |
+| Detail-level filter | renderer.py § Detail-level filtering, `models.DetailLevel` | inlined below (§ 2.6) |
+| Image export | [`image_export.py`](../claude_code_log/image_export.py) | inlined below (§ 2.7) |
+| Performance profiling | [`renderer_timings.py`](../claude_code_log/renderer_timings.py) | inlined below (§ 2.8) |
+| Diagnosing hangs (SIGUSR1) | [`cli.py`](../claude_code_log/cli.py) `_install_stack_dump_signal` | inlined below (§ 2.9) |
 | Adding a new tool renderer | [`factories/tool_factory.py`](../claude_code_log/factories/tool_factory.py), `html/tool_formatters.py` | [implementing-a-tool-renderer.md](implementing-a-tool-renderer.md) (how-to) |
 
 A note on cross-cutting concerns: some behaviour spans several rows
@@ -58,15 +61,16 @@ the entire `~/.claude/projects/` hierarchy; explicit paths target a
 single transcript or directory. Major flags:
 
 - `--tui` — launch the interactive TUI (§ 2.2).
-- `--detail {full,low,minimal,user-only}` — drop content from the
-  rendered output (§ 2.5).
+- `--detail {full,high,low,minimal,user-only}` — drop content from
+  the rendered output (§ 2.6).
 - `--from-date "yesterday"`, `--to-date "today"` — natural-language
   date filtering via `dateparser`.
 - `--open-browser` — open the generated `index.html` after rendering.
 - `--no-cache` / `--update-cache` — bypass or force-refresh the
   SQLite cache (§ 2.3).
-- `--format {html,markdown}` — switch output format (HTML is the
-  default; Markdown is mainly used for sharing transcripts inline).
+- `--format {html,md,markdown,json}` — switch output format (HTML is
+  the default; Markdown is mainly used for sharing transcripts inline;
+  JSON exports the processed tree for downstream tooling — see § 2.5).
 - `--compact` — Markdown-only; suppresses repeated headings.
 - `--page-size N` — split per-session HTML into N-message pages.
 
@@ -142,18 +146,67 @@ Recreating-tables migrations toggle `PRAGMA foreign_keys = OFF/ON`
 around the rebuild to avoid losing rows to cascade-deletes during the
 swap.
 
-### 2.5 Detail-level filter
+### 2.5 JSON export
+
+[`claude_code_log/json/`](../claude_code_log/json/) is a thin renderer
+that mirrors `HtmlRenderer` / `MarkdownRenderer`: same
+`generate(...)` / `generate_session(...)` / `generate_projects_index(...)`
+surface, same `--detail` and `--compact` honoring. Output is a
+structured JSON document — top-level `version` / `title` / `detail` /
+`compact` / `sessions` / `messages` keys; each node carries
+`index` / `type` / `title` / `timestamp` / `session_id` / `content`,
+plus optional `parent_uuid` / `agent_id` / `pair_first` etc. when
+present. Children are nested directly under their parent's
+`children` array — it's the same tree the HTML/Markdown renderers
+walk, serialized verbatim.
+
+The renderer runs entries through `generate_template_messages` (the
+same format-neutral pipeline § 3 describes), so JSON output inherits
+**all** post-factory polishing for free: slash-command normalisation
+(bare `<command-name>X</command-name>` → `/X`), command-args
+hardening, teammate session-color enrichment, etc. There is no
+JSON-specific cleanup pass — the rule of thumb is: *if it shows up
+right in HTML/Markdown, it shows up right in JSON*. This is the
+operative example of the **factory-layer normalisation seam**: raw
+`TranscriptEntry` data is polished once at factory time into the
+typed `MessageContent` models that all three renderers share, so
+display polish lives in one place rather than being re-implemented
+per output format.
+
+A few JSON-specific touches:
+
+- `_json_default` unwraps Pydantic models embedded in `MessageContent`
+  dataclasses (tool inputs/outputs are Pydantic; `dataclasses.asdict`
+  doesn't recurse into them, so without this hook they'd stringify
+  via `__repr__` and lose structure). Also handles `Enum` and `Path`.
+- `is_outdated(file_path)` reads the `version` field from existing
+  JSON output and compares against the current library version —
+  same invalidation contract as the HTML cache so re-runs skip
+  unchanged outputs.
+- `combined_transcripts.json` per project; `session-{id}.json` for
+  individual sessions. The naming respects `variant_suffix` for
+  detail/compact variants.
+
+The projects-index JSON (`all-projects-summary.json`) is a parallel
+top-level file — same shape as HTML's `index.html` but consumable by
+external tools (dashboards, query scripts, `jq` pipelines).
+
+### 2.6 Detail-level filter
 
 The `--detail` flag (and `models.DetailLevel`) lets users dial down
 how much of the transcript renders:
 
 - `full` (default) — everything.
+- `high` — detailed but cleaned: drops system/hook noise while
+  keeping the full conversation and tool I/O.
 - `low` — drops most tool I/O, keeps the conversation plus a curated
   set of "interaction signal" tools (WebSearch, WebFetch, Task, Agent —
   the ones that show *what the agent did*, not *what it read*). See
   `_LOW_KEEP_TOOLS` in [`renderer.py`](../claude_code_log/renderer.py).
 - `minimal` — drops all tool I/O.
-- `user-only` — drops everything except user messages.
+- `user-only` — drops everything except user messages and steering
+  (designed for feeding to downstream agents, e.g. building a
+  requirements doc).
 
 Filtering happens in two passes: a *pre-render* pass on `TranscriptEntry`
 that strips content items (e.g., tool_use blocks from assistant turns),
@@ -169,7 +222,7 @@ indices need re-mapping (`_reindex_filtered_context`). The reindex
 pass also has to update cached parent-message references on
 `SessionHeaderMessage` (see PR #131 fix).
 
-### 2.6 Image export
+### 2.7 Image export
 
 [`image_export.py`](../claude_code_log/image_export.py) is
 format-agnostic: HTML and Markdown both call into it. Three modes:
@@ -182,13 +235,33 @@ format-agnostic: HTML and Markdown both call into it. Three modes:
 Default is `referenced` for HTML (small files, no inline payload
 bloat) and `inline` for Markdown (single self-contained file).
 
-### 2.7 Performance profiling
+### 2.8 Performance profiling
 
 [`renderer_timings.py`](../claude_code_log/renderer_timings.py)
 provides `log_timing(label, t_start)` context managers used throughout
 `renderer.py`. Set `CLAUDE_CODE_LOG_DEBUG_TIMING=1` to print per-phase
 times to stderr — useful for spotting which phase regressed when a
 large transcript suddenly takes seconds longer than before.
+
+### 2.9 Diagnosing hangs (SIGUSR1 stack dump)
+
+When `claude-code-log` appears stuck (100% CPU, no output), a
+single `SIGUSR1` to the running process dumps the live Python
+stack of every thread to stderr without killing it:
+
+```bash
+# In another terminal
+kill -USR1 $(pgrep -f claude-code-log | head -1)
+```
+
+The handler is wired in `cli.py::_install_stack_dump_signal()` via
+`faulthandler.register(SIGUSR1, all_threads=True, chain=False)` and
+installed before any heavy work in the entry point. POSIX-only —
+Windows lacks `SIGUSR1`, the install is a silent no-op there. Unlike
+`py-spy`, this needs no root and no extra install, since the runtime
+is already wired to dump itself on demand. Added by PR #135 to make
+the DAG cyclic-children class of bug diagnosable in the field; useful
+for any future hang.
 
 ---
 
@@ -227,19 +300,22 @@ large transcript suddenly takes seconds longer than before.
                │  + nav data          │   task_subjects, etc.)
                └──────────┬───────────┘
                           │
-            ┌─────────────┴──────────────┐
-            ▼                            ▼
-     html/renderer.py            markdown/renderer.py
-            │                            │
-            ▼                            ▼
-       index.html +                 *.md
-       session-*.html               (single file)
-            │                            │
-            └────┬───────────┬───────────┘
-                 │           │
-                 ▼           ▼
-           cache.py     image_export.py
-           (SQLite)     (assets next to output)
+      ┌────────────┬─────────────┴─────────────┬────────────┐
+      ▼            ▼                           ▼            ▼
+html/renderer.py   markdown/renderer.py    json/renderer.py
+      │                  │                      │
+      ▼                  ▼                      ▼
+ index.html +        *.md                   combined_transcripts.json
+ session-*.html      (single file)          session-*.json
+                                            all-projects-summary.json
+      │                  │                      │
+      └──────────────────┼──────────────────────┘
+                         │
+              ┌──────────┴────────────┐
+              ▼                       ▼
+          cache.py              image_export.py
+          (SQLite)              (HTML / Markdown only —
+                                 JSON serialises paths)
 ```
 
 Cache reads/writes happen *in parallel* with the main pipeline:
@@ -323,7 +399,7 @@ Terms that appear across multiple subsystems — defined once here.
   thinking + assistant). `pair_middle` exists for triples — currently
   the slash-command `(UserSlash → Slash → CommandOutput)` shape.
 
-- **detail level**: see § 2.5.
+- **detail level**: see § 2.6.
 
 - **detail-aware tools**: the curated set of tools whose I/O survives
   `--detail low` because they convey *what the agent did*, not *what
@@ -357,5 +433,9 @@ Common entry questions and their best first stop:
   teammates-specific machinery.
 - "I want to extend the cache / change the schema."
   → § 2.3, § 2.4 here, then read the migration files in order.
+- "How do I export to JSON for downstream tooling?"
+  → § 2.5 here (and `--format json` from § 2.1).
+- "claude-code-log is hung — how do I see what it's doing?"
+  → § 2.9 (`SIGUSR1` stack dump).
 - "What's planned but not implemented?"
   → [`work/`](../work/) — each `.md` is an in-flight or proposed plan.
