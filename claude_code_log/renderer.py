@@ -36,6 +36,7 @@ from .models import (
     UsageInfo,
     # Structured content types
     AssistantTextMessage,
+    AwaySummaryMessage,
     BashInputMessage,
     BashOutputMessage,
     CommandOutputMessage,
@@ -1119,7 +1120,13 @@ def _fork_point_preview(fork_msg: "TemplateMessage", ctx: RenderingContext) -> s
     # Walk up past system hooks to find a meaningful message
     for _ in range(3):  # limit walk depth
         if not isinstance(
-            msg.content, (SystemMessage, HookSummaryMessage, SessionHeaderMessage)
+            msg.content,
+            (
+                SystemMessage,
+                HookSummaryMessage,
+                AwaySummaryMessage,
+                SessionHeaderMessage,
+            ),
         ):
             break
         # Find parent by looking at parent_uuid
@@ -2727,6 +2734,7 @@ _HIGH_EXCLUDE_CLASSES: tuple[type[MessageContent], ...] = (
     UserMemoryMessage,
     SystemMessage,
     HookSummaryMessage,
+    AwaySummaryMessage,
     UnknownMessage,
 )
 
@@ -3723,6 +3731,11 @@ class Renderer:
         self, _content: HookSummaryMessage, _: TemplateMessage
     ) -> str:
         return "System Hook"
+
+    def title_AwaySummaryMessage(
+        self, _content: AwaySummaryMessage, _: TemplateMessage
+    ) -> str:
+        return "Recap"
 
     def title_SlashCommandMessage(
         self, content: SlashCommandMessage, _message: TemplateMessage

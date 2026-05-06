@@ -531,7 +531,7 @@
   .user:not(.compacted),
   .bash-input,
   .bash-output,
-  .system:not(.system-info):not(.system-warning):not(.system-error) {
+  .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
       margin-left: 33%;
       margin-right: 0;
   }
@@ -558,8 +558,12 @@
   }
   
   /* System warnings/info at tool level (e.g., hook notifications) */
+  /* Away-summary recaps share the left-aligned tool-level position because
+     they're assistant-generated narrative (Claude summarising its own work),
+     not user-side input. */
   .system-warning,
-  .system-info {
+  .system-info,
+  .system-away-summary {
       margin-left: 2em;
       margin-right: 6em;
   }
@@ -692,6 +696,16 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  /* Away-summary (recap) styling — assistant-authored narrative recap of
+     recent activity. Uses the assistant accent (dimmed) on the border so
+     it reads as Claude-generated content, but with the same compact
+     info-tier sizing as other secondary system entries. */
+  .system-away-summary {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-light);
       font-size: 90%;
   }
   
@@ -1378,7 +1392,7 @@
       .user:not(.compacted),
       .bash-input,
       .bash-output,
-      .system:not(.system-info):not(.system-warning):not(.system-error) {
+      .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
           margin-left: 10%;
       }
       .system-error {
@@ -1394,7 +1408,8 @@
           margin-right: 6%;
       }
       .system-warning,
-      .system-info {
+      .system-info,
+      .system-away-summary {
           margin-left: 2%;
           margin-right: 6%;
       }
@@ -6214,7 +6229,7 @@
   .user:not(.compacted),
   .bash-input,
   .bash-output,
-  .system:not(.system-info):not(.system-warning):not(.system-error) {
+  .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
       margin-left: 33%;
       margin-right: 0;
   }
@@ -6241,8 +6256,12 @@
   }
   
   /* System warnings/info at tool level (e.g., hook notifications) */
+  /* Away-summary recaps share the left-aligned tool-level position because
+     they're assistant-generated narrative (Claude summarising its own work),
+     not user-side input. */
   .system-warning,
-  .system-info {
+  .system-info,
+  .system-away-summary {
       margin-left: 2em;
       margin-right: 6em;
   }
@@ -6375,6 +6394,16 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  /* Away-summary (recap) styling — assistant-authored narrative recap of
+     recent activity. Uses the assistant accent (dimmed) on the border so
+     it reads as Claude-generated content, but with the same compact
+     info-tier sizing as other secondary system entries. */
+  .system-away-summary {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-light);
       font-size: 90%;
   }
   
@@ -7061,7 +7090,7 @@
       .user:not(.compacted),
       .bash-input,
       .bash-output,
-      .system:not(.system-info):not(.system-warning):not(.system-error) {
+      .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
           margin-left: 10%;
       }
       .system-error {
@@ -7077,7 +7106,8 @@
           margin-right: 6%;
       }
       .system-warning,
-      .system-info {
+      .system-info,
+      .system-away-summary {
           margin-left: 2%;
           margin-right: 6%;
       }
@@ -13944,7 +13974,7 @@
   .user:not(.compacted),
   .bash-input,
   .bash-output,
-  .system:not(.system-info):not(.system-warning):not(.system-error) {
+  .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
       margin-left: 33%;
       margin-right: 0;
   }
@@ -13971,8 +14001,12 @@
   }
   
   /* System warnings/info at tool level (e.g., hook notifications) */
+  /* Away-summary recaps share the left-aligned tool-level position because
+     they're assistant-generated narrative (Claude summarising its own work),
+     not user-side input. */
   .system-warning,
-  .system-info {
+  .system-info,
+  .system-away-summary {
       margin-left: 2em;
       margin-right: 6em;
   }
@@ -14105,6 +14139,16 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  /* Away-summary (recap) styling — assistant-authored narrative recap of
+     recent activity. Uses the assistant accent (dimmed) on the border so
+     it reads as Claude-generated content, but with the same compact
+     info-tier sizing as other secondary system entries. */
+  .system-away-summary {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-light);
       font-size: 90%;
   }
   
@@ -14791,7 +14835,7 @@
       .user:not(.compacted),
       .bash-input,
       .bash-output,
-      .system:not(.system-info):not(.system-warning):not(.system-error) {
+      .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
           margin-left: 10%;
       }
       .system-error {
@@ -14807,7 +14851,8 @@
           margin-right: 6%;
       }
       .system-warning,
-      .system-info {
+      .system-info,
+      .system-away-summary {
           margin-left: 2%;
           margin-right: 6%;
       }
@@ -19732,7 +19777,7 @@
   .user:not(.compacted),
   .bash-input,
   .bash-output,
-  .system:not(.system-info):not(.system-warning):not(.system-error) {
+  .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
       margin-left: 33%;
       margin-right: 0;
   }
@@ -19759,8 +19804,12 @@
   }
   
   /* System warnings/info at tool level (e.g., hook notifications) */
+  /* Away-summary recaps share the left-aligned tool-level position because
+     they're assistant-generated narrative (Claude summarising its own work),
+     not user-side input. */
   .system-warning,
-  .system-info {
+  .system-info,
+  .system-away-summary {
       margin-left: 2em;
       margin-right: 6em;
   }
@@ -19893,6 +19942,16 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  /* Away-summary (recap) styling — assistant-authored narrative recap of
+     recent activity. Uses the assistant accent (dimmed) on the border so
+     it reads as Claude-generated content, but with the same compact
+     info-tier sizing as other secondary system entries. */
+  .system-away-summary {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-light);
       font-size: 90%;
   }
   
@@ -20579,7 +20638,7 @@
       .user:not(.compacted),
       .bash-input,
       .bash-output,
-      .system:not(.system-info):not(.system-warning):not(.system-error) {
+      .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
           margin-left: 10%;
       }
       .system-error {
@@ -20595,7 +20654,8 @@
           margin-right: 6%;
       }
       .system-warning,
-      .system-info {
+      .system-info,
+      .system-away-summary {
           margin-left: 2%;
           margin-right: 6%;
       }
@@ -25751,7 +25811,7 @@
   .user:not(.compacted),
   .bash-input,
   .bash-output,
-  .system:not(.system-info):not(.system-warning):not(.system-error) {
+  .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
       margin-left: 33%;
       margin-right: 0;
   }
@@ -25778,8 +25838,12 @@
   }
   
   /* System warnings/info at tool level (e.g., hook notifications) */
+  /* Away-summary recaps share the left-aligned tool-level position because
+     they're assistant-generated narrative (Claude summarising its own work),
+     not user-side input. */
   .system-warning,
-  .system-info {
+  .system-info,
+  .system-away-summary {
       margin-left: 2em;
       margin-right: 6em;
   }
@@ -25912,6 +25976,16 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  /* Away-summary (recap) styling — assistant-authored narrative recap of
+     recent activity. Uses the assistant accent (dimmed) on the border so
+     it reads as Claude-generated content, but with the same compact
+     info-tier sizing as other secondary system entries. */
+  .system-away-summary {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-light);
       font-size: 90%;
   }
   
@@ -26598,7 +26672,7 @@
       .user:not(.compacted),
       .bash-input,
       .bash-output,
-      .system:not(.system-info):not(.system-warning):not(.system-error) {
+      .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
           margin-left: 10%;
       }
       .system-error {
@@ -26614,7 +26688,8 @@
           margin-right: 6%;
       }
       .system-warning,
-      .system-info {
+      .system-info,
+      .system-away-summary {
           margin-left: 2%;
           margin-right: 6%;
       }
@@ -31638,7 +31713,7 @@
   .user:not(.compacted),
   .bash-input,
   .bash-output,
-  .system:not(.system-info):not(.system-warning):not(.system-error) {
+  .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
       margin-left: 33%;
       margin-right: 0;
   }
@@ -31665,8 +31740,12 @@
   }
   
   /* System warnings/info at tool level (e.g., hook notifications) */
+  /* Away-summary recaps share the left-aligned tool-level position because
+     they're assistant-generated narrative (Claude summarising its own work),
+     not user-side input. */
   .system-warning,
-  .system-info {
+  .system-info,
+  .system-away-summary {
       margin-left: 2em;
       margin-right: 6em;
   }
@@ -31799,6 +31878,16 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  /* Away-summary (recap) styling — assistant-authored narrative recap of
+     recent activity. Uses the assistant accent (dimmed) on the border so
+     it reads as Claude-generated content, but with the same compact
+     info-tier sizing as other secondary system entries. */
+  .system-away-summary {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-light);
       font-size: 90%;
   }
   
@@ -32485,7 +32574,7 @@
       .user:not(.compacted),
       .bash-input,
       .bash-output,
-      .system:not(.system-info):not(.system-warning):not(.system-error) {
+      .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
           margin-left: 10%;
       }
       .system-error {
@@ -32501,7 +32590,8 @@
           margin-right: 6%;
       }
       .system-warning,
-      .system-info {
+      .system-info,
+      .system-away-summary {
           margin-left: 2%;
           margin-right: 6%;
       }
@@ -37584,7 +37674,7 @@
   .user:not(.compacted),
   .bash-input,
   .bash-output,
-  .system:not(.system-info):not(.system-warning):not(.system-error) {
+  .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
       margin-left: 33%;
       margin-right: 0;
   }
@@ -37611,8 +37701,12 @@
   }
   
   /* System warnings/info at tool level (e.g., hook notifications) */
+  /* Away-summary recaps share the left-aligned tool-level position because
+     they're assistant-generated narrative (Claude summarising its own work),
+     not user-side input. */
   .system-warning,
-  .system-info {
+  .system-info,
+  .system-away-summary {
       margin-left: 2em;
       margin-right: 6em;
   }
@@ -37745,6 +37839,16 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
+      font-size: 90%;
+  }
+  
+  /* Away-summary (recap) styling — assistant-authored narrative recap of
+     recent activity. Uses the assistant accent (dimmed) on the border so
+     it reads as Claude-generated content, but with the same compact
+     info-tier sizing as other secondary system entries. */
+  .system-away-summary {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-light);
       font-size: 90%;
   }
   
@@ -38431,7 +38535,7 @@
       .user:not(.compacted),
       .bash-input,
       .bash-output,
-      .system:not(.system-info):not(.system-warning):not(.system-error) {
+      .system:not(.system-info):not(.system-warning):not(.system-error):not(.system-away-summary) {
           margin-left: 10%;
       }
       .system-error {
@@ -38447,7 +38551,8 @@
           margin-right: 6%;
       }
       .system-warning,
-      .system-info {
+      .system-info,
+      .system-away-summary {
           margin-left: 2%;
           margin-right: 6%;
       }

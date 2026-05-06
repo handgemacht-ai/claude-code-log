@@ -24,6 +24,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from .renderer_code import highlight_code_with_pygments, truncate_highlighted_preview
 from ..models import (
     AssistantTextMessage,
+    AwaySummaryMessage,
     BashInputMessage,
     BashOutputMessage,
     CommandOutputMessage,
@@ -59,6 +60,7 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     # System message types
     SystemMessage: ["system"],  # level added dynamically
     HookSummaryMessage: ["system", "system-hook"],
+    AwaySummaryMessage: ["system", "system-away-summary"],
     # User message types
     UserTextMessage: ["user"],
     UserSteeringMessage: ["user", "steering"],
