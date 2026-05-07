@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Convert Claude transcript JSONL files to HTML."""
 
+import contextlib
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 import traceback
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, cast
+from typing import Any, Dict, Iterator, List, Optional, TYPE_CHECKING, cast
 
 import dateparser
 
@@ -53,6 +55,28 @@ from .renderer import get_renderer, is_html_outdated
 # so we notice new kinds worth supporting (see the else branch in
 # load_transcript). `progress` is not here because it has uuid+sessionId
 # and participates in the DAG as a PassthroughTranscriptEntry.
+@contextlib.contextmanager
+def _dag_warnings_suppressed(silent: bool) -> Iterator[None]:
+    """Temporarily raise the DAG module's log level under ``silent=True``.
+
+    The DAG layer routes its cycle / multi-root / orphan diagnostics
+    through ``logging`` (so users running with ``--debug`` still see
+    them), but cache rebuilds and silent CLI flows shouldn't surface
+    that noise. Bumping the logger level for the duration of the call
+    suppresses the warnings without changing call signatures.
+    """
+    if not silent:
+        yield
+        return
+    dag_logger = logging.getLogger("claude_code_log.dag")
+    previous = dag_logger.level
+    dag_logger.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        dag_logger.setLevel(previous)
+
+
 SILENT_SKIP_TYPES: frozenset[str] = frozenset(
     {
         "file-history-snapshot",  # Internal file backup metadata
@@ -642,6 +666,24 @@ def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
     # Prefer non-sidechain anchors (main session), but also accept sidechain
     # anchors (nested agents: agent A spawns agent B, so B's anchor lives
     # inside A's sidechain).
+    #
+    # For sidechain anchors we require a *cross-agent boundary* — the
+    # candidate's parent must belong to a different agent's transcript.
+    # Without that guard, the agent's own root entry (parentUuid=None,
+    # agentId=X) gets registered as the anchor for X, and the re-parent
+    # step below sets ``parentUuid = uuid``, producing a self-loop and
+    # a "Cycle detected" warning at DAG construction. Repros when an
+    # orphan subagent transcript is loaded but its trunk session isn't
+    # (e.g. warmup-only sessions); see ``test_data/dag_cycle.jsonl``.
+    sidechain_agent_by_uuid: dict[str, str] = {}
+    for msg in messages:
+        if (
+            isinstance(msg, (BaseTranscriptEntry, PassthroughTranscriptEntry))
+            and msg.isSidechain
+            and msg.agentId
+        ):
+            sidechain_agent_by_uuid[msg.uuid] = msg.agentId
+
     agent_anchors: dict[str, str] = {}
     agent_anchors_from_sidechain: dict[str, str] = {}
     for msg in messages:
@@ -650,6 +692,13 @@ def _integrate_agent_entries(messages: list[TranscriptEntry]) -> None:
         if not msg.agentId:
             continue
         if msg.isSidechain:
+            # Skip entries that are part of agent X's own transcript chain
+            # (root with parentUuid=None, or parent shares the same agentId).
+            if msg.parentUuid is None:
+                continue
+            parent_agent_id = sidechain_agent_by_uuid.get(msg.parentUuid)
+            if parent_agent_id is None or parent_agent_id == msg.agentId:
+                continue
             agent_anchors_from_sidechain.setdefault(msg.agentId, msg.uuid)
         else:
             agent_anchors[msg.agentId] = msg.uuid
@@ -709,11 +758,14 @@ def load_directory_transcripts(
     # agents never referenced via agentId) to suppress orphan warnings
     unloaded_sidechain_uuids = _scan_sidechain_uuids(directory_path)
 
-    # Build DAG and traverse (entries grouped by session, depth-first)
-    tree = build_dag_from_entries(
-        all_messages, sidechain_uuids=unloaded_sidechain_uuids
-    )
-    dag_ordered = traverse_session_tree(tree)
+    # Build DAG and traverse (entries grouped by session, depth-first).
+    # Cycle / multi-root / orphan warnings are suppressed under silent
+    # so cache rebuilds and quiet CLI flows stay clean.
+    with _dag_warnings_suppressed(silent):
+        tree = build_dag_from_entries(
+            all_messages, sidechain_uuids=unloaded_sidechain_uuids
+        )
+        dag_ordered = traverse_session_tree(tree)
 
     # Re-add summaries/queue-ops (excluded from DAG since they lack uuid)
     non_dag_entries: list[TranscriptEntry] = [

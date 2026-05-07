@@ -1631,6 +1631,161 @@ class TestRootClassification:
             f"got: {[r.message for r in multi_root_warnings]}"
         )
 
+    def test_orphan_sidechain_root_no_agent_id_is_expected(self, caplog) -> None:
+        """A sidechain user with parentUuid=None and no agentId is the
+        Task-prompt shape from older Claude Code versions that didn't
+        record agentId. Loaded without its trunk anchor it surfaces as
+        a multi-root, but the pattern is routine — ``--resume`` of an
+        old transcript or partially-loaded data — so it should not
+        trigger the warning. Real-world repro: see the ``bf36f743``
+        session in the user's repower project."""
+        import logging
+
+        sub = {
+            "type": "user",
+            "timestamp": "2025-09-28T16:29:26.782Z",
+            "parentUuid": None,
+            "isSidechain": True,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s1",
+            "version": "1.0.0",
+            "uuid": "sub_root",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+        }
+        data = [
+            _make_entry("user", "u1", None, "2025-09-28T16:28:41.791Z"),
+            _make_entry("assistant", "a1", "u1", "2025-09-28T16:28:50.000Z"),
+            sub,
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        multi_root_warnings = [r for r in warnings if "roots found" in r.message]
+        assert not multi_root_warnings, (
+            f"orphan sidechain root (no agentId) must not warn; "
+            f"got: {[r.message for r in multi_root_warnings]}"
+        )
+
+    def test_genuine_user_start_with_compact_boundaries_does_not_warn(
+        self, caplog
+    ) -> None:
+        """The earliest user root is the genuine session start. Treating
+        it as 'unexpected' alongside expected ``compact_boundary`` roots
+        produces noise on every long session. Real-world repro: the
+        ``8f68ac90`` session has 1 user start + 3 compact boundaries."""
+        import logging
+
+        data = [
+            # Genuine session start: earliest user with parentUuid=None
+            _make_entry("user", "u0", None, "2025-11-12T12:59:17.970Z"),
+            _make_entry("assistant", "a0", "u0", "2025-11-12T13:00:00.000Z"),
+            # Three /compact boundaries through the day
+            _make_system_entry(
+                "cb1", None, "2025-11-12T16:12:59.612Z", subtype="compact_boundary"
+            ),
+            _make_entry("user", "u1", "cb1", "2025-11-12T16:13:00.000Z"),
+            _make_system_entry(
+                "cb2", None, "2025-11-12T17:18:26.261Z", subtype="compact_boundary"
+            ),
+            _make_entry("user", "u2", "cb2", "2025-11-12T17:18:27.000Z"),
+            _make_system_entry(
+                "cb3", None, "2025-11-12T18:05:00.843Z", subtype="compact_boundary"
+            ),
+            _make_entry("user", "u3", "cb3", "2025-11-12T18:05:01.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        multi_root_warnings = [r for r in warnings if "roots found" in r.message]
+        assert not multi_root_warnings, (
+            f"genuine user start + compact_boundaries must not warn; "
+            f"got: {[r.message for r in multi_root_warnings]}"
+        )
+
+    def test_cross_session_attachment_root_is_expected(self, caplog) -> None:
+        """An entry whose ``parentUuid`` resolves to a node in another
+        loaded session is a legitimate cross-session attachment (typical
+        ``--resume`` shape, where the resumed session's transcript
+        replays history under the new sessionId). The local session
+        sees it as a 'root' (parent isn't in *its* uuids), but the
+        parent does exist in the loaded data. Real-world repro: the
+        ``ffc4b7ae`` session attaches at multiple points to the earlier
+        ``d1a8cc99`` session it resumed."""
+        import logging
+
+        # Session s1 with normal chain a→b→c
+        s1 = [
+            _make_entry("user", "a", None, "2025-08-16T00:04:00.000Z", session="s1"),
+            _make_entry(
+                "assistant", "b", "a", "2025-08-16T00:05:00.000Z", session="s1"
+            ),
+            _make_entry("user", "c", "b", "2025-08-16T00:06:00.000Z", session="s1"),
+        ]
+        # Session s2 starts fresh, but later entries attach to s1's `b` and `c`
+        s2 = [
+            _make_entry("user", "x", None, "2025-08-16T00:42:00.000Z", session="s2"),
+            _make_entry(
+                "assistant", "y", "x", "2025-08-16T00:43:00.000Z", session="s2"
+            ),
+            # Cross-session attachment: parent `b` belongs to s1
+            _make_entry("user", "z1", "b", "2025-08-16T00:44:00.000Z", session="s2"),
+            # Cross-session attachment: parent `c` belongs to s1
+            _make_entry("user", "z2", "c", "2025-08-16T00:45:00.000Z", session="s2"),
+        ]
+        entries = [create_transcript_entry(d) for d in (s1 + s2)]
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        s2_multi_root = [
+            r for r in warnings if "roots found" in r.message and "s2" in r.message
+        ]
+        assert not s2_multi_root, (
+            f"cross-session attachment roots must not warn; "
+            f"got: {[r.message for r in s2_multi_root]}"
+        )
+
+    def test_sidechain_orphan_earlier_than_user_start_does_not_warn(
+        self, caplog
+    ) -> None:
+        """A sidechain orphan's timestamp can land *before* the genuine
+        non-sidechain user start (e.g. when a `--resume` session
+        replays an old Task prompt from a prior session). The genuine
+        start must still be the earliest non-sidechain natural root,
+        not the chronologically-first sidechain. Real-world repro: the
+        ``25217827`` session has a sidechain orphan dated 2 days
+        before the actual session-start user message."""
+        import logging
+
+        early_sidechain = {
+            "type": "user",
+            "timestamp": "2025-10-26T17:11:57.584Z",
+            "parentUuid": None,
+            "isSidechain": True,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s1",
+            "version": "1.0.0",
+            "uuid": "old_sub",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+        }
+        data = [
+            early_sidechain,
+            _make_entry("user", "u1", None, "2025-10-28T16:57:26.077Z"),
+            _make_entry("assistant", "a1", "u1", "2025-10-28T16:58:00.000Z"),
+        ]
+        entries = [create_transcript_entry(d) for d in data]
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        multi_root_warnings = [r for r in warnings if "roots found" in r.message]
+        assert not multi_root_warnings, (
+            f"sidechain orphan earlier than user start must not warn; "
+            f"got: {[r.message for r in multi_root_warnings]}"
+        )
+
 
 class TestMixedStructuralCollapse:
     """A structural (passthrough) sibling of a conversational child should
@@ -1824,3 +1979,163 @@ class TestParallelToolUseViaPassthrough:
         assert "p00" in uuids  # stitched in as the structural sibling
         branch_count = sum(1 for s in tree.sessions.values() if s.is_branch)
         assert branch_count == 0
+
+
+# =============================================================================
+# Test: Orphan-subagent self-anchor regression
+# =============================================================================
+
+
+class TestOrphanSubagentNoSelfAnchor:
+    """Regression: an orphan subagent transcript must not anchor to itself.
+
+    ``_integrate_agent_entries`` re-parents a sidechain root (parentUuid=None)
+    to the trunk tool_result that spawned that agentId. Earlier versions
+    accepted *any* sidechain entry as a fallback anchor, so when the trunk
+    transcript wasn't loaded the agent's own root entry got registered as
+    its own anchor — the subsequent re-parent step then set
+    ``parentUuid = uuid`` and ``build_dag`` raised "Cycle detected".
+
+    See ``test_data/dag_cycle.jsonl`` for a real-world repro from the
+    claude-code-log project's own logs (single sidechain assistant entry,
+    no trunk anchor anywhere).
+    """
+
+    def test_dag_cycle_fixture_no_self_loop(self) -> None:
+        """Loading the orphan-subagent fixture must not produce self-loops.
+
+        The fixture is a one-line JSONL with a sidechain assistant entry
+        whose parentUuid is null and whose agentId has no matching trunk.
+        After ``_integrate_agent_entries``, the entry's parentUuid must
+        not equal its own uuid.
+        """
+        from claude_code_log.converter import _integrate_agent_entries
+
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_cycle.jsonl")
+        assert len(entries) == 1, "fixture should be a single orphan sidechain entry"
+
+        _integrate_agent_entries(entries)
+
+        entry = entries[0]
+        uuid = getattr(entry, "uuid", None)
+        parent_uuid = getattr(entry, "parentUuid", None)
+        assert uuid is not None
+        assert parent_uuid != uuid, (
+            f"orphan subagent re-parented to itself: parentUuid={parent_uuid} "
+            f"uuid={uuid} — would create a self-loop in the DAG"
+        )
+
+    def test_dag_cycle_fixture_emits_no_cycle_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """End-to-end: building the DAG from the fixture emits no cycle warning."""
+        import logging as _logging
+
+        from claude_code_log.converter import _integrate_agent_entries
+
+        entries = load_entries_from_jsonl(TEST_DATA / "dag_cycle.jsonl")
+        _integrate_agent_entries(entries)
+
+        with caplog.at_level(_logging.WARNING, logger="claude_code_log.dag"):
+            build_dag_from_entries(entries)
+
+        cycle_warnings = [r for r in caplog.records if "Cycle detected" in r.message]
+        assert not cycle_warnings, (
+            f"unexpected cycle warning(s): {[r.message for r in cycle_warnings]}"
+        )
+
+    def test_nested_agent_anchor_in_sidechain_still_resolves(self) -> None:
+        """Nested anchor (A's sidechain spawns B) must still re-parent B's root.
+
+        Guards against over-tightening the fix: the legitimate sidechain
+        anchor case — where a parent agent A's tool_result inside its own
+        sidechain references a child agent B (different agentId) — must
+        keep working. A's chain entries have agentId='A'; the B-spawning
+        tool_result inside A has agentId='B' and a parent with agentId='A'.
+        That's the cross-agent boundary that qualifies it as a true anchor.
+        """
+        from claude_code_log.converter import _integrate_agent_entries
+
+        # Agent A's sidechain transcript: root + tool_use + tool_result anchor for B
+        a_root = {
+            "type": "user",
+            "timestamp": "2025-07-01T10:00:00.000Z",
+            "parentUuid": None,
+            "isSidechain": True,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s1",
+            "version": "1.0.0",
+            "uuid": "a_root",
+            "agentId": "agent-A",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hi A"}]},
+        }
+        a_tool = {
+            "type": "assistant",
+            "timestamp": "2025-07-01T10:01:00.000Z",
+            "parentUuid": "a_root",
+            "isSidechain": True,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s1",
+            "version": "1.0.0",
+            "uuid": "a_tool",
+            "agentId": "agent-A",
+            "requestId": "r1",
+            "message": {
+                "id": "a_tool",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-3",
+                "content": [{"type": "text", "text": "spawning B"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        }
+        # tool_result anchor for B inside A's sidechain — agentId differs from A
+        b_anchor = {
+            "type": "user",
+            "timestamp": "2025-07-01T10:02:00.000Z",
+            "parentUuid": "a_tool",
+            "isSidechain": True,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s1",
+            "version": "1.0.0",
+            "uuid": "b_anchor",
+            "agentId": "agent-B",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "B done"}],
+            },
+        }
+        # Agent B's own sidechain root (parentUuid=None, agentId=B)
+        b_root = {
+            "type": "user",
+            "timestamp": "2025-07-01T10:01:30.000Z",
+            "parentUuid": None,
+            "isSidechain": True,
+            "userType": "human",
+            "cwd": "/tmp",
+            "sessionId": "s1",
+            "version": "1.0.0",
+            "uuid": "b_root",
+            "agentId": "agent-B",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hi B"}]},
+        }
+        entries = [
+            create_transcript_entry(d) for d in (a_root, a_tool, b_anchor, b_root)
+        ]
+        _integrate_agent_entries(entries)
+
+        # B's root should be re-parented to b_anchor (not to itself or to b_root)
+        b_root_entry = next(e for e in entries if getattr(e, "uuid", "") == "b_root")
+        assert b_root_entry.parentUuid == "b_anchor", (
+            f"nested anchor not honoured: b_root.parentUuid={b_root_entry.parentUuid}"
+        )
+        # A's root is the only remaining true root for agent-A and has no
+        # trunk anchor — it should stay as a root, not self-loop.
+        a_root_entry = next(e for e in entries if getattr(e, "uuid", "") == "a_root")
+        assert a_root_entry.parentUuid is None, (
+            f"agent-A root self-loop: parentUuid={a_root_entry.parentUuid}"
+        )
