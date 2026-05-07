@@ -983,7 +983,12 @@ def _enable_next_link_on_previous_page(
     if not page_path.exists():
         return False
 
-    content = page_path.read_text(encoding="utf-8")
+    # ``errors="replace"`` guards against lone surrogates that may have
+    # been written here previously (issue #139): pre-fix runs encoded
+    # JSON-decoded surrogates straight into the HTML, and a strict
+    # read-back would crash on revisit. Replacing them here lets older
+    # corrupt pages still rewrite cleanly.
+    content = page_path.read_text(encoding="utf-8", errors="replace")
 
     # Check if there's a last-page class to remove
     if "last-page" not in content:
@@ -993,7 +998,7 @@ def _enable_next_link_on_previous_page(
     new_content, count = _NEXT_LINK_PATTERN.subn(r"\1\2", content)
 
     if count > 0:
-        page_path.write_text(new_content, encoding="utf-8")
+        page_path.write_text(new_content, encoding="utf-8", errors="replace")
         return True
 
     return False
@@ -1324,7 +1329,11 @@ def _generate_paginated_html(
             page_stats=page_stats,
             session_tree=session_tree,
         )
-        page_file.write_text(html_content, encoding="utf-8")
+        # errors="replace": surrogateescape-decoded bytes from upstream
+        # JSONL may carry lone surrogates (issue #139); strict UTF-8
+        # encoding crashes here. Replace with U+FFFD so output stays
+        # valid UTF-8.
+        page_file.write_text(html_content, encoding="utf-8", errors="replace")
 
         # Update cache
         cache_manager.update_page_cache(
@@ -1588,7 +1597,8 @@ def convert_jsonl_to(
                 messages, title, output_dir=output_dir, session_tree=session_tree
             )
             assert content is not None
-            output_path.write_text(content, encoding="utf-8")
+            # See issue #139: errors="replace" for lone-surrogate safety.
+            output_path.write_text(content, encoding="utf-8", errors="replace")
 
             # Update html_cache for combined transcript (HTML only).
             # Skip when the caller explicitly disabled cache writes — the
@@ -2080,7 +2090,10 @@ def _generate_individual_session_files(
             )
             assert session_content is not None
             # Write session file
-            session_file_path.write_text(session_content, encoding="utf-8")
+            # See issue #139: errors="replace" for lone-surrogate safety.
+            session_file_path.write_text(
+                session_content, encoding="utf-8", errors="replace"
+            )
             regenerated_count += 1
 
             # Update html_cache to track this generation (HTML only)
@@ -2234,7 +2247,8 @@ def generate_single_session_file(
         session_messages, matched_id, session_title, cache_manager, output_dir
     )
     assert session_content is not None
-    output_file.write_text(session_content, encoding="utf-8")
+    # See issue #139: errors="replace" for lone-surrogate safety.
+    output_file.write_text(session_content, encoding="utf-8", errors="replace")
 
     return output_file
 
@@ -2752,7 +2766,8 @@ def process_projects_hierarchy(
             project_summaries, from_date, to_date
         )
         assert index_content is not None
-        index_path.write_text(index_content, encoding="utf-8")
+        # See issue #139: errors="replace" for lone-surrogate safety.
+        index_path.write_text(index_content, encoding="utf-8", errors="replace")
         index_regenerated = True
     elif not silent:
         print(f"Index {ext.upper()} is current, skipping regeneration")
