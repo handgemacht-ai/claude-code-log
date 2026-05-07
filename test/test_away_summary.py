@@ -105,3 +105,79 @@ class TestAwaySummaryRendering:
         html = generate_html(messages)
         assert "📝 Recap" in html
         assert "project-level layout" in html
+
+    def test_recap_label_appears_once(self):
+        """The 'Recap' label lives in the message header (icon + title), not
+        twice (header + inline body chrome). Regression guard for the duplicate
+        '⚙️ Recap' / '📝 Recap' pair monk caught in review."""
+        entry = create_transcript_entry(AWAY_SUMMARY_RAW)
+        html = generate_html([entry])
+        # Header reads "📝 Recap" — exactly once. The body is plain markdown
+        # without an inline <strong>📝 Recap</strong> tag.
+        assert html.count("Recap") == 1
+        # The generic system "⚙️" must not be applied to recaps; the emoji
+        # helper picks "📝" specifically for AwaySummaryMessage.
+        assert "⚙️ Recap" not in html
+        assert "📝 Recap" in html
+
+
+class TestAwaySummaryDetailLevels:
+    """Detail-level filtering: recaps are content (kept at HIGH), not noise
+    (dropped at LOW and below — same tier as bash/thinking).
+
+    The CSS rules for `.system-away-summary` ship with every page regardless
+    of detail level, so these tests check whether a recap *message div* is
+    present (`class='message ...system-away-summary` substring) rather than
+    just the bare modifier name."""
+
+    # Message-div presence marker. The transcript template emits each message
+    # as `<div class='message {csses} ...' ...>`; for an AwaySummaryMessage,
+    # `system-away-summary` is in {csses}, so this substring is unique to
+    # rendered recap entries (vs. the standalone CSS rule selectors).
+    RECAP_DIV_MARKER = "message system system-away-summary"
+
+    def _render_at(self, detail):
+        """Render the fixture at a given detail level and return the HTML."""
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        entry = create_transcript_entry(AWAY_SUMMARY_RAW)
+        renderer = HtmlRenderer()
+        renderer.detail = detail
+        return renderer.generate([entry], "Detail Test")
+
+    def test_full_keeps_recap(self):
+        from claude_code_log.models import DetailLevel
+
+        html = self._render_at(DetailLevel.FULL)
+        assert self.RECAP_DIV_MARKER in html
+        assert "project-level layout" in html
+
+    def test_high_keeps_recap(self):
+        """Monk's #1 review note: recap is narrative content, must survive
+        the 'detailed but cleaned' HIGH level."""
+        from claude_code_log.models import DetailLevel
+
+        html = self._render_at(DetailLevel.HIGH)
+        assert self.RECAP_DIV_MARKER in html
+        assert "project-level layout" in html
+
+    def test_low_drops_recap(self):
+        """LOW is interaction-focused; recap (background narrative) is
+        dropped here alongside bash/thinking."""
+        from claude_code_log.models import DetailLevel
+
+        html = self._render_at(DetailLevel.LOW)
+        assert self.RECAP_DIV_MARKER not in html
+        assert "project-level layout" not in html
+
+    def test_minimal_drops_recap(self):
+        from claude_code_log.models import DetailLevel
+
+        html = self._render_at(DetailLevel.MINIMAL)
+        assert self.RECAP_DIV_MARKER not in html
+
+    def test_user_only_drops_recap(self):
+        from claude_code_log.models import DetailLevel
+
+        html = self._render_at(DetailLevel.USER_ONLY)
+        assert self.RECAP_DIV_MARKER not in html

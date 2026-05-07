@@ -85,14 +85,18 @@ def format_away_summary_content(content: AwaySummaryMessage) -> str:
 
     Renders Claude's narrative recap as markdown — the harness emits
     short prose that may include light markdown (lists, code spans).
+    The "📝 Recap" label is supplied by the message header (icon from
+    get_message_emoji + title_AwaySummaryMessage); the body is plain
+    rendered markdown so block elements (<p>, <ul>) sit at the same
+    level rather than inline beside a stray <strong>.
 
     Args:
         content: AwaySummaryMessage with recap text.
 
     Returns:
-        HTML with a header line + rendered markdown body.
+        Rendered markdown HTML.
     """
-    return f"<strong>📝 Recap</strong> {render_markdown(content.text)}"
+    return render_markdown(content.text)
 
 
 def _team_badge(team_name: str) -> str:

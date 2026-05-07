@@ -187,6 +187,13 @@ def get_message_emoji(msg: "TemplateMessage") -> str:
             return "🔗"
         return "🤖"
     elif msg_type == "system":
+        # Recap entries (away_summary) carry the same `system` message_type
+        # as generic system info but are content, not noise. Give them a
+        # distinct memo glyph so they read at-a-glance in scrolling lists,
+        # and drop the matching label from the body chrome (one icon, one
+        # title — see format_away_summary_content).
+        if isinstance(msg.content, AwaySummaryMessage):
+            return "📝"
         return "⚙️"
     elif msg_type == "tool_use":
         return "🛠️"
