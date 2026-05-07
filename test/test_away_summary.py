@@ -65,6 +65,28 @@ class TestAwaySummaryParsing:
         assert isinstance(entry, SystemTranscriptEntry)
         assert create_system_message(entry) is None
 
+    def test_factory_strips_trailing_ui_hint(self):
+        """Claude Code appends ' (disable recaps in /config)' to the recap
+        body — useful in a live TUI, pure noise in a rendered transcript.
+        Strip at the factory seam so HTML / Markdown / JSON renderers all
+        inherit the polished form. Suffix-match (not global) so the phrase
+        is still preserved if it appears inside a recap body."""
+        with_hint = dict(AWAY_SUMMARY_RAW)
+        with_hint["content"] = (
+            AWAY_SUMMARY_RAW["content"] + " (disable recaps in /config)"
+        )
+        entry = create_transcript_entry(with_hint)
+        assert isinstance(entry, SystemTranscriptEntry)
+        content = create_system_message(entry)
+        assert isinstance(content, AwaySummaryMessage)
+        assert "(disable recaps in /config)" not in content.text
+        # The original recap body survived the strip — we only trimmed the suffix.
+        assert "project-level layout" in content.text
+        # End-to-end: the rendered HTML doesn't carry the hint either.
+        html = generate_html([entry])
+        assert "(disable recaps in /config)" not in html
+        assert "project-level layout" in html
+
 
 class TestAwaySummaryRendering:
     """End-to-end HTML rendering."""

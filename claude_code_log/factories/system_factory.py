@@ -89,8 +89,16 @@ def create_system_message(
     if transcript.subtype == "away_summary":
         if not transcript.content:
             return None
+        # Strip the trailing UI hint Claude Code appends ("… (disable recaps
+        # in /config)"). Boilerplate in a live TUI; pure noise in a rendered
+        # transcript. Matched as a suffix (not a global replace) so the
+        # phrase is still preserved if it appears mid-recap.
+        text = transcript.content
+        hint_suffix = " (disable recaps in /config)"
+        if text.endswith(hint_suffix):
+            text = text[: -len(hint_suffix)]
         return AwaySummaryMessage(
-            text=transcript.content,
+            text=text,
             meta=create_meta(transcript),
         )
 
