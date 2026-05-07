@@ -357,3 +357,235 @@ class TestMarkdownRender:
         assert f"``{args_payload}``" in md, (
             f"Expected widened fence to wrap args verbatim, got: {md!r}"
         )
+
+
+class TestSystemMessageChainPairing:
+    """Regression: chained system messages must not produce N-tuples (#137).
+
+    A chain of N system messages (each one's ``parentUuid`` equal to
+    the previous system message's ``uuid`` — common with ``/context`` /
+    ``/cost`` multi-step output) used to render as
+    ``pair_first → pair_middle × (N-2) → pair_last``: a fake N-tuple.
+    Mechanism: the parent-child indexed pairing called ``_mark_pair``
+    on every link in the chain, leaving every interior node with both
+    ``pair_first`` and ``pair_last`` set, which ``is_middle_in_pair``
+    reads as a triple-middle. The fix skips ``_mark_pair`` when the
+    candidate parent is itself already paired as a child, breaking
+    chains into pairs of two from the leading edge.
+    """
+
+    @staticmethod
+    def _build_chain(tmp_path, n: int):
+        """Write a JSONL with one user root + ``n`` chained system entries.
+
+        Each system entry's ``parentUuid`` equals the previous one's
+        ``uuid``; the first system entry parents the user root. This is
+        the exact shape produced by real-world ``/context``-style output
+        when the harness writes multi-step status into chained system
+        entries.
+        """
+        import json
+        from claude_code_log.converter import load_transcript
+
+        ts = "2026-05-06T10:00:00Z"
+        lines: list[dict[str, object]] = [
+            {
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "2.0.0",
+                "type": "user",
+                "message": {"role": "user", "content": "hello"},
+                "uuid": "root",
+                "timestamp": ts,
+            },
+        ]
+        prev_uuid = "root"
+        for i in range(n):
+            uuid = f"sys{i}"
+            lines.append(
+                {
+                    "parentUuid": prev_uuid,
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp",
+                    "sessionId": "s1",
+                    "version": "2.0.0",
+                    "type": "system",
+                    "level": "info",
+                    "subtype": "local_command",
+                    "content": f"system entry {i}",
+                    "uuid": uuid,
+                    "timestamp": ts,
+                }
+            )
+            prev_uuid = uuid
+        fn = tmp_path / "chain.jsonl"
+        fn.write_text("\n".join(json.dumps(line) for line in lines))
+        return load_transcript(fn)
+
+    @staticmethod
+    def _system_pair_classes(html: str) -> list[str]:
+        """Extract pair-role keywords from each system message div.
+
+        The Jinja template currently emits single-quoted class
+        attributes, but accept either quote style so the helper does
+        not silently miss future template changes (and so the test
+        fails loudly if the template starts emitting nothing at all,
+        rather than fails noisily several layers downstream).
+        """
+        import re
+
+        # Match either ``class='message system ...'`` or
+        # ``class="message system ..."`` — the quote at the start of
+        # the class attribute is captured and required to match at the
+        # close (back-reference).
+        pattern = re.compile(r"""<div class=(['"])message system [^'"]*\1""")
+        roles: list[str] = []
+        for m in pattern.finditer(html):
+            cls = m.group(0)
+            for role in ("pair_first", "pair_middle", "pair_last"):
+                if role in cls:
+                    roles.append(role)
+                    break
+            else:
+                roles.append("none")
+        # Defensive: every test in this class drives a fixture with at
+        # least one system message; an empty list almost certainly means
+        # the template stopped emitting the expected shape, not that
+        # the renderer's behaviour changed.
+        assert roles, "expected at least one system message div in rendered HTML"
+        return roles
+
+    def test_chain_of_four_pairs_into_two_doubles(self, tmp_path) -> None:
+        """4-system chain → ``[pair_first, pair_last, pair_first, pair_last]``.
+
+        Pre-fix shape was ``[pair_first, pair_middle, pair_middle, pair_last]``.
+        """
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        msgs = self._build_chain(tmp_path, n=4)
+        html = HtmlRenderer().generate(msgs, "Test")
+        assert self._system_pair_classes(html) == [
+            "pair_first",
+            "pair_last",
+            "pair_first",
+            "pair_last",
+        ]
+
+    def test_chain_of_three_pairs_first_two_only(self, tmp_path) -> None:
+        """3-system chain → ``[pair_first, pair_last, none]``: the third
+        system stands alone because its parent is already paired."""
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        msgs = self._build_chain(tmp_path, n=3)
+        html = HtmlRenderer().generate(msgs, "Test")
+        assert self._system_pair_classes(html) == [
+            "pair_first",
+            "pair_last",
+            "none",
+        ]
+
+    def test_no_middle_role_in_chain(self, tmp_path) -> None:
+        """Even longer chains never produce a ``pair_middle`` role —
+        the only legitimate source of ``pair_middle`` is the
+        ``UserSlash → Slash → CommandOutput`` triple, which is a
+        different code path."""
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        msgs = self._build_chain(tmp_path, n=8)
+        html = HtmlRenderer().generate(msgs, "Test")
+        roles = self._system_pair_classes(html)
+        assert "pair_middle" not in roles, (
+            f"Chains must not produce pair_middle, got: {roles}"
+        )
+
+    @staticmethod
+    def _build_siblings(tmp_path):
+        """Two system entries with the SAME ``parentUuid`` (siblings).
+
+        Distinct from the chain shape above: chains are A→B→C→…; here
+        both system entries point at the same parent. ``_mark_pair``
+        sets only ``parent.pair_last`` (forward-link), never
+        ``parent.pair_first``, so a guard that only checks the back-
+        link silently fires twice and the second sibling overwrites
+        the first's pairing — the bug CodeRabbit flagged on PR #140.
+        """
+        import json
+        from claude_code_log.converter import load_transcript
+
+        ts = "2026-05-07T10:00:00Z"
+        lines: list[dict[str, object]] = [
+            {
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "2.0.0",
+                "type": "user",
+                "message": {"role": "user", "content": "hello"},
+                "uuid": "root",
+                "timestamp": ts,
+            },
+            {
+                "parentUuid": "root",
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "2.0.0",
+                "type": "system",
+                "level": "info",
+                "subtype": "local_command",
+                "content": "parent system entry",
+                "uuid": "parent",
+                "timestamp": ts,
+            },
+        ]
+        # Two siblings, both pointing at "parent".
+        for i in range(2):
+            lines.append(
+                {
+                    "parentUuid": "parent",
+                    "isSidechain": False,
+                    "userType": "external",
+                    "cwd": "/tmp",
+                    "sessionId": "s1",
+                    "version": "2.0.0",
+                    "type": "system",
+                    "level": "info",
+                    "subtype": "local_command",
+                    "content": f"sibling {i}",
+                    "uuid": f"sib{i}",
+                    "timestamp": ts,
+                }
+            )
+        fn = tmp_path / "siblings.jsonl"
+        fn.write_text("\n".join(json.dumps(line) for line in lines))
+        return load_transcript(fn)
+
+    def test_siblings_share_parent_only_first_pairs(self, tmp_path) -> None:
+        """Two system messages with the same parent: only the first
+        pairs with the parent; the second renders standalone.
+
+        Pre-fix shape (chain-bug guard alone, ``pair_first is None``):
+        ``[pair_first (parent, pointing at sib1), pair_last (sib0,
+        stale-pointing at parent), pair_last (sib1)]`` — sib0's
+        ``pair_first`` no longer matches ``parent.pair_last`` after
+        sib1 overwrites it.
+
+        Post-fix shape (full guard, ``pair_first AND pair_last is
+        None``): ``[pair_first (parent ↔ sib0), pair_last (sib0 ↔
+        parent), none (sib1 standalone)]``.
+        """
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        msgs = self._build_siblings(tmp_path)
+        html = HtmlRenderer().generate(msgs, "Test")
+        roles = self._system_pair_classes(html)
+        assert roles == ["pair_first", "pair_last", "none"], (
+            f"Expected siblings-pair shape, got: {roles}"
+        )
