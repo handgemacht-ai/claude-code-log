@@ -199,12 +199,16 @@ class TestUnrecognizedTypesWarn:
         Preserves DAG continuity when Claude Code ships a new conversational
         type before we add explicit handling."""
         jsonl = tmp_path / "session.jsonl"
+        # Use ``progress`` rather than ``attachment`` here — since #128
+        # ``attachment`` is parsed into a typed ``AttachmentTranscriptEntry``,
+        # so the legacy "unknown → Passthrough" path is exercised by the
+        # other unknown-but-DAG-relevant types Claude Code emits today.
         _write_jsonl(
             jsonl,
             [
                 {
-                    "type": "attachment",
-                    "uuid": "att1",
+                    "type": "progress",
+                    "uuid": "prog1",
                     "parentUuid": None,
                     "sessionId": "s1",
                     "timestamp": "2026-01-01T00:00:00.000Z",
@@ -217,4 +221,48 @@ class TestUnrecognizedTypesWarn:
 
         assert len(messages) == 1
         assert isinstance(messages[0], PassthroughTranscriptEntry)
+        assert captured.out == ""
+
+    def test_attachment_becomes_typed_entry_silently(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``attachment`` → AttachmentTranscriptEntry, no warning (issue #128).
+
+        The hook payload survives parsing so full-detail rendering can
+        surface it; non-hook flavours stay structural via the factory.
+        """
+        from claude_code_log.models import AttachmentTranscriptEntry
+
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                {
+                    "type": "attachment",
+                    "uuid": "att1",
+                    "parentUuid": "u-parent",
+                    "sessionId": "s1",
+                    "timestamp": "2026-01-01T00:00:00.000Z",
+                    "isSidechain": False,
+                    "attachment": {
+                        "type": "hook_success",
+                        "hookEvent": "PostToolUse",
+                        "hookName": "PostToolUse:Read",
+                        "command": "echo hi",
+                        "stdout": "hi\n",
+                        "stderr": "",
+                        "exitCode": 0,
+                        "durationMs": 12,
+                    },
+                },
+            ],
+        )
+
+        messages = load_transcript(jsonl, silent=True)
+        captured = capsys.readouterr()
+
+        assert len(messages) == 1
+        assert isinstance(messages[0], AttachmentTranscriptEntry)
+        assert messages[0].attachment["type"] == "hook_success"
+        assert messages[0].parentUuid == "u-parent"
         assert captured.out == ""

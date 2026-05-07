@@ -344,6 +344,63 @@
     font-size: 90%;
 }
 
+/* Hook attachment styling — full-detail-only payloads from
+   ``type: "attachment"`` hook callbacks (issue #128). Same compact
+   visual register as ``.system-hook`` summaries but with the assistant
+   accent so it reads as "tooling around the assistant turn" rather
+   than user/system noise. */
+.system-hook-attachment {
+    border-left-color: var(--assistant-dimmed);
+    background-color: var(--highlight-dimmed);
+    font-size: 90%;
+}
+
+.hook-attachment {
+    cursor: pointer;
+}
+
+.hook-attachment summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    flex-wrap: wrap;
+}
+
+.hook-attachment-meta {
+    color: var(--secondary-text);
+    font-size: 0.85em;
+}
+
+.hook-attachment-stream {
+    margin-top: 0.5em;
+}
+
+.hook-attachment-stream-label {
+    font-size: 0.75em;
+    color: var(--secondary-text);
+    margin-bottom: 0.2em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.hook-attachment-output,
+.hook-attachment-content {
+    margin: 0;
+    padding: 0.5em;
+    background-color: var(--code-bg);
+    border-radius: 4px;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.hook-attachment-stderr {
+    border-left: 3px solid var(--warning-dimmed);
+}
+
 /* Away-summary (recap) styling — assistant-authored narrative recap of
    recent activity. Uses the assistant accent (dimmed) on the border so
    it reads as Claude-generated content, but with the same compact

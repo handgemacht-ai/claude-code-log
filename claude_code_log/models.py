@@ -259,19 +259,64 @@ class QueueOperationTranscriptEntry(BaseModel):
 class PassthroughTranscriptEntry(BaseModel):
     """Structural-only entry for DAG chain continuity.
 
-    Captures entries like "attachment", "permission-mode", etc. that have
-    uuid/parentUuid and participate in the DAG chain but are not rendered.
-    Without these, messages whose parentUuid points to a dropped entry
+    Captures entries that have uuid/parentUuid and participate in the
+    DAG chain but are not rendered (e.g. ``progress`` async-hook
+    callbacks, ``agent-setting``, ``pr-link``, ``ai-title``). Without
+    these, messages whose parentUuid points to a dropped entry would
     become false roots in the DAG.
+
+    Note: ``attachment`` entries (hook callbacks, deferred tool deltas,
+    etc.) are now their own typed ``AttachmentTranscriptEntry`` so the
+    hook payload is available for full-detail rendering. They keep the
+    same structural-DAG semantics — see ``_StructuralEntry`` in
+    ``dag.py``.
     """
 
     uuid: str
     parentUuid: Optional[str] = None
     sessionId: str
     timestamp: str
-    type: Optional[str] = None  # Original type (e.g. "attachment")
+    type: Optional[str] = None  # Original type (e.g. "progress")
     isSidechain: bool = False
     agentId: Optional[str] = None
+
+
+class AttachmentTranscriptEntry(BaseTranscriptEntry):
+    """Out-of-band ``type: "attachment"`` entry produced by the harness.
+
+    Claude Code emits ``attachment`` entries for hook callbacks
+    (``hook_success``, ``hook_blocking_error``, …), deferred-tool
+    deltas, queued commands, file references, todo/task reminders, and
+    similar harness-side metadata. They sit in the JSONL chain — they
+    have ``uuid``/``parentUuid`` and participate in the DAG — but are
+    not part of the user/assistant conversation.
+
+    The ``attachment`` payload is a heterogeneous dict whose shape
+    depends on ``attachment.type``. Hook flavours
+    (``hook_success``, ``hook_additional_context``, ``hook_blocking_error``,
+    ``hook_non_blocking_error``) are surfaced at full-detail by the
+    ``HookAttachmentMessage`` factory; other flavours stay structural
+    (visible in the DAG, dropped from the rendered output) until they
+    grow a dedicated factory branch.
+
+    Anchoring: the example in issue #128 confirmed ``parentUuid`` is
+    the right anchor (a ``UserPromptSubmit`` hook attachment carried a
+    ``toolUseID`` that matched nothing in the project — the
+    ``parentUuid`` did). So this class follows the same parent edge as
+    every other transcript entry.
+    """
+
+    type: Literal["attachment"]
+    attachment: dict[str, Any] = Field(default_factory=dict)
+    # Most real-world attachments carry the full BaseTranscriptEntry
+    # context (userType/cwd/version), but minimal/synthetic fixtures
+    # (and conceivably future harness shapes) may omit them. Default
+    # them so validation is forgiving — the rendering layer treats
+    # attachments as structural noise anyway and these fields are
+    # only consulted for ``MessageMeta`` plumbing.
+    userType: str = "external"  # pyright: ignore[reportIncompatibleVariableOverride]
+    cwd: str = ""  # pyright: ignore[reportIncompatibleVariableOverride]
+    version: str = ""  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 TranscriptEntry = Union[
@@ -281,6 +326,7 @@ TranscriptEntry = Union[
     AiTitleTranscriptEntry,
     SystemTranscriptEntry,
     QueueOperationTranscriptEntry,
+    AttachmentTranscriptEntry,
     PassthroughTranscriptEntry,
 ]
 
@@ -440,6 +486,49 @@ class AwaySummaryMessage(MessageContent):
     @property
     def has_markdown(self) -> bool:
         return True
+
+
+@dataclass
+class HookAttachmentMessage(MessageContent):
+    """Hook callback recorded as a ``type: "attachment"`` entry (issue #128).
+
+    Distinct from ``HookSummaryMessage`` (which represents the
+    ``stop_hook_summary`` *system* entry — a roll-up of the hooks that
+    ran for a single Stop event). This one represents an individual
+    hook invocation captured by the harness as an attachment, with
+    full payload (command, exit code, stdout/stderr, duration). Visible
+    only at ``DetailLevel.FULL``; dropped at HIGH and below alongside
+    other hook noise (see ``_HIGH_EXCLUDE_CLASSES``).
+
+    ``kind`` distinguishes the attachment flavour:
+
+    - ``success`` (``hook_success``): hook ran cleanly, payload is
+      command + stdout/stderr + exitCode + durationMs.
+    - ``additional_context`` (``hook_additional_context``):
+      ``UserPromptSubmit`` / ``SessionStart`` hook injected extra
+      prompt context. Payload is a list of strings in ``content``.
+    - ``blocking_error`` (``hook_blocking_error``): hook prevented
+      the tool call. Payload is a nested ``blockingError`` object.
+    - ``non_blocking_error`` (``hook_non_blocking_error``): hook
+      reported an error but didn't block. Same shape as ``success``
+      but with non-zero ``exitCode``.
+    """
+
+    kind: str  # success / additional_context / blocking_error / non_blocking_error
+    hook_event: str = ""  # PostToolUse / UserPromptSubmit / Stop / SessionStart / ...
+    hook_name: str = ""  # e.g. "PostToolUse:TaskUpdate"
+    tool_use_id: Optional[str] = None
+    command: Optional[str] = None
+    exit_code: Optional[int] = None
+    duration_ms: Optional[int] = None
+    content: str = ""  # Free-form hook content (joined if list)
+    stdout: str = ""
+    stderr: str = ""
+    blocking_error: Optional[str] = None  # blockingError.blockingError text
+
+    @property
+    def message_type(self) -> str:
+        return "system"
 
 
 # =============================================================================

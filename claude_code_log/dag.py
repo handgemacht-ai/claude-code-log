@@ -14,6 +14,7 @@ from .models import (
     AiTitleTranscriptEntry,
     BaseTranscriptEntry,
     TranscriptEntry,
+    AttachmentTranscriptEntry,
     SummaryTranscriptEntry,
     QueueOperationTranscriptEntry,
     ToolUseContent,
@@ -27,6 +28,19 @@ from .models import (
 # ``_collect_agent_anchors`` to keep nested-Agent assistant entries from
 # being swept up as silent dead-end skips.
 _SPAWN_TOOL_NAMES: frozenset[str] = frozenset({"Task", "Agent"})
+
+# Entry types that participate in the DAG for chain continuity but
+# carry no conversational content — neither user/assistant turns nor
+# system info shown to the user. ``PassthroughTranscriptEntry`` covers
+# legacy unknown-but-DAG-relevant types (``progress``, ``agent-setting``,
+# ``pr-link``, ``ai-title``); ``AttachmentTranscriptEntry`` covers the
+# typed ``type: "attachment"`` entries (hook callbacks, deferred-tool
+# deltas, queued commands, …) — see issue #128. Both are treated
+# uniformly in fork collapse / structural-subtree detection.
+_StructuralEntry: tuple[type, ...] = (
+    PassthroughTranscriptEntry,
+    AttachmentTranscriptEntry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +203,7 @@ def build_dag(
                 if (
                     isinstance(node.entry, PassthroughTranscriptEntry)
                     and node.entry.type in _EXPECTED_ROOT_PASSTHROUGH_TYPES
-                ):
+                ) or isinstance(node.entry, AttachmentTranscriptEntry):
                     logger.debug(
                         "Orphan progress hook %s: parentUuid %s not "
                         "found in loaded data (promoting to root)",
@@ -402,6 +416,13 @@ def _is_expected_root_type(entry: TranscriptEntry) -> bool:
         return entry.subtype in _EXPECTED_ROOT_SYSTEM_SUBTYPES
     if isinstance(entry, PassthroughTranscriptEntry):
         return entry.type in _EXPECTED_ROOT_PASSTHROUGH_TYPES
+    # ``SessionStart`` hooks fire before the first user prompt and
+    # legitimately appear as roots; ``UserPromptSubmit`` hooks parented
+    # on the prompt are not roots, but pre-compaction loss can promote
+    # any attachment hook to a root the same way ``progress`` callbacks
+    # are promoted (see #128 / pre-compaction handling above).
+    if isinstance(entry, AttachmentTranscriptEntry):
+        return True
     return False
 
 
@@ -630,22 +651,23 @@ def _walk_session_with_forks(
                 same_session_children.sort(key=lambda c: nodes[c].timestamp)
 
                 # Collapse passthrough side-branches. A child is
-                # "structural" when it is a PassthroughTranscriptEntry
-                # whose subtree has no user/assistant descendants — e.g. a
-                # `progress` entry, a `hook_success` attachment, or a chain
-                # of them. When at most one non-structural child remains,
-                # the chain continues through that child (or terminates if
-                # none remain); the structural children are stitched in
-                # chronologically as dead-end side entries.
+                # "structural" when it is a structural entry
+                # (Passthrough or Attachment) whose subtree has no
+                # user/assistant descendants — e.g. a ``progress``
+                # entry, a ``hook_success`` attachment, or a chain of
+                # them. When at most one non-structural child remains,
+                # the chain continues through that child (or terminates
+                # if none remain); the structural children are stitched
+                # in chronologically as dead-end side entries.
                 #
-                # This catches both the all-passthrough case (e.g. two
+                # This catches both the all-structural case (e.g. two
                 # hook attachments on the same parent) and the common
-                # mixed case (a `<progress>` sibling of a real user
+                # mixed case (a ``<progress>`` sibling of a real user
                 # message), preventing spurious 1-branch forks.
                 structural_kids = [
                     c
                     for c in same_session_children
-                    if isinstance(nodes[c].entry, PassthroughTranscriptEntry)
+                    if isinstance(nodes[c].entry, _StructuralEntry)
                     and _is_structural_subtree(c, session_uuids, nodes)
                 ]
                 non_structural = [
@@ -701,7 +723,7 @@ def _walk_session_with_forks(
                 passthrough_lives = [
                     c
                     for c in same_session_children
-                    if isinstance(nodes[c].entry, PassthroughTranscriptEntry)
+                    if isinstance(nodes[c].entry, _StructuralEntry)
                     and not _is_structural_subtree(c, session_uuids, nodes)
                 ]
                 if len(passthrough_lives) == 1:

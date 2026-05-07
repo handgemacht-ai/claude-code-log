@@ -1,0 +1,126 @@
+"""Factory for ``type: "attachment"`` transcript entries (issue #128).
+
+Claude Code records out-of-band events as ``attachment`` JSONL entries:
+hook callbacks (``hook_success``, ``hook_blocking_error``, ...),
+deferred-tool deltas, queued commands, file references, todo
+reminders, and similar harness-side metadata. Until issue #128, all of
+these were dropped at parse time as ``PassthroughTranscriptEntry``,
+which left the user unable to inspect any hook output even at
+full-detail.
+
+This factory promotes the *hook* flavours into a renderable
+``HookAttachmentMessage``; non-hook flavours still return ``None`` so
+they keep the historical "structural in DAG, hidden from rendering"
+behaviour. New attachment flavours can grow their own factory branch
+here as needed.
+"""
+
+from typing import Any, Optional, cast
+
+from ..models import AttachmentTranscriptEntry, HookAttachmentMessage
+from .meta_factory import create_meta
+
+
+# Attachment ``type`` values produced when a Claude Code hook fires.
+# Mapped to the ``kind`` discriminator on HookAttachmentMessage.
+_HOOK_KINDS: dict[str, str] = {
+    "hook_success": "success",
+    "hook_additional_context": "additional_context",
+    "hook_blocking_error": "blocking_error",
+    "hook_non_blocking_error": "non_blocking_error",
+}
+
+
+def _stringify_content(value: Any) -> str:
+    """Coerce attachment ``content`` to a string.
+
+    ``hook_success`` and ``hook_non_blocking_error`` carry ``content``
+    as a string; ``hook_additional_context`` carries it as a list of
+    strings (one per line of injected prompt context). Anything else
+    is fed through ``str()`` defensively.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        # Preserve per-element line breaks for additional_context lists.
+        items = cast(list[Any], value)
+        return "\n".join(str(item) for item in items)
+    return str(value)
+
+
+def _coerce_int(value: Any) -> Optional[int]:
+    """Return value if it's an int (excluding bool), else None."""
+    # bool is a subclass of int — filter it out so JSON true/false don't
+    # silently become 1/0 here.
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def create_attachment_message(
+    transcript: AttachmentTranscriptEntry,
+) -> Optional[HookAttachmentMessage]:
+    """Build a renderable MessageContent from an attachment entry.
+
+    Returns ``None`` for attachment flavours we don't surface yet — the
+    DAG still keeps the entry as a structural node so downstream
+    children resolve their parent_uuid correctly; rendering simply
+    skips it. This mirrors the pre-#128 PassthroughTranscriptEntry
+    behaviour.
+
+    Args:
+        transcript: Parsed attachment entry from the JSONL file.
+
+    Returns:
+        HookAttachmentMessage for hook flavours; ``None`` otherwise.
+    """
+    payload = transcript.attachment or {}
+
+    attachment_type = payload.get("type")
+    kind = (
+        _HOOK_KINDS.get(attachment_type) if isinstance(attachment_type, str) else None
+    )
+    if kind is None:
+        return None
+
+    meta = create_meta(transcript)
+
+    # ``hook_blocking_error`` nests its payload under a ``blockingError``
+    # object: ``{"blockingError": "<message>", "command": "<cmd>"}``.
+    # The other hook kinds carry command/stdout/stderr at the top.
+    blocking = payload.get("blockingError")
+    if kind == "blocking_error" and isinstance(blocking, dict):
+        blocking_dict = cast(dict[str, Any], blocking)
+        blocking_text = blocking_dict.get("blockingError")
+        command = blocking_dict.get("command") or payload.get("command")
+        return HookAttachmentMessage(
+            meta=meta,
+            kind=kind,
+            hook_event=str(payload.get("hookEvent") or ""),
+            hook_name=str(payload.get("hookName") or ""),
+            tool_use_id=payload.get("toolUseID")
+            if isinstance(payload.get("toolUseID"), str)
+            else None,
+            command=str(command) if command else None,
+            blocking_error=str(blocking_text) if blocking_text else None,
+        )
+
+    return HookAttachmentMessage(
+        meta=meta,
+        kind=kind,
+        hook_event=str(payload.get("hookEvent") or ""),
+        hook_name=str(payload.get("hookName") or ""),
+        tool_use_id=payload.get("toolUseID")
+        if isinstance(payload.get("toolUseID"), str)
+        else None,
+        command=str(payload["command"]) if payload.get("command") else None,
+        exit_code=_coerce_int(payload.get("exitCode")),
+        duration_ms=_coerce_int(payload.get("durationMs")),
+        content=_stringify_content(payload.get("content")),
+        stdout=_stringify_content(payload.get("stdout")),
+        stderr=_stringify_content(payload.get("stderr")),
+    )

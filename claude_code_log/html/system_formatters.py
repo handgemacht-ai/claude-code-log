@@ -2,7 +2,8 @@
 
 This module formats SystemTranscriptEntry-derived content types to HTML.
 Part of the thematic formatter organization:
-- system_formatters.py: SystemMessage, HookSummaryMessage, AwaySummaryMessage
+- system_formatters.py: SystemMessage, HookSummaryMessage, AwaySummaryMessage,
+  HookAttachmentMessage
 - user_formatters.py: SlashCommandMessage, CommandOutputMessage, etc.
 - assistant_formatters.py: AssistantTextMessage, ThinkingMessage, ImageContent
 - tool_formatters.py: tool use/result content
@@ -14,6 +15,7 @@ from .ansi_colors import convert_ansi_to_html
 from .utils import render_markdown
 from ..models import (
     AwaySummaryMessage,
+    HookAttachmentMessage,
     HookSummaryMessage,
     SessionHeaderMessage,
     SystemMessage,
@@ -91,6 +93,91 @@ def format_hook_summary_content(content: HookSummaryMessage) -> str:
 {error_html}
 </div>
 </details>"""
+
+
+def format_hook_attachment_content(content: HookAttachmentMessage) -> str:
+    """Format a hook attachment payload as collapsible details.
+
+    Surfaces the hook command, exit code, duration and any
+    stdout/stderr/blocking-error text. Folded by default; visible only
+    at full detail (post-render filter drops HookAttachmentMessage at
+    HIGH and below alongside HookSummaryMessage).
+
+    Args:
+        content: HookAttachmentMessage with parsed hook payload.
+
+    Returns:
+        HTML for a ``<details>`` block with header summary and body.
+    """
+    is_error = content.kind in ("blocking_error", "non_blocking_error")
+    summary_icon = "🚨" if is_error else "🪝"
+
+    if content.kind == "blocking_error":
+        summary_label = "Hook blocked"
+    elif content.kind == "non_blocking_error":
+        summary_label = "Hook errored"
+    elif content.kind == "additional_context":
+        summary_label = "Hook added context"
+    else:
+        summary_label = "Hook output"
+
+    header_pieces: list[str] = []
+    if content.hook_name:
+        header_pieces.append(html.escape(content.hook_name))
+    elif content.hook_event:
+        header_pieces.append(html.escape(content.hook_event))
+    if content.exit_code is not None:
+        header_pieces.append(f"exit {content.exit_code}")
+    if content.duration_ms is not None:
+        header_pieces.append(f"{content.duration_ms} ms")
+    header_extra = (
+        f' <span class="hook-attachment-meta">· {" · ".join(header_pieces)}</span>'
+        if header_pieces
+        else ""
+    )
+
+    body_parts: list[str] = []
+    if content.command:
+        body_parts.append(
+            '<div class="hook-commands">'
+            f"<code>{html.escape(content.command)}</code>"
+            "</div>"
+        )
+    if content.blocking_error:
+        rendered = convert_ansi_to_html(content.blocking_error)
+        body_parts.append(
+            f'<div class="hook-errors"><pre class="hook-error">{rendered}</pre></div>'
+        )
+    if content.content:
+        rendered = convert_ansi_to_html(content.content)
+        body_parts.append(f'<pre class="hook-attachment-content">{rendered}</pre>')
+    if content.stdout:
+        rendered = convert_ansi_to_html(content.stdout)
+        body_parts.append(
+            '<div class="hook-attachment-stream">'
+            '<div class="hook-attachment-stream-label">stdout</div>'
+            f'<pre class="hook-attachment-output">{rendered}</pre>'
+            "</div>"
+        )
+    if content.stderr:
+        rendered = convert_ansi_to_html(content.stderr)
+        body_parts.append(
+            '<div class="hook-attachment-stream">'
+            '<div class="hook-attachment-stream-label">stderr</div>'
+            f'<pre class="hook-attachment-output hook-attachment-stderr">{rendered}</pre>'
+            "</div>"
+        )
+
+    body = (
+        f'<div class="hook-details">{"".join(body_parts)}</div>' if body_parts else ""
+    )
+    return (
+        f'<details class="hook-attachment">'
+        f"<summary><strong>{summary_icon}</strong> "
+        f"{summary_label}{header_extra}</summary>"
+        f"{body}"
+        "</details>"
+    )
 
 
 def format_away_summary_content(content: AwaySummaryMessage) -> str:
@@ -187,6 +274,7 @@ def format_session_header_content(content: SessionHeaderMessage) -> str:
 __all__ = [
     "format_system_content",
     "format_hook_summary_content",
+    "format_hook_attachment_content",
     "format_away_summary_content",
     "format_session_header_content",
 ]

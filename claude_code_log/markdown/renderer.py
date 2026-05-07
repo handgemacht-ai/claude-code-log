@@ -23,6 +23,7 @@ from ..models import (
     CommandOutputMessage,
     CompactedSummaryMessage,
     DetailLevel,
+    HookAttachmentMessage,
     HookSummaryMessage,
     ImageContent,
     SessionHeaderMessage,
@@ -479,6 +480,48 @@ class MarkdownRenderer(Renderer):
             for info in content.hook_infos:
                 parts.append(f"ℹ️ {info}")
         return "\n\n".join(parts) if parts else ""
+
+    def format_HookAttachmentMessage(
+        self, content: HookAttachmentMessage, _: TemplateMessage
+    ) -> str:
+        """Format → multi-line summary of a single hook callback.
+
+        Mirrors the HTML rendering structure (header line + per-stream
+        fenced blocks) but in plain Markdown so it survives in
+        downstream tools that consume the ``--format md`` output.
+        """
+        header_pieces: list[str] = []
+        if content.hook_name:
+            header_pieces.append(f"`{content.hook_name}`")
+        elif content.hook_event:
+            header_pieces.append(f"`{content.hook_event}`")
+        if content.exit_code is not None:
+            header_pieces.append(f"exit `{content.exit_code}`")
+        if content.duration_ms is not None:
+            header_pieces.append(f"`{content.duration_ms}` ms")
+        prefix = (
+            "🚨" if content.kind in ("blocking_error", "non_blocking_error") else "🪝"
+        )
+        header = (
+            f"{prefix} Hook · " + " · ".join(header_pieces)
+            if header_pieces
+            else (f"{prefix} Hook")
+        )
+
+        body_parts: list[str] = [header]
+        if content.command:
+            body_parts.append(self._code_fence(content.command, lang="bash"))
+        if content.blocking_error:
+            body_parts.append(self._code_fence(content.blocking_error))
+        if content.content:
+            body_parts.append(self._code_fence(content.content))
+        if content.stdout:
+            body_parts.append("**stdout:**")
+            body_parts.append(self._code_fence(content.stdout))
+        if content.stderr:
+            body_parts.append("**stderr:**")
+            body_parts.append(self._code_fence(content.stderr))
+        return "\n\n".join(body_parts)
 
     def format_SessionHeaderMessage(
         self, content: SessionHeaderMessage, _: TemplateMessage
