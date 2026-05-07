@@ -89,22 +89,106 @@ class TestSurrogateEncoding:
         # itself is the canary.
         assert LONE_SURROGATE not in html
 
-    def test_paginated_re_read_does_not_crash(self, tmp_path: Path):
-        """The paginated `_enable_next_link_on_previous_page` path reads
-        a previously-written page and rewrites it. Pre-fix corrupt pages
-        (with lone surrogates baked in) crashed on the read; the read site
-        also gained ``errors="replace"`` so older corrupt outputs can still
-        be rewritten cleanly. We exercise the read-rewrite cycle by running
-        the converter twice on a multi-page input."""
-        jsonl_path = tmp_path / "session.jsonl"
-        _make_jsonl_with_surrogate(jsonl_path)
+    def test_paginated_read_rewrite_does_not_crash(self, tmp_path: Path):
+        """Exercise `_enable_next_link_on_previous_page`'s read+write seam.
 
-        # First run produces the HTML; second run is a cache-hit path
-        # that may exercise the read-rewrite seam.
-        first = convert_jsonl_to_html(jsonl_path, silent=True)
-        assert first.exists()
-        second = convert_jsonl_to_html(jsonl_path, silent=True)
-        assert second.exists()
+        Pagination only fires when the input is a *directory*, the format
+        is HTML, no date filter is set, and `total_message_count >
+        page_size`. We force it by passing `page_size=1` against a
+        directory-mode input with two messages, so page 2 generation
+        triggers a read of page 1 (`read_text(errors="replace")`) and a
+        rewrite of it (`write_text(errors="replace")`).
+
+        Pre-fix, that read would raise `UnicodeDecodeError` on a page
+        whose previous run had baked in a lone surrogate; the read-side
+        fix lets older corrupt pages still rewrite cleanly."""
+        # Pagination splits by *session*, never within a session
+        # (`_assign_sessions_to_pages`). Two distinct sessions with
+        # `page_size=1` → page 1 holds the surrogate-bearing session,
+        # page 2 holds the plain one, and page-2 generation invokes
+        # `_enable_next_link_on_previous_page(output_dir, 1, …)`.
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        def _entry(session_id: str, uuid: str, timestamp: str, text: str) -> dict:
+            return {
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/tmp",
+                "sessionId": session_id,
+                "version": "2.1.0",
+                "type": "user",
+                "uuid": uuid,
+                "timestamp": timestamp,
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": text}],
+                },
+            }
+
+        # `_assign_sessions_to_pages` closes a page only when the running
+        # message count *strictly exceeds* `page_size`, so session-A needs
+        # ≥2 messages to push the count past the threshold and force
+        # session-B onto a fresh page (1+1 with page_size=1 still fits in
+        # a single page).
+        session_a_id = "11111111-1111-1111-1111-111111111111"
+        session_b_id = "22222222-2222-2222-2222-222222222222"
+        (project_dir / "session-a.jsonl").write_text(
+            "\n".join(
+                json.dumps(e)
+                for e in [
+                    _entry(
+                        session_a_id,
+                        "33333333-3333-3333-3333-333333333333",
+                        "2026-05-07T10:00:00.000Z",
+                        f"page-1 first msg with {LONE_SURROGATE} (issue #139)",
+                    ),
+                    _entry(
+                        session_a_id,
+                        "33333333-3333-3333-3333-333333333334",
+                        "2026-05-07T10:00:00.500Z",
+                        "page-1 second msg",
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (project_dir / "session-b.jsonl").write_text(
+            json.dumps(
+                _entry(
+                    session_b_id,
+                    "44444444-4444-4444-4444-444444444444",
+                    "2026-05-07T10:00:01.000Z",
+                    "page-2 plain content",
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        # Directory mode + page_size=1 forces ≥2 pages; page-2 generation
+        # invokes `_enable_next_link_on_previous_page(output_dir, 1, …)`.
+        output = convert_jsonl_to_html(project_dir, page_size=1, silent=True)
+        assert output.exists()
+
+        # Confirm pagination actually fired (page 2 was created — otherwise
+        # the read-rewrite seam wouldn't have been exercised).
+        page_1 = project_dir / "combined_transcripts.html"
+        page_2 = project_dir / "combined_transcripts_2.html"
+        assert page_1.exists() and page_2.exists(), (
+            "expected two paginated HTML files; only one was generated"
+        )
+
+        # Both pages must be strict-UTF-8 decodable (would raise pre-fix
+        # if the surrogate had been written through `write_text` strictly,
+        # and the page-1 read in `_enable_next_link_on_previous_page`
+        # would also have crashed pre-fix on the same payload).
+        page_1_html = page_1.read_bytes().decode("utf-8")
+        page_2_html = page_2.read_bytes().decode("utf-8")
+        assert LONE_SURROGATE not in page_1_html
+        assert LONE_SURROGATE not in page_2_html
 
 
 @pytest.mark.parametrize("surrogate", ["\udcb2", "\udc80", "\udcff"])

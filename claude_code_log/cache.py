@@ -125,6 +125,20 @@ class ProjectCache(BaseModel):
 # ========== Helper Functions ==========
 
 
+def _scrub_surrogates(s: Optional[str]) -> Optional[str]:
+    """Round-trip a string through UTF-8 with ``errors="replace"``.
+
+    Strips lone surrogates (U+DC80…U+DCFF) that may have leaked in via
+    ``surrogateescape``-decoded JSONL data — sqlite3's text-binding path
+    raises ``UnicodeEncodeError`` on these the moment we try to persist
+    them. Same root cause as #139's HTML write-side fix; this is the
+    cache-DB-side companion.
+    """
+    if s is None:
+        return None
+    return s.encode("utf-8", errors="replace").decode("utf-8")
+
+
 def get_library_version() -> str:
     """Get the current library version from package metadata or pyproject.toml."""
     # First try to get version from installed package metadata
@@ -619,17 +633,21 @@ class CacheManager:
                     (
                         self._project_id,
                         session_id,
-                        data.summary,
+                        # Scrub surrogate-bearing strings before binding —
+                        # sqlite3 raises UnicodeEncodeError on lone
+                        # surrogates that surrogateescape-decoded JSONL
+                        # may have leaked into these text fields. (#139)
+                        _scrub_surrogates(data.summary),
                         data.first_timestamp,
                         data.last_timestamp,
                         data.message_count,
-                        data.first_user_message,
-                        data.cwd,
+                        _scrub_surrogates(data.first_user_message),
+                        _scrub_surrogates(data.cwd),
                         data.total_input_tokens,
                         data.total_output_tokens,
                         data.total_cache_creation_tokens,
                         data.total_cache_read_tokens,
-                        data.team_name,
+                        _scrub_surrogates(data.team_name),
                     ),
                 )
 
