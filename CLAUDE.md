@@ -51,26 +51,26 @@ See @CONTRIBUTING.md for detailed development setup, testing, architecture, and 
 
 ### Claude-Specific Testing Tips
 
-**Always use `-n auto` for parallel test execution:**
+**Config in `pyproject.toml` sets `-n auto --dist=worksteal` so you might need to unset for pdb, etc**
 
 ```bash
 # Unit tests (fast, recommended for development)
 just test
-# or: uv run pytest -n auto -m "not (tui or browser)" -v
+# or: uv run pytest -m "not (tui or browser)" -v
 
 # TUI tests
 just test-tui
-# or: uv run pytest -n auto -m tui
+# or: uv run pytest -m tui
 
 # Browser tests
 just test-browser
-# or: uv run pytest -n auto -m browser
+# or: uv run pytest -m browser
 
 # All tests
 just test-all
 ```
 
-**Tip:** Add `-x` to stop on first failure (e.g., `uv run pytest -n auto -m "not (tui or browser)" -v -x`).
+**Tip:** Add `-x` to stop on first failure (e.g., `uv run pytest -m "not (tui or browser)" -v -x`).
 
 ### Code Quality
 
