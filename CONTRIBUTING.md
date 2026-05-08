@@ -96,7 +96,7 @@ The project uses a categorized test system to avoid async event loop conflicts.
 ```bash
 # Unit tests only (fast, recommended for development)
 just test
-# or: uv run pytest -n auto -m "not (tui or browser)" -v
+# or: uv run pytest -m "not (tui or browser)" -v
 
 # TUI tests (isolated event loop)
 just test-tui
@@ -117,21 +117,18 @@ Snapshot tests detect unintended HTML output changes using [syrupy](https://gith
 
 ```bash
 # Run snapshot tests (parallel mode is fine for read-only runs)
-uv run pytest -n auto test/test_snapshot_html.py -v
+uv run pytest test/test_snapshot_html.py -v
 
 # Update snapshots after intentional HTML changes
-# IMPORTANT: run --snapshot-update WITHOUT -n auto (see warning below)
-uv run pytest test/test_snapshot_html.py --snapshot-update
+# IMPORTANT: run --snapshot-update with -n0 (see warning below)
+uv run pytest test/test_snapshot_html.py -n0 --snapshot-update
 ```
 
-> **Warning — don't combine `--snapshot-update` with `-n auto`.** Syrupy
+> **Warning — don't let `--snapshot-update` run with `-n auto`.** Syrupy
 > and pytest-xdist race when writing snapshot files in parallel: the
 > `.ambr` file ends up truncated (observed: ~6000 lines silently
 > deleted on a single run, leaving the file structurally broken but
-> still passing on next read). Run `--snapshot-update` serially. This
-> is also why pytest is **not** configured with a default `-n auto`
-> in `pyproject.toml`; the `just test` recipes opt in for read-only
-> runs where the race doesn't apply.
+> still passing on next read). Run `--snapshot-update` serially.
 
 When snapshot tests fail:
 1. Review the diff to verify changes are intentional
@@ -163,7 +160,7 @@ Running all tests together can cause "RuntimeError: This event loop is already r
 just test-cov
 
 # Or manually:
-uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term
+uv run pytest --cov=claude_code_log --cov-report=html --cov-report=term
 ```
 
 HTML coverage reports are generated in `htmlcov/index.html`.

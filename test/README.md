@@ -148,10 +148,10 @@ Snapshot tests capture the full HTML output and detect unintended regressions. T
 
 ```bash
 # Run snapshot tests
-uv run pytest -n auto test/test_snapshot_html.py -v
+uv run pytest test/test_snapshot_html.py -v
 
 # Update snapshots after intentional HTML changes
-uv run pytest -n auto test/test_snapshot_html.py --snapshot-update
+uv run pytest -n0 test/test_snapshot_html.py --snapshot-update
 
 # Review changes before committing
 git diff test/__snapshots__/
@@ -170,28 +170,28 @@ git diff test/__snapshots__/
 ```bash
 # Run only unit tests (fast, recommended for development)
 just test
-# or: uv run pytest -n auto -m "not (tui or browser or integration)" -v
+# or: uv run pytest -m "not (tui or browser or integration)" -v
 
 # Run TUI tests (isolated event loop)
 just test-tui
-# or: uv run pytest -n auto -m tui -v
+# or: uv run pytest -m tui -v
 
 # Run browser tests (requires Chromium)
 just test-browser
-# or: uv run pytest -n auto -m browser -v
+# or: uv run pytest -m browser -v
 
 # Run integration tests with realistic data
 just test-integration
-# or: uv run pytest -n auto -m integration -v
+# or: uv run pytest -m integration -v
 
 # Run all tests in sequence (separated to avoid conflicts)
 just test-all
 
 # Run specific test file
-uv run pytest -n auto test/test_template_rendering.py -v
+uv run pytest test/test_template_rendering.py -v
 
 # Run specific test method
-uv run pytest -n auto test/test_template_rendering.py::TestTemplateRendering::test_representative_messages_render -v
+uv run pytest test/test_template_rendering.py::TestTemplateRendering::test_representative_messages_render -v
 
 # Run tests with coverage
 just test-cov
@@ -214,10 +214,10 @@ Generate detailed coverage reports:
 
 ```bash
 # Run tests with coverage and HTML report
-uv run pytest -n auto --cov=claude_code_log --cov-report=html --cov-report=term
+uv run pytest --cov=claude_code_log --cov-report=html --cov-report=term
 
 # View coverage by module
-uv run pytest -n auto --cov=claude_code_log --cov-report=term-missing
+uv run pytest --cov=claude_code_log --cov-report=term-missing
 
 # Open HTML coverage report
 open htmlcov/index.html

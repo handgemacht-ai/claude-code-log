@@ -369,7 +369,7 @@ class Test{ToolName}OutputFormatting:
 uv run pytest test/test_{toolname}_rendering.py -v
 
 # Run full test suite to check for regressions
-uv run pytest -n auto -m "not (tui or browser)" -v
+uv run pytest -m "not (tui or browser)" -v
 ```
 
 ## Checklist

@@ -5,12 +5,11 @@ default:
 cli *ARGS:
     uv run claude-code-log {{ ARGS }}
 
-# Run only unit tests (fast, no external dependencies)
+# Run unit + integration tests (excludes TUI, browser, and benchmark)
 test:
     uv run pytest -m "not (tui or browser or benchmark)" -v
 
-# Run benchmark tests serially for stable measurements (outputs to GITHUB_STEP_SUMMARY in CI).
-# DEBUG_TIMING enables coverage of renderer_timings.py
+# Run benchmark tests serially for stable measurements (outputs to GITHUB_STEP_SUMMARY in CI). DEBUG_TIMING enables coverage of renderer_timings.py
 test-benchmark:
     CLAUDE_CODE_LOG_DEBUG_TIMING=1 uv run pytest -n0 -m benchmark -v
 
