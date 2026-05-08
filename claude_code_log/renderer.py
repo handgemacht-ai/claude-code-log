@@ -1586,8 +1586,20 @@ def _build_pairing_indices(messages: list[TemplateMessage]) -> PairingIndices:
             elif msg.type == "tool_result":
                 tool_result_index[key] = msg
 
-        # Index system messages by UUID for parent-child pairing
-        if msg.meta.uuid and msg.type == "system":
+        # Index system messages by UUID for parent-child pairing.
+        # Exclude hook flavours (``HookAttachmentMessage`` from #128 and
+        # ``HookSummaryMessage``): they share ``type == "system"`` but
+        # are out-of-band callbacks, not conversation system entries.
+        # Indexing them here would let a chained system entry (e.g. a
+        # ``stop_hook_summary`` whose ``parentUuid`` is the hook
+        # attachment) pair the hook as its parent — visible as a
+        # spurious "▼ 1 system" fold-bar on every hook in dense
+        # transcripts (e.g. ClMail bursts).
+        if (
+            msg.meta.uuid
+            and msg.type == "system"
+            and not isinstance(msg.content, (HookAttachmentMessage, HookSummaryMessage))
+        ):
             uuid_index[msg.meta.uuid] = msg
 
     return PairingIndices(
@@ -1762,7 +1774,16 @@ def _try_pair_by_index(
     #    (``pair_first is None and pair_last is None``) only pairs
     #    virgin parents, so siblings beyond the first render as
     #    standalone cards rather than half-pairs.
-    if current.type == "system" and current.parent_uuid:
+    # Symmetry with the index-build above: hook flavours don't act as
+    # children in the system→system parent/child pairing either. A
+    # ``hook_blocking_error`` attachment chained behind a previous
+    # system entry shouldn't render as a paired sub-row of that
+    # entry; both flavours stand on their own.
+    if (
+        current.type == "system"
+        and current.parent_uuid
+        and not isinstance(current.content, (HookAttachmentMessage, HookSummaryMessage))
+    ):
         parent = indices.uuid.get(current.parent_uuid)
         if (
             parent is not None

@@ -385,6 +385,63 @@ class TestHookAttachmentHierarchy:
             "content": content,
         }
 
+    def test_hook_does_not_pair_with_chained_system_entry(self) -> None:
+        """Regression for the dense-transcript pairing bug: a
+        ``stop_hook_summary`` whose ``parentUuid`` is a hook attachment
+        used to pair with the hook via ``_try_pair_by_index`` because
+        both share ``type == "system"``. That made every hook render
+        with a spurious "▼ 1 system" fold-bar in transcripts where
+        plugins fire on every turn (issue #128 follow-up).
+        """
+        from claude_code_log.renderer import generate_template_messages
+
+        messages = [
+            create_transcript_entry(_make_user("u-1", None, "do something")),
+            create_transcript_entry(
+                _make_attachment(
+                    uuid="hook-1",
+                    parent_uuid="u-1",
+                    payload={
+                        "type": "hook_success",
+                        "hookEvent": "Stop",
+                        "hookName": "Stop",
+                        "command": "x",
+                        "stdout": "",
+                        "stderr": "",
+                        "exitCode": 0,
+                        "durationMs": 5,
+                    },
+                )
+            ),
+            # System summary entry whose parentUuid points at the hook
+            # — this is the shape Claude Code emits in real transcripts.
+            create_transcript_entry(
+                {
+                    **_BASE_FIELDS,
+                    "type": "system",
+                    "uuid": "sum-1",
+                    "parentUuid": "hook-1",
+                    "timestamp": "2026-01-01T00:00:00.000Z",
+                    "subtype": "stop_hook_summary",
+                    "hasOutput": True,
+                    "hookErrors": ["something failed"],
+                    "hookInfos": [{"command": "echo done"}],
+                }
+            ),
+        ]
+
+        _roots, _nav, ctx = generate_template_messages(
+            messages, detail=DetailLevel.FULL
+        )
+        del _roots, _nav
+
+        hook = next(
+            m for m in ctx.messages if isinstance(m.content, HookAttachmentMessage)
+        )
+        # No pair links on either side — the hook stands alone.
+        assert hook.pair_first is None
+        assert hook.pair_last is None
+
     def test_hook_does_not_claim_system_info_as_child(self) -> None:
         """A HookAttachmentMessage at hierarchy level 3 sits alongside
         SystemMessage(level=info) at level 3 — neither nests under the
