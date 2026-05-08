@@ -1419,8 +1419,16 @@ class MarkdownRenderer(Renderer):
         return f"🌐 WebFetch `{url}`"
 
     def title_MonitorInput(self, input: MonitorInput, _: TemplateMessage) -> str:
-        """Title → '🔭 Monitor <description>'."""
-        return f"🔭 Monitor {input.description}"
+        """Title → '🔭 Monitor `<description>`'.
+
+        Wraps the description in inline code via ``_inline_code`` —
+        same recipe as ``title_WebSearchInput`` / ``title_WebFetchInput``
+        / ``title_SkillInput``. The helper widens the fence past any
+        backtick run in the value and escapes the value from
+        Markdown emphasis / heading metacharacters that would otherwise
+        leak into the rendered title (e.g. ``*`` / ``_`` / ``[``).
+        """
+        return f"🔭 Monitor {_inline_code(input.description)}"
 
     def title_SkillInput(self, input: SkillInput, _: TemplateMessage) -> str:
         """Title → '💡 Skill `<skill_name>`'."""

@@ -699,12 +699,6 @@ def format_monitor_input(monitor_input: MonitorInput) -> str:
     body row anchors the rendering to the harness's exact field name
     and keeps the card useful when a future title format changes.
     """
-    params: dict[str, Any] = {"description": monitor_input.description}
-    # Command rendered separately for adaptive collapsibility — pass
-    # a placeholder through the table builder, then replace with the
-    # specialised cell. This keeps the row layout consistent with
-    # ``render_params_table`` (same CSS hooks downstream) while letting
-    # us keep the line-count badge for the multi-line case.
     command = monitor_input.command
     line_count = command.count("\n") + 1
     escaped_command = escape_html(command)
@@ -717,11 +711,6 @@ def format_monitor_input(monitor_input: MonitorInput) -> str:
         command_cell = render_collapsible_code(preview_html, full_html, line_count)
     else:
         command_cell = f"<pre class='monitor-command'>{escaped_command}</pre>"
-
-    if monitor_input.timeout_ms is not None:
-        params["timeout_ms"] = monitor_input.timeout_ms
-    if monitor_input.persistent is not None:
-        params["persistent"] = monitor_input.persistent
 
     # Compose the table by hand so the ``command`` row carries the
     # specialised cell instead of a generic stringification.

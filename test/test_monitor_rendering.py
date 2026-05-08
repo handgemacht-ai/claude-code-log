@@ -156,6 +156,7 @@ class TestMonitorHtmlFormatter:
 # -----------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("_ensure_fixture_present")
 class TestMonitorFixtureRendering:
     """Drive the real HTML/Markdown renderers against ``test_data/monitor_tool.jsonl``.
 
@@ -231,8 +232,11 @@ class TestMonitorFixtureRendering:
 
     def test_markdown_title_and_command_fence(self) -> None:
         md = self._md()
-        # Title with telescope and description.
-        assert "🔭 Monitor PR #140 check transitions" in md
+        # Title wraps the description in inline code (matches
+        # WebSearch / WebFetch / Skill convention; protects against
+        # markdown emphasis / heading metacharacters in user-supplied
+        # descriptions).
+        assert "🔭 Monitor `PR #140 check transitions`" in md
         # Bullet list with all four fields.
         assert "- **description:** PR #140 check transitions" in md
         assert "- **timeout_ms:** 3600000" in md
@@ -302,7 +306,7 @@ class TestTaskNotificationToolUseIdBacklink:
         assert notification.task_id == "abc123"
         assert notification.tool_use_id is None
 
-    def test_no_backlink_when_tool_use_id_does_not_match(self, tmp_path) -> None:
+    def test_no_backlink_when_tool_use_id_does_not_match(self, tmp_path: Path) -> None:
         """When the notification's tool_use_id doesn't match any
         tool_use in the transcript, the Task ID renders as plain
         ``<code>`` — no orphan anchor pointing at nothing."""
@@ -359,8 +363,14 @@ class TestTaskNotificationToolUseIdBacklink:
         assert "<a class='task-notification-backlink'" not in html
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _ensure_fixture_present() -> None:
-    """The fixture file must exist for the end-to-end tests to run."""
+@pytest.fixture(scope="class")
+def _ensure_fixture_present() -> None:  # pyright: ignore[reportUnusedFunction]
+    """Skip the end-to-end fixture-driven tests when the JSONL fixture
+    is missing. Class-scoped + opt-in via ``@pytest.mark.usefixtures``
+    so unrelated tests in the module (model parsing, formatter unit
+    checks, the orthogonal backlink-contract tests) still run when the
+    fixture file is absent — only ``TestMonitorFixtureRendering``
+    actually depends on it.
+    """
     if not FIXTURE.exists():
         pytest.skip(f"Fixture missing: {FIXTURE}")
