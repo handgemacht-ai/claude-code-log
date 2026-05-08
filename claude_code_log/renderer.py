@@ -2036,6 +2036,22 @@ def _get_message_hierarchy_level(msg: TemplateMessage) -> int:
     ):
         return 3
 
+    # Hook flavours (HookAttachmentMessage from #128, HookSummaryMessage)
+    # are out-of-band callbacks, not conversation turns. They both
+    # carry msg_type == "system" but aren't SystemMessage instances,
+    # so the SystemMessage-level check above doesn't fire. Sit them at
+    # level 3 alongside system info — otherwise they default to level
+    # 2 and claim subsequent system_info entries (e.g. ``/color`` →
+    # ``Session color set to: green`` pair) as children, which both
+    # mis-anchors the hook AND prevents the two related system_info
+    # entries from pairing under their real parent. Out of scope: a
+    # full "is this a leaf?" predicate; the stack-based hierarchy
+    # only needs the level adjustment.
+    if msg_type == "system" and isinstance(
+        msg.content, (HookAttachmentMessage, HookSummaryMessage)
+    ):
+        return 3
+
     # System commands/errors at level 2 (siblings to assistant)
     if msg_type == "system" and not is_sidechain:
         return 2

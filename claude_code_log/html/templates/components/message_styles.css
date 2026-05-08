@@ -341,7 +341,6 @@
 .system-hook {
     border-left-color: var(--warning-dimmed);
     background-color: var(--highlight-dimmed);
-    font-size: 90%;
 }
 
 /* Hook attachment styling — full-detail-only payloads from
@@ -352,7 +351,21 @@
 .system-hook-attachment {
     border-left-color: var(--assistant-dimmed);
     background-color: var(--highlight-dimmed);
-    font-size: 90%;
+}
+
+/* Hook entries (both flavours) appear in dense bursts when ClMail or
+   similar plugins fire on every turn — minimise their visual weight
+   so they don't drown out actual conversation. Slight transparency
+   reads as "secondary signal" without losing the affordance. */
+div.system-hook-attachment,
+div.system-hook {
+    font-size: 70%;
+    opacity: 0.9;
+}
+
+div.system-hook-attachment .header,
+div.system-hook .header {
+    font-weight: 400;
 }
 
 .hook-attachment {

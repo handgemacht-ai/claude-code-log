@@ -362,6 +362,91 @@ class TestEndToEndDetailLevels:
         assert "registered prompt" not in html
 
 
+class TestHookAttachmentHierarchy:
+    """Hook attachments must NOT claim subsequent system_info as children.
+
+    Regression for the visual bug where a UserPromptSubmit hook
+    attachment ended up parenting a ``/color`` system_info entry,
+    which both mis-anchored the hook and prevented related system
+    entries (``/color`` + ``Session color set to: green``) from
+    pairing under their real parent.
+    """
+
+    def _make_system_info(
+        self, uuid: str, parent_uuid: str | None, content: str
+    ) -> dict[str, Any]:
+        return {
+            **_BASE_FIELDS,
+            "type": "system",
+            "uuid": uuid,
+            "parentUuid": parent_uuid,
+            "timestamp": "2026-01-01T00:00:00.000Z",
+            "level": "info",
+            "content": content,
+        }
+
+    def test_hook_does_not_claim_system_info_as_child(self) -> None:
+        """A HookAttachmentMessage at hierarchy level 3 sits alongside
+        SystemMessage(level=info) at level 3 — neither nests under the
+        other, both nest under the user turn that anchored them."""
+        from claude_code_log.renderer import generate_template_messages
+
+        messages = [
+            create_transcript_entry(_make_user("u-1", None, "/color")),
+            create_transcript_entry(
+                _make_attachment(
+                    uuid="hook-1",
+                    parent_uuid="u-1",
+                    payload={
+                        "type": "hook_success",
+                        "hookEvent": "UserPromptSubmit",
+                        "hookName": "UserPromptSubmit",
+                        "command": "echo hook",
+                        "stdout": "ok\n",
+                        "stderr": "",
+                        "exitCode": 0,
+                        "durationMs": 96,
+                    },
+                )
+            ),
+            create_transcript_entry(self._make_system_info("sys-1", "u-1", "/color")),
+            create_transcript_entry(
+                self._make_system_info("sys-2", "sys-1", "Session color set to: green")
+            ),
+        ]
+
+        _roots, _nav, ctx = generate_template_messages(
+            messages, detail=DetailLevel.FULL
+        )
+        del _roots, _nav
+
+        hook = next(
+            m for m in ctx.messages if isinstance(m.content, HookAttachmentMessage)
+        )
+        # Filter to user-content SystemMessages (the "/color" + "Session
+        # color set" entries) — exclude SessionHeaderMessage which also
+        # carries msg_type "system".
+        from claude_code_log.models import SystemMessage
+
+        system_infos = [m for m in ctx.messages if isinstance(m.content, SystemMessage)]
+
+        # Hook should NOT have any system_info as immediate child.
+        assert hook.immediate_children_count == 0, (
+            f"Hook attachment claimed {hook.immediate_children_count} "
+            f"system children — should be a leaf"
+        )
+
+        # The two system_infos should be siblings: neither one should
+        # have the hook in its ancestry.
+        for sm in system_infos:
+            sm_content = sm.content
+            assert isinstance(sm_content, SystemMessage)
+            assert hook.message_index not in sm.ancestry, (
+                f"system_info {sm_content.text!r} got hook in its ancestry "
+                f"chain — should anchor on the user prompt instead"
+            )
+
+
 class TestHookAttachmentsFixture:
     """End-to-end check against ``test/test_data/hook_attachments.jsonl``.
 
