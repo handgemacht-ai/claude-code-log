@@ -125,6 +125,27 @@ class ProjectCache(BaseModel):
 # ========== Helper Functions ==========
 
 
+def _scrub_surrogates(s: Optional[str]) -> Optional[str]:
+    """Replace lone surrogates (U+DC80…U+DCFF) with U+FFFD.
+
+    Lone surrogates that leak in via ``surrogateescape``-decoded JSONL
+    data crash sqlite3's text-binding path with ``UnicodeEncodeError``
+    the moment we try to persist them. Same root-cause family as #139's
+    HTML write-side fix; this is the cache-DB-side companion.
+
+    Encoding via ``surrogateescape`` (which round-trips lone surrogates
+    back to their raw bytes — ``\\udcb2`` → ``b"\\xb2"``) followed by
+    decoding with ``errors="replace"`` substitutes the invalid byte
+    sequences with the canonical Unicode replacement character U+FFFD
+    (``\\ufffd``). The simpler ``encode(..., errors="replace")``
+    round-trip would emit ASCII ``?`` (U+003F) instead — also valid
+    UTF-8, but a less informative sentinel.
+    """
+    if s is None:
+        return None
+    return s.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
+
+
 def get_library_version() -> str:
     """Get the current library version from package metadata or pyproject.toml."""
     # First try to get version from installed package metadata
@@ -619,17 +640,21 @@ class CacheManager:
                     (
                         self._project_id,
                         session_id,
-                        data.summary,
+                        # Scrub surrogate-bearing strings before binding —
+                        # sqlite3 raises UnicodeEncodeError on lone
+                        # surrogates that surrogateescape-decoded JSONL
+                        # may have leaked into these text fields. (#139)
+                        _scrub_surrogates(data.summary),
                         data.first_timestamp,
                         data.last_timestamp,
                         data.message_count,
-                        data.first_user_message,
-                        data.cwd,
+                        _scrub_surrogates(data.first_user_message),
+                        _scrub_surrogates(data.cwd),
                         data.total_input_tokens,
                         data.total_output_tokens,
                         data.total_cache_creation_tokens,
                         data.total_cache_read_tokens,
-                        data.team_name,
+                        _scrub_surrogates(data.team_name),
                     ),
                 )
 
