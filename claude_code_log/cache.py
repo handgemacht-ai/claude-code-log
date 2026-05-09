@@ -662,7 +662,7 @@ class CacheManager:
                         data.total_cache_creation_tokens,
                         data.total_cache_read_tokens,
                         scrub_surrogates(data.team_name),
-						scrub_surrogates(data.ai_title),
+                        scrub_surrogates(data.ai_title),
                     ),
                 )
 
