@@ -789,8 +789,16 @@ class HtmlRenderer(Renderer):
     def title_CronListInput(
         self, _input: CronListInput, message: TemplateMessage
     ) -> str:
-        """Title → '⏰ CronList'."""
-        return self._tool_title(message, "⏰", "CronList")
+        """Title → '⏰ CronList'.
+
+        Drop the summary entirely — ``_tool_title`` already emits the
+        message's tool name (``CronList``) ahead of any summary span,
+        so passing the tool name as the summary too would render it
+        twice (caught by monk on #148 review). The other three tools
+        in the family pass distinct summaries (delay, cron expression,
+        id), so they don't trigger the duplication.
+        """
+        return self._tool_title(message, "⏰")
 
     def title_CronDeleteInput(
         self, input: CronDeleteInput, message: TemplateMessage

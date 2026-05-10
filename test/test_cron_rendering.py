@@ -251,8 +251,17 @@ class TestSchedulingFixtureRendering:
         assert "+240s" in html
         # CronCreate title carries the cron expression.
         assert "57 8 * * *" in html
-        # CronList renders the static title literal.
-        assert "CronList" in html
+        # CronList renders the static title literal — pinned to a
+        # single occurrence so a regression of monk's #148 finding
+        # (``_tool_title`` rendering both the tool name and a
+        # tool-name-shaped summary) fails loudly. The other three
+        # tools in the family pass distinct summaries, so they don't
+        # trigger the duplication; this guard is specifically for the
+        # zero-input-tool shape.
+        assert html.count("CronList") == 1, (
+            f"Expected exactly one 'CronList' occurrence; got {html.count('CronList')}"
+        )
+        assert "<span class='tool-summary'>CronList" not in html
         # CronDelete title carries the id.
         assert "cj_def456" in html
 
