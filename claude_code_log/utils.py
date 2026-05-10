@@ -155,6 +155,195 @@ def get_project_display_name(
         return display_name
 
 
+def project_dir_to_real_path(
+    project_dir: Path,
+    cached_working_directories: Optional[list[str]] = None,
+) -> Path:
+    """Recover the real on-disk path for a Claude project directory.
+
+    Claude Code encodes project paths flatly: ``/`` and leading ``.``
+    both become ``-`` (e.g. ``/home/joe/.claude`` →
+    ``-home-joe--claude``). The encoding is **lossy** — ``-home-joe-x-y``
+    could mean either ``/home/joe/x/y`` or ``/home/joe/x-y``. The cache
+    (and live JSONLs) preserve the original ``cwd`` so we can disambiguate
+    without parsing the encoded name.
+
+    Resolution strategy (issue #151):
+
+    1. **Cache hit** — if ``cached_working_directories`` is non-empty,
+       use its first entry. Authoritative — that's what Claude Code
+       recorded at session time.
+    2. **JSONL peek** — open the project's first JSONL, scan up to a
+       handful of lines for the first entry with a ``cwd`` field,
+       return that. Cheap (one ``json.loads`` per line, no model
+       validation).
+    3. **Naive last-resort** — strip the leading ``-`` and replace
+       remaining ``-``s with ``/``. Best-effort only; collapses
+       ambiguity in the lossy direction. Used when the project dir
+       has been emptied (orphan archived dir) and no cache survives.
+
+    Args:
+        project_dir: The encoded project directory
+            (e.g. ``~/.claude/projects/-home-joe-project-A``).
+        cached_working_directories: Optional cached ``working_directories``
+            list from the project's cache (``ProjectCache.working_directories``).
+
+    Returns:
+        The recovered real path. May be a best-effort guess in the
+        last-resort case.
+    """
+    # Tier 1: cache. Only accept absolute paths — relative or oddly
+    # shaped values fall through (e.g. test fixtures with synthetic
+    # `cwd` entries).
+    if cached_working_directories:
+        real_dirs = [
+            wd
+            for wd in cached_working_directories
+            if not _is_temp_path(wd) and Path(wd).is_absolute()
+        ]
+        if real_dirs:
+            return Path(real_dirs[0])
+
+    # Tier 2: peek the first JSONL for a `cwd` field. Same
+    # absoluteness guard as tier 1.
+    if project_dir.is_dir():
+        # Skip agent-* sidechain files; they may not carry the
+        # top-level project cwd. Take any other JSONL.
+        for jsonl_path in sorted(project_dir.glob("*.jsonl")):
+            if jsonl_path.name.startswith("agent-"):
+                continue
+            cwd_from_peek = _peek_jsonl_for_cwd(jsonl_path)
+            if cwd_from_peek and Path(cwd_from_peek).is_absolute():
+                return Path(cwd_from_peek)
+            # First non-agent JSONL exhausted with no usable cwd —
+            # bail out rather than scanning every file.
+            break
+
+    # Tier 3: naive last-resort. Recovers leading-dot dir components
+    # via `--` → `/.` mapping (Claude Code encodes `/.foo` as `--foo`).
+    # Remaining ambiguity (`/foo-bar` vs `/foo/bar`) collapses toward
+    # the more-segments interpretation; documented as best-effort.
+    name = project_dir.name
+    if name.startswith("-"):
+        body = name[1:].replace("--", "/.").replace("-", "/")
+        return Path("/" + body)
+    return Path(name.replace("--", "/.").replace("-", "/"))
+
+
+# Maximum number of lines we read from a project's first JSONL when
+# trying to recover the project's `cwd`. Real-world JSONLs put `cwd`
+# on the very first user/assistant entry, so 32 is generous.
+_PEEK_JSONL_MAX_LINES = 32
+
+
+def _peek_jsonl_for_cwd(jsonl_path: Path) -> Optional[str]:
+    """Return the first non-empty ``cwd`` value found in the JSONL,
+    or ``None`` if none is found within the peek window."""
+    import json
+    from typing import cast
+
+    try:
+        with jsonl_path.open("r", encoding="utf-8", errors="replace") as fh:
+            for _ in range(_PEEK_JSONL_MAX_LINES):
+                line = fh.readline()
+                if not line:
+                    return None
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry: object = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                # `json.loads` produces Unknown-typed values; cast to
+                # a concrete shape for pyright. Runtime is unaffected.
+                cwd = cast("dict[str, object]", entry).get("cwd")
+                if isinstance(cwd, str) and cwd:
+                    return cwd
+    except OSError:
+        return None
+    return None
+
+
+# Recognised output format suffixes for the `--output` dir-vs-file
+# heuristic. If a user passes ``--output /tmp/out.md`` we treat it as
+# a file; ``--output /tmp/obsidian/`` is a directory.
+_OUTPUT_FILE_SUFFIXES = frozenset({".html", ".md", ".markdown", ".json"})
+
+
+def output_path_is_file(output: Path) -> bool:
+    """Heuristic for ``--output`` interpretation (issue #151).
+
+    A path is a *file* destination when its suffix is one of the
+    recognised output-format extensions; otherwise it's a *directory*
+    destination. Doesn't touch the filesystem — pure path-string
+    inspection.
+    """
+    return output.suffix.lower() in _OUTPUT_FILE_SUFFIXES
+
+
+def project_destination(
+    project_dir: Path,
+    *,
+    output_dir: Optional[Path],
+    expand_paths: bool,
+    filter_path: Optional[str],
+    cached_working_directories: Optional[list[str]] = None,
+) -> Optional[Path]:
+    """Compute the per-project output destination directory (issue #151).
+
+    Implements the flag interaction matrix from
+    ``work/obsidian-friendly-output.md``. Pure function — no I/O beyond
+    what ``project_dir_to_real_path`` may do (cache or one JSONL peek).
+
+    Args:
+        project_dir: The source project directory under
+            ``~/.claude/projects/`` (e.g. ``-home-joe-project-A``).
+        output_dir: Target root, or None for legacy in-place behaviour.
+        expand_paths: When True, project's flat name is expanded back
+            to its real on-disk path under ``output_dir``.
+        filter_path: When set, restrict to projects whose path
+            (real path if ``expand_paths``, else flat dir name)
+            starts with the prefix. With ``expand_paths``, the
+            matched prefix is also truncated from the destination.
+        cached_working_directories: Optional cached working dirs for
+            ``project_dir_to_real_path``.
+
+    Returns:
+        Destination directory, or ``None`` if the project should be
+        skipped (filter excluded it).
+    """
+    # Legacy: no --output → write into the source dir (current behaviour).
+    if output_dir is None:
+        return project_dir
+
+    # With --expand-paths: resolve the real path and (optionally) trim
+    # the filter prefix.
+    if expand_paths:
+        real_path = project_dir_to_real_path(project_dir, cached_working_directories)
+        if filter_path:
+            filter_root = Path(filter_path)
+            try:
+                rel = real_path.relative_to(filter_root)
+            except ValueError:
+                # Real path is not under filter prefix — skip.
+                return None
+            return output_dir / rel
+        # Real-path tree directly under output_dir. Drop the leading
+        # `/` so the joined path stays relative to output_dir.
+        rel_parts = real_path.parts[1:] if real_path.is_absolute() else real_path.parts
+        return output_dir.joinpath(*rel_parts)
+
+    # No --expand-paths: filter against the flat dir name (per Q2),
+    # destination keeps the flat name.
+    if filter_path:
+        if not project_dir.name.startswith(filter_path):
+            return None
+    return output_dir / project_dir.name
+
+
 def should_skip_message(text_content: str) -> bool:
     """
     Determine if a message should be skipped in transcript rendering.

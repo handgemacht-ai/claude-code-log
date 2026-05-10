@@ -474,7 +474,40 @@ def _clear_output_files(
     "-o",
     "--output",
     type=click.Path(path_type=Path),
-    help="Output file path (default: input file with format extension, or combined_transcripts.{html,md} for directories)",
+    help=(
+        "Output destination. With a recognised file suffix "
+        "(.html/.md/.markdown/.json) treated as a single output file; "
+        "otherwise treated as a directory root (and now also honoured "
+        "for --all-projects, where outputs land at "
+        "<output>/<project>/...). Pair with --expand-paths to project "
+        "back to the real on-disk tree."
+    ),
+)
+@click.option(
+    "--expand-paths",
+    is_flag=True,
+    help=(
+        "When set with --output and --all-projects, expand each "
+        "project's flat encoded dir name (e.g. '-home-joe-project-A') "
+        "back to its real path under <output>/. Resolves the encoded "
+        "name via the cache's recorded `cwd`, falling back to a peek "
+        "of the first JSONL when the cache is empty. Useful for "
+        "projecting transcripts into Obsidian-style Markdown vaults."
+    ),
+)
+@click.option(
+    "--filter-path",
+    type=str,
+    default=None,
+    help=(
+        "Restrict --all-projects to projects matching a path prefix. "
+        "With --expand-paths, the prefix is matched against the "
+        "expanded real path AND truncated from the destination "
+        "(`/home/joe/project/A` with --filter-path /home/joe lands at "
+        "<output>/project/A/). Without --expand-paths, matches the "
+        "flat encoded dir name (e.g. '-home-joe' selects projects "
+        "starting with '-home-joe-')."
+    ),
 )
 @click.option(
     "--open-browser",
@@ -587,6 +620,8 @@ def _clear_output_files(
 def main(
     input_path: Optional[Path],
     output: Optional[Path],
+    expand_paths: bool,
+    filter_path: Optional[str],
     open_browser: bool,
     from_date: Optional[str],
     to_date: Optional[str],
@@ -615,6 +650,17 @@ def main(
 
     # Configure logging to show warnings and above
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+
+    # Warn early if Obsidian-friendly flags (#151) were passed in a
+    # context where they're no-ops. `--all-projects` is the only mode
+    # that consumes them; `--output` must be a directory (file-suffixed
+    # output goes through the single-file path which doesn't honour
+    # these flags).
+    if (expand_paths or filter_path) and tui:
+        click.echo(
+            "Warning: --expand-paths / --filter-path are ignored in --tui mode.",
+            err=True,
+        )
 
     from .models import DetailLevel
 
@@ -813,6 +859,16 @@ def main(
                 raise FileNotFoundError(f"Projects directory not found: {input_path}")
 
             click.echo(f"Processing all projects in {input_path}...")
+            # `--output` for `--all-projects` (#151): pass a *directory*
+            # to project per-project outputs into. File-suffixed values
+            # are routed to the single-file path elsewhere; here we
+            # only honour directory-shaped `--output`.
+            from .utils import output_path_is_file
+
+            output_dir_for_projects: Optional[Path] = None
+            if output is not None and not output_path_is_file(output):
+                output_dir_for_projects = output
+
             output_path = process_projects_hierarchy(
                 input_path,
                 from_date,
@@ -824,6 +880,9 @@ def main(
                 page_size=page_size,
                 detail=detail_level,
                 compact=compact,
+                output_dir=output_dir_for_projects,
+                expand_paths=expand_paths,
+                filter_path=filter_path,
             )
 
             # Count processed projects
