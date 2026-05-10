@@ -806,6 +806,15 @@ _CRON_LIST_LINE_RE = re.compile(
     r"(?:\s+\[(?P<flags>[^\]]+)\])?\s*$"
 )
 
+# Tokens we recognise inside the trailing ``[...]`` flags group.
+# Validating captured flags against this whitelist keeps prompt
+# suffixes that *happen* to end in brackets (e.g. ``/loop tick
+# [important context]``) from being silently stripped — see CR
+# review on PR #152. When none of the captured tokens match a
+# known flag, we restore the original ``[bracket]`` to the prompt
+# and treat the row as flag-less.
+_KNOWN_CRON_FLAGS: frozenset[str] = frozenset({"recurring", "durable"})
+
 
 def parse_cronlist_output(
     tool_result: ToolResultContent,
@@ -826,15 +835,26 @@ def parse_cronlist_output(
         m = _CRON_LIST_LINE_RE.match(line)
         if not m:
             continue
-        flags = m.group("flags") or ""
-        flag_tokens = {f.strip() for f in flags.split(",") if f.strip()}
+        prompt = m.group("prompt").strip()
+        flags_raw = m.group("flags") or ""
+        flag_tokens = {f.strip() for f in flags_raw.split(",") if f.strip()}
+        # Validate captured flags against the known-flags whitelist:
+        # if NONE of the captured tokens match a real flag, treat the
+        # trailing ``[...]`` as part of the prompt body rather than as
+        # flags. Without this, the optional flags group greedily
+        # swallows any trailing bracketed text — including legitimate
+        # prompt suffixes like ``/loop tick [important context]`` —
+        # and silently drops it from the prompt.
+        if flag_tokens and not (flag_tokens & _KNOWN_CRON_FLAGS):
+            prompt = f"{prompt} [{flags_raw}]"
+            flag_tokens = set[str]()
         jobs.append(
             CronListItem(
                 id=m.group("id"),
                 cron=m.group("cron"),
-                prompt=m.group("prompt").strip(),
-                recurring="recurring" in flag_tokens or None,
-                durable="durable" in flag_tokens or None,
+                prompt=prompt,
+                recurring=True if "recurring" in flag_tokens else None,
+                durable=True if "durable" in flag_tokens else None,
             )
         )
     return CronListOutput(text=text, jobs=jobs)

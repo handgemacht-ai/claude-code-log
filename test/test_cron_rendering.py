@@ -151,6 +151,52 @@ class TestSchedulingOutputParsers:
         assert out.jobs == []
         assert "free-form summary" in out.text
 
+    def test_cronlist_preserves_bracketed_prompt_suffix(self) -> None:
+        """A prompt ending in ``[bracket]`` whose contents are NOT a
+        known flag must not be silently stripped (CR finding on
+        PR #152).
+
+        Pre-fix: the optional ``[flags]`` group at the end of the row
+        regex greedily captured any trailing ``[...]``, so a prompt
+        like ``/loop tick [important context]`` parsed with
+        ``prompt='/loop tick'`` and ``flags='important context'`` —
+        silently dropping the suffix from the rendered prompt and
+        producing nonsense recurring/durable values.
+
+        Post-fix: the parser validates the captured flags against the
+        known-flags whitelist (``{recurring, durable}``); if no token
+        matches, the bracketed suffix is restored to the prompt and
+        the row renders as flag-less.
+        """
+        text = (
+            "Active cron jobs:\n- cj_xyz: 0 9 * * * => /loop tick [important context]"
+        )
+        out = parse_cronlist_output(_result(text), None)
+        assert out is not None
+        assert len(out.jobs) == 1
+        job = out.jobs[0]
+        assert job.id == "cj_xyz"
+        assert job.cron == "0 9 * * *"
+        assert job.prompt == "/loop tick [important context]"
+        # Neither flag should be set — the bracket wasn't a real flag.
+        assert job.recurring is None
+        assert job.durable is None
+
+    def test_cronlist_keeps_real_flags_alongside_known_tokens(self) -> None:
+        """When the bracket DOES contain known flags, parse normally —
+        even if the prompt body itself contains other punctuation.
+        """
+        text = (
+            "Active cron jobs:\n- cj_a: */5 * * * * => /loop tick [recurring, durable]"
+        )
+        out = parse_cronlist_output(_result(text), None)
+        assert out is not None
+        assert len(out.jobs) == 1
+        job = out.jobs[0]
+        assert job.prompt == "/loop tick"
+        assert job.recurring is True
+        assert job.durable is True
+
     def test_crondelete_captures_text(self) -> None:
         out = parse_crondelete_output(_result("Deleted cron job cj_abc."), None)
         assert isinstance(out, CronDeleteOutput)
