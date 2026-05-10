@@ -63,6 +63,14 @@ from ..models import (
     WebFetchInput,
     MonitorInput,
     MonitorOutput,
+    ScheduleWakeupInput,
+    ScheduleWakeupOutput,
+    CronCreateInput,
+    CronCreateOutput,
+    CronListInput,
+    CronListOutput,
+    CronDeleteInput,
+    CronDeleteOutput,
     WriteInput,
     # Tool output types
     AskUserQuestionOutput,
@@ -861,6 +869,87 @@ class MarkdownRenderer(Renderer):
         """Format → start-confirmation paragraph verbatim."""
         return output.text
 
+    # -- ScheduleWakeup / Cron* family ---------------------------------------
+
+    def format_ScheduleWakeupInput(
+        self, input: ScheduleWakeupInput, _: TemplateMessage
+    ) -> str:
+        """Format → bullet list + fenced prompt block.
+
+        Mirrors the HTML 3-row grid in plain Markdown; ``prompt`` lands
+        in a fenced block via ``_code_fence`` so the adaptive width
+        handles backticks and multi-line bodies cleanly.
+        """
+        lines = [
+            f"- **delaySeconds:** {input.delaySeconds}",
+            f"- **reason:** {input.reason}",
+            "",
+            "**prompt:**",
+            "",
+            self._code_fence(input.prompt),
+        ]
+        return "\n".join(lines)
+
+    def format_ScheduleWakeupOutput(
+        self, output: ScheduleWakeupOutput, _: TemplateMessage
+    ) -> str:
+        """Format → status paragraph verbatim."""
+        return output.text
+
+    def format_CronCreateInput(self, input: CronCreateInput, _: TemplateMessage) -> str:
+        """Format → bullet list + fenced prompt block.
+
+        ``recurring`` / ``durable`` only appear when explicitly set —
+        the harness's defaults are near-universal and showing them
+        every row would be noise.
+        """
+        lines = [f"- **cron:** `{input.cron}`"]
+        if input.recurring is not None:
+            lines.append(f"- **recurring:** {input.recurring}")
+        if input.durable is not None:
+            lines.append(f"- **durable:** {input.durable}")
+        lines.extend(
+            [
+                "",
+                "**prompt:**",
+                "",
+                self._code_fence(input.prompt),
+            ]
+        )
+        return "\n".join(lines)
+
+    def format_CronCreateOutput(
+        self, output: CronCreateOutput, _: TemplateMessage
+    ) -> str:
+        """Format → confirmation paragraph verbatim."""
+        return output.text
+
+    def format_CronListInput(self, _input: CronListInput, _: TemplateMessage) -> str:
+        """Format → '' (no inputs; title is sufficient)."""
+        return ""
+
+    def format_CronListOutput(self, output: CronListOutput, _: TemplateMessage) -> str:
+        """Format → bullet list of jobs when parseable, raw text otherwise."""
+        if not output.jobs:
+            return self._code_fence(output.text)
+        lines: list[str] = []
+        for job in output.jobs:
+            preview = job.prompt if len(job.prompt) <= 80 else job.prompt[:77] + "…"
+            lines.append(f"- `{job.id}`: `{job.cron}` — {preview}")
+        return "\n".join(lines)
+
+    def format_CronDeleteInput(
+        self, _input: CronDeleteInput, _: TemplateMessage
+    ) -> str:
+        """Format → '' (id in title)."""
+        return ""
+
+    def format_CronDeleteOutput(
+        self, output: CronDeleteOutput, _: TemplateMessage
+    ) -> str:
+        """Format → status paragraph verbatim."""
+        return output.text
+
     def format_SkillInput(self, _input: SkillInput, _: TemplateMessage) -> str:
         """Format → '' (skill name in title; body folded in via skill_body)."""
         return ""
@@ -1429,6 +1518,26 @@ class MarkdownRenderer(Renderer):
         leak into the rendered title (e.g. ``*`` / ``_`` / ``[``).
         """
         return f"🔭 Monitor {_inline_code(input.description)}"
+
+    def title_ScheduleWakeupInput(
+        self, input: ScheduleWakeupInput, _: TemplateMessage
+    ) -> str:
+        """Title → '⏰ ScheduleWakeup +<delay>s — `<reason>`'."""
+        return (
+            f"⏰ ScheduleWakeup +{input.delaySeconds}s — {_inline_code(input.reason)}"
+        )
+
+    def title_CronCreateInput(self, input: CronCreateInput, _: TemplateMessage) -> str:
+        """Title → '⏰ CronCreate `<cron>`'."""
+        return f"⏰ CronCreate {_inline_code(input.cron)}"
+
+    def title_CronListInput(self, _input: CronListInput, _: TemplateMessage) -> str:
+        """Title → '⏰ CronList'."""
+        return "⏰ CronList"
+
+    def title_CronDeleteInput(self, input: CronDeleteInput, _: TemplateMessage) -> str:
+        """Title → '⏰ CronDelete `<id>`'."""
+        return f"⏰ CronDelete {_inline_code(input.id)}"
 
     def title_SkillInput(self, input: SkillInput, _: TemplateMessage) -> str:
         """Title → '💡 Skill `<skill_name>`'."""

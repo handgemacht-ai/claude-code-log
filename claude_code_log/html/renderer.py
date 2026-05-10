@@ -55,6 +55,14 @@ from ..models import (
     WebFetchInput,
     MonitorInput,
     MonitorOutput,
+    ScheduleWakeupInput,
+    ScheduleWakeupOutput,
+    CronCreateInput,
+    CronCreateOutput,
+    CronListInput,
+    CronListOutput,
+    CronDeleteInput,
+    CronDeleteOutput,
     WriteInput,
     # Tool output types
     AskUserQuestionOutput,
@@ -154,6 +162,14 @@ from .tool_formatters import (
     format_webfetch_output,
     format_monitor_input,
     format_monitor_output,
+    format_schedulewakeup_input,
+    format_schedulewakeup_output,
+    format_croncreate_input,
+    format_croncreate_output,
+    format_cronlist_input,
+    format_cronlist_output,
+    format_crondelete_input,
+    format_crondelete_output,
     format_write_input,
     format_write_output,
     render_params_table,
@@ -601,6 +617,48 @@ class HtmlRenderer(Renderer):
         """Format → start-confirmation paragraph verbatim."""
         return format_monitor_output(output)
 
+    # -- ScheduleWakeup / Cron* family ---------------------------------------
+
+    def format_ScheduleWakeupInput(
+        self, input: ScheduleWakeupInput, _: TemplateMessage
+    ) -> str:
+        """Format → 3-row grid (delaySeconds, reason, collapsible prompt)."""
+        return format_schedulewakeup_input(input)
+
+    def format_ScheduleWakeupOutput(
+        self, output: ScheduleWakeupOutput, _: TemplateMessage
+    ) -> str:
+        """Format → ``Next wakeup scheduled for …`` paragraph verbatim."""
+        return format_schedulewakeup_output(output)
+
+    def format_CronCreateInput(self, input: CronCreateInput, _: TemplateMessage) -> str:
+        """Format → grid (cron, recurring?, durable?, collapsible prompt)."""
+        return format_croncreate_input(input)
+
+    def format_CronCreateOutput(
+        self, output: CronCreateOutput, _: TemplateMessage
+    ) -> str:
+        """Format → confirmation paragraph verbatim."""
+        return format_croncreate_output(output)
+
+    def format_CronListInput(self, input: CronListInput, _: TemplateMessage) -> str:
+        """Format → empty (no inputs)."""
+        return format_cronlist_input(input)
+
+    def format_CronListOutput(self, output: CronListOutput, _: TemplateMessage) -> str:
+        """Format → table when parseable, raw text otherwise."""
+        return format_cronlist_output(output)
+
+    def format_CronDeleteInput(self, input: CronDeleteInput, _: TemplateMessage) -> str:
+        """Format → empty (id is in the title)."""
+        return format_crondelete_input(input)
+
+    def format_CronDeleteOutput(
+        self, output: CronDeleteOutput, _: TemplateMessage
+    ) -> str:
+        """Format → confirmation paragraph verbatim."""
+        return format_crondelete_output(output)
+
     # -------------------------------------------------------------------------
     # Tool Input Title Methods (for Renderer.title_ToolUseMessage dispatch)
     # -------------------------------------------------------------------------
@@ -714,6 +772,31 @@ class HtmlRenderer(Renderer):
     def title_MonitorInput(self, input: MonitorInput, message: TemplateMessage) -> str:
         """Title → '🔭 Monitor <description>'."""
         return self._tool_title(message, "🔭", input.description)
+
+    def title_ScheduleWakeupInput(
+        self, input: ScheduleWakeupInput, message: TemplateMessage
+    ) -> str:
+        """Title → '⏰ ScheduleWakeup +<delay>s — <reason>'."""
+        summary = f"+{input.delaySeconds}s — {input.reason}"
+        return self._tool_title(message, "⏰", summary)
+
+    def title_CronCreateInput(
+        self, input: CronCreateInput, message: TemplateMessage
+    ) -> str:
+        """Title → '⏰ CronCreate <cron>'."""
+        return self._tool_title(message, "⏰", input.cron)
+
+    def title_CronListInput(
+        self, _input: CronListInput, message: TemplateMessage
+    ) -> str:
+        """Title → '⏰ CronList'."""
+        return self._tool_title(message, "⏰", "CronList")
+
+    def title_CronDeleteInput(
+        self, input: CronDeleteInput, message: TemplateMessage
+    ) -> str:
+        """Title → '⏰ CronDelete <id>'."""
+        return self._tool_title(message, "⏰", input.id)
 
     def title_SkillInput(self, input: SkillInput, message: TemplateMessage) -> str:
         """Title → '💡 Skill <skill_name>'."""

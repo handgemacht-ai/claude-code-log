@@ -1123,6 +1123,61 @@ class MonitorInput(BaseModel):
     persistent: Optional[bool] = None
 
 
+class ScheduleWakeupInput(BaseModel):
+    """Input parameters for the built-in ``ScheduleWakeup`` tool.
+
+    Schedules a self-resume tick — used by ``/loop`` dynamic mode to
+    self-pace iterations. Carries a ``delaySeconds`` (clamped to
+    [60, 3600] by the runtime), a one-line ``reason`` for telemetry /
+    user display, and the ``prompt`` to fire on wake-up (often the
+    same ``/loop …`` invocation passed back unchanged so the next
+    firing repeats the task).
+    """
+
+    delaySeconds: int
+    reason: str
+    prompt: str
+
+
+class CronCreateInput(BaseModel):
+    """Input parameters for the built-in ``CronCreate`` tool.
+
+    Schedules a prompt to be enqueued at a future time. ``cron`` is a
+    standard 5-field expression in the user's local timezone;
+    ``prompt`` is fired at each match. ``recurring`` (default True)
+    fires on every match until deleted or the 7-day auto-expiry hits;
+    ``durable`` (default False) persists the job to
+    ``.claude/scheduled_tasks.json`` so it survives session restart.
+    """
+
+    cron: str
+    prompt: str
+    recurring: Optional[bool] = None
+    durable: Optional[bool] = None
+
+
+class CronListInput(BaseModel):
+    """Input parameters for the built-in ``CronList`` tool.
+
+    Lists all cron jobs in the current session. Takes no inputs.
+    """
+
+    # No fields — kept as an explicit model so dispatch routes
+    # through the tool-input pipeline rather than the generic
+    # fallback. Pydantic's default ``extra="ignore"`` accepts the
+    # empty input dict the harness sends.
+
+
+class CronDeleteInput(BaseModel):
+    """Input parameters for the built-in ``CronDelete`` tool.
+
+    Cancels a previously-scheduled cron job by id. The id is the
+    short job identifier returned by ``CronCreate``.
+    """
+
+    id: str
+
+
 class WebFetchInput(BaseModel):
     """Input parameters for the WebFetch tool."""
 
@@ -1233,6 +1288,10 @@ ToolInput = Union[
     WebSearchInput,
     WebFetchInput,
     MonitorInput,
+    ScheduleWakeupInput,
+    CronCreateInput,
+    CronListInput,
+    CronDeleteInput,
     SkillInput,
     TeamCreateInput,
     TeamDeleteInput,
@@ -1454,6 +1513,67 @@ class MonitorOutput:
 
 
 @dataclass
+class ScheduleWakeupOutput:
+    """Parsed output for ``ScheduleWakeup`` — the start confirmation.
+
+    The harness emits a one-line confirmation like
+    ``Next wakeup scheduled for HH:MM:SS (in Ns).``. Captured
+    verbatim; ``next_at`` and ``in_seconds`` parsed when the format
+    matches for downstream consumers (currently informational only).
+    """
+
+    text: str
+    next_at: Optional[str] = None
+    in_seconds: Optional[int] = None
+
+
+@dataclass
+class CronCreateOutput:
+    """Parsed output for ``CronCreate``.
+
+    The harness echoes a short confirmation that includes the new
+    job id (e.g. ``Scheduled cron job <id>``); we capture the raw
+    text and the parsed id when the format matches.
+    """
+
+    text: str
+    job_id: Optional[str] = None
+
+
+@dataclass
+class CronListItem:
+    """One row in a ``CronList`` result."""
+
+    id: str
+    cron: str
+    prompt: str
+    recurring: Optional[bool] = None
+    durable: Optional[bool] = None
+
+
+@dataclass
+class CronListOutput:
+    """Parsed output for ``CronList``.
+
+    Captures the raw text body for fallback display plus an
+    optional structured list of jobs when the format is parseable.
+    The format is documented loosely in the harness; the renderer
+    falls back to the raw text whenever parsing doesn't yield a
+    populated list.
+    """
+
+    text: str
+    jobs: list[CronListItem]
+
+
+@dataclass
+class CronDeleteOutput:
+    """Parsed output for ``CronDelete`` — short status line."""
+
+    text: str
+
+
+@dataclass
 class WebSearchLink:
     """Single search result link from WebSearch output."""
 
@@ -1608,6 +1728,10 @@ ToolOutput = Union[
     WebSearchOutput,
     WebFetchOutput,
     MonitorOutput,
+    ScheduleWakeupOutput,
+    CronCreateOutput,
+    CronListOutput,
+    CronDeleteOutput,
     TeamCreateOutput,
     TeamDeleteOutput,
     TaskCreateOutput,
