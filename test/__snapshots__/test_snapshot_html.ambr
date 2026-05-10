@@ -696,7 +696,80 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
-      font-size: 90%;
+  }
+  
+  /* Hook attachment styling — full-detail-only payloads from
+     ``type: "attachment"`` hook callbacks (issue #128). Same compact
+     visual register as ``.system-hook`` summaries but with the assistant
+     accent so it reads as "tooling around the assistant turn" rather
+     than user/system noise. */
+  .system-hook-attachment {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-dimmed);
+  }
+  
+  /* Hook entries (both flavours) appear in dense bursts when ClMail or
+     similar plugins fire on every turn — minimise their visual weight
+     so they don't drown out actual conversation. Slight transparency
+     reads as "secondary signal" without losing the affordance. */
+  div.system-hook-attachment,
+  div.system-hook {
+      font-size: 75%;
+      opacity: 65%;
+  }
+  
+  div.system-hook-attachment .header,
+  div.system-hook .header {
+      font-weight: 500;
+  }
+  
+  .hook-attachment {
+      cursor: pointer;
+  }
+  
+  .hook-attachment summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      flex-wrap: wrap;
+  }
+  
+  .hook-attachment-meta {
+      color: var(--secondary-text);
+      font-size: 0.85em;
+  }
+  
+  .hook-attachment-stream {
+      margin-top: 0.5em;
+  }
+  
+  .hook-attachment-stream-label {
+      font-size: 0.75em;
+      color: var(--secondary-text);
+      margin-bottom: 0.2em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+  }
+  
+  .hook-attachment-output,
+  .hook-attachment-content {
+      margin: 0;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
+  .hook-attachment-stderr {
+      border-left: 3px solid var(--warning-dimmed);
+      /* Existing 0.5em padding-left butts text up against the warning
+         bar; bump it by 3px so the border breathes. */
+      padding-left: calc(0.5em + 3px);
   }
   
   /* Away-summary (recap) styling — assistant-authored narrative recap of
@@ -1795,6 +1868,10 @@
   .filter-toggle[data-type="thinking"] {
       border-color: var(--assistant-dimmed);
       border-width: 2px;
+  }
+  
+  .filter-toggle[data-type="sidechain"] {
+      border: dashed 2px #aaa;
   }
   
   .filter-actions {
@@ -6424,7 +6501,80 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
-      font-size: 90%;
+  }
+  
+  /* Hook attachment styling — full-detail-only payloads from
+     ``type: "attachment"`` hook callbacks (issue #128). Same compact
+     visual register as ``.system-hook`` summaries but with the assistant
+     accent so it reads as "tooling around the assistant turn" rather
+     than user/system noise. */
+  .system-hook-attachment {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-dimmed);
+  }
+  
+  /* Hook entries (both flavours) appear in dense bursts when ClMail or
+     similar plugins fire on every turn — minimise their visual weight
+     so they don't drown out actual conversation. Slight transparency
+     reads as "secondary signal" without losing the affordance. */
+  div.system-hook-attachment,
+  div.system-hook {
+      font-size: 75%;
+      opacity: 65%;
+  }
+  
+  div.system-hook-attachment .header,
+  div.system-hook .header {
+      font-weight: 500;
+  }
+  
+  .hook-attachment {
+      cursor: pointer;
+  }
+  
+  .hook-attachment summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      flex-wrap: wrap;
+  }
+  
+  .hook-attachment-meta {
+      color: var(--secondary-text);
+      font-size: 0.85em;
+  }
+  
+  .hook-attachment-stream {
+      margin-top: 0.5em;
+  }
+  
+  .hook-attachment-stream-label {
+      font-size: 0.75em;
+      color: var(--secondary-text);
+      margin-bottom: 0.2em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+  }
+  
+  .hook-attachment-output,
+  .hook-attachment-content {
+      margin: 0;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
+  .hook-attachment-stderr {
+      border-left: 3px solid var(--warning-dimmed);
+      /* Existing 0.5em padding-left butts text up against the warning
+         bar; bump it by 3px so the border breathes. */
+      padding-left: calc(0.5em + 3px);
   }
   
   /* Away-summary (recap) styling — assistant-authored narrative recap of
@@ -7523,6 +7673,10 @@
   .filter-toggle[data-type="thinking"] {
       border-color: var(--assistant-dimmed);
       border-width: 2px;
+  }
+  
+  .filter-toggle[data-type="sidechain"] {
+      border: dashed 2px #aaa;
   }
   
   .filter-actions {
@@ -14199,7 +14353,80 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
-      font-size: 90%;
+  }
+  
+  /* Hook attachment styling — full-detail-only payloads from
+     ``type: "attachment"`` hook callbacks (issue #128). Same compact
+     visual register as ``.system-hook`` summaries but with the assistant
+     accent so it reads as "tooling around the assistant turn" rather
+     than user/system noise. */
+  .system-hook-attachment {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-dimmed);
+  }
+  
+  /* Hook entries (both flavours) appear in dense bursts when ClMail or
+     similar plugins fire on every turn — minimise their visual weight
+     so they don't drown out actual conversation. Slight transparency
+     reads as "secondary signal" without losing the affordance. */
+  div.system-hook-attachment,
+  div.system-hook {
+      font-size: 75%;
+      opacity: 65%;
+  }
+  
+  div.system-hook-attachment .header,
+  div.system-hook .header {
+      font-weight: 500;
+  }
+  
+  .hook-attachment {
+      cursor: pointer;
+  }
+  
+  .hook-attachment summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      flex-wrap: wrap;
+  }
+  
+  .hook-attachment-meta {
+      color: var(--secondary-text);
+      font-size: 0.85em;
+  }
+  
+  .hook-attachment-stream {
+      margin-top: 0.5em;
+  }
+  
+  .hook-attachment-stream-label {
+      font-size: 0.75em;
+      color: var(--secondary-text);
+      margin-bottom: 0.2em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+  }
+  
+  .hook-attachment-output,
+  .hook-attachment-content {
+      margin: 0;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
+  .hook-attachment-stderr {
+      border-left: 3px solid var(--warning-dimmed);
+      /* Existing 0.5em padding-left butts text up against the warning
+         bar; bump it by 3px so the border breathes. */
+      padding-left: calc(0.5em + 3px);
   }
   
   /* Away-summary (recap) styling — assistant-authored narrative recap of
@@ -15298,6 +15525,10 @@
   .filter-toggle[data-type="thinking"] {
       border-color: var(--assistant-dimmed);
       border-width: 2px;
+  }
+  
+  .filter-toggle[data-type="sidechain"] {
+      border: dashed 2px #aaa;
   }
   
   .filter-actions {
@@ -20032,7 +20263,80 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
-      font-size: 90%;
+  }
+  
+  /* Hook attachment styling — full-detail-only payloads from
+     ``type: "attachment"`` hook callbacks (issue #128). Same compact
+     visual register as ``.system-hook`` summaries but with the assistant
+     accent so it reads as "tooling around the assistant turn" rather
+     than user/system noise. */
+  .system-hook-attachment {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-dimmed);
+  }
+  
+  /* Hook entries (both flavours) appear in dense bursts when ClMail or
+     similar plugins fire on every turn — minimise their visual weight
+     so they don't drown out actual conversation. Slight transparency
+     reads as "secondary signal" without losing the affordance. */
+  div.system-hook-attachment,
+  div.system-hook {
+      font-size: 75%;
+      opacity: 65%;
+  }
+  
+  div.system-hook-attachment .header,
+  div.system-hook .header {
+      font-weight: 500;
+  }
+  
+  .hook-attachment {
+      cursor: pointer;
+  }
+  
+  .hook-attachment summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      flex-wrap: wrap;
+  }
+  
+  .hook-attachment-meta {
+      color: var(--secondary-text);
+      font-size: 0.85em;
+  }
+  
+  .hook-attachment-stream {
+      margin-top: 0.5em;
+  }
+  
+  .hook-attachment-stream-label {
+      font-size: 0.75em;
+      color: var(--secondary-text);
+      margin-bottom: 0.2em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+  }
+  
+  .hook-attachment-output,
+  .hook-attachment-content {
+      margin: 0;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
+  .hook-attachment-stderr {
+      border-left: 3px solid var(--warning-dimmed);
+      /* Existing 0.5em padding-left butts text up against the warning
+         bar; bump it by 3px so the border breathes. */
+      padding-left: calc(0.5em + 3px);
   }
   
   /* Away-summary (recap) styling — assistant-authored narrative recap of
@@ -21131,6 +21435,10 @@
   .filter-toggle[data-type="thinking"] {
       border-color: var(--assistant-dimmed);
       border-width: 2px;
+  }
+  
+  .filter-toggle[data-type="sidechain"] {
+      border: dashed 2px #aaa;
   }
   
   .filter-actions {
@@ -26096,7 +26404,80 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
-      font-size: 90%;
+  }
+  
+  /* Hook attachment styling — full-detail-only payloads from
+     ``type: "attachment"`` hook callbacks (issue #128). Same compact
+     visual register as ``.system-hook`` summaries but with the assistant
+     accent so it reads as "tooling around the assistant turn" rather
+     than user/system noise. */
+  .system-hook-attachment {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-dimmed);
+  }
+  
+  /* Hook entries (both flavours) appear in dense bursts when ClMail or
+     similar plugins fire on every turn — minimise their visual weight
+     so they don't drown out actual conversation. Slight transparency
+     reads as "secondary signal" without losing the affordance. */
+  div.system-hook-attachment,
+  div.system-hook {
+      font-size: 75%;
+      opacity: 65%;
+  }
+  
+  div.system-hook-attachment .header,
+  div.system-hook .header {
+      font-weight: 500;
+  }
+  
+  .hook-attachment {
+      cursor: pointer;
+  }
+  
+  .hook-attachment summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      flex-wrap: wrap;
+  }
+  
+  .hook-attachment-meta {
+      color: var(--secondary-text);
+      font-size: 0.85em;
+  }
+  
+  .hook-attachment-stream {
+      margin-top: 0.5em;
+  }
+  
+  .hook-attachment-stream-label {
+      font-size: 0.75em;
+      color: var(--secondary-text);
+      margin-bottom: 0.2em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+  }
+  
+  .hook-attachment-output,
+  .hook-attachment-content {
+      margin: 0;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
+  .hook-attachment-stderr {
+      border-left: 3px solid var(--warning-dimmed);
+      /* Existing 0.5em padding-left butts text up against the warning
+         bar; bump it by 3px so the border breathes. */
+      padding-left: calc(0.5em + 3px);
   }
   
   /* Away-summary (recap) styling — assistant-authored narrative recap of
@@ -27195,6 +27576,10 @@
   .filter-toggle[data-type="thinking"] {
       border-color: var(--assistant-dimmed);
       border-width: 2px;
+  }
+  
+  .filter-toggle[data-type="sidechain"] {
+      border: dashed 2px #aaa;
   }
   
   .filter-actions {
@@ -32028,7 +32413,80 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
-      font-size: 90%;
+  }
+  
+  /* Hook attachment styling — full-detail-only payloads from
+     ``type: "attachment"`` hook callbacks (issue #128). Same compact
+     visual register as ``.system-hook`` summaries but with the assistant
+     accent so it reads as "tooling around the assistant turn" rather
+     than user/system noise. */
+  .system-hook-attachment {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-dimmed);
+  }
+  
+  /* Hook entries (both flavours) appear in dense bursts when ClMail or
+     similar plugins fire on every turn — minimise their visual weight
+     so they don't drown out actual conversation. Slight transparency
+     reads as "secondary signal" without losing the affordance. */
+  div.system-hook-attachment,
+  div.system-hook {
+      font-size: 75%;
+      opacity: 65%;
+  }
+  
+  div.system-hook-attachment .header,
+  div.system-hook .header {
+      font-weight: 500;
+  }
+  
+  .hook-attachment {
+      cursor: pointer;
+  }
+  
+  .hook-attachment summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      flex-wrap: wrap;
+  }
+  
+  .hook-attachment-meta {
+      color: var(--secondary-text);
+      font-size: 0.85em;
+  }
+  
+  .hook-attachment-stream {
+      margin-top: 0.5em;
+  }
+  
+  .hook-attachment-stream-label {
+      font-size: 0.75em;
+      color: var(--secondary-text);
+      margin-bottom: 0.2em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+  }
+  
+  .hook-attachment-output,
+  .hook-attachment-content {
+      margin: 0;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
+  .hook-attachment-stderr {
+      border-left: 3px solid var(--warning-dimmed);
+      /* Existing 0.5em padding-left butts text up against the warning
+         bar; bump it by 3px so the border breathes. */
+      padding-left: calc(0.5em + 3px);
   }
   
   /* Away-summary (recap) styling — assistant-authored narrative recap of
@@ -33127,6 +33585,10 @@
   .filter-toggle[data-type="thinking"] {
       border-color: var(--assistant-dimmed);
       border-width: 2px;
+  }
+  
+  .filter-toggle[data-type="sidechain"] {
+      border: dashed 2px #aaa;
   }
   
   .filter-actions {
@@ -38019,7 +38481,80 @@
   .system-hook {
       border-left-color: var(--warning-dimmed);
       background-color: var(--highlight-dimmed);
-      font-size: 90%;
+  }
+  
+  /* Hook attachment styling — full-detail-only payloads from
+     ``type: "attachment"`` hook callbacks (issue #128). Same compact
+     visual register as ``.system-hook`` summaries but with the assistant
+     accent so it reads as "tooling around the assistant turn" rather
+     than user/system noise. */
+  .system-hook-attachment {
+      border-left-color: var(--assistant-dimmed);
+      background-color: var(--highlight-dimmed);
+  }
+  
+  /* Hook entries (both flavours) appear in dense bursts when ClMail or
+     similar plugins fire on every turn — minimise their visual weight
+     so they don't drown out actual conversation. Slight transparency
+     reads as "secondary signal" without losing the affordance. */
+  div.system-hook-attachment,
+  div.system-hook {
+      font-size: 75%;
+      opacity: 65%;
+  }
+  
+  div.system-hook-attachment .header,
+  div.system-hook .header {
+      font-weight: 500;
+  }
+  
+  .hook-attachment {
+      cursor: pointer;
+  }
+  
+  .hook-attachment summary {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      flex-wrap: wrap;
+  }
+  
+  .hook-attachment-meta {
+      color: var(--secondary-text);
+      font-size: 0.85em;
+  }
+  
+  .hook-attachment-stream {
+      margin-top: 0.5em;
+  }
+  
+  .hook-attachment-stream-label {
+      font-size: 0.75em;
+      color: var(--secondary-text);
+      margin-bottom: 0.2em;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+  }
+  
+  .hook-attachment-output,
+  .hook-attachment-content {
+      margin: 0;
+      padding: 0.5em;
+      background-color: var(--code-bg);
+      border-radius: 4px;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+  }
+  
+  .hook-attachment-stderr {
+      border-left: 3px solid var(--warning-dimmed);
+      /* Existing 0.5em padding-left butts text up against the warning
+         bar; bump it by 3px so the border breathes. */
+      padding-left: calc(0.5em + 3px);
   }
   
   /* Away-summary (recap) styling — assistant-authored narrative recap of
@@ -39118,6 +39653,10 @@
   .filter-toggle[data-type="thinking"] {
       border-color: var(--assistant-dimmed);
       border-width: 2px;
+  }
+  
+  .filter-toggle[data-type="sidechain"] {
+      border: dashed 2px #aaa;
   }
   
   .filter-actions {

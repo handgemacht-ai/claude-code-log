@@ -36,6 +36,7 @@ from .factories import create_transcript_entry
 from .factories.teammate_factory import find_team_lead_body
 from .models import (
     AiTitleTranscriptEntry,
+    AttachmentTranscriptEntry,
     BaseTranscriptEntry,
     DetailLevel,
     PassthroughTranscriptEntry,
@@ -384,8 +385,13 @@ def load_transcript(
                         "ai-title",
                         "system",
                         "queue-operation",
+                        "attachment",
                     ]:
-                        # Parse using Pydantic models
+                        # Parse using Pydantic models. ``attachment`` joined
+                        # this list in #128 so the hook payload survives to
+                        # the rendering layer at full detail (was a
+                        # PassthroughTranscriptEntry before, which threw
+                        # the payload away at parse time).
                         entry = create_transcript_entry(entry_dict)
                         messages.append(entry)
                     elif entry_type in SILENT_SKIP_TYPES:
@@ -394,7 +400,8 @@ def load_transcript(
                     elif entry_dict.get("uuid") and entry_dict.get("sessionId"):
                         # Unknown type with DAG-relevant fields — create a
                         # PassthroughTranscriptEntry to preserve DAG chain
-                        # continuity (e.g. "attachment", "permission-mode").
+                        # continuity (e.g. "progress", "agent-setting",
+                        # "pr-link", "ai-title").
                         messages.append(
                             PassthroughTranscriptEntry(
                                 uuid=entry_dict["uuid"],
@@ -871,7 +878,14 @@ def deduplicate_messages(messages: list[TranscriptEntry]) -> list[TranscriptEntr
             # but deduping here keeps message lists tidy.
             session_id = message.sessionId
             content_key = "ai-title"
-        elif isinstance(message, (SystemTranscriptEntry, PassthroughTranscriptEntry)):
+        elif isinstance(
+            message,
+            (
+                SystemTranscriptEntry,
+                PassthroughTranscriptEntry,
+                AttachmentTranscriptEntry,
+            ),
+        ):
             content_key = message.uuid
 
         # Create deduplication key
@@ -1176,6 +1190,7 @@ def _build_session_data_from_messages(
                 SummaryTranscriptEntry,
                 AiTitleTranscriptEntry,
                 PassthroughTranscriptEntry,
+                AttachmentTranscriptEntry,
             ),
         ):
             continue
@@ -1869,7 +1884,12 @@ def _update_cache_with_session_data(
         # Process session-level data (skip summaries and ai-title — they
         # carry no DAG fields and are folded into session metadata above).
         if hasattr(message, "sessionId") and not isinstance(
-            message, (SummaryTranscriptEntry, AiTitleTranscriptEntry)
+            message,
+            (
+                SummaryTranscriptEntry,
+                AiTitleTranscriptEntry,
+                AttachmentTranscriptEntry,
+            ),
         ):
             session_id = get_parent_session_id(getattr(message, "sessionId", ""))
             if not session_id:
@@ -2023,7 +2043,12 @@ def _collect_project_sessions(messages: list[TranscriptEntry]) -> list[dict[str,
     sessions: dict[str, dict[str, Any]] = {}
     for message in messages:
         if hasattr(message, "sessionId") and not isinstance(
-            message, (SummaryTranscriptEntry, AiTitleTranscriptEntry)
+            message,
+            (
+                SummaryTranscriptEntry,
+                AiTitleTranscriptEntry,
+                AttachmentTranscriptEntry,
+            ),
         ):
             session_id = get_parent_session_id(getattr(message, "sessionId", ""))
             if not session_id or session_id in warmup_session_ids:
@@ -2767,7 +2792,14 @@ def process_projects_hierarchy(
             warmup_for_teams = get_warmup_session_ids(messages)
             team_name_per_session: dict[str, str] = {}
             for _msg in messages:
-                if isinstance(_msg, (SummaryTranscriptEntry, AiTitleTranscriptEntry)):
+                if isinstance(
+                    _msg,
+                    (
+                        SummaryTranscriptEntry,
+                        AiTitleTranscriptEntry,
+                        AttachmentTranscriptEntry,
+                    ),
+                ):
                     continue
                 if not hasattr(_msg, "sessionId"):
                     continue

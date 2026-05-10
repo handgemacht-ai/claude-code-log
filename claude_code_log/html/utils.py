@@ -25,6 +25,7 @@ from .renderer_code import highlight_code_with_pygments, truncate_highlighted_pr
 from ..models import (
     AssistantTextMessage,
     AwaySummaryMessage,
+    HookAttachmentMessage,
     BashInputMessage,
     BashOutputMessage,
     CommandOutputMessage,
@@ -60,6 +61,7 @@ CSS_CLASS_REGISTRY: dict[type[MessageContent], list[str]] = {
     # System message types
     SystemMessage: ["system"],  # level added dynamically
     HookSummaryMessage: ["system", "system-hook"],
+    HookAttachmentMessage: ["system", "system-hook-attachment"],
     AwaySummaryMessage: ["system", "system-away-summary"],
     # User message types
     UserTextMessage: ["user"],
@@ -194,6 +196,12 @@ def get_message_emoji(msg: "TemplateMessage") -> str:
         # title — see format_away_summary_content).
         if isinstance(msg.content, AwaySummaryMessage):
             return "📝"
+        # Hook entries (both the typed attachment from #128 and the
+        # legacy stop_hook_summary system entry) get a hook glyph at
+        # the title level so the body summary doesn't have to repeat
+        # "🪝 Hook output" as a redundant subheader.
+        if isinstance(msg.content, (HookAttachmentMessage, HookSummaryMessage)):
+            return "🪝"
         return "⚙️"
     elif msg_type == "tool_use":
         return "🛠️"
