@@ -35,6 +35,12 @@ from ..models import (
     BashOutput,
     EditInput,
     EditOutput,
+    CronCreateInput,
+    CronCreateOutput,
+    CronDeleteInput,
+    CronDeleteOutput,
+    CronListInput,
+    CronListOutput,
     ExitPlanModeInput,
     ExitPlanModeOutput,
     GrepInput,
@@ -42,6 +48,8 @@ from ..models import (
     MonitorOutput,
     MultiEditInput,
     ReadInput,
+    ScheduleWakeupInput,
+    ScheduleWakeupOutput,
     ReadOutput,
     TaskInput,
     TaskOutput,
@@ -747,6 +755,137 @@ def format_monitor_output(output: MonitorOutput) -> str:
     return f"<div class='monitor-output'>{escape_html(output.text)}</div>"
 
 
+# -- ScheduleWakeup / Cron* Tools ---------------------------------------------
+#
+# A small family of scheduling tools sharing a common rendering shape:
+# a key-value grid for inputs (often with one long ``prompt`` field
+# rendered collapsibly via ``render_collapsible_code``) and a short
+# status paragraph for outputs. Built-in tools that previously fell
+# through to the generic params-table render (#148).
+
+
+def format_schedulewakeup_input(inp: ScheduleWakeupInput) -> str:
+    """Format ScheduleWakeup tool use as the prompt rendered as Markdown.
+
+    ``delaySeconds`` and ``reason`` already appear in the title
+    (``⏰ ScheduleWakeup +<delay>s — <reason>``); duplicating them
+    in the body adds noise. The prompt is the only field worth
+    showing — and it's typically Markdown content (slash commands,
+    inline code, prose) rather than preformatted text, so render
+    it via ``render_markdown_collapsible`` to honour the formatting
+    while keeping long prompts collapsible.
+    """
+    return render_markdown_collapsible(inp.prompt, "schedulewakeup-prompt")
+
+
+def format_schedulewakeup_output(output: ScheduleWakeupOutput) -> str:
+    """Format ScheduleWakeup result — short status paragraph verbatim."""
+    return f"<div class='schedulewakeup-output'>{escape_html(output.text)}</div>"
+
+
+def format_croncreate_input(inp: CronCreateInput) -> str:
+    """Format CronCreate tool use as the prompt rendered as Markdown.
+
+    ``cron`` is already in the title (``⏰ CronCreate <cron>``) and
+    the harness's confirmation echoes back ``recurring`` / ``durable``
+    in human-readable form, so the body doesn't need to repeat any
+    input scalars. The prompt is typically Markdown content (slash
+    commands, inline code, prose) rather than preformatted text;
+    render via ``render_markdown_collapsible`` to honour the
+    formatting while keeping long prompts collapsible.
+    """
+    return render_markdown_collapsible(inp.prompt, "croncreate-prompt")
+
+
+def format_croncreate_output(output: CronCreateOutput) -> str:
+    """Format CronCreate result — short status paragraph verbatim."""
+    return f"<div class='croncreate-output'>{escape_html(output.text)}</div>"
+
+
+def format_cronlist_input(_inp: CronListInput) -> str:
+    """Format CronList tool use — empty body (nothing to display)."""
+    # The title carries everything; CronList takes no inputs.
+    return ""
+
+
+def format_cronlist_output(output: CronListOutput) -> str:
+    """Format CronList result.
+
+    When the parser produced a structured ``jobs`` list, render as a
+    compact table; otherwise fall back to a verbatim paragraph so the
+    raw text is visible (the harness's exact format is loosely
+    documented and may drift).
+    """
+    if not output.jobs:
+        return f"<pre class='cronlist-output'>{escape_html(output.text)}</pre>"
+
+    rows = [
+        "<thead><tr><th>id</th><th>schedule</th><th>prompt</th></tr></thead>",
+        "<tbody>",
+    ]
+    for job in output.jobs:
+        # Truncate prompt at table width — full prompt is in the
+        # original CronCreate card upstream, so the list view favours
+        # density over completeness. The harness already truncates at
+        # output time (with a trailing ``…``), so the input is already
+        # short in practice.
+        preview = job.prompt if len(job.prompt) <= 80 else job.prompt[:77] + "…"
+        # Cross-link the id back to the originating CronCreate card
+        # when the renderer's ``_link_cron_jobs_by_id`` pass found a
+        # match. Plain ``<code>`` otherwise.
+        if job.creating_call_message_index is not None:
+            anchor = f"msg-d-{job.creating_call_message_index}"
+            id_html = (
+                f"<a class='cron-id-backlink' href='#{anchor}'>"
+                f"<code>{escape_html(job.id)}</code></a>"
+            )
+        else:
+            id_html = f"<code>{escape_html(job.id)}</code>"
+        rows.append(
+            f"<tr>"
+            f"<td>{id_html}</td>"
+            f"<td>{escape_html(job.description)}</td>"
+            f"<td>{escape_html(preview)}</td>"
+            f"</tr>"
+        )
+    rows.append("</tbody>")
+    return f"<table class='cronlist-output-table'>{''.join(rows)}</table>"
+
+
+def format_crondelete_input(inp: CronDeleteInput) -> str:
+    """Format CronDelete tool use — empty body (id is in the title)."""
+    del inp  # id surfaces via title_CronDeleteInput.
+    return ""
+
+
+def format_crondelete_output(output: CronDeleteOutput) -> str:
+    """Format CronDelete result.
+
+    Renders the harness status line verbatim. When the renderer's
+    ``_link_cron_jobs_by_id`` pass matched the cancelled job id back
+    to its originating ``CronCreate`` card, wrap that occurrence of
+    the id in an anchor so the reader can navigate.
+    """
+    text = output.text
+    if (
+        output.creating_call_message_index is not None
+        and output.job_id
+        and output.job_id in text
+    ):
+        anchor = f"msg-d-{output.creating_call_message_index}"
+        before, sep, after = text.partition(output.job_id)
+        # Escape each fragment independently so the anchor isn't
+        # corrupted by ``escape_html`` running on the whole string.
+        body = (
+            f"{escape_html(before)}"
+            f"<a class='cron-id-backlink' href='#{anchor}'>"
+            f"<code>{escape_html(sep)}</code></a>"
+            f"{escape_html(after)}"
+        )
+        return f"<div class='crondelete-output'>{body}</div>"
+    return f"<div class='crondelete-output'>{escape_html(output.text)}</div>"
+
+
 # -- Generic Parameter Table --------------------------------------------------
 
 
@@ -939,6 +1078,10 @@ __all__ = [
     "format_websearch_input",
     "format_webfetch_input",
     "format_monitor_input",
+    "format_schedulewakeup_input",
+    "format_croncreate_input",
+    "format_cronlist_input",
+    "format_crondelete_input",
     # Tool output formatters (called by HtmlRenderer.format_{OutputClass})
     "format_read_output",
     "format_write_output",
@@ -950,6 +1093,10 @@ __all__ = [
     "format_websearch_output",
     "format_webfetch_output",
     "format_monitor_output",
+    "format_schedulewakeup_output",
+    "format_croncreate_output",
+    "format_cronlist_output",
+    "format_crondelete_output",
     # Fallback for ToolResultContent
     "format_tool_result_content_raw",
     # Legacy formatters (still used)

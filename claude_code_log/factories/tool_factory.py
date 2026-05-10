@@ -45,7 +45,16 @@ from ..models import (
     ToolUseContent,
     ToolUseMessage,
     ToolUseResult,
+    CronCreateInput,
+    CronCreateOutput,
+    CronDeleteInput,
+    CronDeleteOutput,
+    CronListInput,
+    CronListItem,
+    CronListOutput,
     MonitorInput,
+    ScheduleWakeupInput,
+    ScheduleWakeupOutput,
     SkillInput,
     WebSearchInput,
     WebFetchInput,
@@ -102,6 +111,10 @@ TOOL_INPUT_MODELS: dict[str, type[BaseModel]] = {
     "WebSearch": WebSearchInput,
     "WebFetch": WebFetchInput,
     "Monitor": MonitorInput,
+    "ScheduleWakeup": ScheduleWakeupInput,
+    "CronCreate": CronCreateInput,
+    "CronList": CronListInput,
+    "CronDelete": CronDeleteInput,
     "Skill": SkillInput,
     # Teammates feature tools
     "TeamCreate": TeamCreateInput,
@@ -736,6 +749,144 @@ def parse_monitor_output(
     return MonitorOutput(text=text, task_id=task_match.group(1) if task_match else None)
 
 
+# ``Next wakeup scheduled for HH:MM:SS (in Ns).`` — captures the
+# scheduled clock time and the delay-in-seconds for downstream
+# consumers; renderer uses the raw text by default.
+_SCHEDULE_WAKEUP_RE = re.compile(r"Next wakeup scheduled for ([\d:]+) \(in (\d+)s\)")
+
+
+def parse_schedulewakeup_output(
+    tool_result: ToolResultContent,
+    file_path: Optional[str],
+) -> Optional[ScheduleWakeupOutput]:
+    """Parse ScheduleWakeup's start-confirmation paragraph."""
+    del file_path
+    text = _extract_tool_result_text(tool_result).strip()
+    if not text:
+        return None
+    match = _SCHEDULE_WAKEUP_RE.search(text)
+    if match:
+        return ScheduleWakeupOutput(
+            text=text,
+            next_at=match.group(1),
+            in_seconds=int(match.group(2)),
+        )
+    return ScheduleWakeupOutput(text=text)
+
+
+# ``Scheduled <kind> job <id> (...)`` where kind is "recurring" or
+# "one-shot". Real harness output captured during the #148 experiment:
+#   "Scheduled recurring job 337e67de (Every 2 minutes). Session-only
+#    (not written to disk, dies when Claude exits). ..."
+# Char class kept tolerant ([\w-]+) per the lesson from PR #147
+# (monk's nit on _MONITOR_TASK_ID_RE).
+_CRON_CREATE_ID_RE = re.compile(r"Scheduled (?:recurring|one-shot) job ([\w-]+)")
+
+
+def parse_croncreate_output(
+    tool_result: ToolResultContent,
+    file_path: Optional[str],
+) -> Optional[CronCreateOutput]:
+    """Parse CronCreate's start-confirmation."""
+    del file_path
+    text = _extract_tool_result_text(tool_result).strip()
+    if not text:
+        return None
+    match = _CRON_CREATE_ID_RE.search(text)
+    return CronCreateOutput(
+        text=text,
+        job_id=match.group(1) if match else None,
+    )
+
+
+# Real harness CronList row format (captured during the #148
+# experiment):
+#   "337e67de — Every 2 minutes (recurring) [session-only]: Cron tick — ..."
+# Shape: ``<id> — <description> (<kind>) [<scope>]: <prompt>``
+# Where:
+#   - id        : short alphanumeric job id ([\w-]+)
+#   - description: human-readable schedule ("Every 2 minutes", etc.)
+#   - kind      : "recurring" or "one-shot" (in parentheses)
+#   - scope     : "session-only" or "durable" (in brackets)
+#   - prompt    : remainder of the line, often truncated with "…"
+#
+# The em-dash separator and parenthesised kind are stable; the
+# bracketed scope is optional. Lines that don't match are quietly
+# skipped (raw text always preserved as fallback).
+_CRON_LIST_LINE_RE = re.compile(
+    r"^\s*(?P<id>[\w-]+)\s+—\s+(?P<description>[^()]+?)\s+"
+    r"\((?P<kind>recurring|one-shot)\)"
+    r"(?:\s+\[(?P<scope>[^\]]+)\])?:\s+(?P<prompt>.+?)\s*$"
+)
+
+
+def parse_cronlist_output(
+    tool_result: ToolResultContent,
+    file_path: Optional[str],
+) -> Optional[CronListOutput]:
+    """Parse CronList's job-list output.
+
+    Format isn't guaranteed by the harness; we capture the raw text
+    and attempt structured parsing per line. The renderer falls back
+    to the raw text when ``jobs`` is empty.
+    """
+    del file_path
+    text = _extract_tool_result_text(tool_result).strip()
+    if not text:
+        return None
+    # All-or-nothing: if any non-empty line fails to parse, bail out
+    # and let the renderer fall back to raw text. This avoids the
+    # partial-table failure mode where a 9-of-10-rows match would
+    # silently hide the 10th unparsed line behind a structured table.
+    # The renderer's ``if not output.jobs:`` branch already exists for
+    # the no-rows-at-all case; the same branch fires here when partial
+    # parsing happens. CR review on PR #152 (round 3).
+    jobs: list[CronListItem] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue  # Blank lines are noise, not data — skip without bailing.
+        m = _CRON_LIST_LINE_RE.match(line)
+        if not m:
+            return CronListOutput(text=text, jobs=[])
+        kind = m.group("kind")  # "recurring" or "one-shot"
+        scope = (m.group("scope") or "").strip()  # "session-only" / "durable"
+        jobs.append(
+            CronListItem(
+                id=m.group("id"),
+                description=m.group("description").strip(),
+                prompt=m.group("prompt").strip(),
+                recurring=True if kind == "recurring" else None,
+                durable=True if scope == "durable" else None,
+            )
+        )
+    return CronListOutput(text=text, jobs=jobs)
+
+
+_CRON_DELETE_ID_RE = re.compile(r"Cancelled job ([\w-]+)")
+
+
+def parse_crondelete_output(
+    tool_result: ToolResultContent,
+    file_path: Optional[str],
+) -> Optional[CronDeleteOutput]:
+    """Parse CronDelete's status line.
+
+    Captures the verbatim text plus the cancelled job id when the
+    format matches (``Cancelled job <id>.``) — the id feeds the
+    cross-link from the rendered status text back to the originating
+    ``CronCreate`` card.
+    """
+    del file_path
+    text = _extract_tool_result_text(tool_result).strip()
+    if not text:
+        return None
+    match = _CRON_DELETE_ID_RE.search(text)
+    return CronDeleteOutput(
+        text=text,
+        job_id=match.group(1) if match else None,
+    )
+
+
 # =============================================================================
 # Teammates feature tool output parsers
 # =============================================================================
@@ -1036,6 +1187,10 @@ TOOL_OUTPUT_PARSERS: dict[str, ToolOutputParser] = {
     "WebSearch": parse_websearch_output,
     "WebFetch": parse_webfetch_output,
     "Monitor": parse_monitor_output,
+    "ScheduleWakeup": parse_schedulewakeup_output,
+    "CronCreate": parse_croncreate_output,
+    "CronList": parse_cronlist_output,
+    "CronDelete": parse_crondelete_output,
     # Teammates feature tools
     "TeamCreate": parse_teamcreate_output,
     "TeamDelete": parse_teamdelete_output,
