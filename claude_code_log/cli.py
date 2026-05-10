@@ -651,14 +651,45 @@ def main(
     # Configure logging to show warnings and above
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
+    # Loud rejection of relative `--filter-path` when paired with
+    # `--expand-paths` (#151). Without this, a user typing
+    # `--filter-path home/joe` (forgetting the leading `/`) would
+    # match against an absolute resolved path via `Path.relative_to`,
+    # which raises ValueError for *any* mismatch including
+    # "argument is relative" — so the silent failure mode is "every
+    # project skipped". Reject up-front instead.
+    if filter_path and expand_paths and not Path(filter_path).is_absolute():
+        raise click.BadParameter(
+            f"--filter-path must be an absolute path when --expand-paths is set; "
+            f"got {filter_path!r}",
+            param_hint="--filter-path",
+        )
+
     # Warn early if Obsidian-friendly flags (#151) were passed in a
-    # context where they're no-ops. `--all-projects` is the only mode
-    # that consumes them; `--output` must be a directory (file-suffixed
-    # output goes through the single-file path which doesn't honour
-    # these flags).
+    # context where they're no-ops. `--all-projects` (explicit or
+    # implicit via no input_path) is the only mode that consumes them;
+    # `--output` must be a directory (file-suffixed output goes
+    # through the single-file path which doesn't honour these flags).
+    from .utils import output_path_is_file as _output_path_is_file
+
+    will_run_all_projects = all_projects or input_path is None
     if (expand_paths or filter_path) and tui:
         click.echo(
             "Warning: --expand-paths / --filter-path are ignored in --tui mode.",
+            err=True,
+        )
+    elif (expand_paths or filter_path) and not will_run_all_projects:
+        click.echo(
+            "Warning: --expand-paths / --filter-path require --all-projects "
+            "(or omitting INPUT_PATH); ignoring.",
+            err=True,
+        )
+    elif (expand_paths or filter_path) and (
+        output is None or _output_path_is_file(output)
+    ):
+        click.echo(
+            "Warning: --expand-paths / --filter-path require --output to be a "
+            "directory (no recognised file suffix); ignoring.",
             err=True,
         )
 

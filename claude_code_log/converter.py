@@ -2559,10 +2559,14 @@ def process_projects_hierarchy(
     index_root = output_dir if output_dir is not None else projects_path
 
     def _rel_to_index(p: Path) -> Path:
-        """Path of `p` relative to the index root, falling back to
-        absolute when `p` lives outside `index_root` (shouldn't happen
-        in normal use but keeps the index renderable rather than
-        crashing)."""
+        """Path of `p` relative to the index root.
+
+        Unreachable under the documented flag matrix: every
+        ``project_destination`` shape produces a ``dest_dir`` that
+        lives under ``index_root`` (legacy → ``projects_path``;
+        ``--output`` modes → ``output_dir``). Kept as a paranoia rail
+        for future code paths that might inject an unexpected
+        absolute ``dest_dir`` (e.g. via a test seam)."""
         try:
             return p.relative_to(index_root)
         except ValueError:

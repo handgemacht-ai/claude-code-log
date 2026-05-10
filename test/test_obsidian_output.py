@@ -198,3 +198,124 @@ class TestObsidianOutputMatrix:
         assert (out / "-home-joe-project-B" / "combined_transcripts.md").exists()
         # `-home-jane-...` doesn't start with `-home-joe`.
         assert not (out / "-home-jane-project-C").exists()
+
+
+# -----------------------------------------------------------------------------
+# CLI validation guards (#151 footgun fixes from monk's review)
+# -----------------------------------------------------------------------------
+
+
+class TestCliValidationGuards:
+    """The CLI rejects relative `--filter-path` when paired with
+    `--expand-paths` (would otherwise silently exclude every project),
+    and warns when the new flags are passed in no-op contexts."""
+
+    def test_relative_filter_path_with_expand_is_rejected(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """Loud rejection — without this, `--filter-path home/joe`
+        (forgetting the leading `/`) would match no projects silently
+        because `Path.relative_to` raises for relative paths."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        out = tmp_path / "out"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--expand-paths",
+                "--filter-path",
+                "home/joe",  # relative — should be rejected
+            ],
+        )
+        assert result.exit_code != 0
+        assert "must be an absolute path" in result.output
+        # No projects rendered.
+        assert not out.exists() or not any(
+            (out / p).exists() for p in ["home", "project", "-home-joe-project-A"]
+        )
+
+    def test_absolute_filter_path_with_expand_is_accepted(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """Counterpart: absolute `--filter-path` passes the guard."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        out = tmp_path / "out"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--expand-paths",
+                "--filter-path",
+                "/home/joe",
+                "--format",
+                "md",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert (out / "project/A/combined_transcripts.md").exists()
+
+    def test_warns_when_flags_used_without_all_projects(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """`--expand-paths` against a single-file/single-project
+        target (without `--all-projects`) is a no-op; user gets a
+        warning rather than silent ignore."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        # Point at a single project_dir with --expand-paths but no
+        # --all-projects (and explicitly no `output` to make the
+        # control flow predictable). Should warn.
+        single_project = fake_projects / "-home-joe-project-A"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(single_project),
+                "--expand-paths",
+                "--format",
+                "md",
+            ],
+        )
+        # The exact stderr-output ordering is implementation-dependent,
+        # but the warning text must surface somewhere.
+        assert "require --all-projects" in result.output
+
+    def test_warns_when_expand_paths_with_file_output(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """`--output some-file.md --expand-paths` is a no-op (file
+        output goes through the single-file path); warn."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(tmp_path / "out.md"),  # file-suffixed
+                "--expand-paths",
+                "--format",
+                "md",
+            ],
+        )
+        assert "require --output to be a directory" in result.output
