@@ -155,6 +155,48 @@ def get_project_display_name(
         return display_name
 
 
+def _path_looks_absolute(s: str) -> bool:
+    """True if ``s`` looks like an absolute path on either POSIX or
+    Windows. Decoupled from the host OS so JSONL-stored cwds don't
+    silently mismatch when a Linux-recorded transcript is processed
+    on Windows or vice versa (#151)."""
+    if not s:
+        return False
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    return PurePosixPath(s).is_absolute() or PureWindowsPath(s).is_absolute()
+
+
+def _split_real_path_for_join(real_path_str: str) -> list[str]:
+    """Decompose a real-path string into the parts that should be
+    joined under ``output_dir`` for ``--expand-paths``.
+
+    Form-aware: POSIX-shaped strings (``/foo/bar``) yield
+    ``['foo', 'bar']``; Windows-shaped strings (``C:\\foo\\bar``)
+    yield ``['C', 'foo', 'bar']`` (drive letter kept as a path
+    component, colon stripped). Relative inputs pass through as-is.
+
+    Pure path-string inspection — no host-OS dependence; same JSONL
+    cwd produces the same destination tree on Linux, macOS, or
+    Windows.
+    """
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    p_posix = PurePosixPath(real_path_str)
+    if p_posix.is_absolute():
+        return list(p_posix.parts[1:])  # drop leading '/'
+    p_win = PureWindowsPath(real_path_str)
+    if p_win.is_absolute():
+        # 'C:\foo\bar' → drive='C:', parts=('C:\\', 'foo', 'bar')
+        # Keep the drive as a leading dirname segment, strip the colon
+        # so it works as a real directory name on POSIX too.
+        drive = p_win.drive.rstrip(":")
+        rest = list(p_win.parts[1:])
+        return [drive, *rest] if drive else rest
+    # Relative — POSIX-style component split.
+    return list(p_posix.parts)
+
+
 def project_dir_to_real_path(
     project_dir: Path,
     cached_working_directories: Optional[list[str]] = None,
@@ -194,18 +236,20 @@ def project_dir_to_real_path(
     """
     # Tier 1: cache. Only accept absolute paths — relative or oddly
     # shaped values fall through (e.g. test fixtures with synthetic
-    # `cwd` entries).
+    # `cwd` entries). Absoluteness check is form-aware (POSIX or
+    # Windows shapes), so a Linux-recorded cwd processed on Windows
+    # still resolves through this tier.
     if cached_working_directories:
         real_dirs = [
             wd
             for wd in cached_working_directories
-            if not _is_temp_path(wd) and Path(wd).is_absolute()
+            if not _is_temp_path(wd) and _path_looks_absolute(wd)
         ]
         if real_dirs:
             return Path(real_dirs[0])
 
     # Tier 2: peek the first JSONL for a `cwd` field. Same
-    # absoluteness guard as tier 1.
+    # form-aware absoluteness guard as tier 1.
     if project_dir.is_dir():
         # Skip agent-* sidechain files; they may not carry the
         # top-level project cwd. Take any other JSONL.
@@ -213,7 +257,7 @@ def project_dir_to_real_path(
             if jsonl_path.name.startswith("agent-"):
                 continue
             cwd_from_peek = _peek_jsonl_for_cwd(jsonl_path)
-            if cwd_from_peek and Path(cwd_from_peek).is_absolute():
+            if cwd_from_peek and _path_looks_absolute(cwd_from_peek):
                 return Path(cwd_from_peek)
             # First non-agent JSONL exhausted with no usable cwd —
             # bail out rather than scanning every file.
@@ -320,26 +364,48 @@ def project_destination(
         return project_dir
 
     # With --expand-paths: resolve the real path and (optionally) trim
-    # the filter prefix.
+    # the filter prefix. Form-aware throughout — POSIX and Windows
+    # path strings are handled symmetrically so a transcript recorded
+    # on one platform projects predictably on the other.
     if expand_paths:
+        from pathlib import PurePosixPath, PureWindowsPath
+
         real_path = project_dir_to_real_path(project_dir, cached_working_directories)
+        real_str = str(real_path)
         if filter_path:
-            filter_root = Path(filter_path)
+            # Match using the same path-shape family as the real path
+            # (POSIX-form `/home/joe` filters POSIX-form real paths;
+            # Windows-form `C:\Users\joe` filters Windows-form real
+            # paths). Mixing forms is a user error and produces None.
+            if PurePosixPath(real_str).is_absolute():
+                pp_cls = PurePosixPath
+            elif PureWindowsPath(real_str).is_absolute():
+                pp_cls = PureWindowsPath
+            else:
+                pp_cls = PurePosixPath
             try:
-                rel = real_path.relative_to(filter_root)
+                rel = pp_cls(real_str).relative_to(pp_cls(filter_path))
             except ValueError:
                 # Real path is not under filter prefix — skip.
                 return None
-            return output_dir / rel
-        # Real-path tree directly under output_dir. Drop the leading
-        # `/` so the joined path stays relative to output_dir.
-        rel_parts = real_path.parts[1:] if real_path.is_absolute() else real_path.parts
-        return output_dir.joinpath(*rel_parts)
+            return output_dir.joinpath(*rel.parts)
+        # Real-path tree directly under output_dir. Decompose the
+        # path string in a form-aware way: POSIX shapes drop the
+        # leading '/', Windows shapes keep the drive letter as a
+        # leading path component (so `C:\foo\bar` lands at
+        # `<output>/C/foo/bar`).
+        rel_parts = _split_real_path_for_join(real_str)
+        return output_dir.joinpath(*rel_parts) if rel_parts else output_dir
 
     # No --expand-paths: filter against the flat dir name (per Q2),
-    # destination keeps the flat name.
+    # destination keeps the flat name. Require an exact match OR a
+    # `-`-terminated prefix so `--filter-path -home-joe` doesn't also
+    # accept sibling-prefix names like `-home-joe-bar` style
+    # (matches) but reject `-home-joet-...` (would over-match without
+    # the boundary).
     if filter_path:
-        if not project_dir.name.startswith(filter_path):
+        name = project_dir.name
+        if name != filter_path and not name.startswith(filter_path + "-"):
             return None
     return output_dir / project_dir.name
 

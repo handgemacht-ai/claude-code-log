@@ -293,7 +293,9 @@ class TestCliValidationGuards:
             ],
         )
         # The exact stderr-output ordering is implementation-dependent,
-        # but the warning text must surface somewhere.
+        # but the warning text must surface somewhere — and the
+        # invocation must still succeed (warning, not error).
+        assert result.exit_code == 0, result.output
         assert "require --all-projects" in result.output
 
     def test_warns_when_expand_paths_with_file_output(
@@ -318,4 +320,6 @@ class TestCliValidationGuards:
                 "md",
             ],
         )
+        # Warning, not error — single-file path still runs successfully.
+        assert result.exit_code == 0, result.output
         assert "require --output to be a directory" in result.output

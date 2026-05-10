@@ -2551,7 +2551,18 @@ def process_projects_hierarchy(
     # (#151). Resolve once per project — using the cache when
     # populated, else a quick JSONL peek — so `_collect_project_sessions`
     # / cache rebuilds are skipped for filtered-out projects entirely.
-    from .utils import project_destination
+    from .utils import project_destination, variant_suffix as _variant_suffix
+
+    # Combined-transcript filename. `convert_jsonl_to` writes
+    # `combined_transcripts{variant}.{ext}` (e.g.
+    # `combined_transcripts.low.compact.md`); the cache lookup keys,
+    # `output_path` existence check, and `html_file` index entries
+    # all need to use the same name. Hard-coding "combined_transcripts.html"
+    # would make non-default --format / --detail / --compact
+    # combinations cache-miss forever and link to the wrong file.
+    variant = _variant_suffix(detail, compact, output_format)
+    combined_ext = get_file_extension(output_format)
+    combined_name = f"combined_transcripts{variant}.{combined_ext}"
 
     # Index page lives at the root of whatever output destination we
     # use (either `--output` if set, or the legacy in-place projects
@@ -2635,18 +2646,26 @@ def process_projects_hierarchy(
             total_archived += archived_count
             # Output destination — `dest_dir` for #151's `--output` /
             # `--expand-paths` / `--filter-path`, falling back to the
-            # source project_dir for legacy in-place behaviour.
-            output_path = dest_dir / "combined_transcripts.html"
+            # source project_dir for legacy in-place behaviour. Filename
+            # uses the same {variant}.{ext} convention as
+            # `convert_jsonl_to`.
+            output_path = dest_dir / combined_name
             # Check combined_stale using the appropriate cache:
             # - Paginated projects store data in html_pages table (via save_page_cache)
             # - Non-paginated projects store data in html_cache table (via update_html_cache)
             if cache_manager is not None:
-                existing_page_count = cache_manager.get_page_count()
+                existing_page_count = cache_manager.get_page_count(variant)
                 if existing_page_count > 0:
-                    # Paginated project: check page 1 staleness
-                    combined_stale = cache_manager.is_page_stale(1, page_size)[0]
+                    # Paginated project: check page 1 staleness for the
+                    # current --format/--detail/--compact variant.
+                    combined_stale = cache_manager.is_page_stale(1, page_size, variant)[
+                        0
+                    ]
                 else:
-                    # Non-paginated project: check html_cache
+                    # Non-paginated project: check html_cache for the
+                    # variant-specific filename (e.g.
+                    # `combined_transcripts.low.compact.md`), not the
+                    # default `combined_transcripts.html`.
                     combined_stale = cache_manager.is_html_stale(
                         output_path.name, None
                     )[0]
@@ -2975,7 +2994,7 @@ def process_projects_hierarchy(
                 {
                     "name": archived_dir.name,
                     "path": archived_dir,
-                    "html_file": f"{archived_rel}/combined_transcripts.html",
+                    "html_file": f"{archived_rel}/{combined_name}",
                     "html_variants": _enumerate_project_variants(
                         archived_dest, str(archived_rel)
                     ),

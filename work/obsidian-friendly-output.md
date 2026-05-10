@@ -1,6 +1,6 @@
 # Obsidian-friendly output (issue #151)
 
-## Status: Plan — not started
+## Status: Shipped (impl + tests in this PR; follow-ups recorded below)
 
 ## Context
 
