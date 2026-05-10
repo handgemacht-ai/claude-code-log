@@ -871,6 +871,13 @@ def generate_template_messages(
     with log_timing("Link tool_use notifications", t_start):
         _link_tool_use_notifications(ctx)
 
+    # Independent pass: cross-link CronList rows and CronDelete results
+    # back to the originating CronCreate by job id (#148). Build the
+    # job_id → message_index map from CronCreate outputs, then write
+    # the link onto each consumer site.
+    with log_timing("Link cron jobs by id", t_start):
+        _link_cron_jobs_by_id(ctx)
+
     return root_messages, session_nav, ctx
 
 
@@ -2297,6 +2304,73 @@ _ASYNC_AGENT_ID_LINE_RE = re.compile(
     r"^\s*agentId:\s*(?P<agent_id>\w+)\s*\(",
     re.MULTILINE,
 )
+
+
+def _link_cron_jobs_by_id(ctx: RenderingContext) -> None:
+    """Cross-link Cron* tool consumers back to the originating
+    ``CronCreate`` by job id (#148).
+
+    The harness echoes the new job's id back from ``CronCreate`` and
+    re-uses it in ``CronList`` rows and ``CronDelete`` confirmations.
+    Build the ``job_id → message_index`` map from the parsed output
+    of every ``CronCreate`` in the transcript, then stamp the
+    matching ``creating_call_message_index`` on each consumer site
+    so the formatter can wrap the rendered id in an anchor pointing
+    back to the originating card.
+
+    Reuses ``ToolResultMessage`` / ``ToolUseMessage`` discovery that
+    other passes already do — the only new bookkeeping is the
+    job-id index. No fold or dedup; the link is purely affordance.
+    """
+    from .models import (
+        CronCreateOutput,
+        CronDeleteOutput,
+        CronListOutput,
+    )
+
+    # Step 1: index CronCreate calls by job id.
+    # The job id is parsed onto ``CronCreateOutput.job_id`` by the
+    # tool factory; the call's ``message_index`` lives on the
+    # corresponding ``ToolUseMessage`` (the call), not the
+    # ``ToolResultMessage`` (the response). pair_first wires the two
+    # together — the create call is the one a reader expects to
+    # navigate to.
+    job_id_to_call_index: dict[str, int] = {}
+    for tm in ctx.messages:
+        if not isinstance(tm.content, ToolResultMessage):
+            continue
+        if tm.content.tool_name != "CronCreate":
+            continue
+        if not isinstance(tm.content.output, CronCreateOutput):
+            continue
+        job_id = tm.content.output.job_id
+        if not job_id:
+            continue
+        # pair_first holds the matching tool_use's message_index after
+        # the standard tool_use ↔ tool_result pairing. Fall back to the
+        # tool_result's own index if pairing didn't fire (defensive).
+        target_idx = tm.pair_first if tm.pair_first is not None else tm.message_index
+        if target_idx is not None:
+            job_id_to_call_index.setdefault(job_id, target_idx)
+    if not job_id_to_call_index:
+        return
+
+    # Step 2: stamp consumer sites.
+    for tm in ctx.messages:
+        if not isinstance(tm.content, ToolResultMessage):
+            continue
+        output = tm.content.output
+        if isinstance(output, CronListOutput):
+            for job in output.jobs:
+                if job.creating_call_message_index is None:
+                    target = job_id_to_call_index.get(job.id)
+                    if target is not None:
+                        job.creating_call_message_index = target
+        elif isinstance(output, CronDeleteOutput):
+            if output.creating_call_message_index is None and output.job_id:
+                target = job_id_to_call_index.get(output.job_id)
+                if target is not None:
+                    output.creating_call_message_index = target
 
 
 def _link_tool_use_notifications(ctx: RenderingContext) -> None:

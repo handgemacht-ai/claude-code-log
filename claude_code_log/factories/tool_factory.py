@@ -862,16 +862,29 @@ def parse_cronlist_output(
     return CronListOutput(text=text, jobs=jobs)
 
 
+_CRON_DELETE_ID_RE = re.compile(r"Cancelled job ([\w-]+)")
+
+
 def parse_crondelete_output(
     tool_result: ToolResultContent,
     file_path: Optional[str],
 ) -> Optional[CronDeleteOutput]:
-    """Parse CronDelete's status line — captured verbatim."""
+    """Parse CronDelete's status line.
+
+    Captures the verbatim text plus the cancelled job id when the
+    format matches (``Cancelled job <id>.``) — the id feeds the
+    cross-link from the rendered status text back to the originating
+    ``CronCreate`` card.
+    """
     del file_path
     text = _extract_tool_result_text(tool_result).strip()
     if not text:
         return None
-    return CronDeleteOutput(text=text)
+    match = _CRON_DELETE_ID_RE.search(text)
+    return CronDeleteOutput(
+        text=text,
+        job_id=match.group(1) if match else None,
+    )
 
 
 # =============================================================================

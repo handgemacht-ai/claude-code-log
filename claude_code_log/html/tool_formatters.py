@@ -764,35 +764,18 @@ def format_monitor_output(output: MonitorOutput) -> str:
 # through to the generic params-table render (#148).
 
 
-def _format_collapsible_prompt(prompt: str) -> str:
-    """Render a multi-line / long prompt with the same collapsible-code
-    treatment used by the Monitor tool's ``command`` field.
-
-    Short single-line prompts render in a plain ``<pre>``. Multi-line
-    or long-string prompts use ``render_collapsible_code`` so the
-    line-count badge + preview affordance is consistent across
-    scheduling tools and matches the rest of the tool fleet.
-    """
-    line_count = prompt.count("\n") + 1
-    escaped = escape_html(prompt)
-    if line_count > 5 or len(prompt) > 300:
-        preview_lines = "\n".join(prompt.splitlines()[:3])
-        preview_html = f"<pre>{escape_html(preview_lines)}</pre>"
-        full_html = f"<pre>{escaped}</pre>"
-        return render_collapsible_code(preview_html, full_html, line_count)
-    return f"<pre class='cron-prompt'>{escaped}</pre>"
-
-
 def format_schedulewakeup_input(inp: ScheduleWakeupInput) -> str:
-    """Format ScheduleWakeup tool use as the prompt only.
+    """Format ScheduleWakeup tool use as the prompt rendered as Markdown.
 
     ``delaySeconds`` and ``reason`` already appear in the title
-    (``⏰ ScheduleWakeup +<delay>s — <reason>``); duplicating them in
-    the body adds noise without information. The prompt is the only
-    field that doesn't fit in the title, so render it directly as
-    collapsible code rather than wrapped in a generic params table.
+    (``⏰ ScheduleWakeup +<delay>s — <reason>``); duplicating them
+    in the body adds noise. The prompt is the only field worth
+    showing — and it's typically Markdown content (slash commands,
+    inline code, prose) rather than preformatted text, so render
+    it via ``render_markdown_collapsible`` to honour the formatting
+    while keeping long prompts collapsible.
     """
-    return f"<div class='schedulewakeup-input'>{_format_collapsible_prompt(inp.prompt)}</div>"
+    return render_markdown_collapsible(inp.prompt, "schedulewakeup-prompt")
 
 
 def format_schedulewakeup_output(output: ScheduleWakeupOutput) -> str:
@@ -801,18 +784,17 @@ def format_schedulewakeup_output(output: ScheduleWakeupOutput) -> str:
 
 
 def format_croncreate_input(inp: CronCreateInput) -> str:
-    """Format CronCreate tool use as the prompt only.
+    """Format CronCreate tool use as the prompt rendered as Markdown.
 
     ``cron`` is already in the title (``⏰ CronCreate <cron>``) and
     the harness's confirmation echoes back ``recurring`` / ``durable``
-    in human-readable form (``Scheduled recurring job <id> ...
-    Session-only ...``) so the body doesn't need to repeat any of
-    the input scalars. Just render the prompt as collapsible code —
-    the only field that doesn't fit elsewhere.
+    in human-readable form, so the body doesn't need to repeat any
+    input scalars. The prompt is typically Markdown content (slash
+    commands, inline code, prose) rather than preformatted text;
+    render via ``render_markdown_collapsible`` to honour the
+    formatting while keeping long prompts collapsible.
     """
-    return (
-        f"<div class='croncreate-input'>{_format_collapsible_prompt(inp.prompt)}</div>"
-    )
+    return render_markdown_collapsible(inp.prompt, "croncreate-prompt")
 
 
 def format_croncreate_output(output: CronCreateOutput) -> str:
@@ -848,9 +830,20 @@ def format_cronlist_output(output: CronListOutput) -> str:
         # output time (with a trailing ``…``), so the input is already
         # short in practice.
         preview = job.prompt if len(job.prompt) <= 80 else job.prompt[:77] + "…"
+        # Cross-link the id back to the originating CronCreate card
+        # when the renderer's ``_link_cron_jobs_by_id`` pass found a
+        # match. Plain ``<code>`` otherwise.
+        if job.creating_call_message_index is not None:
+            anchor = f"msg-d-{job.creating_call_message_index}"
+            id_html = (
+                f"<a class='cron-id-backlink' href='#{anchor}'>"
+                f"<code>{escape_html(job.id)}</code></a>"
+            )
+        else:
+            id_html = f"<code>{escape_html(job.id)}</code>"
         rows.append(
             f"<tr>"
-            f"<td><code>{escape_html(job.id)}</code></td>"
+            f"<td>{id_html}</td>"
             f"<td>{escape_html(job.description)}</td>"
             f"<td>{escape_html(preview)}</td>"
             f"</tr>"
@@ -866,7 +859,30 @@ def format_crondelete_input(inp: CronDeleteInput) -> str:
 
 
 def format_crondelete_output(output: CronDeleteOutput) -> str:
-    """Format CronDelete result — short status paragraph verbatim."""
+    """Format CronDelete result.
+
+    Renders the harness status line verbatim. When the renderer's
+    ``_link_cron_jobs_by_id`` pass matched the cancelled job id back
+    to its originating ``CronCreate`` card, wrap that occurrence of
+    the id in an anchor so the reader can navigate.
+    """
+    text = output.text
+    if (
+        output.creating_call_message_index is not None
+        and output.job_id
+        and output.job_id in text
+    ):
+        anchor = f"msg-d-{output.creating_call_message_index}"
+        before, sep, after = text.partition(output.job_id)
+        # Escape each fragment independently so the anchor isn't
+        # corrupted by ``escape_html`` running on the whole string.
+        body = (
+            f"{escape_html(before)}"
+            f"<a class='cron-id-backlink' href='#{anchor}'>"
+            f"<code>{escape_html(sep)}</code></a>"
+            f"{escape_html(after)}"
+        )
+        return f"<div class='crondelete-output'>{body}</div>"
     return f"<div class='crondelete-output'>{escape_html(output.text)}</div>"
 
 

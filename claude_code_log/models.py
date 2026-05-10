@@ -1551,6 +1551,13 @@ class CronListItem:
     The harness echoes a *human-readable* schedule (``Every 2 minutes``
     / ``Daily at 8:57``), not the original cron expression — recovered
     from the originating ``CronCreate`` card upstream when needed.
+
+    ``creating_call_message_index`` is set by the renderer's
+    ``_link_cron_jobs_by_id`` pass when a ``CronCreate`` call earlier
+    in the transcript produced this job id; the formatter wraps the
+    rendered ``id`` cell in an anchor pointing back to the originating
+    card. Optional because the create call may not be in the loaded
+    transcript (multi-session sessions, partial loads).
     """
 
     id: str
@@ -1558,6 +1565,7 @@ class CronListItem:
     prompt: str
     recurring: Optional[bool] = None
     durable: Optional[bool] = None
+    creating_call_message_index: Optional[int] = None
 
 
 @dataclass
@@ -1577,9 +1585,18 @@ class CronListOutput:
 
 @dataclass
 class CronDeleteOutput:
-    """Parsed output for ``CronDelete`` — short status line."""
+    """Parsed output for ``CronDelete`` — short status line.
+
+    The harness echoes back the cancelled job id (``Cancelled job
+    <id>.``); we capture it for the cross-link from the rendered
+    status text back to the originating ``CronCreate`` card. The
+    ``creating_call_message_index`` is wired by the same renderer
+    pass that populates ``CronListItem.creating_call_message_index``.
+    """
 
     text: str
+    job_id: Optional[str] = None
+    creating_call_message_index: Optional[int] = None
 
 
 @dataclass

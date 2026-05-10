@@ -226,37 +226,51 @@ class TestSchedulingOutputParsers:
 
 
 class TestSchedulingHtmlFormatters:
-    def test_schedulewakeup_input_renders_only_prompt(self) -> None:
-        """Body is the collapsible prompt; ``delaySeconds`` and
-        ``reason`` already live in the title and aren't repeated here.
+    def test_schedulewakeup_input_renders_prompt_as_markdown(self) -> None:
+        """Body is the prompt rendered as Markdown (not preformatted
+        text); ``delaySeconds`` and ``reason`` already live in the
+        title and aren't repeated.
         """
         m = ScheduleWakeupInput(
-            delaySeconds=300, reason="watch deploy", prompt="/loop bar"
+            delaySeconds=300,
+            reason="watch deploy",
+            prompt="Run `git status --short`",
         )
         html = format_schedulewakeup_input(m)
-        assert "/loop bar" in html
-        # Scalar fields don't appear in the body — no labels, no values.
+        # Wrapper class set by render_markdown_collapsible.
+        assert "schedulewakeup-prompt" in html
+        # Backticks rendered as Markdown inline-code (not preserved
+        # literally in a <pre>).
+        assert "<code>git status --short</code>" in html
+        # Scalar fields don't appear in the body.
         assert "delaySeconds" not in html
         assert "300" not in html
         assert "reason" not in html
         assert "watch deploy" not in html
 
     def test_schedulewakeup_long_prompt_collapses(self) -> None:
-        prompt = "\n".join(f"line {i}" for i in range(20))
+        # render_markdown_collapsible's default threshold is 20 lines.
+        prompt = "\n".join(f"- bullet {i}" for i in range(25))
         m = ScheduleWakeupInput(delaySeconds=60, reason="r", prompt=prompt)
         html = format_schedulewakeup_input(m)
-        assert "collapsible-code" in html
-        assert "20 lines" in html
+        # render_markdown_collapsible produces a <details> wrapper.
+        assert "<details" in html
 
-    def test_croncreate_input_renders_only_prompt(self) -> None:
-        """Body is the collapsible prompt; ``cron`` is in the title
-        and the harness echoes back recurring/durable in human form.
+    def test_croncreate_input_renders_prompt_as_markdown(self) -> None:
+        """Body is the prompt rendered as Markdown; ``cron`` is in the
+        title and the harness echoes back flags in human form.
         """
         m = CronCreateInput(
-            cron="0 * * * *", prompt="/hourly", recurring=True, durable=True
+            cron="0 * * * *",
+            prompt="Run `/morning-checkin`",
+            recurring=True,
+            durable=True,
         )
         html = format_croncreate_input(m)
-        assert "/hourly" in html
+        # Wrapper class set by render_markdown_collapsible.
+        assert "croncreate-prompt" in html
+        # Backticks rendered as Markdown inline-code.
+        assert "<code>/morning-checkin</code>" in html
         # Cron expression and flag scalars don't appear in the body.
         assert "0 * * * *" not in html
         assert "recurring" not in html
@@ -318,13 +332,13 @@ class TestSchedulingFixtureRendering:
         assert "+240s" in html
         # CronCreate title carries the cron expression.
         assert "*/2 * * * *" in html
-        # CronList renders the static title literal — pinned to a
-        # single occurrence so a regression of monk's #148 finding
-        # (``_tool_title`` rendering both the tool name and a
-        # tool-name-shaped summary) fails loudly.
-        assert html.count("CronList") == 1, (
-            f"Expected exactly one 'CronList' occurrence; got {html.count('CronList')}"
-        )
+        # CronList renders the static title literal. Checking
+        # absence of the duplicate-summary shape pins the regression
+        # for monk's #148 finding (``_tool_title`` rendering both
+        # the tool name and a tool-name-shaped summary). The bare
+        # ``html.count("CronList")`` cardinality check is too coarse
+        # — CSS comments and other chrome legitimately mention the
+        # tool name; only the duplicate-span shape is pathological.
         assert "<span class='tool-summary'>CronList" not in html
         # CronDelete title carries the id.
         assert "337e67de" in html
@@ -363,9 +377,46 @@ class TestSchedulingFixtureRendering:
         # harness's CronList output uses the description form).
         assert "Every 2 minutes" in html
 
-    def test_html_crondelete_result_paragraph(self) -> None:
+    def test_html_cronlist_id_links_back_to_croncreate(self) -> None:
+        """The CronList row's id wraps in an anchor pointing at the
+        originating CronCreate card's div (#148).
+        """
+        import re
+
         html = self._html()
-        assert "Cancelled job 337e67de" in html
+        # Locate the CronCreate tool_use's div id (msg-d-N).
+        cc_match = re.search(
+            r"<div class='message[^']*tool_use[^']*'[^>]*id='(msg-d-\d+)'"
+            r"[^>]*>(?:(?!</div>).)*?CronCreate",
+            html,
+            re.DOTALL,
+        )
+        assert cc_match, "CronCreate tool_use div not found"
+        cc_anchor = cc_match.group(1)
+        # The CronList row's id ``337e67de`` is wrapped in an anchor
+        # pointing at the CronCreate's anchor.
+        link_re = re.compile(
+            r"<a class='cron-id-backlink' href='#(msg-d-\d+)'>"
+            r"<code>337e67de</code></a>"
+        )
+        link_match = link_re.search(html)
+        assert link_match, "CronList id backlink not found"
+        assert link_match.group(1) == cc_anchor
+
+    def test_html_crondelete_result_links_back_to_croncreate(self) -> None:
+        """The job id within the CronDelete status text wraps in an
+        anchor pointing at the originating CronCreate card.
+        """
+        import re
+
+        html = self._html()
+        link_re = re.compile(
+            r"Cancelled job <a class='cron-id-backlink' href='#(msg-d-\d+)'>"
+            r"<code>337e67de</code></a>"
+        )
+        assert link_re.search(html), (
+            "CronDelete id backlink not found within the status text"
+        )
 
     def test_markdown_titles_use_inline_code_for_values(self) -> None:
         md = self._md()
@@ -379,14 +430,15 @@ class TestSchedulingFixtureRendering:
         # CronDelete id wrapped in inline code.
         assert "⏰ CronDelete `337e67de`" in md
 
-    def test_markdown_schedulewakeup_body_is_just_fenced_prompt(self) -> None:
+    def test_markdown_schedulewakeup_body_is_raw_markdown_prompt(self) -> None:
         md = self._md()
         # No bullet rows for the redundant scalars.
         assert "**delaySeconds:**" not in md
         assert "**reason:**" not in md
-        # Prompt content present inside a fenced block.
+        # Prompt content present in the body — emitted as raw Markdown
+        # rather than wrapped in a fenced code block, so it renders
+        # honouring slash commands / inline code / prose.
         assert "/loop Tick the experiment-supervision loop" in md
-        assert "```" in md
 
 
 # -----------------------------------------------------------------------------

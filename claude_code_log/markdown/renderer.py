@@ -874,14 +874,16 @@ class MarkdownRenderer(Renderer):
     def format_ScheduleWakeupInput(
         self, input: ScheduleWakeupInput, _: TemplateMessage
     ) -> str:
-        """Format → fenced prompt block only.
+        """Format → prompt as raw Markdown.
 
         ``delaySeconds`` and ``reason`` are already in the title
         (``⏰ ScheduleWakeup +<delay>s — <reason>``); duplicating them
-        in the body adds noise without information. The prompt is the
-        only field that doesn't fit in the title.
+        in the body adds noise. The prompt is typically Markdown
+        content (slash commands, inline code, prose) rather than
+        preformatted text, so emit it directly into the Markdown
+        document instead of wrapping in a fenced code block.
         """
-        return self._code_fence(input.prompt)
+        return input.prompt
 
     def format_ScheduleWakeupOutput(
         self, output: ScheduleWakeupOutput, _: TemplateMessage
@@ -890,14 +892,16 @@ class MarkdownRenderer(Renderer):
         return output.text
 
     def format_CronCreateInput(self, input: CronCreateInput, _: TemplateMessage) -> str:
-        """Format → fenced prompt block only.
+        """Format → prompt as raw Markdown.
 
         ``cron`` is already in the title (``⏰ CronCreate <cron>``)
         and the harness's confirmation echoes back ``recurring`` /
         ``durable`` in human-readable form, so the body doesn't need
-        to repeat any input scalars.
+        to repeat any input scalars. The prompt is typically Markdown
+        content; emit it directly rather than wrapping in a fenced
+        code block.
         """
-        return self._code_fence(input.prompt)
+        return input.prompt
 
     def format_CronCreateOutput(
         self, output: CronCreateOutput, _: TemplateMessage
