@@ -417,9 +417,11 @@ Two fixes to consider (same shape as the existing footgun guards):
 
 Lean toward (B). Either is straightforward.
 
-#### `--filter-path` and `--expand-paths` should imply `--all-projects`
+#### `--filter-path` should imply `--all-projects`
 
-Without `--all-projects`, both flags are no-ops (currently warned-about, but no auto-elevation). What would a user reasonably expect from `--filter-path /home/joe` other than "filter the projects under `/home/joe`"? There's nothing else to filter. Auto-imply rather than warn-and-ignore.
+Filtering only makes sense over a set of projects — without `--all-projects` there's nothing for `--filter-path` to filter. Currently it's warned-about-and-ignored; auto-imply is friendlier.
+
+**Asymmetry note** (worth recording): `--expand-paths` *cannot* safely imply `--all-projects` because the flag has independent meaning in single-session / single-project mode (next item — project one artefact under `<output>/<real-path>/<filename>`). Implying `--all-projects` from `--expand-paths` would silently switch from "expand this one input" to "scan ~/.claude/projects/", which is a much bigger surprise than `--filter-path` could ever be. So the auto-imply is `--filter-path` only; `--expand-paths` keeps the current behaviour matrix.
 
 #### `--expand-paths` for single-session / single-project mode
 
