@@ -532,7 +532,25 @@ def _clear_output_files(
 @click.option(
     "--no-individual-sessions",
     is_flag=True,
-    help="Skip generating individual session HTML files (only create combined transcript)",
+    help=(
+        "Skip generating individual session files (combined transcript only). "
+        "Back-compat alias for --combined only."
+    ),
+)
+@click.option(
+    "--combined",
+    "combined",
+    type=click.Choice(["yes", "no", "only"], case_sensitive=False),
+    default=None,
+    help=(
+        "Control combined-vs-individual transcript generation: "
+        "'yes' = both combined and per-session files (default for --all-projects); "
+        "'no' = only per-session files (recommended for Obsidian / vault use — "
+        "combined is dead weight); "
+        "'only' = only the combined file (= --no-individual-sessions). "
+        "When unset, defaults to 'no' under --expand-paths (Obsidian mode), "
+        "else 'yes'."
+    ),
 )
 @click.option(
     "--no-cache",
@@ -622,6 +640,7 @@ def main(
     output: Optional[Path],
     expand_paths: bool,
     filter_path: Optional[str],
+    combined: Optional[str],
     open_browser: bool,
     from_date: Optional[str],
     to_date: Optional[str],
@@ -650,6 +669,31 @@ def main(
 
     # Configure logging to show warnings and above
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+
+    # Resolve --combined default and back-compat with --no-individual-sessions.
+    # `--combined` semantics:
+    #   yes  → write combined transcript AND per-session files
+    #   no   → write per-session files only (Obsidian-friendly)
+    #   only → write combined transcript only (= --no-individual-sessions)
+    # Default: yes, except when --expand-paths is set (Obsidian mode → no).
+    if combined is None:
+        combined = "no" if expand_paths else "yes"
+    else:
+        combined = combined.lower()
+    if no_individual_sessions:
+        if combined == "no":
+            raise click.BadParameter(
+                "--no-individual-sessions conflicts with --combined no "
+                "(both attempt to skip per-session files but --no-individual-sessions "
+                "implies combined-only). Pick one.",
+                param_hint="--no-individual-sessions",
+            )
+        # `--no-individual-sessions` is a strict alias for `--combined only`;
+        # honour it for back-compat (and prefer this over an unset --combined).
+        combined = "only"
+    # Derived flags actually consumed downstream.
+    write_combined = combined in ("yes", "only")
+    write_individual = combined in ("yes", "no")
 
     # Loud rejection of relative `--filter-path` when paired with
     # `--expand-paths` (#151). Without this, a user typing
@@ -911,7 +955,7 @@ def main(
                 from_date,
                 to_date,
                 not no_cache,
-                not no_individual_sessions,
+                write_individual,
                 output_format,
                 image_export_mode,
                 page_size=page_size,
@@ -920,6 +964,7 @@ def main(
                 output_dir=output_dir_for_projects,
                 expand_paths=expand_paths,
                 filter_path=filter_path,
+                write_combined=write_combined,
             )
 
             # Count processed projects
@@ -968,7 +1013,7 @@ def main(
             output,
             from_date,
             to_date,
-            not no_individual_sessions,
+            write_individual,
             not no_cache,
             image_export_mode=image_export_mode,
             page_size=page_size,
@@ -977,12 +1022,13 @@ def main(
             # User's `-o` path is a one-off export, not a cached artifact:
             # don't occupy a cache slot keyed by an arbitrary destination.
             update_cache=output is None,
+            write_combined=write_combined,
         )
         if input_path.is_file():
             click.echo(f"Successfully converted {input_path} to {output_path}")
         else:
             jsonl_count = len(list(input_path.glob("*.jsonl")))
-            if not no_individual_sessions:
+            if write_individual:
                 ext = get_file_extension(output_format)
                 session_files = list(input_path.glob(f"session-*.{ext}"))
                 click.echo(

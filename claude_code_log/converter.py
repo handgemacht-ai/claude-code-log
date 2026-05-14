@@ -1526,6 +1526,7 @@ def convert_jsonl_to(
     compact: bool = False,
     update_cache: bool = True,
     output_root: Optional[Path] = None,
+    write_combined: bool = True,
 ) -> Path:
     """Convert JSONL transcript(s) to the specified format.
 
@@ -1677,7 +1678,14 @@ def convert_jsonl_to(
         # Use pagination if total messages exceed page_size or there are existing pages
         use_pagination = total_message_count > page_size or existing_page_count > 1
 
-    if use_pagination:
+    # `write_combined=False` (#151 follow-up: --combined no) skips
+    # combined-transcript generation entirely. Per-session files (if
+    # requested) are still produced by `_generate_individual_session_files`
+    # below. The function still returns `output_path` for the caller's
+    # index linking, but the file at that path is not (re-)written.
+    if not write_combined:
+        pass
+    elif use_pagination:
         # Use paginated HTML generation
         assert cache_manager is not None  # Ensured by use_pagination condition
         # Use cached session data if available, otherwise build from messages
@@ -2482,6 +2490,7 @@ def process_projects_hierarchy(
     output_dir: Optional[Path] = None,
     expand_paths: bool = False,
     filter_path: Optional[str] = None,
+    write_combined: bool = True,
 ) -> Path:
     """Process the entire ~/.claude/projects/ hierarchy and create linked output files.
 
@@ -2672,13 +2681,20 @@ def process_projects_hierarchy(
             else:
                 combined_stale = True
 
-            # Determine if we need to do any work
-            needs_work = (
-                bool(modified_files)
-                or bool(stale_sessions)
-                or combined_stale
-                or not output_path.exists()
-            )
+            # Determine if we need to do any work. With
+            # `write_combined=False`, the combined-transcript file
+            # isn't produced — its staleness / on-disk presence is
+            # irrelevant; only modified sources / stale per-session
+            # files matter.
+            if write_combined:
+                needs_work = (
+                    bool(modified_files)
+                    or bool(stale_sessions)
+                    or combined_stale
+                    or not output_path.exists()
+                )
+            else:
+                needs_work = bool(modified_files) or bool(stale_sessions)
 
             # Build archived suffix for output (shown on both cached and work paths)
             archived_suffix = (
@@ -2719,6 +2735,7 @@ def process_projects_hierarchy(
                     detail=detail,
                     compact=compact,
                     output_root=(dest_dir if dest_dir != project_dir else None),
+                    write_combined=write_combined,
                 )
 
                 # Track timing
@@ -2778,6 +2795,7 @@ def process_projects_hierarchy(
                             "earliest_timestamp": cached_project_data.earliest_timestamp,
                             "working_directories": cache_manager.get_working_directories(),
                             "is_archived": False,
+                            "combined_suppressed": not write_combined,
                             "sessions": [
                                 {
                                     "id": session_data.session_id,
@@ -2794,6 +2812,14 @@ def process_projects_hierarchy(
                                     "message_count": session_data.message_count,
                                     "first_user_message": session_data.first_user_message
                                     or "[No user message found in session.]",
+                                    # Per-session link relative to the index
+                                    # root. Used by the index renderer when
+                                    # `combined_suppressed` is True so the
+                                    # index can link directly to the
+                                    # `session-{id}.{ext}` files.
+                                    "file": (
+                                        f"{rel_dest}/session-{session_data.session_id}.{combined_ext}"
+                                    ),
                                 }
                                 for session_data in cached_project_data.sessions.values()
                                 # Filter out warmup-only and empty sessions (agent-only)
@@ -2912,6 +2938,13 @@ def process_projects_hierarchy(
             team_names_set: set[str] = set(team_name_per_session.values())
 
             rel_dest = _rel_to_index(dest_dir)
+            # Post-decorate `sessions_data` with per-session file links
+            # (matches the cached path's shape so the index renderer
+            # can use `session.file` uniformly under
+            # `combined_suppressed`).
+            for _sd in sessions_data:
+                if "file" not in _sd:
+                    _sd["file"] = f"{rel_dest}/session-{_sd['id']}.{combined_ext}"
             project_summaries.append(
                 {
                     "name": project_dir.name,
@@ -2933,6 +2966,7 @@ def process_projects_hierarchy(
                     if cache_manager
                     else [],
                     "is_archived": False,
+                    "combined_suppressed": not write_combined,
                     "sessions": sessions_data,
                     "team_names": sorted(team_names_set),
                 }
@@ -3009,6 +3043,7 @@ def process_projects_hierarchy(
                     "earliest_timestamp": cached_project_data.earliest_timestamp,
                     "working_directories": cache_manager.get_working_directories(),
                     "is_archived": True,
+                    "combined_suppressed": not write_combined,
                     "sessions": [
                         {
                             "id": session_data.session_id,
@@ -3022,6 +3057,9 @@ def process_projects_hierarchy(
                             "message_count": session_data.message_count,
                             "first_user_message": session_data.first_user_message
                             or "[No user message found in session.]",
+                            "file": (
+                                f"{archived_rel}/session-{session_data.session_id}.{combined_ext}"
+                            ),
                         }
                         for session_data in cached_project_data.sessions.values()
                         if session_data.first_user_message
@@ -3053,8 +3091,14 @@ def process_projects_hierarchy(
     renderer = get_renderer(output_format, image_export_mode)
     index_regenerated = False
     if renderer.is_outdated(index_path) or from_date or to_date or any_cache_updated:
+        # Markdown index renders as a nested bullet-list directory
+        # tree under `--expand-paths` (the natural Obsidian-vault
+        # shape). HTML and JSON renderers ignore the kwarg.
+        index_kwargs: dict[str, Any] = {}
+        if output_format in ("md", "markdown") and expand_paths:
+            index_kwargs["expand_paths_tree"] = True
         index_content = renderer.generate_projects_index(
-            project_summaries, from_date, to_date
+            project_summaries, from_date, to_date, **index_kwargs
         )
         assert index_content is not None
         # Ensure the index root exists when projecting into a fresh dir.

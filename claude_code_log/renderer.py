@@ -479,6 +479,12 @@ class TemplateProject:
         self.earliest_timestamp = project_data.get("earliest_timestamp", "")
         self.sessions = project_data.get("sessions", [])
         self.working_directories = project_data.get("working_directories", [])
+        # `--combined no` (#151 follow-up): when set, the index should
+        # link directly to per-session files (`session["file"]`) rather
+        # than the (skipped) combined-transcript file.
+        self.combined_suppressed: bool = bool(
+            project_data.get("combined_suppressed", False)
+        )
         # Teammates feature — distinct team names across this project's
         # sessions. Computed in get_all_cached_projects from each
         # SessionCacheData.team_name.

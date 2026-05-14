@@ -266,7 +266,11 @@ class TestCliValidationGuards:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert (out / "project/A/combined_transcripts.md").exists()
+        # `--expand-paths` defaults `--combined` to `no` (Obsidian
+        # mode), so the combined file is suppressed; check for the
+        # per-session output instead.
+        sessions = list((out / "project/A").glob("session-*.md"))
+        assert sessions, "expected per-session output under the expanded tree"
 
     def test_warns_when_flags_used_without_all_projects(
         self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
@@ -323,3 +327,193 @@ class TestCliValidationGuards:
         # Warning, not error — single-file path still runs successfully.
         assert result.exit_code == 0, result.output
         assert "require --output to be a directory" in result.output
+
+
+# -----------------------------------------------------------------------------
+# --combined yes/no/only flag (#151 follow-up)
+# -----------------------------------------------------------------------------
+
+
+class TestCombinedFlag:
+    """The `--combined` flag controls whether the combined-transcript
+    and per-session files are emitted. Default is `yes` except when
+    `--expand-paths` is set, in which case it switches to `no`
+    (Obsidian-vault-friendly default — combined is dead weight when
+    each session has its own .md file)."""
+
+    def test_combined_yes_emits_both(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        out = tmp_path / "out-both"
+        process_projects_hierarchy(
+            fake_projects,
+            output_format="md",
+            output_dir=out,
+            write_combined=True,
+            generate_individual_sessions=True,
+        )
+        assert (out / "-home-joe-project-A" / "combined_transcripts.md").exists()
+        # Per-session file too. Filename is session-{session_id}.md.
+        sessions = list((out / "-home-joe-project-A").glob("session-*.md"))
+        assert sessions, "expected at least one per-session file"
+
+    def test_combined_no_skips_combined(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        out = tmp_path / "out-none"
+        process_projects_hierarchy(
+            fake_projects,
+            output_format="md",
+            output_dir=out,
+            write_combined=False,
+            generate_individual_sessions=True,
+        )
+        # Combined file MUST NOT exist.
+        assert not (out / "-home-joe-project-A" / "combined_transcripts.md").exists()
+        # Per-session files SHOULD exist.
+        sessions = list((out / "-home-joe-project-A").glob("session-*.md"))
+        assert sessions
+
+    def test_combined_only_skips_per_session(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        out = tmp_path / "out-only"
+        process_projects_hierarchy(
+            fake_projects,
+            output_format="md",
+            output_dir=out,
+            write_combined=True,
+            generate_individual_sessions=False,
+        )
+        assert (out / "-home-joe-project-A" / "combined_transcripts.md").exists()
+        # Per-session files SHOULD NOT exist.
+        sessions = list((out / "-home-joe-project-A").glob("session-*.md"))
+        assert not sessions, "per-session files leaked through --combined only"
+
+    def test_cli_expand_paths_default_is_combined_no(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """The default for `--combined` when `--expand-paths` is set
+        should be `no` — Obsidian users want per-session files only."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        out = tmp_path / "out-default"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--expand-paths",
+                "--format",
+                "md",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        # Combined files should NOT have been emitted under the
+        # expanded tree.
+        combined_files = list(out.rglob("combined_transcripts*.md"))
+        assert not combined_files, (
+            f"--combined no should be the default with --expand-paths, "
+            f"but {len(combined_files)} combined files were written"
+        )
+        # Per-session files SHOULD be present.
+        session_files = list(out.rglob("session-*.md"))
+        assert session_files
+
+    def test_cli_expand_paths_yields_bullet_tree_index(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """Markdown index under `--expand-paths` renders as a nested
+        bullet-list directory tree (each path component a bullet,
+        sessions as leaf bullets)."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        out = tmp_path / "out-tree"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--expand-paths",
+                "--format",
+                "md",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        index_md = (out / "index.md").read_text(encoding="utf-8")
+        # Directory bullets — bold, trailing slash.
+        assert "- **home/**" in index_md
+        assert "- **joe/**" in index_md
+        # Leaf session links (markdown link syntax pointing into the
+        # expanded tree).
+        assert "(home/joe/project/A/session-" in index_md
+        # The traditional flat `## [project](combined.md)` heading
+        # shape must NOT appear in tree mode.
+        assert "## [home/joe/project/A]" not in index_md
+
+    def test_cli_combined_only_alias_with_no_individual_sessions(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """`--no-individual-sessions` is the back-compat alias for
+        `--combined only`."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        out = tmp_path / "out-noindividual"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--no-individual-sessions",
+                "--format",
+                "md",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        # Combined files present, per-session files absent.
+        assert list(out.rglob("combined_transcripts*.md"))
+        assert not list(out.rglob("session-*.md"))
+
+    def test_cli_conflicting_combined_no_and_no_individual_sessions_rejected(
+        self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
+    ):
+        """`--combined no` + `--no-individual-sessions` is a conflict
+        (both attempt to skip per-session files, but --no-individual-sessions
+        implies combined-only). Should be rejected."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        out = tmp_path / "out-conflict"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--no-individual-sessions",
+                "--combined",
+                "no",
+                "--format",
+                "md",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "conflicts" in result.output.lower() or "no-individual" in result.output
