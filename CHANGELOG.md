@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.3.0] - 2026-05-14
+
+### Changed
+
+- **Render ScheduleWakeup and Cron* tools (#148) (#152)**
+- **Render hook attachment entries at FULL detail (#128) (#149)**
+- **Style sidechain filter toggle with dashed border**
+- **scrub_surrogates: handle high surrogate range (CR follow-up) (#150)**
+- **Render the built-in Monitor tool with Task-end backlink (#142) (#147)**
+- **Add support for ai-title and prefer it over legacy summary (#136)**
+- **fix: add errors='replace' to read_text/write_text for Unicode safety (#139) (#146)**
+- **Fix UnicodeEncodeError on JSONL with lone surrogates (#139) (#144)**
+- **Use `--dist=worksteal` to speed up tests + move `-n auto` to config to make it default (#145)**
+- **Fix/prevent dag cycle (#138)**
+- **Render away_summary recap entries (#111) (#141)**
+- **System info cosmetic improvements + chain-pairing fix (#137) (#140)**
+- **dev-docs: introduce application_model.md as entry point, normalize naming, clean work/ (#134)**
+- **export conversations to json (#36)**
+- **Suppress noise in system-info messages (#129) (#133)**
+- **Fix DAG cyclic-children hang and add SIGUSR1 stack dump (#135)**
+- **Support async agents (#90) (#132)**
+- **Robust within-session fork rendering: collapse parallel-tool_use forks, consistent labels (#131)**
+- **Render user content as Markdown with raw fallback toggle (#119)**
+- **Add --detail user-only level (#118)**
+- **Pair Slash Command with User (slash command) (#126) (#127)**
+- **Fold Skill name into tool_use title and drop the params row**
+- **Fold Skill body into its tool_use block (#121)**
+- **docs: add Community Extensions section (#120)**
+- **Support teammates (#91): stitching + session headers + index (PR 3 of 3) (#125)**
+- **Support teammates (#91): rendering (PR 2 of 3) (#122)**
+- **Support teammates (#91): parsing + data model (draft) (#117)**
+
+
 ## [1.2.0] - 2026-04-19
 
 ### Changed
