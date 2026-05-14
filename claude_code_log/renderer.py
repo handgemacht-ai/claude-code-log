@@ -2443,6 +2443,12 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
     formatter can wrap ``#<id>`` in an anchor pointing back to the
     spawn card. Same backlink shape as PR #142 / #147 (Monitor) and
     #148 / #152 (Cron*); no fold or dedup, just affordance.
+
+    Keys are ``(session_id, task_id)`` tuples so todo ids like ``#1``
+    don't cross-link between sessions in combined-transcripts
+    renders (CodeRabbit #158). Background ids are random alphanumeric
+    and unlikely to collide across sessions in practice, but they
+    ride the same shape for symmetry.
     """
     from .models import (
         BashOutput,
@@ -2453,9 +2459,9 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
         ToolUseMessage,
     )
 
-    # Step 1: index originating tool_uses by id.
-    bg_task_id_to_call_index: dict[str, int] = {}
-    todo_task_id_to_call_index: dict[str, int] = {}
+    # Step 1: index originating tool_uses by (session_id, id).
+    bg_task_id_to_call_index: dict[tuple[str, str], int] = {}
+    todo_task_id_to_call_index: dict[tuple[str, str], int] = {}
     for tm in ctx.messages:
         if not isinstance(tm.content, ToolResultMessage):
             continue
@@ -2466,35 +2472,45 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
         target_idx = tm.pair_first if tm.pair_first is not None else tm.message_index
         if target_idx is None:
             continue
+        session_key = tm.session_id or ""
         output = tm.content.output
         # Background-process ids — Bash structured field OR async-agent
         # launch confirmation (recovered by the existing helper).
         if isinstance(output, BashOutput) and output.background_task_id:
-            bg_task_id_to_call_index.setdefault(output.background_task_id, target_idx)
+            bg_task_id_to_call_index.setdefault(
+                (session_key, output.background_task_id), target_idx
+            )
         else:
             agent_id = _async_agent_id_from_tool_result(tm.content)
             if agent_id is not None:
-                bg_task_id_to_call_index.setdefault(agent_id, target_idx)
+                bg_task_id_to_call_index.setdefault((session_key, agent_id), target_idx)
         # Todo-list ids — TaskCreate's backend-assigned id.
         if isinstance(output, TaskCreateOutput) and output.task_id:
-            todo_task_id_to_call_index.setdefault(output.task_id, target_idx)
+            todo_task_id_to_call_index.setdefault(
+                (session_key, output.task_id), target_idx
+            )
 
     if not bg_task_id_to_call_index and not todo_task_id_to_call_index:
         return
 
-    # Step 2: stamp consumer call sites.
+    # Step 2: stamp consumer call sites — look up within the same session.
     for tm in ctx.messages:
         if not isinstance(tm.content, ToolUseMessage):
             continue
+        session_key = tm.session_id or ""
         input_model = tm.content.input
         if isinstance(input_model, TaskOutputInput):
             if input_model.creating_call_message_index is None and input_model.task_id:
-                target = bg_task_id_to_call_index.get(input_model.task_id)
+                target = bg_task_id_to_call_index.get(
+                    (session_key, input_model.task_id)
+                )
                 if target is not None:
                     input_model.creating_call_message_index = target
         elif isinstance(input_model, TaskUpdateInput):
             if input_model.creating_call_message_index is None and input_model.taskId:
-                target = todo_task_id_to_call_index.get(input_model.taskId)
+                target = todo_task_id_to_call_index.get(
+                    (session_key, input_model.taskId)
+                )
                 if target is not None:
                     input_model.creating_call_message_index = target
 

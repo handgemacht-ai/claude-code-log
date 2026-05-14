@@ -37,6 +37,9 @@ from claude_code_log.models import (
 
 
 FIXTURE = Path(__file__).parent / "test_data" / "task_id_linking.jsonl"
+CROSS_SESSION_FIXTURE = (
+    Path(__file__).parent / "test_data" / "task_id_linking_cross_session.jsonl"
+)
 
 
 # -----------------------------------------------------------------------------
@@ -183,6 +186,48 @@ class TestTaskIdLinkingFixture:
         html = self._html()
         assert ".task-id-backlink" in html
 
+    def test_cross_session_no_mislink_on_shared_todo_id(self) -> None:
+        """Two sessions each minting ``TaskCreate #1`` and then
+        ``TaskUpdate #1`` must NOT cross-link: each update's backlink
+        targets the TaskCreate in its OWN session. Regression for
+        CodeRabbit #158: id-only keys would have collapsed both ``#1``
+        ids onto whichever TaskCreate was indexed first.
+        """
+        if not CROSS_SESSION_FIXTURE.exists():
+            pytest.fail(f"Required fixture missing: {CROSS_SESSION_FIXTURE}")
+        html = HtmlRenderer().generate(load_transcript(CROSS_SESSION_FIXTURE), "Test")
+
+        # Locate both TaskCreate spawn anchors and both TaskUpdate
+        # consumers; ``_spawn_anchor`` keys off tool_use_id so it
+        # disambiguates session A vs B unambiguously.
+        sA_tc = self._spawn_anchor(html, "toolu_sA_tc")
+        sB_tc = self._spawn_anchor(html, "toolu_sB_tc")
+        sA_tu = self._spawn_anchor(html, "toolu_sA_tu")
+        sB_tu = self._spawn_anchor(html, "toolu_sB_tu")
+        # Sanity — the four spawn ids must all be distinct.
+        assert len({sA_tc, sB_tc, sA_tu, sB_tu}) == 4
+
+        # Find both ``#1`` backlinks. Order matches document order so
+        # session A appears before session B.
+        backlinks = re.findall(
+            r"<a class='task-id-backlink' href='#(msg-d-\d+)'><code>#1</code></a>",
+            html,
+        )
+        # We expect exactly two backlinks (one per TaskUpdate). If the
+        # bug regressed (id-only keys), both would point at sA_tc.
+        assert len(backlinks) == 2, (
+            f"Expected exactly two ``#1`` backlinks, got {len(backlinks)}"
+        )
+        assert backlinks[0] == sA_tc, (
+            "Session A's TaskUpdate #1 should backlink to session A's TaskCreate "
+            f"({sA_tc}), got {backlinks[0]}"
+        )
+        assert backlinks[1] == sB_tc, (
+            "Session B's TaskUpdate #1 should backlink to session B's TaskCreate "
+            f"({sB_tc}), got {backlinks[1]} — would have been {sA_tc} under "
+            "the id-only-keyed regression"
+        )
+
     def test_markdown_titles_have_plain_id_no_anchor(self) -> None:
         """Markdown only renders session-level anchors; message-level
         backlinks are HTML-only. The titles still carry the plain
@@ -207,9 +252,10 @@ class TestTaskIdLinkingFixture:
 
 @pytest.fixture(scope="class")
 def _ensure_fixture_present() -> None:  # pyright: ignore[reportUnusedFunction]
-    """Skip the end-to-end fixture-driven tests when the JSONL fixture
-    is missing. Class-scoped + opt-in via ``@pytest.mark.usefixtures``
-    so parser unit tests still run when the fixture file is absent.
+    """Fail loudly when the JSONL fixture is missing — silent skip
+    would mask a fixture-deletion regression (CodeRabbit #158).
+    Class-scoped + opt-in via ``@pytest.mark.usefixtures`` so parser
+    unit tests still run independent of the fixture.
     """
     if not FIXTURE.exists():
-        pytest.skip(f"Fixture missing: {FIXTURE}")
+        pytest.fail(f"Required fixture missing: {FIXTURE}")
