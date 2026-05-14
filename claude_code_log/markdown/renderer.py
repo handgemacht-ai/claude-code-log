@@ -293,6 +293,20 @@ class MarkdownRenderer(Renderer):
         text = re.sub(r"^(</?summary>)$", r"\\\1", text, flags=re.MULTILINE)
         return "\n".join(f"> {line}" for line in text.split("\n"))
 
+    def _linkify_shas(self, text: str) -> str:
+        """Substitute resolvable git SHAs with Markdown links (issue #156).
+
+        The Markdown output emits text bodies directly (no mistune
+        round-trip), so it can't lean on the inline-parser plugin used
+        by the HTML side. Mirrors the plugin's behaviour by scanning
+        raw text and emitting ``[sha](url)`` only when the resolver
+        returns a URL — local-only commits stay as plain text.
+        """
+        from ..git_remote import resolve_sha_for_current_render
+        from ..markdown_plugins import linkify_shas_in_text
+
+        return linkify_shas_in_text(text, resolve_sha_for_current_render)
+
     def _code_fence(self, text: str, lang: str = "") -> str:
         """Wrap text in a fenced code block with adaptive delimiter.
 
@@ -622,7 +636,13 @@ class MarkdownRenderer(Renderer):
                 if item.text.strip():
                     rendered = render_user_markdown(item.text)
                     if is_well_formed_html(rendered):
-                        parts.append(_protect_html_tags(item.text))
+                        # Inline-clean text: SHA-linkify the prose. Code-
+                        # fenced fallback below stays untouched (it's
+                        # literally a code block — SHAs in there should
+                        # not become links, mirroring the HTML side
+                        # where the mistune plugin doesn't fire inside
+                        # codespans / fenced code).
+                        parts.append(_protect_html_tags(self._linkify_shas(item.text)))
                     else:
                         parts.append(self._code_fence(item.text))
         return "\n\n".join(parts)
@@ -785,8 +805,11 @@ class MarkdownRenderer(Renderer):
                 parts.append(self._format_image(item))
             else:  # TextContent
                 if item.text.strip():
-                    # Quote to protect embedded markdown
-                    parts.append(self._quote(item.text))
+                    # Quote to protect embedded markdown; SHA-linkify
+                    # before quoting so the substitution happens on
+                    # the natural text shape (a leading "> " would
+                    # confuse the word-boundary regex anchor).
+                    parts.append(self._quote(self._linkify_shas(item.text)))
         return "\n\n".join(parts)
 
     def format_ThinkingMessage(
@@ -1744,6 +1767,28 @@ class MarkdownRenderer(Renderer):
         session_tree: Optional["SessionTree"] = None,
     ) -> str:
         """Generate Markdown from transcript messages."""
+        from ..git_remote import canonical_cwd_from_messages, render_with_repo_context
+
+        # SHA → commit-URL linkifier (issue #156); see HtmlRenderer.generate.
+        repo_cwd = canonical_cwd_from_messages(messages)
+        with render_with_repo_context(repo_cwd):
+            return self._generate_inner(
+                messages,
+                title=title,
+                combined_transcript_link=combined_transcript_link,
+                output_dir=output_dir,
+                session_tree=session_tree,
+            )
+
+    def _generate_inner(
+        self,
+        messages: list[TranscriptEntry],
+        title: Optional[str] = None,
+        combined_transcript_link: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+        session_tree: Optional["SessionTree"] = None,
+    ) -> str:
+        """Body of ``generate`` running inside the SHA-resolver context."""
         self._output_dir = output_dir
         self._image_counter = 0
         self._last_heading_category: Optional[str] = None
