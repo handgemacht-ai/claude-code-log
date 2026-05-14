@@ -816,7 +816,12 @@ class MarkdownRenderer(Renderer):
         self, content: ThinkingMessage, _: TemplateMessage
     ) -> str:
         """Format → <details><summary>Thinking...</summary>blockquote</details>."""
-        quoted = self._quote(content.thinking)
+        # SHA-linkify before quoting so the substitution sees a clean
+        # word boundary (a leading ``> `` would confuse the regex
+        # anchor) and parity with the HTML side — assistant thinking
+        # there flows through the mistune pipeline which already
+        # has the SHA plugin registered.
+        quoted = self._quote(self._linkify_shas(content.thinking))
         return self._collapsible("Thinking...", quoted)
 
     def format_UnknownMessage(self, content: UnknownMessage, _: TemplateMessage) -> str:

@@ -122,19 +122,30 @@ def linkify_shas_in_text(text: str, resolve: Callable[[str], Optional[str]]) -> 
     Used by the Markdown output path where text bodies are emitted
     directly (no mistune render) — e.g.
     ``MarkdownRenderer.format_AssistantTextMessage``. Mirrors the
-    HTML side's plugin behaviour: only SHAs the resolver can map to
-    a URL get rewritten; everything else (including SHAs inside
-    inline code spans / fenced blocks) is left alone.
+    HTML side's plugin behaviour:
 
-    The conservative scope here is that the substitution operates on
-    the *raw* text, so it doesn't know about Markdown context. The
-    rule of thumb: text that comes from ``TextContent`` bodies (user
-    or assistant prose) is safe to scan; text that has already been
-    Markdown-formatted (URLs, code spans) should be passed through
-    mistune instead.
+    - SHAs inside fenced code blocks (``` ``` ``` / ``~~~``) are skipped.
+    - SHAs inside indented code blocks (4-space / tab leading) are skipped.
+    - SHAs inside inline code spans (`` `…` ``, ``` ``…`` ``, etc.) are skipped.
+    - SHAs inside an existing Markdown link's ``[text]`` or ``(url)``
+      span are skipped — so an already-linked SHA isn't double-wrapped.
+    - Everything else: resolver-confirmed SHAs become ``[sha](url)``;
+      unresolved SHAs pass through verbatim.
+
+    Implementation is a hand-rolled tokenizer rather than a mistune
+    pass: it has to *preserve* unmatched delimiters and rebuild the
+    text exactly, which mistune's HTML-emitting renderer won't do.
+    The same predicate set the HTML plugin gets for free
+    (``parse_emphasis`` recursing into nested rules, ``codespan``
+    being raw) we have to enforce explicitly here.
     """
     if not text:
         return text
+    return "".join(_linkify_block_tokens(text, resolve))
+
+
+def _replace_shas(text: str, resolve: Callable[[str], Optional[str]]) -> str:
+    """Apply ``SHA_PATTERN`` substitution to a prose span."""
 
     def _sub(m: re.Match[str]) -> str:
         sha = m.group(0)
@@ -144,3 +155,178 @@ def linkify_shas_in_text(text: str, resolve: Callable[[str], Optional[str]]) -> 
         return f"[{sha}]({url})"
 
     return re.sub(SHA_PATTERN, _sub, text)
+
+
+def _linkify_block_tokens(
+    text: str, resolve: Callable[[str], Optional[str]]
+) -> list[str]:
+    """Walk *text* line-by-line, yielding prose-substituted / code-skipped pieces.
+
+    Handles block-level skips (fenced + indented code); per-prose-line
+    inline tokenization is delegated to ``_linkify_inline``.
+    """
+    out: list[str] = []
+    lines = text.split("\n")
+    in_fence = False
+    fence_marker: str = ""  # ``` or ~~~ run that opened the current fence
+    for idx, line in enumerate(lines):
+        # Newline rejoin: every line except the last gets its trailing
+        # ``\n`` re-emitted as a separate token.
+        suffix = "\n" if idx < len(lines) - 1 else ""
+
+        stripped_left = line.lstrip(" ")
+        indent = len(line) - len(stripped_left)
+
+        # CommonMark allows up to 3 leading spaces before a fence; ≥4
+        # leading spaces is an indented-code line, not a fence.
+        if in_fence:
+            # Close on matching fence (run of same char, ≥ opener length).
+            if (
+                indent <= 3
+                and stripped_left.startswith(fence_marker)
+                and stripped_left.rstrip().rstrip(fence_marker[0]) == ""
+            ):
+                in_fence = False
+                fence_marker = ""
+            out.append(line + suffix)
+            continue
+
+        if indent <= 3 and (
+            stripped_left.startswith("```") or stripped_left.startswith("~~~")
+        ):
+            ch = stripped_left[0]
+            run = 0
+            while run < len(stripped_left) and stripped_left[run] == ch:
+                run += 1
+            in_fence = True
+            fence_marker = ch * run
+            out.append(line + suffix)
+            continue
+
+        if indent >= 4:
+            # Indented code block: skip substitution for this line.
+            out.append(line + suffix)
+            continue
+
+        out.append(_linkify_inline(line, resolve) + suffix)
+    return out
+
+
+def _linkify_inline(line: str, resolve: Callable[[str], Optional[str]]) -> str:
+    """Apply SHA substitution within a single prose line.
+
+    Skips spans owned by inline code (matched backtick runs) and
+    existing Markdown links (``[text](url)``). Anything else is
+    treated as prose and passed through ``_replace_shas``.
+    """
+    parts: list[str] = []
+    i = 0
+    n = len(line)
+    while i < n:
+        ch = line[i]
+        if ch == "`":
+            # Match opening run length.
+            j = i
+            while j < n and line[j] == "`":
+                j += 1
+            open_len = j - i
+            close = _find_matching_backticks(line, j, open_len)
+            if close is not None:
+                # Whole span (including the closing run) is opaque.
+                parts.append(line[i : close + open_len])
+                i = close + open_len
+                continue
+            # Unmatched run: treat as plain prose chars.
+            parts.append(_replace_shas(line[i:j], resolve))
+            i = j
+            continue
+        if ch == "[":
+            link_end = _try_match_md_link(line, i)
+            if link_end is not None:
+                # Whole [text](url) span is opaque — both halves are
+                # already either user text we mustn't double-tag or a
+                # link target the resolver shouldn't rewrite.
+                parts.append(line[i:link_end])
+                i = link_end
+                continue
+            # ``[`` that doesn't open a link is a literal prose char;
+            # emit it directly and advance, otherwise the prose
+            # accumulator below would stop on the same ``[`` and spin.
+            parts.append("[")
+            i += 1
+            continue
+        # Accumulate prose until the next significant delimiter.
+        k = i
+        while k < n and line[k] != "`" and line[k] != "[":
+            k += 1
+        parts.append(_replace_shas(line[i:k], resolve))
+        i = k
+    return "".join(parts)
+
+
+def _find_matching_backticks(text: str, start: int, count: int) -> Optional[int]:
+    """Find a run of exactly ``count`` backticks at or after ``start``.
+
+    Returns the start index of the closing run, or ``None`` if no
+    matching run exists in the rest of the line.
+    """
+    i = start
+    n = len(text)
+    while i < n:
+        if text[i] != "`":
+            i += 1
+            continue
+        j = i
+        while j < n and text[j] == "`":
+            j += 1
+        if j - i == count:
+            return i
+        i = j
+    return None
+
+
+def _try_match_md_link(text: str, start: int) -> Optional[int]:
+    """Try to match a Markdown ``[text](url)`` link starting at ``start``.
+
+    Returns the index just past the closing ``)``, or ``None`` if the
+    span doesn't form a valid link. Doesn't try to handle reference
+    links / footnotes / images-with-titles — those are uncommon in the
+    prose this helper sees (assistant / user message bodies). The
+    inline image shape ``![alt](url)`` is matched as a link starting
+    at the ``[`` (the leading ``!`` is in the surrounding prose
+    chunk), which is the same opaque outcome we want.
+    """
+    if start >= len(text) or text[start] != "[":
+        return None
+    n = len(text)
+    i = start + 1
+    depth = 1
+    while i < n:
+        c = text[i]
+        if c == "\\" and i + 1 < n:
+            i += 2
+            continue
+        if c == "[":
+            depth += 1
+        elif c == "]":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    if depth != 0 or i + 1 >= n or text[i + 1] != "(":
+        return None
+    j = i + 2
+    paren = 1
+    while j < n:
+        c = text[j]
+        if c == "\\" and j + 1 < n:
+            j += 2
+            continue
+        if c == "(":
+            paren += 1
+        elif c == ")":
+            paren -= 1
+            if paren == 0:
+                return j + 1
+        j += 1
+    return None

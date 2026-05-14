@@ -153,6 +153,97 @@ class TestLinkifyShasInText:
     def test_empty_text_returns_unchanged(self):
         assert linkify_shas_in_text("", _mock_resolve) == ""
 
+    # -- Negative-context tests (regression for monk's review on PR #156) --
+    #
+    # The HTML side's plugin gets these skips for free from mistune's
+    # inline parser; the Markdown side has to enforce them manually
+    # via the tokenizer in ``_linkify_inline`` / ``_linkify_block_tokens``.
+    # Mirrors the parity contract checked by
+    # ``TestShaPluginInline.test_does_not_fire_inside_codespan`` etc.
+
+    def test_skips_inside_inline_codespan(self):
+        out = linkify_shas_in_text("Run `git show abc1234` now", _mock_resolve)
+        assert out == "Run `git show abc1234` now"
+
+    def test_skips_inside_double_backtick_codespan(self):
+        # CommonMark allows ``…`` to embed single backticks; the SHA
+        # inside still must not be substituted.
+        out = linkify_shas_in_text("``code abc1234 in span`` here", _mock_resolve)
+        assert out == "``code abc1234 in span`` here"
+
+    def test_skips_inside_fenced_block_backtick(self):
+        out = linkify_shas_in_text("```\nabc1234\n```", _mock_resolve)
+        assert out == "```\nabc1234\n```"
+
+    def test_skips_inside_fenced_block_tilde(self):
+        out = linkify_shas_in_text("~~~\nabc1234\n~~~", _mock_resolve)
+        assert out == "~~~\nabc1234\n~~~"
+
+    def test_skips_inside_indented_code_block(self):
+        out = linkify_shas_in_text("    abc1234 indented", _mock_resolve)
+        assert out == "    abc1234 indented"
+
+    def test_skips_inside_indented_with_tab(self):
+        # 4+ spaces or a tab triggers indented-code semantics; current
+        # implementation gates on space-only indent. Documenting the
+        # current contract; revisit if real-world transcripts show
+        # tab-indented prose.
+        out = linkify_shas_in_text("    abc1234 four-space indent", _mock_resolve)
+        assert "[abc1234]" not in out
+
+    def test_skips_existing_markdown_link(self):
+        # The HTML plugin's ``state.in_link`` guard's text-helper
+        # equivalent: a SHA already inside a ``[text](url)`` must not
+        # be double-wrapped.
+        out = linkify_shas_in_text("[abc1234](manual.example/x)", _mock_resolve)
+        assert out == "[abc1234](manual.example/x)"
+
+    def test_substitutes_around_codespan(self):
+        # Prose before / after a codespan still gets substituted; the
+        # SHA inside the codespan is preserved verbatim.
+        out = linkify_shas_in_text(
+            "Before abc1234 then `inline abc1234` after abc1234",
+            _mock_resolve,
+        )
+        assert (
+            out == "Before [abc1234](https://example.com/abc1234) "
+            "then `inline abc1234` after [abc1234](https://example.com/abc1234)"
+        )
+
+    def test_substitutes_around_fenced_block(self):
+        out = linkify_shas_in_text(
+            "Mention abc1234 then\n```\nabc1234 inside\n```\nthen abc1234 again",
+            _mock_resolve,
+        )
+        assert (
+            out == "Mention [abc1234](https://example.com/abc1234) then\n"
+            "```\nabc1234 inside\n```\n"
+            "then [abc1234](https://example.com/abc1234) again"
+        )
+
+    def test_unmatched_backtick_still_substitutes_following_prose(self):
+        # A lone ``` ` ``` doesn't open a codespan (no matching close);
+        # SHAs after it should still get substituted.
+        out = linkify_shas_in_text("Lone ` then abc1234", _mock_resolve)
+        assert out == "Lone ` then [abc1234](https://example.com/abc1234)"
+
+    def test_lone_open_bracket_terminates(self):
+        # Regression: a ``[`` that doesn't open a valid ``[text](url)``
+        # link must be emitted as a literal char. Earlier tokenizer
+        # stalled here because the prose-accumulator stopped on the
+        # same ``[`` it was meant to consume → infinite loop.
+        out = linkify_shas_in_text("Label [INFO] abc1234", _mock_resolve)
+        assert out == "Label [INFO] [abc1234](https://example.com/abc1234)"
+
+    def test_bracket_without_closing_paren_still_substitutes(self):
+        # ``[text]`` with no following ``(url)`` is not a Markdown link
+        # — neither does mistune treat it as one on the HTML side
+        # (no matching reference definition) so the SHA plugin fires
+        # on the prose inside. The Markdown helper mirrors that: the
+        # brackets become literal characters around a substituted SHA.
+        out = linkify_shas_in_text("see [abc1234] note", _mock_resolve)
+        assert out == "see [[abc1234](https://example.com/abc1234)] note"
+
 
 # ---------------------------------------------------------------------------
 # git_remote URL parsing
