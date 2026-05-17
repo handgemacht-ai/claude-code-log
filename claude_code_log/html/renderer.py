@@ -46,6 +46,7 @@ from ..models import (
     TaskInput,
     TaskListInput,
     TaskOutputInput,
+    TaskStopInput,
     TaskUpdateInput,
     TeamCreateInput,
     TeamDeleteInput,
@@ -76,6 +77,7 @@ from ..models import (
     TaskListOutput,
     TaskOutput,
     TaskOutputResult,
+    TaskStopOutput,
     TaskUpdateOutput,
     TeamCreateOutput,
     TeamDeleteOutput,
@@ -155,6 +157,8 @@ from .tool_formatters import (
     format_read_output,
     format_task_input,
     format_task_output,
+    format_taskstop_input,
+    format_taskstop_output,
     format_todowrite_input,
     format_tool_result_content_raw,
     format_grep_input,
@@ -491,6 +495,10 @@ class HtmlRenderer(Renderer):
         """Format → minimal TaskOutput input card (block / timeout if set)."""
         return _format_taskoutput_input(input)
 
+    def format_TaskStopInput(self, input: TaskStopInput, _: TemplateMessage) -> str:
+        """Format → empty (id lives in the title, no further params)."""
+        return format_taskstop_input(input)
+
     def format_ToolUseContent(self, content: ToolUseContent, _: TemplateMessage) -> str:
         """Format → <table class='params'>key | value rows</table>."""
         return render_params_table(content.input)
@@ -602,6 +610,10 @@ class HtmlRenderer(Renderer):
         """Format → minimal TaskOutput result card (metadata only, no transcript)."""
         return _format_taskoutput_output(output)
 
+    def format_TaskStopOutput(self, output: TaskStopOutput, _: TemplateMessage) -> str:
+        """Format → ``Stopped`` / ``Not stopped`` badge + message body."""
+        return format_taskstop_output(output)
+
     def format_ToolResultContent(
         self, output: ToolResultContent, _: TemplateMessage
     ) -> str:
@@ -695,13 +707,17 @@ class HtmlRenderer(Renderer):
         return "❓ Asking questions..."
 
     def title_TaskInput(self, input: TaskInput, message: TemplateMessage) -> str:
-        """Title → '🔧 Task <desc> (subagent_type) [async]'.
+        """Title → '🔧 Task <desc> (subagent_type) [async #<id>]'.
 
         ``[async]`` muted hint appears when ``run_in_background=True``
         so the reader can tell at a glance which spawns will be
         followed up later by a ``<task-notification>`` user entry
         (issue #90), as opposed to synchronous Task calls whose
-        result returns inline.
+        result returns inline. Once the launch confirmation has been
+        parsed, the minted ``#<agent_id>`` is appended; when there's
+        a later ``TaskOutput`` poll for the same agent, ``#<agent_id>``
+        wraps in a forward-link anchor (PR #158 follow-up, mirroring
+        the consumer-side backlink from #154).
         """
         content = cast(ToolUseMessage, message.content)
         escaped_name = escape_html(content.tool_name)
@@ -709,7 +725,11 @@ class HtmlRenderer(Renderer):
             escape_html(input.subagent_type) if input.subagent_type else ""
         )
         async_hint = (
-            " <span class='task-async-hint'>[async]</span>"
+            " "
+            + self._async_id_suffix(
+                input.minted_agent_id,
+                input.linked_consumer_message_index,
+            )
             if input.run_in_background
             else ""
         )
@@ -728,6 +748,37 @@ class HtmlRenderer(Renderer):
                 f"{async_hint}"
             )
         return f"🔧 {escaped_name}{async_hint}"
+
+    def _async_id_suffix(
+        self,
+        minted_id: Optional[str],
+        consumer_idx: Optional[int],
+    ) -> str:
+        """Compose the trailing ``[async ...]`` marker for spawn cards
+        of background ``Bash`` / async ``Task`` calls (PR #158).
+
+        Shape:
+        - ``run_in_background`` but id not (yet) hoisted onto the
+          spawn input → ``[async]``
+        - id known → ``[async #<id>]``
+        - id known and a later consumer's index known → wraps the
+          ``#<id>`` in a forward-link anchor pointing at the first
+          ``TaskOutput`` poll (mirrors the backlink direction).
+
+        The leading bracket-tagged hint reuses the existing
+        ``.task-async-hint`` styling (muted blue, smaller font); the
+        anchor is tagged ``.task-id-forward-link`` (initially same
+        dotted-underline as ``.task-id-backlink`` but a distinct class
+        so tests can disambiguate the two directions unambiguously
+        and styling can diverge later).
+        """
+        if not minted_id:
+            return "<span class='task-async-hint'>[async]</span>"
+        id_html = f"<code>#{escape_html(minted_id)}</code>"
+        if consumer_idx is not None:
+            anchor = f"msg-d-{consumer_idx}"
+            id_html = f"<a class='task-id-forward-link' href='#{anchor}'>{id_html}</a>"
+        return f"<span class='task-async-hint'>[async {id_html}]</span>"
 
     def title_EditInput(self, input: EditInput, message: TemplateMessage) -> str:
         """Title → '📝 Edit <file_path>'."""
@@ -761,8 +812,30 @@ class HtmlRenderer(Renderer):
         return self._tool_title(message, "🔎", input.pattern)
 
     def title_BashInput(self, input: BashInput, message: TemplateMessage) -> str:
-        """Title → '💻 Bash <description>'."""
-        return self._tool_title(message, "💻", input.description)
+        """Title → '💻 Bash <description> [async #<id>]'.
+
+        Plain shape for foreground Bash. For background spawns, append
+        the ``[async]`` muted hint and — once the matching tool_result
+        has been parsed — the minted ``#<id>``. When a later
+        ``TaskOutput`` poll for the same id is present, the ``#<id>``
+        wraps in a forward-link anchor (PR #158 follow-up).
+
+        The async signal is the OR of (a) ``input.run_in_background``
+        (caller-set hint) and (b) ``input.minted_background_task_id``
+        (propagated from the tool_result by
+        ``_link_task_id_consumers``). The harness may background a
+        Bash command on its own (e.g. timeout-driven) WITHOUT setting
+        the input flag, so gating on the input alone misses real-world
+        shapes — the authoritative signal lives on the result side.
+        """
+        base = self._tool_title(message, "💻", input.description)
+        if not (input.run_in_background or input.minted_background_task_id):
+            return base
+        suffix = self._async_id_suffix(
+            input.minted_background_task_id,
+            input.linked_consumer_message_index,
+        )
+        return f"{base} {suffix}"
 
     def title_WebSearchInput(
         self, input: WebSearchInput, message: TemplateMessage
@@ -818,7 +891,12 @@ class HtmlRenderer(Renderer):
         return self._tool_title(message, "💡", input.skill)
 
     def _task_title(
-        self, message: TemplateMessage, action: str, subject: str, task_id: str
+        self,
+        message: TemplateMessage,
+        action: str,
+        subject: str,
+        task_id: str,
+        linked_creating_call_index: Optional[int] = None,
     ) -> str:
         """Compose the compact ``Task #N <subject> [action]`` tool title.
 
@@ -827,10 +905,21 @@ class HtmlRenderer(Renderer):
         (TaskCreate before its tool_result has been observed); the ``#N``
         segment is then dropped. ``subject`` is escaped here, so callers
         pass the raw value. The leading emoji comes from the template.
+
+        ``linked_creating_call_index`` is the message_index of the
+        originating ``TaskCreate`` call, set by
+        ``_link_task_id_consumers`` for ``TaskUpdate`` titles. When
+        present, the ``#N`` segment wraps in an anchor pointing back
+        to the create card (#154).
         """
+        del message  # Reserved for future per-message hints.
         parts: list[str] = ["Task"]
         if task_id:
-            parts.append(f"<code>#{escape_html(task_id)}</code>")
+            id_html = f"<code>#{escape_html(task_id)}</code>"
+            if linked_creating_call_index is not None:
+                anchor = f"msg-d-{linked_creating_call_index}"
+                id_html = f"<a class='task-id-backlink' href='#{anchor}'>{id_html}</a>"
+            parts.append(id_html)
         if subject:
             parts.append(f"<span class='tool-summary'>{escape_html(subject)}</span>")
         parts.append(f"<span class='task-action'>[{action}]</span>")
@@ -859,10 +948,21 @@ class HtmlRenderer(Renderer):
         populated from earlier TaskCreate tool_results (or TaskList
         snapshots). Empty when not found — the title degrades to the
         bare ``#N``.
+
+        ``#N`` wraps in a backlink anchor pointing at the originating
+        ``TaskCreate`` card when ``_link_task_id_consumers`` matched
+        the ``taskId`` to a create call earlier in the transcript
+        (#154).
         """
         sid = message.meta.session_id if message.meta else ""
         subject = self._task_subjects_by_session.get(sid, {}).get(input.taskId, "")
-        return self._task_title(message, "updated", subject, input.taskId)
+        return self._task_title(
+            message,
+            "updated",
+            subject,
+            input.taskId,
+            linked_creating_call_index=input.creating_call_message_index,
+        )
 
     def title_SendMessageInput(
         self, input: SendMessageInput, message: TemplateMessage
@@ -892,10 +992,39 @@ class HtmlRenderer(Renderer):
         spawning ``🔧 Task`` so the visual scan separates spawn from
         poll. The leading emoji also short-circuits the template's
         default ``🛠️`` prepend.
+
+        ``#<task_id>`` wraps in a backlink anchor pointing at the
+        originating spawn (a ``Bash`` with ``run_in_background`` for
+        ``local_bash`` taskType, or a ``Task`` async-agent launch for
+        ``local_agent`` taskType) when ``_link_task_id_consumers``
+        matched the id (#154).
         """
-        if input.task_id:
-            return f"🔍 TaskOutput <code>#{escape_html(input.task_id)}</code>"
-        return "🔍 TaskOutput"
+        if not input.task_id:
+            return "🔍 TaskOutput"
+        id_html = f"<code>#{escape_html(input.task_id)}</code>"
+        if input.creating_call_message_index is not None:
+            anchor = f"msg-d-{input.creating_call_message_index}"
+            id_html = f"<a class='task-id-backlink' href='#{anchor}'>{id_html}</a>"
+        return f"🔍 TaskOutput {id_html}"
+
+    def title_TaskStopInput(self, input: TaskStopInput, _: TemplateMessage) -> str:
+        """Title → '🛑 TaskStop #<task_id>' for the background-task
+        termination tool (PR #158 follow-up — was rendered as a generic
+        tool block before).
+
+        ``🛑`` reads as "halt", visually distinct from the ``🔍``
+        TaskOutput poll. The same backlink machinery as
+        ``TaskOutputInput`` applies: ``#<task_id>`` wraps in an anchor
+        pointing back at the originating spawn when
+        ``_link_task_id_consumers`` matched the id.
+        """
+        if not input.task_id:
+            return "🛑 TaskStop"
+        id_html = f"<code>#{escape_html(input.task_id)}</code>"
+        if input.creating_call_message_index is not None:
+            anchor = f"msg-d-{input.creating_call_message_index}"
+            id_html = f"<a class='task-id-backlink' href='#{anchor}'>{id_html}</a>"
+        return f"🛑 TaskStop {id_html}"
 
     def title_TaskNotificationMessage(
         self, content: TaskNotificationMessage, _: TemplateMessage

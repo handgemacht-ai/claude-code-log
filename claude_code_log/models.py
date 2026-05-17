@@ -1041,13 +1041,36 @@ class ToolUseMessage(MessageContent):
 
 
 class BashInput(BaseModel):
-    """Input parameters for the Bash tool."""
+    """Input parameters for the Bash tool.
+
+    Note on ``run_in_background``: this is the *caller's* hint that the
+    command should run async. In practice the harness may *also*
+    background a command on its own (e.g. timeout-driven) without
+    setting this flag — in that case the async signal lives only on
+    the result side as ``toolUseResult.backgroundTaskId``. Use
+    ``minted_background_task_id`` (populated post-link-pass) as the
+    authoritative signal for "is this a background spawn?", not this
+    field alone.
+    """
 
     command: str
     description: Optional[str] = None
     timeout: Optional[int] = None
     run_in_background: Optional[bool] = None
     dangerouslyDisableSandbox: Optional[bool] = None
+
+    # Renderer-set: the minted ``background_task_id`` hoisted from the
+    # matching ``BashOutput`` by ``_link_task_id_consumers``. Surfaces
+    # ``#<id>`` directly on the spawn-card title (instead of burying it
+    # in the result text) for background runs, making the task itself
+    # visually prominent (PR #158 follow-up). Also the authoritative
+    # "is background?" signal — see class docstring.
+    minted_background_task_id: Optional[str] = None
+    # Renderer-set: ``message_index`` of the first ``TaskOutput`` poll
+    # (or ``TaskStop``) that consumed our minted id. Forward counterpart
+    # to ``creating_call_message_index`` on the consumer side — wraps
+    # the spawn's ``#<id>`` in a forward-link anchor when set.
+    linked_consumer_message_index: Optional[int] = None
 
 
 class ReadInput(BaseModel):
@@ -1127,6 +1150,15 @@ class TaskInput(BaseModel):
     team_name: Optional[str] = None
     name: Optional[str] = None
     mode: Optional[str] = None
+
+    # Renderer-set: minted ``agentId`` from the async-launch confirmation
+    # (the tool_result for a ``run_in_background=True`` ``Task``). Mirrors
+    # ``BashInput.minted_background_task_id`` so the async-spawn card
+    # surfaces ``#<id>`` directly in its title.
+    minted_agent_id: Optional[str] = None
+    # Renderer-set: ``message_index`` of the first ``TaskOutput`` poll
+    # for this agent. Forward counterpart to ``creating_call_message_index``.
+    linked_consumer_message_index: Optional[int] = None
 
 
 class TodoWriteItem(BaseModel):
@@ -1327,6 +1359,14 @@ class TaskUpdateInput(BaseModel):
     owner: Optional[str] = None
     status: Optional[str] = None
 
+    # Renderer-set: message_index of the originating ``TaskCreate``
+    # whose tool_result minted this taskId. Wired by
+    # ``_link_task_id_consumers`` so the title formatter can wrap
+    # ``#<taskId>`` in an anchor pointing back to the create card
+    # (#154). Optional because the create call may live outside the
+    # loaded slice (multi-session loads, partial fixtures).
+    creating_call_message_index: Optional[int] = None
+
     model_config = {"extra": "allow"}
 
 
@@ -1352,11 +1392,48 @@ class TaskOutputInput(BaseModel):
     Async-spawned ``Task`` agents return their result later via a
     ``<task-notification>`` user message; the assistant can also poll
     explicitly with ``TaskOutput`` between launch and notification.
+
+    The same tool also polls ``run_in_background=true`` Bash calls
+    (``taskType: local_bash``) — both shapes share the
+    ``task_id`` → originating-call cross-link wired by
+    ``_link_task_id_consumers``.
     """
 
     task_id: str = ""
     block: bool = False
     timeout: Optional[int] = None
+
+    # Renderer-set: message_index of the originating tool_use whose
+    # result minted this task_id (a ``Bash`` with ``run_in_background``
+    # for ``local_bash`` taskType, or a ``Task`` with
+    # ``run_in_background`` for ``local_agent`` taskType). Wired by
+    # ``_link_task_id_consumers`` so the title formatter can wrap
+    # ``#<task_id>`` in an anchor pointing back to the spawn card
+    # (#154). Optional because the spawn may live outside the loaded
+    # slice or use a synchronous shape that doesn't echo the id back.
+    creating_call_message_index: Optional[int] = None
+
+    model_config = {"extra": "allow"}
+
+
+class TaskStopInput(BaseModel):
+    """Input parameters for the TaskStop tool (kill a background task).
+
+    Counterpart to ``TaskOutput``: same ``task_id`` shape, same id
+    space (background-process ids minted by ``Bash`` with
+    ``run_in_background=true`` or async-agent ``Task`` launches). The
+    only field is the id of the background task to terminate.
+
+    Cross-links to the spawn card the same way ``TaskOutputInput``
+    does (PR #158 follow-up) — shares ``_link_task_id_consumers``.
+    """
+
+    task_id: str = ""
+
+    # Renderer-set: same role as ``TaskOutputInput.creating_call_message_index``
+    # — message_index of the originating spawn card so the formatter
+    # can wrap ``#<task_id>`` in a backlink anchor.
+    creating_call_message_index: Optional[int] = None
 
     model_config = {"extra": "allow"}
 
@@ -1389,6 +1466,7 @@ ToolInput = Union[
     TaskListInput,
     SendMessageInput,
     TaskOutputInput,
+    TaskStopInput,
     ToolUseContent,  # Generic fallback when no specialized parser
 ]
 
@@ -1459,10 +1537,18 @@ class BashOutput:
 
     Symmetric with BashInput for tool_use → tool_result pairing.
     Contains the output with ANSI flag for terminal formatting.
+
+    ``background_task_id`` is the short alphanumeric id the harness
+    mints when ``run_in_background=true`` is set on the call. The
+    structured ``backgroundTaskId`` field is more reliable than text-
+    parsing the confirmation paragraph; we capture it for the
+    cross-link from later ``TaskOutput`` polling cards back to the
+    spawning Bash call (#154).
     """
 
     content: str  # Output content (stdout/stderr combined)
     has_ansi: bool  # True if content contains ANSI escape sequences
+    background_task_id: Optional[str] = None
 
 
 @dataclass
@@ -1831,6 +1917,29 @@ class TaskOutputResult:
     raw_text: Optional[str] = None
 
 
+@dataclass
+class TaskStopOutput:
+    """Parsed TaskStop tool result.
+
+    Two real-world shapes observed:
+
+    - **Success** — ``toolUseResult = {"message": "Successfully stopped
+      task: <id> (<echoed command>); ..."}``. We surface the success
+      flag and the message verbatim; the message body usually echoes
+      back the original command which is itself informative.
+    - **Error** — ``toolUseResult = "Error: No task found with ID:
+      <id>"`` (plain string). The common case in practice — the task
+      already completed naturally before the stop landed. We capture
+      the error text and set ``stopped=False``.
+
+    Symmetric with ``TaskStopInput``. The renderer reads ``stopped``
+    to choose between success and error styling.
+    """
+
+    stopped: bool  # True on success, False on error / not-found
+    message: str = ""  # Human-readable message from the harness
+
+
 # Union of all specialized output types + ToolResultContent as generic fallback
 ToolOutput = Union[
     ReadOutput,
@@ -1854,6 +1963,7 @@ ToolOutput = Union[
     TaskListOutput,
     SendMessageOutput,
     TaskOutputResult,
+    TaskStopOutput,
     # TODO: Add as parsers are implemented:
     # GlobOutput, GrepOutput
     ToolResultContent,  # Generic fallback for unparsed results

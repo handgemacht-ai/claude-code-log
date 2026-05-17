@@ -562,6 +562,66 @@ div.system-hook .header {
     border-bottom-style: solid;
 }
 
+/* Cross-link from a TaskOutput / TaskUpdate header's task_id back to
+ * the originating spawn (Bash run_in_background, async Task launch,
+ * or TaskCreate). Same visual affordance as .cron-id-backlink (#154). */
+.task-id-backlink {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentcolor;
+}
+.task-id-backlink:hover {
+    color: var(--user-color);
+    border-bottom-style: solid;
+}
+
+/* Forward counterpart to .task-id-backlink: a Bash run_in_background /
+ * async Task spawn title links its minted `#<id>` to the first
+ * TaskOutput poll for that id (PR #158 follow-up). Initially shares
+ * the dotted-underline affordance; kept as a distinct class so the
+ * two directions stay disambiguatable in tests and so styling can
+ * diverge later if reading distance demands it. */
+.task-id-forward-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentcolor;
+}
+.task-id-forward-link:hover {
+    color: var(--user-color);
+    border-bottom-style: solid;
+}
+
+/* TaskStop result card (PR #158 follow-up) — small status badge
+ * followed by the harness message in a <pre>. Success / error get
+ * different badge colors so the reader can scan at a glance. */
+.taskstop-result {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4em;
+}
+.taskstop-badge {
+    display: inline-block;
+    padding: 0.05em 0.5em;
+    font-size: 0.85em;
+    font-weight: 600;
+    border-radius: 4px;
+    align-self: flex-start;
+}
+.taskstop-badge.taskstop-ok {
+    background-color: rgba(0, 128, 0, 0.12);
+    color: #0a6f0a;
+}
+.taskstop-badge.taskstop-err {
+    background-color: rgba(204, 51, 0, 0.12);
+    color: #a13300;
+}
+.taskstop-message {
+    margin: 0;
+    padding: 0.5em;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
 .command-output-content td {
     border-left: 1px dotted #bbb;
     padding: 0 1em;

@@ -19,7 +19,7 @@
   
   Spawn a coverage analysis agent in the background and wait for the result.
   
-  ### 🤖 Task (Explore): *Coverage analysis* *[async]*
+  ### 🤖 Task (Explore): *Coverage analysis* *[async `#cccc333`]*
   
   <details>
   <summary>Instructions</summary>

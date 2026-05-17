@@ -52,6 +52,8 @@ from ..models import (
     SendMessageInput,
     TaskCreateInput,
     TaskInput,
+    TaskStopInput,
+    TaskStopOutput,
     TaskListInput,
     TaskOutputInput,
     TaskUpdateInput,
@@ -1058,6 +1060,24 @@ class MarkdownRenderer(Renderer):
             parts.append(f"**timeout:** `{input.timeout} ms`")
         return " · ".join(parts)
 
+    def format_TaskStopInput(self, _input: TaskStopInput, _: TemplateMessage) -> str:
+        """Format → empty (id lives in the title, no further params)."""
+        return ""
+
+    def format_TaskStopOutput(self, output: TaskStopOutput, _: TemplateMessage) -> str:
+        """Format → ``Stopped`` / ``Not stopped`` badge + verbatim message
+        (PR #158 follow-up; same intent as the HTML formatter but plain text).
+
+        Uses ``_code_fence`` so the fence widens past any backticks in
+        the harness message (the success-shape message often echoes the
+        original command, which can plausibly include shell-quoted
+        backticks).
+        """
+        badge = "**Stopped**" if output.stopped else "**Not stopped**"
+        if output.message:
+            return f"{badge}\n\n{self._code_fence(output.message)}"
+        return badge
+
     def format_TaskOutputResult(
         self, output: TaskOutputResult, _: TemplateMessage
     ) -> str:
@@ -1448,10 +1468,27 @@ class MarkdownRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def title_BashInput(self, input: BashInput, _: TemplateMessage) -> str:
-        """Title → '💻 Bash: *description*'."""
-        if desc := input.description:
-            return f"💻 Bash: *{self._escape_stars(desc)}*"
-        return "💻 Bash"
+        """Title → '💻 Bash: *description* [async #<id>]'.
+
+        Async hint when the spawn is backgrounded (PR #158 follow-up).
+        Gated on EITHER ``input.run_in_background`` (caller's hint) OR
+        ``input.minted_background_task_id`` (propagated from the
+        tool_result's ``backgroundTaskId`` by
+        ``_link_task_id_consumers``). The harness backgrounds some
+        Bash commands without setting the input flag, so the
+        result-side signal is the authoritative one. Markdown carries
+        no clickable anchor; the ``#<id>`` is plain inline-code so it
+        still greps cleanly across the document.
+        """
+        base = (
+            f"💻 Bash: *{self._escape_stars(input.description)}*"
+            if input.description
+            else "💻 Bash"
+        )
+        if not (input.run_in_background or input.minted_background_task_id):
+            return base
+        suffix = self._async_id_hint(input.minted_background_task_id)
+        return f"{base} {suffix}"
 
     def title_ReadInput(self, input: ReadInput, _: TemplateMessage) -> str:
         """Title → '👀 Read `filename`'."""
@@ -1480,17 +1517,35 @@ class MarkdownRenderer(Renderer):
         return f"{base} in `{input.path}`" if input.path else base
 
     def title_TaskInput(self, input: TaskInput, _: TemplateMessage) -> str:
-        """Title → '🤖 Task (subagent): *description* [async]'.
+        """Title → '🤖 Task (subagent): *description* [async #<id>]'.
 
-        ``[async]`` muted hint when ``run_in_background=True`` so the
-        Markdown reader can tell which spawns will be followed up
-        later by a ``<task-notification>`` user entry (issue #90).
+        ``[async]`` muted hint when ``run_in_background=True``; once the
+        launch confirmation has been parsed, the minted ``#<agent_id>``
+        is appended (PR #158 follow-up, parallels the Bash spawn shape).
         """
         subagent = f" ({input.subagent_type})" if input.subagent_type else ""
-        async_hint = " *[async]*" if input.run_in_background else ""
+        async_hint = (
+            " " + self._async_id_hint(input.minted_agent_id)
+            if input.run_in_background
+            else ""
+        )
         if desc := input.description:
             return f"🤖 Task{subagent}: *{self._escape_stars(desc)}*{async_hint}"
         return f"🤖 Task{subagent}{async_hint}"
+
+    @staticmethod
+    def _async_id_hint(minted_id: Optional[str]) -> str:
+        """Compose the trailing ``*[async ...]*`` Markdown marker for
+        spawn cards of background ``Bash`` / async ``Task`` calls.
+
+        ``*[async]*`` when the id hasn't been hoisted yet (no matching
+        tool_result observed); ``*[async `#<id>`]*`` once it has.
+        Markdown has no clickable anchor here on purpose — backlinks
+        and forward-links are HTML-only (per the #154 convention).
+        """
+        if not minted_id:
+            return "*[async]*"
+        return f"*[async `#{minted_id}`]*"
 
     def title_TaskOutputInput(self, input: TaskOutputInput, _: TemplateMessage) -> str:
         """Title → '🔍 TaskOutput `#<task_id>`' for the async-agent
@@ -1498,6 +1553,13 @@ class MarkdownRenderer(Renderer):
         if input.task_id:
             return f"🔍 TaskOutput `#{input.task_id}`"
         return "🔍 TaskOutput"
+
+    def title_TaskStopInput(self, input: TaskStopInput, _: TemplateMessage) -> str:
+        """Title → '🛑 TaskStop `#<task_id>`' (PR #158 follow-up — was
+        rendered as a generic tool block before)."""
+        if input.task_id:
+            return f"🛑 TaskStop `#{input.task_id}`"
+        return "🛑 TaskStop"
 
     def title_TaskNotificationMessage(
         self, content: TaskNotificationMessage, _: TemplateMessage
