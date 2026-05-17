@@ -270,6 +270,43 @@ serialisation is trivial. Add a JSON-specific case only if your tool
 embeds a non-dataclass type the `_json_default` shim doesn't already
 cover.
 
+## Renderer-set input fields driven by tool_result data
+
+Most renderer passes set fields *on the consumer's input model*
+based on what an *earlier* tool_result emitted — e.g.
+`TaskOutputInput.creating_call_message_index` is stamped by
+`_link_task_id_consumers` from the matching `BashOutput.background_task_id`
+so the consumer's title can back-link to the spawn (#154).
+
+PR #158 introduced the *forward* counterpart: fields set on the
+**spawn's** input model that are sourced from the spawn's *own*
+tool_result. Concretely, `BashInput.minted_background_task_id` and
+`TaskInput.minted_agent_id` are hoisted from `BashOutput.background_task_id`
+/ the parsed launch confirmation so the spawn card's title can show
+`#<id>` directly (instead of leaving the reader to scrape it out of
+the result body). The same pass also stamps `linked_consumer_message_index`
+on the spawn from the first consumer it finds.
+
+This is the first "renderer-set input field driven by the same
+tool_use's tool_result" shape in the codebase. If you add another,
+keep these conventions:
+
+- **Field lives on the input model**, not the output model — title
+  formatters read from the input, so the field has to be there to
+  drive the title.
+- **Default `None`**, set only inside the renderer pass; never trust
+  parser-side state for this.
+- **Use `ctx.get(message_index)`** to navigate from the tool_result's
+  `pair_first` back to the spawn's `TemplateMessage` — that's the
+  primary lookup, not iterating `ctx.messages` again.
+- **First wins** (e.g. `setdefault`-style assignment guarded by an
+  `is None` check) so re-running the pass is idempotent and document
+  order remains deterministic.
+- **Title formatter degrades gracefully**: when the field is `None`
+  (no matching result observed, or the spawn lives outside the
+  loaded slice), fall back to the plain title shape — `[async]`
+  without the id, plain `#<id>` without the anchor, etc.
+
 ## Checklist
 
 - [ ] Add input model to `models.py`

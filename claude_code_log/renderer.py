@@ -2425,7 +2425,9 @@ def _link_cron_jobs_by_id(ctx: RenderingContext) -> None:
 
 def _link_task_id_consumers(ctx: RenderingContext) -> None:
     """Cross-link ``TaskOutput`` polls and ``TaskUpdate`` calls back to
-    the originating tool_use that minted their task_id (#154).
+    the originating tool_use that minted their task_id (#154; PR #158
+    follow-up extends the pass with a forward link from the spawn card
+    to its first consumer).
 
     Two parallel id spaces share the same shape:
 
@@ -2444,6 +2446,15 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
     spawn card. Same backlink shape as PR #142 / #147 (Monitor) and
     #148 / #152 (Cron*); no fold or dedup, just affordance.
 
+    For the background-process id space, the pass *also* runs in the
+    forward direction: the minted id is hoisted onto the spawn's input
+    model (``BashInput.minted_background_task_id`` /
+    ``TaskInput.minted_agent_id``) so the spawn card's title surfaces
+    ``#<id>`` directly, and the first consumer's index lands on
+    ``linked_consumer_message_index`` for a forward-link anchor. This
+    is the first "renderer-set input field driven by tool_result data"
+    pattern — see dev-docs/implementing-a-tool-renderer.md.
+
     Keys are ``(session_id, task_id)`` tuples so todo ids like ``#1``
     don't cross-link between sessions in combined-transcripts
     renders (CodeRabbit #158). Background ids are random alphanumeric
@@ -2451,15 +2462,20 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
     ride the same shape for symmetry.
     """
     from .models import (
+        BashInput,
         BashOutput,
         TaskCreateOutput,
+        TaskInput,
         TaskOutputInput,
         TaskUpdateInput,
         ToolResultMessage,
         ToolUseMessage,
     )
 
-    # Step 1: index originating tool_uses by (session_id, id).
+    # Step 1: index originating tool_uses by (session_id, id), and
+    # hoist the minted id onto the spawn's input model so the spawn
+    # card's title can surface ``#<id>`` even before any consumer is
+    # seen later in the transcript.
     bg_task_id_to_call_index: dict[tuple[str, str], int] = {}
     todo_task_id_to_call_index: dict[tuple[str, str], int] = {}
     for tm in ctx.messages:
@@ -2476,14 +2492,27 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
         output = tm.content.output
         # Background-process ids — Bash structured field OR async-agent
         # launch confirmation (recovered by the existing helper).
+        bg_id: Optional[str] = None
         if isinstance(output, BashOutput) and output.background_task_id:
-            bg_task_id_to_call_index.setdefault(
-                (session_key, output.background_task_id), target_idx
-            )
+            bg_id = output.background_task_id
         else:
-            agent_id = _async_agent_id_from_tool_result(tm.content)
-            if agent_id is not None:
-                bg_task_id_to_call_index.setdefault((session_key, agent_id), target_idx)
+            bg_id = _async_agent_id_from_tool_result(tm.content)
+        if bg_id is not None:
+            bg_task_id_to_call_index.setdefault((session_key, bg_id), target_idx)
+            # Forward hoist: stamp the minted id on the spawn's input.
+            spawn_tm = ctx.get(target_idx)
+            if spawn_tm is not None and isinstance(spawn_tm.content, ToolUseMessage):
+                spawn_input = spawn_tm.content.input
+                if (
+                    isinstance(spawn_input, BashInput)
+                    and spawn_input.minted_background_task_id is None
+                ):
+                    spawn_input.minted_background_task_id = bg_id
+                elif (
+                    isinstance(spawn_input, TaskInput)
+                    and spawn_input.minted_agent_id is None
+                ):
+                    spawn_input.minted_agent_id = bg_id
         # Todo-list ids — TaskCreate's backend-assigned id.
         if isinstance(output, TaskCreateOutput) and output.task_id:
             todo_task_id_to_call_index.setdefault(
@@ -2493,19 +2522,25 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
     if not bg_task_id_to_call_index and not todo_task_id_to_call_index:
         return
 
-    # Step 2: stamp consumer call sites — look up within the same session.
+    # Step 2: stamp consumer call sites — look up within the same session
+    # — and record the first consumer's index per (session, bg_id) for
+    # the forward-link direction.
+    bg_task_id_to_first_consumer: dict[tuple[str, str], int] = {}
     for tm in ctx.messages:
         if not isinstance(tm.content, ToolUseMessage):
             continue
         session_key = tm.session_id or ""
         input_model = tm.content.input
         if isinstance(input_model, TaskOutputInput):
-            if input_model.creating_call_message_index is None and input_model.task_id:
-                target = bg_task_id_to_call_index.get(
-                    (session_key, input_model.task_id)
-                )
-                if target is not None:
-                    input_model.creating_call_message_index = target
+            if input_model.task_id:
+                key = (session_key, input_model.task_id)
+                if input_model.creating_call_message_index is None:
+                    target = bg_task_id_to_call_index.get(key)
+                    if target is not None:
+                        input_model.creating_call_message_index = target
+                # Forward record: first consumer wins (document order).
+                if tm.message_index is not None:
+                    bg_task_id_to_first_consumer.setdefault(key, tm.message_index)
         elif isinstance(input_model, TaskUpdateInput):
             if input_model.creating_call_message_index is None and input_model.taskId:
                 target = todo_task_id_to_call_index.get(
@@ -2513,6 +2548,29 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
                 )
                 if target is not None:
                     input_model.creating_call_message_index = target
+
+    # Step 3: stamp the spawn's ``linked_consumer_message_index`` so the
+    # spawn card's ``#<id>`` becomes a forward anchor to the first
+    # consumer. Only background-process ids carry the forward link;
+    # todo-ids don't (TaskCreate's body already shows the subject).
+    for key, consumer_idx in bg_task_id_to_first_consumer.items():
+        call_idx = bg_task_id_to_call_index.get(key)
+        if call_idx is None:
+            continue
+        spawn_tm = ctx.get(call_idx)
+        if spawn_tm is None or not isinstance(spawn_tm.content, ToolUseMessage):
+            continue
+        spawn_input = spawn_tm.content.input
+        if (
+            isinstance(spawn_input, BashInput)
+            and spawn_input.linked_consumer_message_index is None
+        ):
+            spawn_input.linked_consumer_message_index = consumer_idx
+        elif (
+            isinstance(spawn_input, TaskInput)
+            and spawn_input.linked_consumer_message_index is None
+        ):
+            spawn_input.linked_consumer_message_index = consumer_idx
 
 
 def _link_tool_use_notifications(ctx: RenderingContext) -> None:

@@ -695,13 +695,17 @@ class HtmlRenderer(Renderer):
         return "❓ Asking questions..."
 
     def title_TaskInput(self, input: TaskInput, message: TemplateMessage) -> str:
-        """Title → '🔧 Task <desc> (subagent_type) [async]'.
+        """Title → '🔧 Task <desc> (subagent_type) [async #<id>]'.
 
         ``[async]`` muted hint appears when ``run_in_background=True``
         so the reader can tell at a glance which spawns will be
         followed up later by a ``<task-notification>`` user entry
         (issue #90), as opposed to synchronous Task calls whose
-        result returns inline.
+        result returns inline. Once the launch confirmation has been
+        parsed, the minted ``#<agent_id>`` is appended; when there's
+        a later ``TaskOutput`` poll for the same agent, ``#<agent_id>``
+        wraps in a forward-link anchor (PR #158 follow-up, mirroring
+        the consumer-side backlink from #154).
         """
         content = cast(ToolUseMessage, message.content)
         escaped_name = escape_html(content.tool_name)
@@ -709,7 +713,11 @@ class HtmlRenderer(Renderer):
             escape_html(input.subagent_type) if input.subagent_type else ""
         )
         async_hint = (
-            " <span class='task-async-hint'>[async]</span>"
+            " "
+            + self._async_id_suffix(
+                input.minted_agent_id,
+                input.linked_consumer_message_index,
+            )
             if input.run_in_background
             else ""
         )
@@ -728,6 +736,37 @@ class HtmlRenderer(Renderer):
                 f"{async_hint}"
             )
         return f"🔧 {escaped_name}{async_hint}"
+
+    def _async_id_suffix(
+        self,
+        minted_id: Optional[str],
+        consumer_idx: Optional[int],
+    ) -> str:
+        """Compose the trailing ``[async ...]`` marker for spawn cards
+        of background ``Bash`` / async ``Task`` calls (PR #158).
+
+        Shape:
+        - ``run_in_background`` but id not (yet) hoisted onto the
+          spawn input → ``[async]``
+        - id known → ``[async #<id>]``
+        - id known and a later consumer's index known → wraps the
+          ``#<id>`` in a forward-link anchor pointing at the first
+          ``TaskOutput`` poll (mirrors the backlink direction).
+
+        The leading bracket-tagged hint reuses the existing
+        ``.task-async-hint`` styling (muted blue, smaller font); the
+        anchor is tagged ``.task-id-forward-link`` (initially same
+        dotted-underline as ``.task-id-backlink`` but a distinct class
+        so tests can disambiguate the two directions unambiguously
+        and styling can diverge later).
+        """
+        if not minted_id:
+            return "<span class='task-async-hint'>[async]</span>"
+        id_html = f"<code>#{escape_html(minted_id)}</code>"
+        if consumer_idx is not None:
+            anchor = f"msg-d-{consumer_idx}"
+            id_html = f"<a class='task-id-forward-link' href='#{anchor}'>{id_html}</a>"
+        return f"<span class='task-async-hint'>[async {id_html}]</span>"
 
     def title_EditInput(self, input: EditInput, message: TemplateMessage) -> str:
         """Title → '📝 Edit <file_path>'."""
@@ -761,8 +800,24 @@ class HtmlRenderer(Renderer):
         return self._tool_title(message, "🔎", input.pattern)
 
     def title_BashInput(self, input: BashInput, message: TemplateMessage) -> str:
-        """Title → '💻 Bash <description>'."""
-        return self._tool_title(message, "💻", input.description)
+        """Title → '💻 Bash <description> [async #<id>]'.
+
+        Plain shape for foreground Bash. For ``run_in_background=True``
+        spawns, append the ``[async]`` muted hint and — once the
+        matching tool_result has been parsed — the minted
+        ``#<id>``. When a later ``TaskOutput`` poll for the same id is
+        present, the ``#<id>`` wraps in a forward-link anchor (PR #158
+        follow-up, mirroring the ``TaskOutput`` → spawn backlink
+        from #154).
+        """
+        base = self._tool_title(message, "💻", input.description)
+        if not input.run_in_background:
+            return base
+        suffix = self._async_id_suffix(
+            input.minted_background_task_id,
+            input.linked_consumer_message_index,
+        )
+        return f"{base} {suffix}"
 
     def title_WebSearchInput(
         self, input: WebSearchInput, message: TemplateMessage

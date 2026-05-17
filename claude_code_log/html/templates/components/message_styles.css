@@ -575,6 +575,23 @@ div.system-hook .header {
     border-bottom-style: solid;
 }
 
+/* Forward counterpart to .task-id-backlink: a Bash run_in_background /
+ * async Task spawn title links its minted `#<id>` to the first
+ * TaskOutput poll for that id (PR #158 follow-up). Initially shares
+ * the dotted-underline affordance; kept as a distinct class so the
+ * two directions stay disambiguatable in tests and so styling can
+ * diverge later if reading distance demands it. */
+.task-id-forward-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentcolor;
+}
+.task-id-forward-link:hover {
+    color: var(--user-color);
+    border-bottom-style: solid;
+}
+
+
 .command-output-content td {
     border-left: 1px dotted #bbb;
     padding: 0 1em;

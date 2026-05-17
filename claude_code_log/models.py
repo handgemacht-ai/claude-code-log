@@ -1049,6 +1049,18 @@ class BashInput(BaseModel):
     run_in_background: Optional[bool] = None
     dangerouslyDisableSandbox: Optional[bool] = None
 
+    # Renderer-set: the minted ``background_task_id`` hoisted from the
+    # matching ``BashOutput`` by ``_link_task_id_consumers``. Surfaces
+    # ``#<id>`` directly on the spawn-card title (instead of burying it
+    # in the result text) for background runs, making the task itself
+    # visually prominent (PR #158 follow-up).
+    minted_background_task_id: Optional[str] = None
+    # Renderer-set: ``message_index`` of the first ``TaskOutput`` poll
+    # that consumed our minted id. Forward counterpart to
+    # ``creating_call_message_index`` on the consumer side — wraps the
+    # spawn's ``#<id>`` in a forward-link anchor when set.
+    linked_consumer_message_index: Optional[int] = None
+
 
 class ReadInput(BaseModel):
     """Input parameters for the Read tool."""
@@ -1127,6 +1139,15 @@ class TaskInput(BaseModel):
     team_name: Optional[str] = None
     name: Optional[str] = None
     mode: Optional[str] = None
+
+    # Renderer-set: minted ``agentId`` from the async-launch confirmation
+    # (the tool_result for a ``run_in_background=True`` ``Task``). Mirrors
+    # ``BashInput.minted_background_task_id`` so the async-spawn card
+    # surfaces ``#<id>`` directly in its title.
+    minted_agent_id: Optional[str] = None
+    # Renderer-set: ``message_index`` of the first ``TaskOutput`` poll
+    # for this agent. Forward counterpart to ``creating_call_message_index``.
+    linked_consumer_message_index: Optional[int] = None
 
 
 class TodoWriteItem(BaseModel):

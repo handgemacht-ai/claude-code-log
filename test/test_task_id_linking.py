@@ -181,10 +181,108 @@ class TestTaskIdLinkingFixture:
 
     def test_backlink_css_rule_present(self) -> None:
         """The dotted-underline visual affordance ships with the
-        bundled CSS (regression for accidental rule drops).
+        bundled CSS (regression for accidental rule drops). Both
+        backlink and forward-link rules must be present (PR #158
+        follow-up split the two directions into distinct classes).
         """
         html = self._html()
         assert ".task-id-backlink" in html
+        assert ".task-id-forward-link" in html
+
+    def test_bash_spawn_title_has_async_hint_with_minted_id(self) -> None:
+        """The ``Bash`` ``run_in_background`` spawn card surfaces
+        ``[async #b1bg01]`` in its title (PR #158 follow-up — was
+        previously plain ``💻 Bash <desc>`` with the id buried in the
+        result body).
+
+        Locating the spawn card by tool_use_id keeps the assertion
+        stable across renumbering. The minted ``#<id>`` lives inside
+        the dedicated ``task-async-hint`` span so the CSS class
+        scoping is preserved.
+        """
+        html = self._html()
+        bash_anchor = self._spawn_anchor(html, "toolu_154_bash_bg")
+        # Extract the spawn card's title region: starts at the anchor's
+        # opening, ends at the first </div> of the message header.
+        card_re = re.compile(
+            r"id='" + re.escape(bash_anchor) + r"'>(.+?)</div>",
+            re.DOTALL,
+        )
+        card = card_re.search(html)
+        assert card, f"spawn card {bash_anchor} not found"
+        assert "[async " in card.group(1)
+        assert "#b1bg01" in card.group(1)
+        assert "task-async-hint" in card.group(1)
+
+    def test_bash_spawn_title_forward_links_to_first_taskoutput(self) -> None:
+        """The Bash spawn's ``#b1bg01`` is a forward-link anchor
+        pointing at the first ``TaskOutput`` poll for that id
+        (PR #158 follow-up). Complements the backlink direction from
+        #154 — readers can now navigate both ways.
+        """
+        html = self._html()
+        bash_anchor = self._spawn_anchor(html, "toolu_154_bash_bg")
+        # The first TaskOutput poll for b1bg01 is the one with
+        # tool_use_id toolu_154_to_bash (fixture sequencing).
+        consumer_anchor = self._spawn_anchor(html, "toolu_154_to_bash")
+        # Match the forward-link anchor specifically (distinct class
+        # from the backlink — they'd collide on the bare #b1bg01).
+        forward_re = re.compile(
+            r"<a class='task-id-forward-link' href='#(msg-d-\d+)'>"
+            r"<code>#b1bg01</code></a>"
+        )
+        # Search within the spawn card's region to make sure we're
+        # matching the forward link emitted on the SPAWN, not on the
+        # consumer card (which would be a backlink anyway, different
+        # class — defensive scoping).
+        card_re = re.compile(
+            r"id='" + re.escape(bash_anchor) + r"'>(.+?)</div>",
+            re.DOTALL,
+        )
+        card_match = card_re.search(html)
+        assert card_match
+        forward_match = forward_re.search(card_match.group(1))
+        assert forward_match, (
+            "expected forward-link on Bash spawn card pointing at "
+            f"first TaskOutput poll (consumer_anchor={consumer_anchor})"
+        )
+        assert forward_match.group(1) == consumer_anchor
+
+    def test_task_async_spawn_title_forward_links_to_first_taskoutput(
+        self,
+    ) -> None:
+        """Mirror of the Bash case for the async-agent ``Task`` spawn:
+        ``#a1agnt`` on the spawn card forward-links to the first
+        ``TaskOutput`` poll for that agent.
+        """
+        html = self._html()
+        task_anchor = self._spawn_anchor(html, "toolu_154_task_async")
+        consumer_anchor = self._spawn_anchor(html, "toolu_154_to_agent")
+        card_re = re.compile(
+            r"id='" + re.escape(task_anchor) + r"'>(.+?)</div>",
+            re.DOTALL,
+        )
+        card_match = card_re.search(html)
+        assert card_match
+        forward_re = re.compile(
+            r"<a class='task-id-forward-link' href='#(msg-d-\d+)'>"
+            r"<code>#a1agnt</code></a>"
+        )
+        forward_match = forward_re.search(card_match.group(1))
+        assert forward_match, "expected forward-link on async Task spawn card"
+        assert forward_match.group(1) == consumer_anchor
+
+    def test_markdown_spawn_titles_have_async_hint_with_id(self) -> None:
+        """Markdown spawn titles carry ``[async #<id>]`` once the
+        matching tool_result has been parsed. No clickable anchor —
+        backlinks and forward-links are HTML-only (per the #154
+        convention) — but the plain ``#<id>`` is still greppable.
+        """
+        md = self._md()
+        # Bash spawn — minted background_task_id is b1bg01.
+        assert "[async `#b1bg01`]" in md
+        # Async Task spawn — minted agent_id is a1agnt.
+        assert "[async `#a1agnt`]" in md
 
     def test_cross_session_no_mislink_on_shared_todo_id(self) -> None:
         """Two sessions each minting ``TaskCreate #1`` and then
