@@ -502,6 +502,67 @@ class TestCombinedFlag:
         assert "(← open combined transcript)" not in index_html
         assert "combined_transcripts.html" not in index_html
 
+    @pytest.mark.parametrize(
+        "fmt,detail",
+        [
+            ("md", "low"),
+            ("md", "high"),
+            ("html", "low"),
+            ("html", "high"),
+        ],
+    )
+    def test_index_session_links_carry_detail_variant_suffix(
+        self,
+        fmt: str,
+        detail: str,
+        fake_projects: Path,
+        isolated_cache: Path,
+        tmp_path: Path,
+    ):
+        """Under `--expand-paths --detail low|high`, the index session
+        links MUST carry the `.{detail}.{ext}` infix that matches the
+        on-disk filenames — otherwise every link in the bullet-tree /
+        HTML folder tree 404s."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        out = tmp_path / f"out-detail-{fmt}-{detail}"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(fake_projects),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--expand-paths",
+                "--format",
+                fmt,
+                "--detail",
+                detail,
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        ext = "md" if fmt == "md" else "html"
+        index_path = out / f"index.{ext}"
+        index_text = index_path.read_text(encoding="utf-8")
+
+        # Walk every session file written on disk and assert the index
+        # contains a link to its exact filename (relative path).
+        session_files = list(out.rglob(f"session-*.{detail}.{ext}"))
+        assert session_files, f"expected per-session files with .{detail}.{ext} suffix"
+        for sf in session_files:
+            rel = sf.relative_to(out).as_posix()
+            # Confirm on-disk filename carries the detail infix.
+            assert sf.name.endswith(f".{detail}.{ext}"), sf
+            # And the index points at that same rel-path.
+            assert rel in index_text, (
+                f"index missing link to {rel!r}; "
+                f"variant suffix .{detail} likely dropped from index URLs"
+            )
+
     def test_per_session_files_omit_combined_back_link_under_combined_no(
         self, fake_projects: Path, isolated_cache: Path, tmp_path: Path
     ):

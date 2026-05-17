@@ -2826,9 +2826,12 @@ def process_projects_hierarchy(
                                     # root. Used by the index renderer when
                                     # `combined_suppressed` is True so the
                                     # index can link directly to the
-                                    # `session-{id}.{ext}` files.
+                                    # `session-{id}{variant}.{ext}` files
+                                    # written by ``_generate_individual_session_files``
+                                    # — the ``{variant}`` infix (e.g. ``.low``,
+                                    # ``.high``) must match or links 404.
                                     "file": (
-                                        f"{rel_dest}/session-{session_data.session_id}.{combined_ext}"
+                                        f"{rel_dest}/session-{session_data.session_id}{variant}.{combined_ext}"
                                     ),
                                 }
                                 for session_data in cached_project_data.sessions.values()
@@ -2954,7 +2957,12 @@ def process_projects_hierarchy(
             # `combined_suppressed`).
             for _sd in sessions_data:
                 if "file" not in _sd:
-                    _sd["file"] = f"{rel_dest}/session-{_sd['id']}.{combined_ext}"
+                    # `{variant}` mirrors the on-disk session filename
+                    # (`session-{id}{variant}.{ext}`) so the index link
+                    # resolves under `--detail low|high|...`.
+                    _sd["file"] = (
+                        f"{rel_dest}/session-{_sd['id']}{variant}.{combined_ext}"
+                    )
             project_summaries.append(
                 {
                     "name": project_dir.name,
@@ -3067,8 +3075,11 @@ def process_projects_hierarchy(
                             "message_count": session_data.message_count,
                             "first_user_message": session_data.first_user_message
                             or "[No user message found in session.]",
+                            # `{variant}` keeps the link in step with
+                            # `_generate_individual_session_files`'s
+                            # filename (`session-{id}{variant}.{ext}`).
                             "file": (
-                                f"{archived_rel}/session-{session_data.session_id}.{combined_ext}"
+                                f"{archived_rel}/session-{session_data.session_id}{variant}.{combined_ext}"
                             ),
                         }
                         for session_data in cached_project_data.sessions.values()
