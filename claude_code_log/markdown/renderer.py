@@ -1067,10 +1067,15 @@ class MarkdownRenderer(Renderer):
     def format_TaskStopOutput(self, output: TaskStopOutput, _: TemplateMessage) -> str:
         """Format → ``Stopped`` / ``Not stopped`` badge + verbatim message
         (PR #158 follow-up; same intent as the HTML formatter but plain text).
+
+        Uses ``_code_fence`` so the fence widens past any backticks in
+        the harness message (the success-shape message often echoes the
+        original command, which can plausibly include shell-quoted
+        backticks).
         """
         badge = "**Stopped**" if output.stopped else "**Not stopped**"
         if output.message:
-            return f"{badge}\n\n```\n{output.message}\n```"
+            return f"{badge}\n\n{self._code_fence(output.message)}"
         return badge
 
     def format_TaskOutputResult(

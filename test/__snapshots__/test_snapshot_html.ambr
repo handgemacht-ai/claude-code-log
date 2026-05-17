@@ -974,7 +974,7 @@
       margin: 0;
       padding: 0.5em;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
   }
   
   .command-output-content td {
@@ -6883,7 +6883,7 @@
       margin: 0;
       padding: 0.5em;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
   }
   
   .command-output-content td {
@@ -14839,7 +14839,7 @@
       margin: 0;
       padding: 0.5em;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
   }
   
   .command-output-content td {
@@ -20853,7 +20853,7 @@
       margin: 0;
       padding: 0.5em;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
   }
   
   .command-output-content td {
@@ -27098,7 +27098,7 @@
       margin: 0;
       padding: 0.5em;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
   }
   
   .command-output-content td {
@@ -33211,7 +33211,7 @@
       margin: 0;
       padding: 0.5em;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
   }
   
   .command-output-content td {
@@ -39383,7 +39383,7 @@
       margin: 0;
       padding: 0.5em;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
   }
   
   .command-output-content td {

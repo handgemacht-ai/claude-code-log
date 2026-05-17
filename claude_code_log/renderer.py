@@ -2498,7 +2498,19 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
         bg_id: Optional[str] = None
         if isinstance(output, BashOutput) and output.background_task_id:
             bg_id = output.background_task_id
-        else:
+        elif tm.content.tool_name in ("Task", "Agent") or (
+            isinstance(output, TaskOutput) or tm.meta.agent_id
+        ):
+            # Only call ``_async_agent_id_from_tool_result`` when the
+            # tool_result actually represents a Task/Agent spawn (or has
+            # a strong async-agent signal — parsed ``TaskOutput`` output
+            # or an ``agent_id`` already tagged on the entry's meta).
+            # Without this gate the helper's raw-text ``agentId:`` regex
+            # fallback would index unrelated tool_results that happen to
+            # mention "agentId:" in their text, mis-stamping
+            # ``creating_call_message_index`` / forward-link slots
+            # (CodeRabbit on 5baac35; mirrors the existing gate in
+            # ``_link_async_notifications``).
             bg_id = _async_agent_id_from_tool_result(tm.content)
         if bg_id is not None:
             bg_task_id_to_call_index.setdefault((session_key, bg_id), target_idx)

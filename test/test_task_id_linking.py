@@ -40,6 +40,7 @@ FIXTURE = Path(__file__).parent / "test_data" / "task_id_linking.jsonl"
 CROSS_SESSION_FIXTURE = (
     Path(__file__).parent / "test_data" / "task_id_linking_cross_session.jsonl"
 )
+POISON_FIXTURE = Path(__file__).parent / "test_data" / "task_id_linking_poison.jsonl"
 
 
 # -----------------------------------------------------------------------------
@@ -324,6 +325,60 @@ class TestTaskIdLinkingFixture:
             "Session B's TaskUpdate #1 should backlink to session B's TaskCreate "
             f"({sB_tc}), got {backlinks[1]} — would have been {sA_tc} under "
             "the id-only-keyed regression"
+        )
+
+    def test_unrelated_tool_result_with_agent_id_text_not_indexed(self) -> None:
+        """A non-spawn tool_result whose raw text mentions ``agentId:
+        <id>`` (e.g. a foreground Bash ``echo``) must NOT be indexed as
+        a spawn by ``_link_task_id_consumers``. Otherwise the
+        ``TaskOutput`` poll for that fake id would backlink to the
+        unrelated tool_use card.
+
+        Regression for CodeRabbit on 5baac35: before the gate,
+        ``_async_agent_id_from_tool_result`` ran for every non-Bash
+        tool_result and its raw-text fallback regex would have
+        false-positive matched on the ``agentId: poison01`` line in
+        the Bash stdout.
+
+        Fixture lays out a Bash (foreground; stdout mentions
+        ``agentId: poison01``) followed by a ``TaskOutput`` polling
+        ``poison01``. The poll's ``#poison01`` must render plain (no
+        anchor) — the link pass should find no spawn for that id.
+        """
+        if not POISON_FIXTURE.exists():
+            pytest.fail(f"Required fixture missing: {POISON_FIXTURE}")
+        html = HtmlRenderer().generate(load_transcript(POISON_FIXTURE), "Test")
+
+        # The TaskOutput card for poison01 should NOT carry a backlink
+        # anchor — find the poll card and assert plain ``#poison01``.
+        poll_anchor = re.search(
+            r"id='(msg-d-\d+)'>"
+            r"(?:(?!</div>).)*?"
+            r'title="ID: toolu_poison_to"',
+            html,
+            re.DOTALL,
+        )
+        assert poll_anchor, "TaskOutput poll card not found"
+        card_re = re.compile(
+            r"id='" + re.escape(poll_anchor.group(1)) + r"'>(.+?)</div>",
+            re.DOTALL,
+        )
+        card_match = card_re.search(html)
+        assert card_match
+        card_html = card_match.group(1)
+        # The id appears plain (inline-code, no anchor).
+        assert "<code>#poison01</code>" in card_html
+        # No backlink anchor for ``#poison01`` — would mean the Bash
+        # stdout was mis-indexed as a spawn.
+        assert (
+            re.search(
+                r"<a\s+class=['\"]task-id-backlink['\"][^>]*>\s*<code>#poison01</code>",
+                html,
+            )
+            is None
+        ), (
+            "TaskOutput #poison01 must not backlink — unrelated Bash "
+            "tool_result with 'agentId:' in stdout was indexed as a spawn"
         )
 
     def test_markdown_titles_have_plain_id_no_anchor(self) -> None:

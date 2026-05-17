@@ -230,10 +230,13 @@ class TestTaskStopFixture:
         card_html = card_match.group(1)
         # The id should appear inline-code'd in the title…
         assert "<code>#nope1234</code>" in card_html
-        # …but never wrapped in any backlink anchor.
-        assert "task-id-backlink' href='#" not in card_html or (
-            "<a class='task-id-backlink'" not in card_html
-        )
+        # …but never wrapped in any backlink anchor. Match the class
+        # regardless of quote style — a single regex is tighter than
+        # OR-chained substring checks (a future quoting change in the
+        # template would have slipped past the old form).
+        assert (
+            re.search(r"""<a\s+class=['"]task-id-backlink['"]""", card_html) is None
+        ), "TaskStop card for unknown id must not carry a backlink anchor"
 
     def test_taskstop_success_badge_present_in_html(self) -> None:
         """The success-shape TaskStop renders a ``Stopped`` badge."""
