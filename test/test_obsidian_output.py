@@ -9,11 +9,14 @@ per format.
 """
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
 from claude_code_log.converter import process_projects_hierarchy
+
+_REAL_PROJECTS_DIR = Path(__file__).parent / "test_data" / "real_projects"
 
 
 def _build_fake_projects_dir(
@@ -562,6 +565,53 @@ class TestCombinedFlag:
                 f"index missing link to {rel!r}; "
                 f"variant suffix .{detail} likely dropped from index URLs"
             )
+
+    def test_index_excludes_synthetic_agent_sessions(
+        self, isolated_cache: Path, tmp_path: Path
+    ):
+        """Agent sessions (`{sid}#agent-{aid}` synthetic IDs from
+        `_integrate_agent_entries`) are inlined into the parent's
+        transcript and skipped by `_generate_individual_session_files`
+        — so they must NOT appear as standalone bullets in the index.
+        Uses the real-projects fixture which contains `agent-*.jsonl`
+        files that exercise the cache write path."""
+        from click.testing import CliRunner
+
+        from claude_code_log.cli import main
+
+        if not _REAL_PROJECTS_DIR.exists():
+            pytest.skip("real_projects test data not found")
+
+        # Copy to a temp dir so we don't pollute the source tree with
+        # generated cache.db / images.
+        src_copy = tmp_path / "real_projects_copy"
+        shutil.copytree(_REAL_PROJECTS_DIR, src_copy)
+
+        out = tmp_path / "out-no-agents"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(src_copy),
+                "--all-projects",
+                "--output",
+                str(out),
+                "--expand-paths",
+                "--format",
+                "md",
+                "--detail",
+                "low",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        index_md = (out / "index.md").read_text(encoding="utf-8")
+        # No agent-session leaf bullets in the index — they're inlined
+        # into the parent session's transcript by the renderer.
+        assert "#agent-" not in index_md, (
+            f"index.md contains {index_md.count('#agent-')} synthetic "
+            f"agent-session links; they should be filtered by the "
+            f"converter's per-session list builder"
+        )
 
     def test_per_session_files_omit_combined_back_link_under_combined_no(
         self, fake_projects: Path, isolated_cache: Path, tmp_path: Path

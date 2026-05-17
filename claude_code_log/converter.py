@@ -2836,8 +2836,14 @@ def process_projects_hierarchy(
                                 }
                                 for session_data in cached_project_data.sessions.values()
                                 # Filter out warmup-only and empty sessions (agent-only)
+                                # AND synthetic agent sessions
+                                # (`{sid}#agent-{aid}` — `_integrate_agent_entries`
+                                # inlines them into the parent's transcript;
+                                # `_generate_individual_session_files` skips them
+                                # too, so a link in the index would 404).
                                 if session_data.first_user_message
                                 and session_data.first_user_message != "Warmup"
+                                and not is_agent_session(session_data.session_id)
                             ],
                             # Distinct teamName values across this project's
                             # sessions (teammates feature). Powers the
@@ -3083,8 +3089,12 @@ def process_projects_hierarchy(
                             ),
                         }
                         for session_data in cached_project_data.sessions.values()
+                        # Same filter as the live-cached path above:
+                        # warmup-only / empty / agent sessions don't
+                        # belong in the index.
                         if session_data.first_user_message
                         and session_data.first_user_message != "Warmup"
+                        and not is_agent_session(session_data.session_id)
                     ],
                     # Distinct teamName values across this archived project's
                     # cached sessions (teammates feature).
