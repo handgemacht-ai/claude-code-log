@@ -1041,7 +1041,17 @@ class ToolUseMessage(MessageContent):
 
 
 class BashInput(BaseModel):
-    """Input parameters for the Bash tool."""
+    """Input parameters for the Bash tool.
+
+    Note on ``run_in_background``: this is the *caller's* hint that the
+    command should run async. In practice the harness may *also*
+    background a command on its own (e.g. timeout-driven) without
+    setting this flag — in that case the async signal lives only on
+    the result side as ``toolUseResult.backgroundTaskId``. Use
+    ``minted_background_task_id`` (populated post-link-pass) as the
+    authoritative signal for "is this a background spawn?", not this
+    field alone.
+    """
 
     command: str
     description: Optional[str] = None
@@ -1053,7 +1063,8 @@ class BashInput(BaseModel):
     # matching ``BashOutput`` by ``_link_task_id_consumers``. Surfaces
     # ``#<id>`` directly on the spawn-card title (instead of burying it
     # in the result text) for background runs, making the task itself
-    # visually prominent (PR #158 follow-up).
+    # visually prominent (PR #158 follow-up). Also the authoritative
+    # "is background?" signal — see class docstring.
     minted_background_task_id: Optional[str] = None
     # Renderer-set: ``message_index`` of the first ``TaskOutput`` poll
     # (or ``TaskStop``) that consumed our minted id. Forward counterpart

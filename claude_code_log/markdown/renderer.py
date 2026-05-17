@@ -1470,19 +1470,22 @@ class MarkdownRenderer(Renderer):
     def title_BashInput(self, input: BashInput, _: TemplateMessage) -> str:
         """Title → '💻 Bash: *description* [async #<id>]'.
 
-        ``[async #<id>]`` muted hint when ``run_in_background=True`` so
-        Markdown readers see the spawn distinctly (instead of having to
-        scrape the ``ID: <taskId>`` mention out of the result body —
-        PR #158 follow-up). Markdown carries no clickable anchor; the
-        ``#<id>`` is plain inline-code so it still greps cleanly across
-        the document.
+        Async hint when the spawn is backgrounded (PR #158 follow-up).
+        Gated on EITHER ``input.run_in_background`` (caller's hint) OR
+        ``input.minted_background_task_id`` (propagated from the
+        tool_result's ``backgroundTaskId`` by
+        ``_link_task_id_consumers``). The harness backgrounds some
+        Bash commands without setting the input flag, so the
+        result-side signal is the authoritative one. Markdown carries
+        no clickable anchor; the ``#<id>`` is plain inline-code so it
+        still greps cleanly across the document.
         """
         base = (
             f"💻 Bash: *{self._escape_stars(input.description)}*"
             if input.description
             else "💻 Bash"
         )
-        if not input.run_in_background:
+        if not (input.run_in_background or input.minted_background_task_id):
             return base
         suffix = self._async_id_hint(input.minted_background_task_id)
         return f"{base} {suffix}"

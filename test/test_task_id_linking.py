@@ -41,6 +41,9 @@ CROSS_SESSION_FIXTURE = (
     Path(__file__).parent / "test_data" / "task_id_linking_cross_session.jsonl"
 )
 POISON_FIXTURE = Path(__file__).parent / "test_data" / "task_id_linking_poison.jsonl"
+REAL_WORLD_BASH_FIXTURE = (
+    Path(__file__).parent / "test_data" / "task_id_linking_real_world_bash.jsonl"
+)
 
 
 # -----------------------------------------------------------------------------
@@ -326,6 +329,48 @@ class TestTaskIdLinkingFixture:
             f"({sB_tc}), got {backlinks[1]} — would have been {sA_tc} under "
             "the id-only-keyed regression"
         )
+
+    def test_bash_spawn_title_shows_async_hint_when_only_result_signals_background(
+        self,
+    ) -> None:
+        """Real-world regression: the Claude Code harness backgrounds
+        some Bash commands *without* setting ``input.run_in_background``
+        — only the toolUseResult carries ``backgroundTaskId``. The
+        spawn card's title must still render the ``[async #<id>]``
+        hint, otherwise the task reads as a plain synchronous Bash
+        even though it's actually backgrounded.
+
+        Discovered against
+        ``~/.claude/projects/...repoindexer.../...jsonl`` where a
+        ``claude -p "Say hello"`` call timed out and got harness-
+        backgrounded as ``b622bd5``. Before the fix, the title gated
+        on ``input.run_in_background`` alone, missing this shape.
+
+        Fixture (``task_id_linking_real_world_bash.jsonl``) reproduces
+        the exact tool_use/tool_result pair: no input flag, but
+        ``backgroundTaskId`` present on the structured result.
+        """
+        if not REAL_WORLD_BASH_FIXTURE.exists():
+            pytest.fail(f"Required fixture missing: {REAL_WORLD_BASH_FIXTURE}")
+        html = HtmlRenderer().generate(load_transcript(REAL_WORLD_BASH_FIXTURE), "Test")
+        bash_anchor = self._spawn_anchor(html, "toolu_real_bash_bg")
+        card_re = re.compile(
+            r"id='" + re.escape(bash_anchor) + r"'>(.+?)</div>",
+            re.DOTALL,
+        )
+        card = card_re.search(html)
+        assert card, f"spawn card {bash_anchor} not found"
+        card_html = card.group(1)
+        # The async hint must be present (the user-visible regression
+        # was the absence of the entire ``[async ...]`` bracket).
+        assert "[async " in card_html, (
+            "Bash spawn title is missing the [async ...] hint — "
+            "the title formatter is gating on input.run_in_background "
+            "alone and missing the harness-backgrounded shape"
+        )
+        # And the minted id must appear (propagation from the
+        # toolUseResult.backgroundTaskId worked).
+        assert "#b622bd5" in card_html
 
     def test_unrelated_tool_result_with_agent_id_text_not_indexed(self) -> None:
         """A non-spawn tool_result whose raw text mentions ``agentId:

@@ -814,16 +814,22 @@ class HtmlRenderer(Renderer):
     def title_BashInput(self, input: BashInput, message: TemplateMessage) -> str:
         """Title → '💻 Bash <description> [async #<id>]'.
 
-        Plain shape for foreground Bash. For ``run_in_background=True``
-        spawns, append the ``[async]`` muted hint and — once the
-        matching tool_result has been parsed — the minted
-        ``#<id>``. When a later ``TaskOutput`` poll for the same id is
-        present, the ``#<id>`` wraps in a forward-link anchor (PR #158
-        follow-up, mirroring the ``TaskOutput`` → spawn backlink
-        from #154).
+        Plain shape for foreground Bash. For background spawns, append
+        the ``[async]`` muted hint and — once the matching tool_result
+        has been parsed — the minted ``#<id>``. When a later
+        ``TaskOutput`` poll for the same id is present, the ``#<id>``
+        wraps in a forward-link anchor (PR #158 follow-up).
+
+        The async signal is the OR of (a) ``input.run_in_background``
+        (caller-set hint) and (b) ``input.minted_background_task_id``
+        (propagated from the tool_result by
+        ``_link_task_id_consumers``). The harness may background a
+        Bash command on its own (e.g. timeout-driven) WITHOUT setting
+        the input flag, so gating on the input alone misses real-world
+        shapes — the authoritative signal lives on the result side.
         """
         base = self._tool_title(message, "💻", input.description)
-        if not input.run_in_background:
+        if not (input.run_in_background or input.minted_background_task_id):
             return base
         suffix = self._async_id_suffix(
             input.minted_background_task_id,
