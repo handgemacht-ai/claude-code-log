@@ -1,11 +1,17 @@
 """mistune inline-parser plugins shared between the HTML and Markdown
 output paths.
 
-Currently houses a single plugin: ``make_sha_plugin`` (issue #156)
-which turns plain ``7c2e6f6``-shaped tokens into commit links when a
-caller-supplied resolver returns a URL. Local-only commits — the
-common case for in-flight work — stay as plain text so the rendered
-transcript doesn't sprout broken links.
+Houses two related plugins (issue #156):
+
+- ``make_sha_plugin`` — turns plain ``7c2e6f6``-shaped tokens into
+  commit links when a caller-supplied resolver returns a URL.
+- ``make_codespan_sha_plugin`` — wraps ``​`5baac35`​`` codespans
+  in commit links, emitting ``<a href="…"><code>5baac35</code></a>``
+  so explicit codespan-quoted SHAs become links too.
+
+Both plugins are no-ops for SHAs the resolver can't map to a URL
+(typical of in-flight local-only commits), so the rendered transcript
+doesn't sprout broken links.
 
 ## Why a separate module
 
@@ -53,6 +59,17 @@ from typing import Any, Callable, Optional
 # 7); 40 is the full SHA-1 length. The resolver gate filters
 # false-positives that this loose pattern lets through.
 SHA_PATTERN = r"\b[0-9a-f]{7,40}\b"
+
+
+# Tight ``\`sha\``` shape for the codespan-wrapped variant. Single
+# backticks only: the realistic transcript form. Multi-backtick
+# codespans wrapping a bare SHA (``\`\`sha\`\``` etc.) and the
+# CommonMark strip-one-space form (``\` sha \``) are not handled —
+# extend with explicit alternation if real-world data warrants it.
+# We deliberately avoid backreferences here: mistune concatenates
+# rule patterns and renumbers groups, so ``\1`` would refer to a
+# different (and surprising) group at parse time.
+CODESPAN_SHA_PATTERN = r"`[0-9a-f]{7,40}`"
 
 
 def make_sha_plugin(resolve: Callable[[str], Optional[str]]) -> Any:
@@ -110,8 +127,75 @@ def make_sha_plugin(resolve: Callable[[str], Optional[str]]) -> Any:
         # inline rules (``link``, ``auto_link``, ``codespan``, …) win
         # on overlap. That's what we want: an explicit
         # ``[abc1234](url)`` stays a single link, and a SHA inside
-        # ``` `…` ``` stays code.
+        # ``` `…` ``` stays code (handled by the *separate*
+        # ``make_codespan_sha_plugin`` below, which fires *before*
+        # the built-in ``codespan`` rule).
         md.inline.register("sha_link", SHA_PATTERN, parse_sha_link)
+
+    return plugin
+
+
+def make_codespan_sha_plugin(resolve: Callable[[str], Optional[str]]) -> Any:
+    """Build a mistune plugin that links codespan-wrapped SHAs.
+
+    Where ``make_sha_plugin`` handles bare prose tokens (``abc1234``),
+    this plugin handles the explicit codespan form (``​`abc1234`​``)
+    that authors often use to typographically distinguish commit
+    references. The emitted token is a stock ``link`` wrapping a
+    stock ``codespan`` child, so the rendered HTML is
+    ``<a href="…"><code>abc1234</code></a>`` — the SHA stays
+    monospaced and gains the link.
+
+    Must fire *before* mistune's built-in ``codespan`` rule
+    (``register(…, before="codespan")``); otherwise the default
+    codespan consumes the input first and our plugin never sees it.
+
+    Args:
+        resolve: same contract as ``make_sha_plugin``.
+    """
+
+    def parse_codespan_sha(inline: Any, m: re.Match[str], state: Any) -> int:
+        # mistune concatenates rule patterns into one combined regex
+        # and renumbers capturing groups, so ``m.group(N)`` for N>0
+        # is unreliable. ``m.group(0)`` always holds the full literal
+        # match (here: ``​`abc1234`​``).
+        raw = m.group(0)
+        sha = raw.strip("`")
+        pos = m.end()
+        if getattr(state, "in_link", False):
+            # Already inside ``[…](url)``: don't double-wrap, but
+            # preserve the codespan formatting so
+            # ``​[`abc1234`](url)​`` still renders as
+            # ``<a><code>abc1234</code></a>``. Falling through with
+            # ``return None`` would skip 1 char and lose the codespan
+            # tagging that mistune's default would have emitted.
+            state.append_token({"type": "codespan", "raw": sha})
+            return pos
+        url = resolve(sha)
+        if url is None:
+            # Resolver said "no": emit the unchanged codespan, exactly
+            # as mistune's default would.
+            state.append_token({"type": "codespan", "raw": sha})
+            return pos
+        state.append_token(
+            {
+                "type": "link",
+                "attrs": {"url": url},
+                "children": [{"type": "codespan", "raw": sha}],
+            }
+        )
+        return pos
+
+    def plugin(md: Any) -> None:
+        # ``before="codespan"`` is load-bearing: mistune's built-in
+        # codespan rule is greedy on ``​`…`​`` shapes and
+        # would consume our input first if we registered after it.
+        md.inline.register(
+            "codespan_sha",
+            CODESPAN_SHA_PATTERN,
+            parse_codespan_sha,
+            before="codespan",
+        )
 
     return plugin
 
@@ -126,7 +210,12 @@ def linkify_shas_in_text(text: str, resolve: Callable[[str], Optional[str]]) -> 
 
     - SHAs inside fenced code blocks (``` ``` ``` / ``~~~``) are skipped.
     - SHAs inside indented code blocks (4-space / tab leading) are skipped.
-    - SHAs inside inline code spans (`` `…` ``, ``` ``…`` ``, etc.) are skipped.
+    - SHAs *embedded* inside inline code spans alongside other text
+      (e.g. ``` `git show abc1234` ```) are skipped — we won't rewrite
+      arbitrary code fragments. *Single-backtick* codespans whose body
+      is exactly a SHA (e.g. ``` `abc1234` ```) get the codespan
+      preserved and wrapped in a link: ``[`abc1234`](url)``. Mirrors
+      ``make_codespan_sha_plugin`` on the HTML side.
     - SHAs inside an existing Markdown link's ``[text]`` or ``(url)``
       span are skipped — so an already-linked SHA isn't double-wrapped.
     - Everything else: resolver-confirmed SHAs become ``[sha](url)``;
@@ -215,9 +304,13 @@ def _linkify_block_tokens(
 def _linkify_inline(line: str, resolve: Callable[[str], Optional[str]]) -> str:
     """Apply SHA substitution within a single prose line.
 
-    Skips spans owned by inline code (matched backtick runs) and
-    existing Markdown links (``[text](url)``). Anything else is
-    treated as prose and passed through ``_replace_shas``.
+    Spans owned by an existing Markdown link (``[text](url)``) are
+    opaque. Matched backtick runs are opaque *unless* their body is
+    exactly a resolvable SHA and the opener is a single backtick, in
+    which case the span ``​`abc1234`​`` is rewritten to
+    ``[​`abc1234`​](url)`` — mirroring the
+    ``make_codespan_sha_plugin`` behaviour on the HTML side. Anything
+    else is treated as prose and passed through ``_replace_shas``.
     """
     parts: list[str] = []
     i = 0
@@ -232,8 +325,23 @@ def _linkify_inline(line: str, resolve: Callable[[str], Optional[str]]) -> str:
             open_len = j - i
             close = _find_matching_backticks(line, j, open_len)
             if close is not None:
+                span = line[i : close + open_len]
+                # Special-case: single-backtick codespan whose body
+                # is exactly a resolvable SHA → wrap the codespan in
+                # a link so [`abc1234`](url) renders as a monospaced
+                # commit link. Multi-backtick spans, spans with
+                # surrounding whitespace, and any non-SHA body fall
+                # through to the opaque emit.
+                if open_len == 1:
+                    body = line[j:close]
+                    if re.fullmatch(SHA_PATTERN, body) is not None:
+                        url = resolve(body)
+                        if url is not None:
+                            parts.append(f"[{span}]({url})")
+                            i = close + open_len
+                            continue
                 # Whole span (including the closing run) is opaque.
-                parts.append(line[i : close + open_len])
+                parts.append(span)
                 i = close + open_len
                 continue
             # Unmatched run: treat as plain prose chars.

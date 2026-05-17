@@ -32,6 +32,7 @@ from claude_code_log.html.utils import render_markdown, render_user_markdown
 from claude_code_log.markdown_plugins import (
     SHA_PATTERN,
     linkify_shas_in_text,
+    make_codespan_sha_plugin,
     make_sha_plugin,
 )
 
@@ -133,6 +134,67 @@ class TestShaPluginInline:
 
 
 # ---------------------------------------------------------------------------
+# make_codespan_sha_plugin: HTML mistune integration for `sha` codespans
+
+
+def _render_with_both_plugins(text: str, resolve=_mock_resolve) -> str:
+    """Build a fresh mistune renderer with *both* SHA plugins."""
+    import mistune
+
+    md = mistune.create_markdown(
+        plugins=[
+            make_sha_plugin(resolve),
+            make_codespan_sha_plugin(resolve),
+        ]
+    )
+    return str(md(text)).strip()
+
+
+class TestCodespanShaPlugin:
+    def test_wraps_codespan_sha_in_link(self):
+        out = _render_with_both_plugins("See `abc1234` here")
+        assert '<a href="https://example.com/abc1234"><code>abc1234</code></a>' in out
+
+    def test_unresolved_codespan_sha_stays_plain_code(self):
+        # Local-only SHA: codespan preserved, no link emitted.
+        out = _render_with_both_plugins("Local `ffffeee` commit")
+        assert "<code>ffffeee</code>" in out
+        assert "<a" not in out
+
+    def test_codespan_with_non_sha_body_unchanged(self):
+        out = _render_with_both_plugins("Call `hello` first")
+        assert "<code>hello</code>" in out
+        assert "<a" not in out
+
+    def test_codespan_with_mixed_body_unchanged(self):
+        # `git show abc1234`: body isn't *exactly* a SHA, so we don't
+        # fire — exactly as the bare-SHA plugin doesn't either.
+        out = _render_with_both_plugins("Run `git show abc1234`")
+        assert "<code>git show abc1234</code>" in out
+        assert "<a" not in out
+
+    def test_codespan_sha_inside_emphasis(self):
+        # Bold codespan-SHA: <strong><a><code>…</code></a></strong>.
+        out = _render_with_both_plugins("Bold **`abc1234`** here")
+        assert "<strong>" in out
+        assert '<a href="https://example.com/abc1234"><code>abc1234</code></a>' in out
+
+    def test_codespan_sha_inside_existing_link_preserves_code(self):
+        # `[\`abc1234\`](url)`: don't double-wrap, but the in_link
+        # branch still emits a codespan token, so the link content
+        # is monospaced (not raw backtick text).
+        out = _render_with_both_plugins("[`abc1234`](http://manual.example/x)")
+        assert out.count("<a ") == 1
+        assert "manual.example" in out
+        assert "<code>abc1234</code>" in out
+
+    def test_codespan_sha_inside_fenced_block_unchanged(self):
+        out = _render_with_both_plugins("```\n`abc1234`\n```")
+        assert "<a" not in out
+        assert "abc1234" in out
+
+
+# ---------------------------------------------------------------------------
 # linkify_shas_in_text: Markdown-side text substitution
 
 
@@ -183,13 +245,17 @@ class TestLinkifyShasInText:
         out = linkify_shas_in_text("    abc1234 indented", _mock_resolve)
         assert out == "    abc1234 indented"
 
-    def test_skips_inside_indented_with_tab(self):
-        # 4+ spaces or a tab triggers indented-code semantics; current
-        # implementation gates on space-only indent. Documenting the
-        # current contract; revisit if real-world transcripts show
-        # tab-indented prose.
-        out = linkify_shas_in_text("    abc1234 four-space indent", _mock_resolve)
-        assert "[abc1234]" not in out
+    def test_documents_tab_indent_gap(self):
+        # CommonMark treats a leading tab as 4-space-equivalent → an
+        # indented code block. Our block tokenizer gates strictly on
+        # space-only indent (``line.lstrip(" ")``), so a tab-prefixed
+        # SHA does get linkified — in violation of CommonMark. This
+        # test pins the current (incorrect-but-documented) behaviour
+        # so any future fix flags it explicitly. Revisit if real-world
+        # transcripts show tab-indented prose; until then, the cost of
+        # widening the indent detector isn't worth it.
+        out = linkify_shas_in_text("\tabc1234 tab-indented", _mock_resolve)
+        assert out == "\t[abc1234](https://example.com/abc1234) tab-indented"
 
     def test_skips_existing_markdown_link(self):
         # The HTML plugin's ``state.in_link`` guard's text-helper
@@ -243,6 +309,46 @@ class TestLinkifyShasInText:
         # brackets become literal characters around a substituted SHA.
         out = linkify_shas_in_text("see [abc1234] note", _mock_resolve)
         assert out == "see [[abc1234](https://example.com/abc1234)] note"
+
+    # -- Codespan-wrapped SHA → link (parity with
+    # ``make_codespan_sha_plugin`` on the HTML side) --
+
+    def test_codespan_only_sha_becomes_linked_codespan(self):
+        # ``\`abc1234\``` body is exactly a SHA → wrap the *whole*
+        # span (backticks included) in a link target. The resulting
+        # ``[\`abc1234\`](url)`` is valid Markdown that renders as
+        # ``<a><code>abc1234</code></a>`` — same as the HTML plugin.
+        out = linkify_shas_in_text("See `abc1234` here", _mock_resolve)
+        assert out == "See [`abc1234`](https://example.com/abc1234) here"
+
+    def test_unresolved_codespan_sha_stays_opaque(self):
+        # Local-only commit: resolver returns None → codespan stays
+        # as-is, no link wrapping (no broken URLs in the transcript).
+        out = linkify_shas_in_text("Local `ffffeee` commit", _mock_resolve)
+        assert out == "Local `ffffeee` commit"
+
+    def test_codespan_with_mixed_body_unchanged(self):
+        # Single backticks but body isn't *exactly* a SHA → stays
+        # opaque, same contract as the existing
+        # ``test_skips_inside_inline_codespan`` case.
+        out = linkify_shas_in_text("`git show abc1234`", _mock_resolve)
+        assert out == "`git show abc1234`"
+
+    def test_codespan_sha_with_double_backticks_unchanged(self):
+        # ``\`\`sha\`\``` is a valid CommonMark codespan but multi-
+        # backtick: we only rewrite the single-backtick form. Spans
+        # stay opaque, consistent with the conservative scope of
+        # ``CODESPAN_SHA_PATTERN``.
+        out = linkify_shas_in_text("``abc1234``", _mock_resolve)
+        assert out == "``abc1234``"
+
+    def test_bold_codespan_sha_becomes_bold_link(self):
+        # ``**\`abc1234\`**``: the ``*`` falls through the prose
+        # accumulator; the matched-backtick branch fires on the
+        # inner span. Result is a bold link round-tripping to
+        # ``<strong><a><code>abc1234</code></a></strong>``.
+        out = linkify_shas_in_text("Bold **`abc1234`** here", _mock_resolve)
+        assert out == "Bold **[`abc1234`](https://example.com/abc1234)** here"
 
 
 # ---------------------------------------------------------------------------
@@ -422,14 +528,23 @@ class TestIntegrationLocalRepo:
             in md
         )
 
-    def test_codespan_unchanged_with_repo_context(self):
+    def test_codespan_sha_becomes_linked_codespan(self):
+        # Updated contract (codespan-SHA feature): a single-backtick
+        # codespan whose body is exactly a resolvable SHA gets the
+        # codespan preserved *and* wrapped in a link. The earlier
+        # contract — codespans stay opaque — was inverted on purpose
+        # so authors who write ``\`5baac35\``` to typographically
+        # quote a SHA still get a clickable commit link.
         cwd = str(Path(__file__).parent.parent)
         with render_with_repo_context(cwd):
             html = render_markdown(f"`{_KNOWN_LOCAL_SHA}` is a code span")
         assert f"<code>{_KNOWN_LOCAL_SHA}</code>" in html
-        # The substring "claude-code-log/commit/" mustn't appear; the
-        # SHA inside the code span shouldn't have been linkified.
-        assert "claude-code-log/commit/" not in html
+        assert '<a href="https://github.com/daaain/claude-code-log/commit/' in html
+        # Mixed-body codespan still stays opaque (regression guard for
+        # the "only exact SHAs" half of the contract).
+        with render_with_repo_context(cwd):
+            mixed = render_markdown(f"`git show {_KNOWN_LOCAL_SHA}` should stay code")
+        assert "<a" not in mixed
 
     def test_no_context_produces_plain_text(self):
         # Without entering the context, even a real reachable SHA
