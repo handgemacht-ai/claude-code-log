@@ -468,6 +468,51 @@ def _clear_output_files(
         click.echo(f"Warning: Failed to clear {ext_upper} files: {e}")
 
 
+# Placeholders accepted by ``--git-link`` templates. Mirrors
+# ``resolve_sha`` in claude_code_log.git_remote — keep in sync.
+_GIT_LINK_ALLOWED_PLACEHOLDERS = frozenset({"host", "path", "sha"})
+
+
+def _validate_git_link_template(template: str) -> None:
+    """Validate a ``--git-link`` template eagerly; raise ``click.UsageError`` on issues.
+
+    Two checks:
+
+    1. ``{sha}`` must be present (it's the only mandatory field —
+       the resolver's whole job is to substitute the commit SHA).
+    2. All placeholders must be in ``_GIT_LINK_ALLOWED_PLACEHOLDERS``.
+       Catches typos like ``{hsot}`` before they reach
+       ``template.format()`` (which would raise ``KeyError`` at
+       render time). The resolver has a try/except guarding the
+       env-var-only path; this validator is the loud-error path for
+       CLI users.
+
+    Uses ``string.Formatter().parse()`` rather than regex so the
+    same parser Python uses for ``str.format`` decides what counts
+    as a placeholder.
+    """
+    import string
+
+    fields = {
+        field
+        for _, field, _, _ in string.Formatter().parse(template)
+        if field is not None and field != ""
+    }
+    unknown = fields - _GIT_LINK_ALLOWED_PLACEHOLDERS
+    if unknown:
+        raise click.UsageError(
+            f"--git-link template uses unknown placeholder(s): "
+            f"{', '.join('{' + f + '}' for f in sorted(unknown))}. "
+            f"Allowed: {{host}}, {{path}}, {{sha}}."
+        )
+    if "sha" not in fields:
+        raise click.UsageError(
+            "--git-link template must contain a {sha} placeholder "
+            f"(got: {template!r}). Example: "
+            "'https://{host}/{path}/-/commit/{sha}'."
+        )
+
+
 @click.command()
 @click.argument("input_path", type=click.Path(path_type=Path), required=False)
 @click.option(
@@ -634,12 +679,7 @@ def main(
     # resolver decoupled from Click; the env var is the underlying
     # contract, the CLI flag is a convenience that sets it.
     if git_link is not None:
-        if "{sha}" not in git_link:
-            raise click.UsageError(
-                "--git-link template must contain a {sha} placeholder "
-                f"(got: {git_link!r}). Example: "
-                "'https://{host}/{path}/-/commit/{sha}'."
-            )
+        _validate_git_link_template(git_link)
         os.environ["CLAUDE_CODE_LOG_GIT_LINK"] = git_link
 
     # Configure logging to show warnings and above

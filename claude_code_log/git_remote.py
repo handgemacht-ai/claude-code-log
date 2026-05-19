@@ -205,14 +205,18 @@ def _expand_to_full_sha(cwd: str, sha: str) -> Optional[str]:
 def _fallback_template() -> Optional[str]:
     """Read the user-supplied fallback URL template, or ``None``.
 
-    Checks ``CLAUDE_CODE_LOG_GIT_LINK`` at each call (cheap) so a
-    test or long-running process can flip it dynamically. Returns
-    ``None`` for empty / unset, or for templates missing the
+    Returns ``None`` for empty / unset, or for templates missing the
     required ``{sha}`` placeholder — the missing-``{sha}`` case is
     a silent skip rather than a crash so a misconfigured environment
     degrades to "no link" instead of breaking rendering. The CLI
-    handler validates ``{sha}`` eagerly with a loud error; this
-    function is the defence-in-depth.
+    handler validates ``{sha}`` (and whitelists placeholders)
+    eagerly with a loud error; this function is the defence-in-depth
+    for the env-var-only path.
+
+    Note: ``resolve_sha`` is ``@lru_cache``-d, so flipping
+    ``CLAUDE_CODE_LOG_GIT_LINK`` mid-process won't re-resolve
+    already-cached SHAs. Call ``clear_resolver_caches()`` after
+    mutating the env var (the test fixtures already do).
     """
     template = os.environ.get(_FALLBACK_TEMPLATE_ENV, "").strip()
     if not template:
@@ -261,7 +265,16 @@ def resolve_sha(cwd: Optional[str], sha: str) -> Optional[str]:
     full = _expand_to_full_sha(cwd, sha)
     if full is None:
         return None
-    return template.format(host=host, path=path, sha=full)
+    try:
+        return template.format(host=host, path=path, sha=full)
+    except (KeyError, IndexError, ValueError):
+        # Template has an unknown placeholder (``{foo}``), a positional
+        # ``{0}``, or unbalanced braces. The CLI handler whitelists
+        # ``{host, path, sha}`` up-front and rejects loudly, so the
+        # only way we reach here is a malformed env-var-only template
+        # — silent skip matches the resolver's other degradation
+        # paths (no link is better than a crash mid-render).
+        return None
 
 
 def resolve_sha_for_current_render(sha: str) -> Optional[str]:

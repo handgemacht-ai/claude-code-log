@@ -618,15 +618,89 @@ class TestFallbackTemplate:
         url = resolve_sha("/fake/cwd", "999abcd")
         assert url == "https://example.test/commit/" + "9" * 40
 
+    def test_fallback_unknown_placeholder_is_silent_skip(self, monkeypatch):
+        # Regression for monk's blocking finding on this PR. A user
+        # who typos ``{hsot}`` (instead of ``{host}``) passes the
+        # ``{sha}``-presence check in ``_fallback_template()`` but
+        # would crash ``template.format()`` with KeyError. The
+        # resolver wraps that in try/except and degrades to None.
+        # The CLI path catches this loudly via the placeholder
+        # whitelist (see TestGitLinkTemplateValidation below); this
+        # test guards the env-var-only path.
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK", "https://{hsot}/{path}/-/commit/{sha}"
+        )
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "8" * 40)
+        assert resolve_sha("/fake/cwd", "888abcd") is None
+
+    def test_fallback_positional_placeholder_is_silent_skip(self, monkeypatch):
+        # ``{0}`` would raise IndexError at format time — same
+        # silent-skip degradation as the KeyError case.
+        monkeypatch.setenv("CLAUDE_CODE_LOG_GIT_LINK", "https://{0}/{sha}")
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "7" * 40)
+        assert resolve_sha("/fake/cwd", "777abcd") is None
+
+
+class TestGitLinkTemplateValidation:
+    """Unit tests for the CLI-side ``_validate_git_link_template`` helper.
+
+    Loud-error path for users who pass ``--git-link`` directly. The
+    env-var-only path (no CLI) instead silently degrades via the
+    resolver's try/except — see ``TestFallbackTemplate`` above.
+    """
+
+    def test_missing_sha_raises_usage_error(self):
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"must contain a \{sha\}"):
+            _validate_git_link_template("https://example.test/no-placeholders")
+
+    def test_unknown_placeholder_raises_usage_error(self):
+        # The typo-catching case monk flagged. ``{hsot}`` ≠ ``{host}``.
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"unknown placeholder.*hsot"):
+            _validate_git_link_template("https://{hsot}/{path}/-/commit/{sha}")
+
+    def test_positional_placeholder_raises_usage_error(self):
+        # ``{0}`` parses as a placeholder named ``"0"`` — not in the
+        # whitelist, so it's flagged as unknown.
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"unknown placeholder"):
+            _validate_git_link_template("https://{0}/{sha}")
+
+    def test_all_three_placeholders_passes(self):
+        from claude_code_log.cli import _validate_git_link_template
+
+        _validate_git_link_template("https://{host}/{path}/-/commit/{sha}")
+        # No exception → pass.
+
+    def test_only_sha_passes(self):
+        from claude_code_log.cli import _validate_git_link_template
+
+        _validate_git_link_template("https://example.test/commit/{sha}")
+
+    def test_host_and_sha_no_path_passes(self):
+        from claude_code_log.cli import _validate_git_link_template
+
+        _validate_git_link_template("https://{host}/commit/{sha}")
+
 
 class TestGitLinkCliOption:
-    """``--git-link`` flag wiring: validation, env-var sync."""
+    """``--git-link`` flag end-to-end wiring: validation surfaces, env-var sync."""
 
     def teardown_method(self):
         # Don't leak the env var across tests.
         os.environ.pop("CLAUDE_CODE_LOG_GIT_LINK", None)
 
     def test_missing_sha_placeholder_raises_usage_error(self):
+        # End-to-end: confirms the CLI hooks the validator in. The
+        # validator unit tests above cover the validation logic
+        # itself; this is the integration smoke.
         from click.testing import CliRunner
         from claude_code_log.cli import main
 
@@ -642,35 +716,6 @@ class TestGitLinkCliOption:
         # Click usage errors exit with 2.
         assert result.exit_code == 2
         assert "must contain a {sha} placeholder" in result.output
-
-    def test_valid_template_propagates_to_env(self, tmp_path):
-        # Smoke: a valid template hits the env-var setter. We can't
-        # easily exercise full rendering here (would need a real
-        # transcript), so we just confirm the env var is set after
-        # the CLI passes validation. The fallback-template tests
-        # above cover the resolver's reaction.
-        from click.testing import CliRunner
-        from claude_code_log.cli import main
-
-        os.environ.pop("CLAUDE_CODE_LOG_GIT_LINK", None)
-        runner = CliRunner()
-        # An empty input directory: the CLI completes the early
-        # validation work then bails on "nothing to process". The
-        # env var is set before that point.
-        empty = tmp_path / "empty"
-        empty.mkdir()
-        runner.invoke(
-            main,
-            [
-                "--git-link",
-                "https://{host}/{path}/-/commit/{sha}",
-                str(empty),
-            ],
-        )
-        assert (
-            os.environ.get("CLAUDE_CODE_LOG_GIT_LINK")
-            == "https://{host}/{path}/-/commit/{sha}"
-        )
 
 
 # ---------------------------------------------------------------------------
