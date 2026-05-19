@@ -579,6 +579,20 @@ def _clear_output_files(
     ),
 )
 @click.option(
+    "--git-link",
+    "git_link",
+    default=None,
+    envvar="CLAUDE_CODE_LOG_GIT_LINK",
+    metavar="TEMPLATE",
+    help=(
+        "URL template for resolving commit SHAs on forges not in the built-in "
+        "map (github.com, gitlab.com, bitbucket.org). Placeholders: {host}, "
+        "{path}, {sha}. Example for self-hosted GitLab: "
+        "--git-link 'https://{host}/{path}/-/commit/{sha}'. Can also be set "
+        "via the CLAUDE_CODE_LOG_GIT_LINK env var."
+    ),
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -603,6 +617,7 @@ def main(
     session_id: Optional[str],
     detail: str,
     compact: bool,
+    git_link: Optional[str],
     debug: bool,
 ) -> None:
     """Convert Claude transcript JSONL files to HTML or Markdown.
@@ -612,6 +627,20 @@ def main(
     # Install signal-based stack dumper before any heavy work, so a hang
     # can be diagnosed with `kill -USR1 <pid>` without root or restart.
     _install_stack_dump_signal()
+
+    # Custom-forge URL template: validate eagerly with a loud error,
+    # then pin to the env var so the resolver (which reads the env at
+    # render time) picks it up. Doing this at env-var level keeps the
+    # resolver decoupled from Click; the env var is the underlying
+    # contract, the CLI flag is a convenience that sets it.
+    if git_link is not None:
+        if "{sha}" not in git_link:
+            raise click.UsageError(
+                "--git-link template must contain a {sha} placeholder "
+                f"(got: {git_link!r}). Example: "
+                "'https://{host}/{path}/-/commit/{sha}'."
+            )
+        os.environ["CLAUDE_CODE_LOG_GIT_LINK"] = git_link
 
     # Configure logging to show warnings and above
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")

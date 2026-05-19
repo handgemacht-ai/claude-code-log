@@ -164,6 +164,21 @@ claude-code-log /path/to/project --detail low --format md --compact
 
 `--compact` merges consecutive same-type sections in Markdown so runs of assistant responses share one heading instead of repeating `### 🤖 Assistant:` for each.
 
+### Linking Commit SHAs
+
+Plain `7c2e6f6`-shaped tokens in transcript prose get turned into clickable commit links when the SHA is reachable from a local remote-tracking branch. **github.com**, **gitlab.com**, and **bitbucket.org** work out of the box. For self-hosted forges (in-house GitLab, Gitea, Forgejo, …), supply a URL template via `--git-link`:
+
+```bash
+# Self-hosted GitLab
+claude-code-log /path/to/transcript --git-link 'https://{host}/{path}/-/commit/{sha}'
+
+# Same thing via env var (useful for TUI / repeated invocations)
+export CLAUDE_CODE_LOG_GIT_LINK='https://{host}/{path}/-/commit/{sha}'
+claude-code-log --tui
+```
+
+Placeholders: `{host}`, `{path}`, `{sha}`. The template fires only when the static map doesn't already know the host, so a mix of GitHub repos + self-hosted GitLab gets correct links from both. SHAs not reachable from any local remote-tracking ref render as plain text — local-only work-in-progress commits never produce broken links.
+
 ## Project Hierarchy Output
 
 When processing all projects, the tool generates:

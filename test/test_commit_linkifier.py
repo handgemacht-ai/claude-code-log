@@ -13,6 +13,7 @@ Covers two modules and their integration:
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -396,6 +397,37 @@ class TestParseGitUrl:
     def test_rejects_no_owner(self):
         assert _parse_git_url("git@github.com:repo.git") is None
 
+    # -- Multi-forge URL shapes the parser must handle uniformly --
+
+    def test_gitlab_https(self):
+        assert _parse_git_url("https://gitlab.com/group/project.git") == (
+            "gitlab.com",
+            "group/project",
+        )
+
+    def test_gitlab_ssh_with_subgroup(self):
+        # GitLab supports arbitrary subgroup nesting; the path captures
+        # everything between the host and the optional .git suffix.
+        assert _parse_git_url("git@gitlab.com:group/sub/project.git") == (
+            "gitlab.com",
+            "group/sub/project",
+        )
+
+    def test_self_hosted_gitlab(self):
+        # Self-hosted GitLab: host name is arbitrary (e.g.
+        # git.bct-technology.com). Parser doesn't classify hosts —
+        # just splits. Classification happens in resolve_sha against
+        # the static map + env fallback.
+        assert _parse_git_url(
+            "git@git.bct-technology.com:BCT/claudecode/repoindexer.git"
+        ) == ("git.bct-technology.com", "BCT/claudecode/repoindexer")
+
+    def test_bitbucket_https(self):
+        assert _parse_git_url("https://bitbucket.org/workspace/repo.git") == (
+            "bitbucket.org",
+            "workspace/repo",
+        )
+
 
 # ---------------------------------------------------------------------------
 # canonical_cwd_from_messages
@@ -446,6 +478,199 @@ class TestRenderRepoContext:
         with render_with_repo_context("/some/repo"):
             pass
         assert resolve_sha_for_current_render("abc1234") is None
+
+
+# ---------------------------------------------------------------------------
+# Forge templates: static map + env-var fallback
+#
+# The resolver's URL-shape logic is unit-tested here by stubbing the
+# three subprocess-backed helpers (``_git_remote_for``,
+# ``_commit_reachable_from_remote``, ``_expand_to_full_sha``). This
+# isolates the host-classification + template-substitution logic
+# from the actual git plumbing — the integration class below covers
+# end-to-end resolution against this repo's real origin/main.
+
+
+class _StubResolverEnv:
+    """Monkeypatch fixture: pin the subprocess-backed helpers to known
+    answers so resolve_sha tests just exercise the URL-shape logic.
+
+    The three patched functions correspond to the three subprocess
+    boundaries inside resolve_sha:
+    - ``_git_remote_for`` → (host, path) parsing
+    - ``_commit_reachable_from_remote`` → reachability check
+    - ``_expand_to_full_sha`` → short → full SHA peel
+    """
+
+    def __init__(self, monkeypatch, host: str, path: str, full_sha: str):
+        import claude_code_log.git_remote as gr
+
+        clear_resolver_caches()
+        monkeypatch.setattr(gr, "_git_remote_for", lambda _cwd: (host, path))
+        monkeypatch.setattr(
+            gr, "_commit_reachable_from_remote", lambda _cwd, _sha: True
+        )
+        monkeypatch.setattr(gr, "_expand_to_full_sha", lambda _cwd, _sha: full_sha)
+
+
+class TestStaticForgeMap:
+    """``_HOST_URL_PATTERNS`` covers github / gitlab / bitbucket out of the box."""
+
+    def teardown_method(self):
+        clear_resolver_caches()
+
+    def test_github_url(self, monkeypatch):
+        _StubResolverEnv(monkeypatch, "github.com", "owner/repo", "0" * 40)
+        url = resolve_sha("/fake/cwd", "abc1234")
+        assert url == "https://github.com/owner/repo/commit/" + "0" * 40
+
+    def test_gitlab_url_uses_dash_commit_segment(self):
+        # GitLab's URL shape is ``host/path/-/commit/sha`` (the
+        # ``/-/`` is the namespace separator). Pinning here so a
+        # well-meaning refactor of the static map doesn't silently
+        # collapse it back to ``/commit/``.
+        # No subprocess needed since we go direct via the template.
+        from claude_code_log.git_remote import _HOST_URL_PATTERNS
+
+        assert (
+            _HOST_URL_PATTERNS["gitlab.com"]
+            == "https://gitlab.com/{path}/-/commit/{sha}"
+        )
+
+    def test_gitlab_url_end_to_end(self, monkeypatch):
+        _StubResolverEnv(monkeypatch, "gitlab.com", "group/sub/repo", "f" * 40)
+        url = resolve_sha("/fake/cwd", "fff1234")
+        assert url == "https://gitlab.com/group/sub/repo/-/commit/" + "f" * 40
+
+    def test_bitbucket_url_uses_commits_plural(self):
+        # Bitbucket's URL shape is ``host/path/commits/sha`` (plural).
+        # Same pinning rationale as the GitLab case above.
+        from claude_code_log.git_remote import _HOST_URL_PATTERNS
+
+        assert (
+            _HOST_URL_PATTERNS["bitbucket.org"]
+            == "https://bitbucket.org/{path}/commits/{sha}"
+        )
+
+    def test_bitbucket_url_end_to_end(self, monkeypatch):
+        _StubResolverEnv(monkeypatch, "bitbucket.org", "ws/repo", "1" * 40)
+        url = resolve_sha("/fake/cwd", "1111111")
+        assert url == "https://bitbucket.org/ws/repo/commits/" + "1" * 40
+
+    def test_unknown_host_no_fallback_returns_none(self, monkeypatch):
+        # Self-hosted forge with no env-var fallback → None.
+        monkeypatch.delenv("CLAUDE_CODE_LOG_GIT_LINK", raising=False)
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "a" * 40)
+        assert resolve_sha("/fake/cwd", "aaa1234") is None
+
+
+class TestFallbackTemplate:
+    """``CLAUDE_CODE_LOG_GIT_LINK`` covers self-hosted forges."""
+
+    def teardown_method(self):
+        clear_resolver_caches()
+
+    def test_fallback_substitutes_host_path_sha(self, monkeypatch):
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK",
+            "https://{host}/{path}/-/commit/{sha}",
+        )
+        _StubResolverEnv(monkeypatch, "git.bct-technology.com", "BCT/x/repo", "b" * 40)
+        url = resolve_sha("/fake/cwd", "bbb1234")
+        assert url == "https://git.bct-technology.com/BCT/x/repo/-/commit/" + "b" * 40
+
+    def test_static_map_wins_over_fallback(self, monkeypatch):
+        # Even with a "broken" fallback set, the static map's
+        # github.com entry takes precedence — guard against a
+        # refactor accidentally reversing the lookup order.
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK",
+            "https://WRONG/{host}/{path}/{sha}",
+        )
+        _StubResolverEnv(monkeypatch, "github.com", "owner/repo", "c" * 40)
+        url = resolve_sha("/fake/cwd", "ccc1234")
+        assert url == "https://github.com/owner/repo/commit/" + "c" * 40
+        assert "WRONG" not in url
+
+    def test_fallback_missing_sha_placeholder_is_silent_skip(self, monkeypatch):
+        # Defence-in-depth: the CLI handler errors loudly on a
+        # template without {sha}, but if the env var is set directly
+        # with a broken template, the resolver degrades to "no link"
+        # rather than crashing rendering.
+        monkeypatch.setenv("CLAUDE_CODE_LOG_GIT_LINK", "https://nope/{path}")
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "d" * 40)
+        assert resolve_sha("/fake/cwd", "ddd1234") is None
+
+    def test_empty_fallback_is_silent_skip(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CODE_LOG_GIT_LINK", "")
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "e" * 40)
+        assert resolve_sha("/fake/cwd", "eee1234") is None
+
+    def test_fallback_with_only_sha_placeholder(self, monkeypatch):
+        # Minimal valid template: only ``{sha}``. Documents that
+        # ``{host}`` / ``{path}`` are optional from the resolver's
+        # standpoint — a user could supply a fully-qualified URL
+        # stub if they had reason to.
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK", "https://example.test/commit/{sha}"
+        )
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "9" * 40)
+        url = resolve_sha("/fake/cwd", "999abcd")
+        assert url == "https://example.test/commit/" + "9" * 40
+
+
+class TestGitLinkCliOption:
+    """``--git-link`` flag wiring: validation, env-var sync."""
+
+    def teardown_method(self):
+        # Don't leak the env var across tests.
+        os.environ.pop("CLAUDE_CODE_LOG_GIT_LINK", None)
+
+    def test_missing_sha_placeholder_raises_usage_error(self):
+        from click.testing import CliRunner
+        from claude_code_log.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "--git-link",
+                "https://example.test/commit/no-placeholder",
+                "/dev/null",
+            ],
+        )
+        # Click usage errors exit with 2.
+        assert result.exit_code == 2
+        assert "must contain a {sha} placeholder" in result.output
+
+    def test_valid_template_propagates_to_env(self, tmp_path):
+        # Smoke: a valid template hits the env-var setter. We can't
+        # easily exercise full rendering here (would need a real
+        # transcript), so we just confirm the env var is set after
+        # the CLI passes validation. The fallback-template tests
+        # above cover the resolver's reaction.
+        from click.testing import CliRunner
+        from claude_code_log.cli import main
+
+        os.environ.pop("CLAUDE_CODE_LOG_GIT_LINK", None)
+        runner = CliRunner()
+        # An empty input directory: the CLI completes the early
+        # validation work then bails on "nothing to process". The
+        # env var is set before that point.
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        runner.invoke(
+            main,
+            [
+                "--git-link",
+                "https://{host}/{path}/-/commit/{sha}",
+                str(empty),
+            ],
+        )
+        assert (
+            os.environ.get("CLAUDE_CODE_LOG_GIT_LINK")
+            == "https://{host}/{path}/-/commit/{sha}"
+        )
 
 
 # ---------------------------------------------------------------------------
