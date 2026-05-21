@@ -1527,6 +1527,7 @@ def convert_jsonl_to(
     update_cache: bool = True,
     output_root: Optional[Path] = None,
     write_combined: bool = True,
+    no_timestamps: bool = False,
 ) -> Path:
     """Convert JSONL transcript(s) to the specified format.
 
@@ -1658,7 +1659,13 @@ def convert_jsonl_to(
 
     # Generate combined output file (check if regeneration needed)
     assert output_path is not None
-    renderer = get_renderer(format, image_export_mode, detail=detail, compact=compact)
+    renderer = get_renderer(
+        format,
+        image_export_mode,
+        detail=detail,
+        compact=compact,
+        no_timestamps=no_timestamps,
+    )
 
     # Decide whether to use pagination (HTML only, directory mode, no date filter)
     use_pagination = False
@@ -1782,6 +1789,7 @@ def convert_jsonl_to(
             detail=detail,
             compact=compact,
             write_combined=write_combined,
+            no_timestamps=no_timestamps,
         )
 
     return output_path
@@ -2169,6 +2177,7 @@ def _generate_individual_session_files(
     detail: DetailLevel = DetailLevel.FULL,
     compact: bool = False,
     write_combined: bool = True,
+    no_timestamps: bool = False,
 ) -> int:
     """Generate individual files for each session in the specified format.
 
@@ -2211,7 +2220,13 @@ def _generate_individual_session_files(
     project_title = get_project_display_name(output_dir.name, working_directories)
 
     # Get renderer once outside the loop
-    renderer = get_renderer(format, image_export_mode, detail=detail, compact=compact)
+    renderer = get_renderer(
+        format,
+        image_export_mode,
+        detail=detail,
+        compact=compact,
+        no_timestamps=no_timestamps,
+    )
     regenerated_count = 0
 
     # Generate HTML file for each session
@@ -2314,6 +2329,7 @@ def generate_single_session_file(
     image_export_mode: Optional[str] = None,
     detail: DetailLevel = DetailLevel.FULL,
     compact: bool = False,
+    no_timestamps: bool = False,
 ) -> Path:
     """Generate a single session output file for the given session ID.
 
@@ -2426,7 +2442,13 @@ def generate_single_session_file(
         output_file = input_path / f"session-{matched_id}{suffix}.{ext}"
 
     # Generate content and write
-    renderer = get_renderer(format, image_export_mode, detail=detail, compact=compact)
+    renderer = get_renderer(
+        format,
+        image_export_mode,
+        detail=detail,
+        compact=compact,
+        no_timestamps=no_timestamps,
+    )
     session_content = renderer.generate_session(
         session_messages, matched_id, session_title, cache_manager, output_dir
     )
@@ -2496,6 +2518,7 @@ def process_projects_hierarchy(
     expand_paths: bool = False,
     filter_path: Optional[str] = None,
     write_combined: bool = True,
+    no_timestamps: bool = False,
 ) -> Path:
     """Process the entire ~/.claude/projects/ hierarchy and create linked output files.
 
@@ -2746,6 +2769,7 @@ def process_projects_hierarchy(
                     compact=compact,
                     output_root=(dest_dir if dest_dir != project_dir else None),
                     write_combined=write_combined,
+                    no_timestamps=no_timestamps,
                 )
 
                 # Track timing

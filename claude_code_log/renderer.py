@@ -4440,6 +4440,7 @@ def get_renderer(
     image_export_mode: Optional[str] = None,
     detail: DetailLevel = DetailLevel.FULL,
     compact: bool = False,
+    no_timestamps: bool = False,
 ) -> Renderer:
     """Get a renderer instance for the specified format.
 
@@ -4449,6 +4450,9 @@ def get_renderer(
             If None, defaults to "embedded" for HTML and "referenced" for Markdown.
         detail: Output detail level controlling which message types are included.
         compact: If True, merge consecutive same-type headings (Markdown only).
+        no_timestamps: If True, suppress per-message timestamp lines
+            in Markdown output (issue #160). Ignored for HTML/JSON
+            since they don't emit those lines.
 
     Returns:
         A Renderer instance for the specified format.
@@ -4467,7 +4471,9 @@ def get_renderer(
 
         # For Markdown, default to referenced mode
         mode = image_export_mode or "referenced"
-        renderer = MarkdownRenderer(image_export_mode=mode)
+        md_renderer = MarkdownRenderer(image_export_mode=mode)
+        md_renderer.no_timestamps = no_timestamps
+        renderer = md_renderer
     elif format == "json":
         from .json.renderer import JsonRenderer
 

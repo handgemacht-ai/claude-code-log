@@ -1,0 +1,224 @@
+"""Tests for per-message timestamps in Markdown output (issue #160).
+
+Exercises the date-on-change state machine in
+``claude_code_log.markdown.renderer.MarkdownRenderer._format_message_timestamp``
+and the `--no-timestamps` CLI flag.
+"""
+
+from __future__ import annotations
+
+import json
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from claude_code_log.converter import load_transcript
+from claude_code_log.markdown.renderer import MarkdownRenderer
+
+
+def _user_msg(uuid: str, session_id: str, timestamp: str, text: str) -> dict:
+    """Build a minimal user-message transcript entry."""
+    return {
+        "type": "user",
+        "timestamp": timestamp,
+        "parentUuid": None,
+        "isSidechain": False,
+        "userType": "external",
+        "cwd": "/tmp",
+        "sessionId": session_id,
+        "version": "2.1.0",
+        "uuid": uuid,
+        "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": text}],
+        },
+    }
+
+
+def _assistant_msg(uuid: str, session_id: str, timestamp: str, text: str) -> dict:
+    """Build a minimal assistant-message transcript entry."""
+    return {
+        "type": "assistant",
+        "timestamp": timestamp,
+        "parentUuid": None,
+        "isSidechain": False,
+        "userType": "assistant",
+        "cwd": "/tmp",
+        "sessionId": session_id,
+        "version": "2.1.0",
+        "uuid": uuid,
+        "requestId": f"req-{uuid}",
+        "message": {
+            "id": f"msg-{uuid}",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-opus-4-7",
+            "content": [{"type": "text", "text": text}],
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+        },
+    }
+
+
+def _render(entries: list[dict], no_timestamps: bool = False) -> str:
+    """Write ``entries`` to a temp JSONL, load, render to Markdown."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+        for e in entries:
+            f.write(json.dumps(e) + "\n")
+        path = Path(f.name)
+    try:
+        messages = load_transcript(path)
+        renderer = MarkdownRenderer()
+        renderer.no_timestamps = no_timestamps
+        return renderer.generate(messages, title="t")
+    finally:
+        path.unlink()
+
+
+def test_first_message_emits_full_date_and_time():
+    """First message of a session re-emits its full date in bold backticks."""
+    out = _render([_user_msg("u1", "s1", "2026-02-03T21:21:20.000Z", "hi")])
+    assert "**`2026-02-03`** `21:21:20`" in out
+
+
+def test_same_day_subsequent_messages_emit_time_only():
+    """Subsequent same-day messages emit just the time component."""
+    out = _render(
+        [
+            _user_msg("u1", "s1", "2026-02-03T21:21:20.000Z", "first"),
+            _assistant_msg("u2", "s1", "2026-02-03T21:22:18.000Z", "second"),
+            _user_msg("u3", "s1", "2026-02-03T21:30:00.000Z", "third"),
+        ]
+    )
+    # Full date+time appears once (the first message).
+    assert out.count("**`2026-02-03`**") == 1
+    # Subsequent same-day timestamps appear as time-only lines.
+    assert "`21:22:18`" in out
+    assert "`21:30:00`" in out
+    # And those time-only lines must NOT be paired with the date.
+    assert "**`2026-02-03`** `21:22:18`" not in out
+    assert "**`2026-02-03`** `21:30:00`" not in out
+
+
+def test_day_rollover_re_emits_full_date():
+    """When the calendar date advances, the next message carries the new date."""
+    out = _render(
+        [
+            _user_msg("u1", "s1", "2026-02-03T23:59:50.000Z", "late"),
+            _assistant_msg("u2", "s1", "2026-02-04T00:01:45.000Z", "rolled"),
+        ]
+    )
+    assert "**`2026-02-03`** `23:59:50`" in out
+    assert "**`2026-02-04`** `00:01:45`" in out
+
+
+def test_no_timestamps_suppresses_all_lines():
+    """``--no-timestamps`` skips emission entirely."""
+    out = _render(
+        [
+            _user_msg("u1", "s1", "2026-02-03T21:21:20.000Z", "first"),
+            _assistant_msg("u2", "s1", "2026-02-03T21:22:18.000Z", "second"),
+        ],
+        no_timestamps=True,
+    )
+    assert "**`2026-02-03`**" not in out
+    # No bare-time backtick lines either.
+    assert "\n`21:" not in out
+
+
+def test_format_message_timestamp_helper_state_machine():
+    """Direct unit-test of the date-on-change helper, including the
+    multi-session reset path (``_last_date_seen = None`` on
+    ``SessionHeaderMessage``)."""
+    from types import SimpleNamespace
+    from typing import cast
+
+    from claude_code_log.renderer import TemplateMessage
+
+    r = MarkdownRenderer()
+    r._last_date_seen = None
+
+    def msg(ts: str) -> TemplateMessage:
+        # Duck-typed minimal stand-in: the helper only touches
+        # ``msg.meta.timestamp``.
+        return cast(
+            TemplateMessage, SimpleNamespace(meta=SimpleNamespace(timestamp=ts))
+        )
+
+    # First message → full date.
+    line = r._format_message_timestamp(msg("2026-02-03T10:00:00.000Z"))
+    assert line == "**`2026-02-03`** `10:00:00`"
+
+    # Same-day → time only.
+    line = r._format_message_timestamp(msg("2026-02-03T10:05:00.000Z"))
+    assert line == "`10:05:00`"
+
+    # Day rollover → full date.
+    line = r._format_message_timestamp(msg("2026-02-04T00:01:00.000Z"))
+    assert line == "**`2026-02-04`** `00:01:00`"
+
+    # Simulate session-header reset: even though the date is identical
+    # to what we just emitted, the first message of the new session
+    # must re-emit it.
+    r._last_date_seen = None
+    line = r._format_message_timestamp(msg("2026-02-04T00:02:00.000Z"))
+    assert line == "**`2026-02-04`** `00:02:00`"
+
+
+def test_format_message_timestamp_returns_empty_on_missing_or_unparseable():
+    """Empty / unparseable timestamps yield ``""`` so the caller can
+    append unconditionally."""
+    from types import SimpleNamespace
+    from typing import cast
+
+    from claude_code_log.renderer import TemplateMessage
+
+    def stub(ts: str) -> TemplateMessage:
+        return cast(
+            TemplateMessage, SimpleNamespace(meta=SimpleNamespace(timestamp=ts))
+        )
+
+    r = MarkdownRenderer()
+    r._last_date_seen = None
+    assert r._format_message_timestamp(stub("")) == ""
+    # ``format_timestamp`` returns the raw string on parse failure;
+    # without a space, the helper must bail out instead of producing
+    # malformed output.
+    assert r._format_message_timestamp(stub("not-a-timestamp")) == ""
+
+
+@pytest.mark.parametrize("fmt", ["html", "json"])
+def test_no_timestamps_with_non_markdown_format_warns_not_errors(
+    fmt: str, tmp_path: Path
+):
+    """`--no-timestamps` paired with --format html|json should warn
+    (stderr) but not error (exit 0). Matches the existing
+    `--expand-paths` / `--filter-path` warning contract."""
+    from click.testing import CliRunner
+
+    from claude_code_log.cli import main
+
+    # Minimal valid JSONL project (1 user message).
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "session.jsonl").write_text(
+        json.dumps(_user_msg("u1", "s1", "2026-02-03T21:21:20.000Z", "hi")) + "\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            str(project),
+            "--no-cache",
+            "--no-timestamps",
+            "--format",
+            fmt,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # Warning lands on stderr in production but the test runner mixes
+    # streams by default; assert on the combined output.
+    assert "--no-timestamps is Markdown-only" in result.output
