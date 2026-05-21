@@ -673,6 +673,17 @@ class TestGitLinkTemplateValidation:
         with pytest.raises(click.UsageError, match=r"unknown placeholder"):
             _validate_git_link_template("https://{0}/{sha}")
 
+    def test_anonymous_positional_placeholder_raises_usage_error(self):
+        # CR-flagged contract hole: ``{}`` parses as a placeholder with
+        # field == "" and would crash at ``.format()`` time. Catch it
+        # at CLI validation so users get a precise error instead of a
+        # silent skip (env-var path) or a delayed crash (resolver).
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"anonymous positional"):
+            _validate_git_link_template("https://example.test/{}/commit/{sha}")
+
     def test_all_three_placeholders_passes(self):
         from claude_code_log.cli import _validate_git_link_template
 

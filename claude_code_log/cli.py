@@ -493,11 +493,18 @@ def _validate_git_link_template(template: str) -> None:
     """
     import string
 
-    fields = {
+    parsed_fields = [
         field
         for _, field, _, _ in string.Formatter().parse(template)
-        if field is not None and field != ""
-    }
+        if field is not None
+    ]
+    if "" in parsed_fields:
+        raise click.UsageError(
+            "--git-link template uses an anonymous positional placeholder ({}). "
+            "Use a named placeholder ({host}, {path}, or {sha}) instead "
+            f"(got: {template!r})."
+        )
+    fields = set(parsed_fields)
     unknown = fields - _GIT_LINK_ALLOWED_PLACEHOLDERS
     if unknown:
         raise click.UsageError(
