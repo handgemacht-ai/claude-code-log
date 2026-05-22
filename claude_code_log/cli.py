@@ -468,6 +468,58 @@ def _clear_output_files(
         click.echo(f"Warning: Failed to clear {ext_upper} files: {e}")
 
 
+# Placeholders accepted by ``--git-link`` templates. Mirrors
+# ``resolve_sha`` in claude_code_log.git_remote — keep in sync.
+_GIT_LINK_ALLOWED_PLACEHOLDERS = frozenset({"host", "path", "sha"})
+
+
+def _validate_git_link_template(template: str) -> None:
+    """Validate a ``--git-link`` template eagerly; raise ``click.UsageError`` on issues.
+
+    Two checks:
+
+    1. ``{sha}`` must be present (it's the only mandatory field —
+       the resolver's whole job is to substitute the commit SHA).
+    2. All placeholders must be in ``_GIT_LINK_ALLOWED_PLACEHOLDERS``.
+       Catches typos like ``{hsot}`` before they reach
+       ``template.format()`` (which would raise ``KeyError`` at
+       render time). The resolver has a try/except guarding the
+       env-var-only path; this validator is the loud-error path for
+       CLI users.
+
+    Uses ``string.Formatter().parse()`` rather than regex so the
+    same parser Python uses for ``str.format`` decides what counts
+    as a placeholder.
+    """
+    import string
+
+    parsed_fields = [
+        field
+        for _, field, _, _ in string.Formatter().parse(template)
+        if field is not None
+    ]
+    if "" in parsed_fields:
+        raise click.UsageError(
+            "--git-link template uses an anonymous positional placeholder ({}). "
+            "Use a named placeholder ({host}, {path}, or {sha}) instead "
+            f"(got: {template!r})."
+        )
+    fields = set(parsed_fields)
+    unknown = fields - _GIT_LINK_ALLOWED_PLACEHOLDERS
+    if unknown:
+        raise click.UsageError(
+            f"--git-link template uses unknown placeholder(s): "
+            f"{', '.join('{' + f + '}' for f in sorted(unknown))}. "
+            f"Allowed: {{host}}, {{path}}, {{sha}}."
+        )
+    if "sha" not in fields:
+        raise click.UsageError(
+            "--git-link template must contain a {sha} placeholder "
+            f"(got: {template!r}). Example: "
+            "'https://{host}/{path}/-/commit/{sha}'."
+        )
+
+
 @click.command()
 @click.argument("input_path", type=click.Path(path_type=Path), required=False)
 @click.option(
@@ -630,6 +682,20 @@ def _clear_output_files(
     ),
 )
 @click.option(
+    "--git-link",
+    "git_link",
+    default=None,
+    envvar="CLAUDE_CODE_LOG_GIT_LINK",
+    metavar="TEMPLATE",
+    help=(
+        "URL template for resolving commit SHAs on forges not in the built-in "
+        "map (github.com, gitlab.com, bitbucket.org). Placeholders: {host}, "
+        "{path}, {sha}. Example for self-hosted GitLab: "
+        "--git-link 'https://{host}/{path}/-/commit/{sha}'. Can also be set "
+        "via the CLAUDE_CODE_LOG_GIT_LINK env var."
+    ),
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -657,6 +723,7 @@ def main(
     session_id: Optional[str],
     detail: str,
     compact: bool,
+    git_link: Optional[str],
     debug: bool,
 ) -> None:
     """Convert Claude transcript JSONL files to HTML or Markdown.
@@ -666,6 +733,15 @@ def main(
     # Install signal-based stack dumper before any heavy work, so a hang
     # can be diagnosed with `kill -USR1 <pid>` without root or restart.
     _install_stack_dump_signal()
+
+    # Custom-forge URL template: validate eagerly with a loud error,
+    # then pin to the env var so the resolver (which reads the env at
+    # render time) picks it up. Doing this at env-var level keeps the
+    # resolver decoupled from Click; the env var is the underlying
+    # contract, the CLI flag is a convenience that sets it.
+    if git_link is not None:
+        _validate_git_link_template(git_link)
+        os.environ["CLAUDE_CODE_LOG_GIT_LINK"] = git_link
 
     # Configure logging to show warnings and above
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")

@@ -13,6 +13,7 @@ Covers two modules and their integration:
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -396,6 +397,37 @@ class TestParseGitUrl:
     def test_rejects_no_owner(self):
         assert _parse_git_url("git@github.com:repo.git") is None
 
+    # -- Multi-forge URL shapes the parser must handle uniformly --
+
+    def test_gitlab_https(self):
+        assert _parse_git_url("https://gitlab.com/group/project.git") == (
+            "gitlab.com",
+            "group/project",
+        )
+
+    def test_gitlab_ssh_with_subgroup(self):
+        # GitLab supports arbitrary subgroup nesting; the path captures
+        # everything between the host and the optional .git suffix.
+        assert _parse_git_url("git@gitlab.com:group/sub/project.git") == (
+            "gitlab.com",
+            "group/sub/project",
+        )
+
+    def test_self_hosted_gitlab(self):
+        # Self-hosted GitLab: host name is arbitrary (e.g.
+        # git.bct-technology.com). Parser doesn't classify hosts —
+        # just splits. Classification happens in resolve_sha against
+        # the static map + env fallback.
+        assert _parse_git_url(
+            "git@git.bct-technology.com:BCT/claudecode/repoindexer.git"
+        ) == ("git.bct-technology.com", "BCT/claudecode/repoindexer")
+
+    def test_bitbucket_https(self):
+        assert _parse_git_url("https://bitbucket.org/workspace/repo.git") == (
+            "bitbucket.org",
+            "workspace/repo",
+        )
+
 
 # ---------------------------------------------------------------------------
 # canonical_cwd_from_messages
@@ -446,6 +478,255 @@ class TestRenderRepoContext:
         with render_with_repo_context("/some/repo"):
             pass
         assert resolve_sha_for_current_render("abc1234") is None
+
+
+# ---------------------------------------------------------------------------
+# Forge templates: static map + env-var fallback
+#
+# The resolver's URL-shape logic is unit-tested here by stubbing the
+# three subprocess-backed helpers (``_git_remote_for``,
+# ``_commit_reachable_from_remote``, ``_expand_to_full_sha``). This
+# isolates the host-classification + template-substitution logic
+# from the actual git plumbing — the integration class below covers
+# end-to-end resolution against this repo's real origin/main.
+
+
+class _StubResolverEnv:
+    """Monkeypatch fixture: pin the subprocess-backed helpers to known
+    answers so resolve_sha tests just exercise the URL-shape logic.
+
+    The three patched functions correspond to the three subprocess
+    boundaries inside resolve_sha:
+    - ``_git_remote_for`` → (host, path) parsing
+    - ``_commit_reachable_from_remote`` → reachability check
+    - ``_expand_to_full_sha`` → short → full SHA peel
+    """
+
+    def __init__(self, monkeypatch, host: str, path: str, full_sha: str):
+        import claude_code_log.git_remote as gr
+
+        clear_resolver_caches()
+        monkeypatch.setattr(gr, "_git_remote_for", lambda _cwd: (host, path))
+        monkeypatch.setattr(
+            gr, "_commit_reachable_from_remote", lambda _cwd, _sha: True
+        )
+        monkeypatch.setattr(gr, "_expand_to_full_sha", lambda _cwd, _sha: full_sha)
+
+
+class TestStaticForgeMap:
+    """``_HOST_URL_PATTERNS`` covers github / gitlab / bitbucket out of the box."""
+
+    def teardown_method(self):
+        clear_resolver_caches()
+
+    def test_github_url(self, monkeypatch):
+        _StubResolverEnv(monkeypatch, "github.com", "owner/repo", "0" * 40)
+        url = resolve_sha("/fake/cwd", "abc1234")
+        assert url == "https://github.com/owner/repo/commit/" + "0" * 40
+
+    def test_gitlab_url_uses_dash_commit_segment(self):
+        # GitLab's URL shape is ``host/path/-/commit/sha`` (the
+        # ``/-/`` is the namespace separator). Pinning here so a
+        # well-meaning refactor of the static map doesn't silently
+        # collapse it back to ``/commit/``.
+        # No subprocess needed since we go direct via the template.
+        from claude_code_log.git_remote import _HOST_URL_PATTERNS
+
+        assert (
+            _HOST_URL_PATTERNS["gitlab.com"]
+            == "https://gitlab.com/{path}/-/commit/{sha}"
+        )
+
+    def test_gitlab_url_end_to_end(self, monkeypatch):
+        _StubResolverEnv(monkeypatch, "gitlab.com", "group/sub/repo", "f" * 40)
+        url = resolve_sha("/fake/cwd", "fff1234")
+        assert url == "https://gitlab.com/group/sub/repo/-/commit/" + "f" * 40
+
+    def test_bitbucket_url_uses_commits_plural(self):
+        # Bitbucket's URL shape is ``host/path/commits/sha`` (plural).
+        # Same pinning rationale as the GitLab case above.
+        from claude_code_log.git_remote import _HOST_URL_PATTERNS
+
+        assert (
+            _HOST_URL_PATTERNS["bitbucket.org"]
+            == "https://bitbucket.org/{path}/commits/{sha}"
+        )
+
+    def test_bitbucket_url_end_to_end(self, monkeypatch):
+        _StubResolverEnv(monkeypatch, "bitbucket.org", "ws/repo", "1" * 40)
+        url = resolve_sha("/fake/cwd", "1111111")
+        assert url == "https://bitbucket.org/ws/repo/commits/" + "1" * 40
+
+    def test_unknown_host_no_fallback_returns_none(self, monkeypatch):
+        # Self-hosted forge with no env-var fallback → None.
+        monkeypatch.delenv("CLAUDE_CODE_LOG_GIT_LINK", raising=False)
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "a" * 40)
+        assert resolve_sha("/fake/cwd", "aaa1234") is None
+
+
+class TestFallbackTemplate:
+    """``CLAUDE_CODE_LOG_GIT_LINK`` covers self-hosted forges."""
+
+    def teardown_method(self):
+        clear_resolver_caches()
+
+    def test_fallback_substitutes_host_path_sha(self, monkeypatch):
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK",
+            "https://{host}/{path}/-/commit/{sha}",
+        )
+        _StubResolverEnv(monkeypatch, "git.bct-technology.com", "BCT/x/repo", "b" * 40)
+        url = resolve_sha("/fake/cwd", "bbb1234")
+        assert url == "https://git.bct-technology.com/BCT/x/repo/-/commit/" + "b" * 40
+
+    def test_static_map_wins_over_fallback(self, monkeypatch):
+        # Even with a "broken" fallback set, the static map's
+        # github.com entry takes precedence — guard against a
+        # refactor accidentally reversing the lookup order.
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK",
+            "https://WRONG/{host}/{path}/{sha}",
+        )
+        _StubResolverEnv(monkeypatch, "github.com", "owner/repo", "c" * 40)
+        url = resolve_sha("/fake/cwd", "ccc1234")
+        assert url == "https://github.com/owner/repo/commit/" + "c" * 40
+        assert "WRONG" not in url
+
+    def test_fallback_missing_sha_placeholder_is_silent_skip(self, monkeypatch):
+        # Defence-in-depth: the CLI handler errors loudly on a
+        # template without {sha}, but if the env var is set directly
+        # with a broken template, the resolver degrades to "no link"
+        # rather than crashing rendering.
+        monkeypatch.setenv("CLAUDE_CODE_LOG_GIT_LINK", "https://nope/{path}")
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "d" * 40)
+        assert resolve_sha("/fake/cwd", "ddd1234") is None
+
+    def test_empty_fallback_is_silent_skip(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CODE_LOG_GIT_LINK", "")
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "e" * 40)
+        assert resolve_sha("/fake/cwd", "eee1234") is None
+
+    def test_fallback_with_only_sha_placeholder(self, monkeypatch):
+        # Minimal valid template: only ``{sha}``. Documents that
+        # ``{host}`` / ``{path}`` are optional from the resolver's
+        # standpoint — a user could supply a fully-qualified URL
+        # stub if they had reason to.
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK", "https://example.test/commit/{sha}"
+        )
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "9" * 40)
+        url = resolve_sha("/fake/cwd", "999abcd")
+        assert url == "https://example.test/commit/" + "9" * 40
+
+    def test_fallback_unknown_placeholder_is_silent_skip(self, monkeypatch):
+        # Regression for monk's blocking finding on this PR. A user
+        # who typos ``{hsot}`` (instead of ``{host}``) passes the
+        # ``{sha}``-presence check in ``_fallback_template()`` but
+        # would crash ``template.format()`` with KeyError. The
+        # resolver wraps that in try/except and degrades to None.
+        # The CLI path catches this loudly via the placeholder
+        # whitelist (see TestGitLinkTemplateValidation below); this
+        # test guards the env-var-only path.
+        monkeypatch.setenv(
+            "CLAUDE_CODE_LOG_GIT_LINK", "https://{hsot}/{path}/-/commit/{sha}"
+        )
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "8" * 40)
+        assert resolve_sha("/fake/cwd", "888abcd") is None
+
+    def test_fallback_positional_placeholder_is_silent_skip(self, monkeypatch):
+        # ``{0}`` would raise IndexError at format time — same
+        # silent-skip degradation as the KeyError case.
+        monkeypatch.setenv("CLAUDE_CODE_LOG_GIT_LINK", "https://{0}/{sha}")
+        _StubResolverEnv(monkeypatch, "git.internal.example", "team/repo", "7" * 40)
+        assert resolve_sha("/fake/cwd", "777abcd") is None
+
+
+class TestGitLinkTemplateValidation:
+    """Unit tests for the CLI-side ``_validate_git_link_template`` helper.
+
+    Loud-error path for users who pass ``--git-link`` directly. The
+    env-var-only path (no CLI) instead silently degrades via the
+    resolver's try/except — see ``TestFallbackTemplate`` above.
+    """
+
+    def test_missing_sha_raises_usage_error(self):
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"must contain a \{sha\}"):
+            _validate_git_link_template("https://example.test/no-placeholders")
+
+    def test_unknown_placeholder_raises_usage_error(self):
+        # The typo-catching case monk flagged. ``{hsot}`` ≠ ``{host}``.
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"unknown placeholder.*hsot"):
+            _validate_git_link_template("https://{hsot}/{path}/-/commit/{sha}")
+
+    def test_positional_placeholder_raises_usage_error(self):
+        # ``{0}`` parses as a placeholder named ``"0"`` — not in the
+        # whitelist, so it's flagged as unknown.
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"unknown placeholder"):
+            _validate_git_link_template("https://{0}/{sha}")
+
+    def test_anonymous_positional_placeholder_raises_usage_error(self):
+        # CR-flagged contract hole: ``{}`` parses as a placeholder with
+        # field == "" and would crash at ``.format()`` time. Catch it
+        # at CLI validation so users get a precise error instead of a
+        # silent skip (env-var path) or a delayed crash (resolver).
+        import click
+        from claude_code_log.cli import _validate_git_link_template
+
+        with pytest.raises(click.UsageError, match=r"anonymous positional"):
+            _validate_git_link_template("https://example.test/{}/commit/{sha}")
+
+    def test_all_three_placeholders_passes(self):
+        from claude_code_log.cli import _validate_git_link_template
+
+        _validate_git_link_template("https://{host}/{path}/-/commit/{sha}")
+        # No exception → pass.
+
+    def test_only_sha_passes(self):
+        from claude_code_log.cli import _validate_git_link_template
+
+        _validate_git_link_template("https://example.test/commit/{sha}")
+
+    def test_host_and_sha_no_path_passes(self):
+        from claude_code_log.cli import _validate_git_link_template
+
+        _validate_git_link_template("https://{host}/commit/{sha}")
+
+
+class TestGitLinkCliOption:
+    """``--git-link`` flag end-to-end wiring: validation surfaces, env-var sync."""
+
+    def teardown_method(self):
+        # Don't leak the env var across tests.
+        os.environ.pop("CLAUDE_CODE_LOG_GIT_LINK", None)
+
+    def test_missing_sha_placeholder_raises_usage_error(self):
+        # End-to-end: confirms the CLI hooks the validator in. The
+        # validator unit tests above cover the validation logic
+        # itself; this is the integration smoke.
+        from click.testing import CliRunner
+        from claude_code_log.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "--git-link",
+                "https://example.test/commit/no-placeholder",
+                "/dev/null",
+            ],
+        )
+        # Click usage errors exit with 2.
+        assert result.exit_code == 2
+        assert "must contain a {sha} placeholder" in result.output
 
 
 # ---------------------------------------------------------------------------

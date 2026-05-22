@@ -38,10 +38,17 @@ text; that's a correct-but-slightly-conservative fallback.
 
 ## Adding new hosts
 
-``_HOST_URL_PATTERNS`` is the dispatch table. Add ``"gitlab.com":
-"https://gitlab.com/{path}/-/commit/{sha}"`` and the resolver picks
-it up. The URL parser in ``_parse_git_url`` handles SSH and HTTPS
-shapes uniformly.
+``_HOST_URL_PATTERNS`` is the dispatch table. The URL parser in
+``_parse_git_url`` handles SSH and HTTPS shapes uniformly, so adding
+a new public forge is a one-line entry. For self-hosted instances
+(in-house GitLab, Gitea, etc.) we can't enumerate every host name
+the world might use, so there's also a fallback-template mechanism
+read from the ``CLAUDE_CODE_LOG_GIT_LINK`` environment variable
+(set directly, or via the ``--git-link`` CLI flag). The fallback
+template uses ``{host}``, ``{path}``, and ``{sha}`` placeholders
+and is consulted only when the static map misses, so a user with a
+mix of public-forge and self-hosted repos still gets correct links
+from both.
 """
 
 from __future__ import annotations
@@ -49,6 +56,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import functools
+import os
 import re
 import subprocess
 from typing import Any, Iterator, Optional
@@ -59,7 +67,18 @@ from typing import Any, Iterator, Optional
 # uniformly, so a new entry is the only change typically needed.
 _HOST_URL_PATTERNS: dict[str, str] = {
     "github.com": "https://github.com/{path}/commit/{sha}",
+    "gitlab.com": "https://gitlab.com/{path}/-/commit/{sha}",
+    "bitbucket.org": "https://bitbucket.org/{path}/commits/{sha}",
 }
+
+
+# Environment variable consulted as a fallback when the static host
+# map misses. Lets users wire up self-hosted GitLab / Gitea / Forgejo
+# / SourceHut etc. with a single template. Placeholders: ``{host}``
+# (parsed from the remote URL), ``{path}`` (owner/repo or
+# group/subgroup/repo), ``{sha}`` (full 40-char SHA). The CLI
+# ``--git-link`` flag is a UX convenience that sets this env var.
+_FALLBACK_TEMPLATE_ENV = "CLAUDE_CODE_LOG_GIT_LINK"
 
 
 # SSH form ``git@host:path`` or HTTPS ``https://host/path``. The trailing
@@ -183,6 +202,30 @@ def _expand_to_full_sha(cwd: str, sha: str) -> Optional[str]:
     return full if len(full) == 40 else None
 
 
+def _fallback_template() -> Optional[str]:
+    """Read the user-supplied fallback URL template, or ``None``.
+
+    Returns ``None`` for empty / unset, or for templates missing the
+    required ``{sha}`` placeholder — the missing-``{sha}`` case is
+    a silent skip rather than a crash so a misconfigured environment
+    degrades to "no link" instead of breaking rendering. The CLI
+    handler validates ``{sha}`` (and whitelists placeholders)
+    eagerly with a loud error; this function is the defence-in-depth
+    for the env-var-only path.
+
+    Note: ``resolve_sha`` is ``@lru_cache``-d, so flipping
+    ``CLAUDE_CODE_LOG_GIT_LINK`` mid-process won't re-resolve
+    already-cached SHAs. Call ``clear_resolver_caches()`` after
+    mutating the env var (the test fixtures already do).
+    """
+    template = os.environ.get(_FALLBACK_TEMPLATE_ENV, "").strip()
+    if not template:
+        return None
+    if "{sha}" not in template:
+        return None
+    return template
+
+
 @functools.lru_cache(maxsize=4096)
 def resolve_sha(cwd: Optional[str], sha: str) -> Optional[str]:
     """Resolve a candidate SHA to a commit URL on a known remote.
@@ -191,13 +234,16 @@ def resolve_sha(cwd: Optional[str], sha: str) -> Optional[str]:
 
     - No render-time cwd (e.g. plugin invoked outside a render pass).
     - cwd isn't inside a git repo, or has no ``origin`` remote.
-    - Remote URL doesn't match any host in ``_HOST_URL_PATTERNS``.
+    - Remote URL doesn't match any host in ``_HOST_URL_PATTERNS``
+      *and* no usable fallback template is set in the environment.
     - SHA isn't reachable from any local remote-tracking branch.
     - SHA can't be expanded to a full commit (e.g. it was actually a
       tag, or shadows a non-commit ref).
 
-    All steps are cached, so repeated SHAs in one transcript pay
-    cost only on first encounter.
+    The static host map is consulted first; the fallback template
+    fills in for self-hosted forges (in-house GitLab etc.). All
+    steps are cached, so repeated SHAs in one transcript pay cost
+    only on first encounter.
     """
     if not cwd:
         return None
@@ -207,13 +253,28 @@ def resolve_sha(cwd: Optional[str], sha: str) -> Optional[str]:
     host, path = remote
     template = _HOST_URL_PATTERNS.get(host)
     if template is None:
-        return None
+        # Static map missed: try the user-supplied fallback before
+        # giving up. Keeps the static map small and predictable while
+        # still letting users opt in to self-hosted forges.
+        fallback = _fallback_template()
+        if fallback is None:
+            return None
+        template = fallback
     if not _commit_reachable_from_remote(cwd, sha):
         return None
     full = _expand_to_full_sha(cwd, sha)
     if full is None:
         return None
-    return template.format(path=path, sha=full)
+    try:
+        return template.format(host=host, path=path, sha=full)
+    except (KeyError, IndexError, ValueError):
+        # Template has an unknown placeholder (``{foo}``), a positional
+        # ``{0}``, or unbalanced braces. The CLI handler whitelists
+        # ``{host, path, sha}`` up-front and rejects loudly, so the
+        # only way we reach here is a malformed env-var-only template
+        # — silent skip matches the resolver's other degradation
+        # paths (no link is better than a crash mid-render).
+        return None
 
 
 def resolve_sha_for_current_render(sha: str) -> Optional[str]:
