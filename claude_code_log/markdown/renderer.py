@@ -2065,7 +2065,9 @@ class MarkdownRenderer(Renderer):
         if cache_manager is not None and not suppress_combined_link:
             from ..utils import variant_suffix as _variant_suffix
 
-            suffix = _variant_suffix(self.detail, self.compact, "md")
+            suffix = _variant_suffix(
+                self.detail, self.compact, "md", self.no_timestamps
+            )
             combined_link = f"combined_transcripts{suffix}.md"
         else:
             combined_link = None

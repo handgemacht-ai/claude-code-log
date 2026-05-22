@@ -278,6 +278,35 @@ def test_format_message_timestamp_returns_empty_on_missing_or_unparseable():
     assert r._format_message_timestamp(stub("not a timestamp")) == ""
 
 
+def test_variant_suffix_no_timestamps_markdown_only():
+    """`--no-timestamps` participates in the filename infix only for
+    Markdown output, so toggling it produces a distinct
+    `combined_transcripts.no-timestamps.md` and per-session file. HTML
+    / JSON don't honour the flag (a warning is emitted), so the
+    suffix stays empty for them and we avoid orphaned variant files.
+
+    Regression for CodeRabbit's finding on PR #165: previously the
+    flag was not part of the variant key, so the path-existence /
+    cache lookup treated the prior export as up-to-date and skipped
+    regeneration when the user toggled the flag.
+    """
+    from claude_code_log.utils import variant_suffix
+
+    # Default → empty.
+    assert variant_suffix() == ""
+    # Markdown + no_timestamps → distinct suffix.
+    assert variant_suffix(format="md", no_timestamps=True) == ".no-timestamps"
+    assert variant_suffix(format="markdown", no_timestamps=True) == ".no-timestamps"
+    # Composable with `--compact` (markdown only).
+    assert (
+        variant_suffix(format="md", compact=True, no_timestamps=True)
+        == ".compact.no-timestamps"
+    )
+    # HTML / JSON ignore the flag (no orphaned `.no-timestamps.html`).
+    assert variant_suffix(format="html", no_timestamps=True) == ""
+    assert variant_suffix(format="json", no_timestamps=True) == ""
+
+
 @pytest.mark.parametrize("fmt", ["html", "json"])
 def test_no_timestamps_with_non_markdown_format_warns_not_errors(
     fmt: str, tmp_path: Path

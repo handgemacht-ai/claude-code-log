@@ -1568,7 +1568,7 @@ def convert_jsonl_to(
 
     from .utils import variant_suffix as _variant_suffix
 
-    suffix = _variant_suffix(detail, compact, format)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps)
 
     # Output destination decoupled from `input_path` (#151). Both
     # branches below assign to `effective_output_dir`; declare it
@@ -2187,7 +2187,7 @@ def _generate_individual_session_files(
     from .utils import variant_suffix as _variant_suffix
 
     ext = get_file_extension(format)
-    suffix = _variant_suffix(detail, compact, format)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps)
     # Pre-compute warmup sessions to exclude them
     warmup_session_ids = get_warmup_session_ids(messages)
 
@@ -2432,7 +2432,7 @@ def generate_single_session_file(
     from .utils import variant_suffix as _variant_suffix
 
     ext = get_file_extension(format)
-    suffix = _variant_suffix(detail, compact, format)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps)
     output_dir = input_path
     if output is not None:
         # User's explicit path wins; no suffix appended.
@@ -2597,7 +2597,7 @@ def process_projects_hierarchy(
     # all need to use the same name. Hard-coding "combined_transcripts.html"
     # would make non-default --format / --detail / --compact
     # combinations cache-miss forever and link to the wrong file.
-    variant = _variant_suffix(detail, compact, output_format)
+    variant = _variant_suffix(detail, compact, output_format, no_timestamps)
     combined_ext = get_file_extension(output_format)
     combined_name = f"combined_transcripts{variant}.{combined_ext}"
 
