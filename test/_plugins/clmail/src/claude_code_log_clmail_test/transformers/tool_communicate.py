@@ -66,7 +66,13 @@ class ClmailCommunicateInputTransformer:
     """Specialize ToolUseMessage for the test clmail communicate tool."""
 
     name: ClassVar[str] = "test.clmail.communicate.input"
-    # Run before generic tool classification (smaller number = earlier).
+    # Smaller number = earlier in the transformer chain. Under the v1
+    # post-classification implementation, this orders us against other
+    # transformers (not against built-in classifiers, which have already
+    # run). TOOL_INPUT_GENERIC is the priority slot conceptually
+    # associated with the generic ToolUseMessage classification; we
+    # sit 500 units before it so a future plugin targeting the same
+    # tool at TOOL_INPUT_GENERIC would lose to us.
     priority: ClassVar[int] = TOOL_INPUT_GENERIC - 500
     applies_to: ClassVar[tuple[type[MessageContent], ...]] = (ToolUseMessage,)
 

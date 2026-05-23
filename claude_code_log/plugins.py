@@ -70,6 +70,22 @@ class MessageTransformer(Protocol):
         meta: MessageMeta,
     ) -> Optional[MessageContent]: ...
 
+    # Contract — v1 trust requirement (not runtime-enforced):
+    #
+    # When ``transform()`` returns a non-None replacement, the
+    # replacement SHOULD be an instance of either:
+    #   - one of the ``applies_to`` types, or
+    #   - a subclass thereof (typically a plugin-defined
+    #     specialization).
+    #
+    # Returning a wholly unrelated MessageContent subclass (e.g. a
+    # transformer with ``applies_to=(UserTextMessage,)`` returning a
+    # ``SystemMessage``) is accepted at runtime but breaks the
+    # caller's typing assumption (e.g. ``create_user_message``
+    # narrows to ``UserMessageContent``). A v2 enhancement may add a
+    # runtime isinstance check; v1 trusts plugin authors. Don't get
+    # clever.
+
 
 # ----------------------------------------------------------------------
 # Loader (cached at module level so discovery happens once per process)

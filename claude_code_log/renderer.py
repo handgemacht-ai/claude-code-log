@@ -3207,6 +3207,13 @@ _DETAIL_ORDER: dict[DetailLevel, int] = {
     DetailLevel.USER_ONLY: 4,
 }
 
+# Guard against drift: if a new DetailLevel value is added without an
+# entry here, the visibility helper would raise KeyError silently on
+# first use. Fail loudly at import time instead.
+assert set(_DETAIL_ORDER.keys()) == set(DetailLevel), (
+    f"_DETAIL_ORDER missing entries for: {set(DetailLevel) - set(_DETAIL_ORDER.keys())}"
+)
+
 
 def _content_visible_at(content: "MessageContent", detail: DetailLevel) -> bool:
     """Return True iff ``content`` is visible at the given detail level.
