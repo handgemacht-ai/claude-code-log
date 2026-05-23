@@ -88,14 +88,7 @@ Icons are scattered as string literals across title methods in
    detector either claims the entry (producing a typed
    `MessageContent` subclass) or passes through. Transformers
    plug into this chain at declared priority offsets.
-5. **`_HIGH_EXCLUDE_CLASSES`** (set) in `renderer.py` — the
-   filter-bucket registry that drops hook-noise content at
-   HIGH/MEDIUM/LOW/MINIMAL detail. Today this is a hardcoded set
-   of `MessageContent` subclass references; the plugin system
-   replaces it with a `detail_visibility: ClassVar[DetailLevel]`
-   attribute on each `MessageContent` subclass (built-ins migrate
-   in a follow-up PR after #166 lands).
-6. **`extract_text_content(content_list)`** at user_factory — the
+5. **`extract_text_content(content_list)`** at user_factory — the
    joined-with-newlines text string that detectors regex against.
    The plugin contract guarantees that `UserTextMessage.text`
    (and equivalents on other message types) is byte-equivalent
@@ -103,10 +96,16 @@ Icons are scattered as string literals across title methods in
    whether called inside the factory or against a parsed
    `MessageContent`.
 
+Detail-level filtering for hook-notification noise lives in
+`_HIGH_EXCLUDE_CLASSES` (renderer.py). This stays as a core
+registry in v1 — see [v1 scope](#v1-scope-existing-variants-only)
+for why transformers rewrite *to* existing core classes rather
+than defining their own.
+
 These are the surfaces a plugin needs to influence. The plugin
 system's whole job is to populate the tool-renderer surfaces
 (1–3 plus keep-list and icon registry) and the transformer
-surfaces (4–6) — from out-of-tree packages, through one shared
+surfaces (4–5) — from out-of-tree packages, through one shared
 discovery mechanism.
 
 ## Discovery + selection: `importlib.metadata.entry_points`
@@ -239,34 +238,28 @@ JSON support for free.
 ### `MessageTransformer`
 
 A transformer rewrites a parsed `MessageContent` into a different
-`MessageContent` variant during factory dispatch. The plugin owns
-the target class — it defines the new `MessageContent` subclass,
-declares its detail-level visibility, and registers its
-format/title methods via the same MRO-discoverable dispatch as
-built-ins.
+`MessageContent` variant during factory dispatch. **v1 scope:
+plugins rewrite *to* existing core `MessageContent` variants
+only.** A plugin does not define new `MessageContent` subclasses,
+does not register format/title methods, and does not touch the
+detail-level filter machinery — visibility comes for free by
+virtue of targeting an existing core class. See
+[v1 scope](#v1-scope-existing-variants-only) for the rationale.
 
 ```python
 from typing import ClassVar, Optional, Protocol, runtime_checkable
-from claude_code_log.models import (
-    DetailLevel, MessageContent, MessageMeta,
-)
+from claude_code_log.models import MessageContent, MessageMeta
 
 @runtime_checkable
 class MessageTransformer(Protocol):
     # --- registration ---
     name: ClassVar[str]                                 # e.g. "clmail.hook-demotion"
-    priority: ClassVar[int]                             # built-in baseline; see priority table below
+    priority: ClassVar[int]                             # see built-in priority table below
     applies_to: ClassVar[tuple[type[MessageContent], ...]]
         # MRO-filtered: only invoked when the factory's *current* candidate
         # MessageContent matches (subclass check). Most transformers target
         # (UserTextMessage,) — they only fire for entries that would
         # otherwise fall through to the generic text variant.
-
-    # --- the new MessageContent class this transformer produces ---
-    OutputClass: ClassVar[type[MessageContent]]
-        # Plugin-owned. Declares detail_visibility on itself; carries
-        # format_<ClassName> / title_<ClassName> methods registered
-        # alongside the transformer (see below).
 
     # --- transformation ---
     def transform(
@@ -275,38 +268,62 @@ class MessageTransformer(Protocol):
         content_list: list,
         meta: MessageMeta,
     ) -> Optional[MessageContent]:
-        """Return an OutputClass instance, or None to pass through.
+        """Return an instance of an EXISTING core MessageContent variant,
+        or None to pass through. Called inside the factory dispatch chain
+        at this transformer's declared priority. text_content is
+        byte-equivalent to what the factory's built-in detectors consume.
 
-        Called inside the factory dispatch chain at this transformer's
-        declared priority. text_content is byte-equivalent to what the
-        factory's built-in detectors consume.
+        v1 contract: the returned MessageContent MUST be an instance of
+        a class already defined in claude_code_log.models — typically
+        one of the typed user-side variants (UserHookNotificationMessage,
+        UserSlashCommandMessage, etc.). Plugins cannot introduce new
+        MessageContent subclasses in v1.
         """
-
-    # --- renderer methods (registered alongside the transformer) ---
-    # Plugin defines format_<ClassName> and title_<ClassName> functions
-    # for the OutputClass; the loader binds them onto the renderer
-    # classes the same way built-in formatters work. Signature mirrors
-    # the existing convention in renderer.py / html/renderer.py /
-    # markdown/renderer.py.
 ```
 
-The plugin-owned `OutputClass` declares its visibility directly:
+### v1 scope: existing-variants-only
 
-```python
-class UserHookNotificationMessage(MessageContent):
-    source: str   # "monitor" or "clmail"
-    text: str
+A transformer's `transform()` MUST return an instance of a class
+already defined in `claude_code_log.models`. The natural target
+for hook-style transformers is the generic
+`UserHookNotificationMessage(source: str, text: str)` introduced
+by PR #167, which lives in core and is plugin-friendly by design
+(no clmail-specific typing on the class itself; the docstring
+names monitor/clmail as *examples*).
 
-    detail_visibility: ClassVar[DetailLevel] = DetailLevel.FULL
-        # Only visible at --detail full; dropped at HIGH/MEDIUM/LOW/MINIMAL.
-```
+Why this scope:
 
-This replaces the hardcoded `_HIGH_EXCLUDE_CLASSES` registry: the
-renderer's filter pass reads `cls.detail_visibility` (with a
-default of `DetailLevel.MINIMAL` = always visible) instead of
-consulting a central set. Built-in `MessageContent` subclasses
-migrate to the class-attribute form in a follow-up PR — mechanical
-diff, doesn't block #166.
+- **Filter-bucket inheritance.** Visibility is a property of the
+  target class, owned by core, inherited by every transformer
+  that targets it. No `detail_visibility` class attribute, no
+  per-plugin renderer registration, no migration of built-in
+  classes. The plugin contract reduces to a single method
+  (`transform`) and three metadata fields.
+- **Renderer/timeline/fold-rules surface stays unchanged.** No
+  v1 commitment to a plugin-touchable rendering API; we can
+  iterate on the rendering pipeline freely without breaking
+  out-of-tree code.
+- **v1 → v2 migration is purely additive.** A future v2 that
+  permits plugin-owned `MessageContent` subclasses
+  (`detail_visibility` attribute, plugin-registered format/title
+  methods) extends this contract without breaking it. The
+  reverse direction is not true: shipping plugin-owned classes
+  in v1 commits the rendering surface to a plugin-touchable API
+  forever.
+- **The clmail case doesn't motivate v2.** Alice's PR #167
+  defines `UserHookNotificationMessage` generically; any future
+  hook-source plugin (monitor, other tooling) rewrites *to* it
+  by passing a different `source=` string. No new typed wrapper
+  needed.
+
+Migration of PR #167 to a plugin under v1 is a *deletion-only*
+refactor from core's perspective: remove the
+`_HOOK_NOTIFICATION_SOURCES` tuple, remove the regex, remove the
+call site in `create_user_message`. The class, its renderer/title
+methods, and its `_HIGH_EXCLUDE_CLASSES` membership all stay in
+core unchanged. The clmail plugin ships one
+`MessageTransformer` per source (mechanically: one regex →
+two transformers).
 
 **In-factory-dispatch placement.** Transformers run *inside* the
 factory's existing detector sequence, not as a post-factory pass.
@@ -342,7 +359,6 @@ def load_plugins() -> tuple[dict[str, ToolRenderer], list[MessageTransformer]]:
             renderer_candidates[cls.tool_name].append(instance)
         elif isinstance(instance, MessageTransformer):
             transformers.append(instance)
-            _register_format_methods(cls.OutputClass)  # binds plugin's format_X/title_X
         else:
             warn(f"plugin {ep.name!r} does not implement any plugin Protocol")
     # 2. Feed in builtins as priority=0 entries.
@@ -407,6 +423,60 @@ The winners table is consulted at three places:
   content's class doesn't match a `format_<ClassName>` method on
   the renderer (today's MRO fallback path).
 
+### `_dispatch_format` invocation pattern
+
+Once `_dispatch_format` resolves a plugin winner for a given
+content object, it picks the renderer method by joining two
+dispatch axes: **content type** (`ToolUseContent` →
+`render_input_*`, `ToolResultContent` → `render_output_*`) and
+**requested output format** (`markdown` / `html`, with HTML
+falling back to mistune-on-Markdown when the plugin returns
+`None`):
+
+```python
+def _dispatch_via_plugin(
+    content: ToolUseContent | ToolResultContent,
+    message: TemplateMessage,
+    output_format: Literal["markdown", "html"],
+) -> str:
+    winner = winners[content.tool_name]
+
+    if isinstance(content, ToolUseContent):
+        if output_format == "markdown":
+            return winner.render_input_markdown(content, message)
+        else:  # html
+            rendered = winner.render_input_html(content, message)
+            if rendered is None:
+                # Derive HTML from the plugin's Markdown via mistune.
+                md = winner.render_input_markdown(content, message)
+                return mistune_render(md)
+            return rendered
+
+    elif isinstance(content, ToolResultContent):
+        if output_format == "markdown":
+            return winner.render_output_markdown(content, message)
+        else:  # html
+            rendered = winner.render_output_html(content, message)
+            if rendered is None:
+                md = winner.render_output_markdown(content, message)
+                return mistune_render(md)
+            return rendered
+```
+
+The MRO-walk that today underlies `_dispatch_format` stays in
+place: the dispatcher *first* tries `format_<ClassName>` on the
+renderer instance (covering both built-ins and in-tree
+subclasses), and *only* falls back to the plugin-winner path
+above when no matching `format_*` method exists. The plugin path
+is itself a `format_*`-equivalent — it answers the same
+question, just via the plugin contract instead of method
+inheritance.
+
+The same plugin instance fulfils both the input and output
+sides; there is no separate "input renderer" vs "output
+renderer" plugin. This keeps a single source of truth (icons,
+title heuristics, content schemas) per tool.
+
 Detail filtering becomes data-driven:
 
 ```python
@@ -462,7 +532,8 @@ claude_code_log_clmail/
   transformers/
     __init__.py
     hook_demotion.py           # ClmailHookDemotion, MonitorHookDemotion
-                               #   + UserHookNotificationMessage (the OutputClass)
+                               # (target UserHookNotificationMessage which
+                               #  lives in core; the plugin only ships matchers)
   templates/
     communicate.md.j2          # optional Jinja partials
 ```
@@ -470,25 +541,24 @@ claude_code_log_clmail/
 ### Transformer side (replaces alice's hardcoded regex)
 
 `detect_hook_notification()` from
-`claude_code_log/factories/user_factory.py:79–99` reduces to a
-~12-line plugin transformer. The plugin owns the
-`UserHookNotificationMessage` class outright; core knows nothing
-about `[monitor]` or `[clmail]` prefixes.
+`claude_code_log/factories/user_factory.py:79–99` reduces to ~12
+lines of plugin code per source. Under v1 (existing-variants-only),
+`UserHookNotificationMessage` stays in core unchanged — it was
+defined generically by PR #167 (`source: str`, `text: str`, with
+no clmail-specific typing on the class itself). The clmail plugin
+ships only the matcher; core knows nothing about `[monitor]` or
+`[clmail]` prefixes specifically, but the wrapper class it
+produces is core-owned and inherits its detail-visibility from
+the existing `_HIGH_EXCLUDE_CLASSES` registry.
 
 ```python
 # claude_code_log_clmail/transformers/hook_demotion.py
 import re
-from typing import ClassVar
 from claude_code_log.models import (
-    DetailLevel, MessageContent, MessageMeta, UserTextMessage,
+    MessageContent, MessageMeta, UserTextMessage,
+    UserHookNotificationMessage,            # core-owned, generic
 )
 from claude_code_log.factories.priorities import HOOK_NOTIFICATION
-
-
-class UserHookNotificationMessage(MessageContent):
-    source: str   # "monitor" | "clmail" | future plugin-defined sources
-    text: str
-    detail_visibility: ClassVar[DetailLevel] = DetailLevel.FULL
 
 
 def _make_hook_transformer(source: str, priority_offset: int = 0):
@@ -498,7 +568,6 @@ def _make_hook_transformer(source: str, priority_offset: int = 0):
         name       = f"clmail.{source}-hook-demotion"
         priority   = HOOK_NOTIFICATION + priority_offset
         applies_to = (UserTextMessage,)
-        OutputClass = UserHookNotificationMessage
 
         def transform(self, text_content, content_list, meta):
             m = pattern.match(text_content)
@@ -514,22 +583,20 @@ def _make_hook_transformer(source: str, priority_offset: int = 0):
 
 ClmailHookDemotion  = _make_hook_transformer("clmail")
 MonitorHookDemotion = _make_hook_transformer("monitor")
-
-
-# Renderer methods registered alongside the OutputClass.
-def format_UserHookNotificationMessage(self, content, message):
-    return f"_[{content.source}] {content.text}_"
-
-
-def title_UserHookNotificationMessage(self, content, message):
-    return None   # headless — appears inline
 ```
 
-The plugin loader, on discovering the transformer, registers
-`format_UserHookNotificationMessage` and
-`title_UserHookNotificationMessage` onto the Markdown and HTML
-renderer classes via the existing MRO-discoverable dispatch. No
-core changes needed beyond the loader itself.
+No `OutputClass` field, no `detail_visibility` attribute, no
+plugin-side `format_X` / `title_X` methods. Those all live in
+core, attached to `UserHookNotificationMessage` by PR #167. The
+core-to-plugin contract is genuinely minimal: a matcher that
+returns an instance of an existing core class.
+
+The migration of #167 to a plugin (if/when the user decides to
+ship the clmail integration as an external package) is a
+*deletion-only* refactor in core: remove `_HOOK_NOTIFICATION_SOURCES`,
+remove the regex, remove the call site in `create_user_message`.
+Class, renderer, title, and `_HIGH_EXCLUDE_CLASSES` membership all
+remain in core unchanged.
 
 ### Renderer side
 
@@ -617,12 +684,15 @@ Four layers:
    plugin's rendering. Cover all four `(min_detail, current
    detail)` quadrants.
 3. **Transformer integration tests**: ship a
-   `dummy_transformer_plugin` fixture introducing a new
-   `MessageContent` subclass with `detail_visibility = FULL`.
-   Drive a JSONL transcript carrying a matching prefix; assert
-   the transformer fires inside the factory chain, the new class
-   is dispatched to format/title methods, and the entry is
-   filtered out at HIGH/MEDIUM/LOW/MINIMAL.
+   `dummy_transformer_plugin` fixture whose matcher returns an
+   instance of a core `MessageContent` variant
+   (`UserHookNotificationMessage` is the natural choice). Drive a
+   JSONL transcript carrying a matching prefix; assert the
+   transformer fires inside the factory chain at its declared
+   priority, the resulting entry uses the core variant (correct
+   class, correct fields), and inherited filter-bucket membership
+   drops it at HIGH/MEDIUM/LOW/MINIMAL. Multi-line guard, source
+   namespace, and priority-collision warnings each get one test.
 4. **ClMail plugin tests** (in the ClMail plugin package, not
    here): per-action snapshot tests covering the seven
    `communicate` actions, the four `control` actions, etc., plus
@@ -661,11 +731,13 @@ snapshot pins their current output.
 - **Templates.** Plugins MAY ship Jinja partials and load them
   via `importlib.resources`; we won't standardise a directory
   convention until a second plugin needs it.
-- **Built-in migration to `detail_visibility`.** Existing
-  built-in `MessageContent` subclasses currently have visibility
-  encoded in `_HIGH_EXCLUDE_CLASSES`. Migration to the
-  class-attribute form is mechanical and lands in a follow-up
-  PR after #166 — doesn't block the plugin API.
+- **Plugin-owned `MessageContent` subclasses (v2).** v1 restricts
+  transformers to rewriting *to* existing core variants. A future
+  v2 could allow plugins to register new subclasses (with
+  `detail_visibility` class attribute and plugin-registered
+  format/title methods). Purely additive on top of v1; defer
+  until a concrete use case justifies the larger surface
+  (renderer/timeline/fold-rules become plugin-touchable).
 - **Transformer surfacing / namespace collision diagnosis.** No
   `--list-plugins` CLI in v1. If two plugins claim overlapping
   prefixes (e.g. two competing `[monitor]` transformers), the
@@ -683,7 +755,8 @@ snapshot pins their current output.
   artificial restriction); the natural worked example is
   `(UserTextMessage,)` but a transformer targeting
   `AssistantTextMessage` or a tool-result variant is permitted.
-  We'll see what plugins actually do.
+  Constrained in practice by what core variants exist to rewrite
+  *to*. We'll see what plugins actually do.
 
 ## Future extensions
 
