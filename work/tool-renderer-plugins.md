@@ -314,7 +314,7 @@ When the renderer needs to format a content object, the lookup
 walks the content's MRO and tries two strategies at each class:
 
 ```python
-def _dispatch_format(self, content, output_format):
+def _dispatch_format(self, content, message, output_format):
     method_attr = f"format_{output_format}"     # "format_markdown" / "format_html"
     for klass in type(content).__mro__:
         # Strategy 1: renderer-side format_<ClassName> method.
@@ -322,16 +322,26 @@ def _dispatch_format(self, content, output_format):
         # carries hand-written format_BashInput / format_ReadInput / etc.
         renderer_method = getattr(self, f"format_{klass.__name__}", None)
         if renderer_method is not None:
-            return renderer_method(content)
+            return renderer_method(content, message)
         # Strategy 2: class-side format_<output> method.
         # Plugin-defined classes carry format_markdown / format_html on
         # themselves; the dispatcher invokes them with the renderer as
         # first arg so they have access to renderer state (mistune, etc.).
         class_method = klass.__dict__.get(method_attr)
         if class_method is not None:
-            return class_method(content, self, content.message)
+            return class_method(content, self, message)
     raise NotImplementedError(...)
 ```
+
+The `message: TemplateMessage` argument is part of the renderer's
+call contract everywhere else (`format_<ClassName>` methods on the
+renderer classes take `(self, content, message)`). The dispatcher
+passes it through to both strategies; class-side `format_*`
+methods on plugin-defined `MessageContent` subclasses have the
+signature `(self, renderer, message) -> str`. The
+`MessageContent` base class itself does NOT carry a back-pointer
+to its `TemplateMessage`; only the renderer's caller knows
+the binding, and the dispatcher is responsible for threading it.
 
 **Four-way matrix** (for a given content class):
 
@@ -420,12 +430,15 @@ def load_plugins() -> list[MessageTransformer]:
             warn(f"plugin {ep.name!r} does not implement MessageTransformer")
             continue
         transformers.append(instance)
-    transformers.sort(key=lambda t: (t.priority, type(t).__name__))
+    transformers.sort(
+        key=lambda t: (t.priority, type(t).__module__, type(t).__qualname__)
+    )
     # Tie-break warning
     for a, b in zip(transformers, transformers[1:]):
         if a.priority == b.priority and a.applies_to == b.applies_to:
             warn(f"priority tie for {a.applies_to!r}: "
-                 f"using {type(a).__name__} before {type(b).__name__}")
+                 f"using {type(a).__module__}.{type(a).__qualname__} before "
+                 f"{type(b).__module__}.{type(b).__qualname__}")
     return transformers
 ```
 
