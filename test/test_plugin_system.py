@@ -144,11 +144,17 @@ class TestSortAndWarn:
     """``_sort_and_warn`` orders by (priority, module, qualname) and warns on ties."""
 
     def test_sorts_by_priority(self):
-        a = _GoodTransformer()
-        a.__class__.priority = 100  # shadow ClassVar for the test instance
-        b = _GoodTransformer()
-        sorted_ = _sort_and_warn([b, a])
-        assert sorted_[0].priority <= sorted_[1].priority
+        # Use local subclasses so we don't mutate _GoodTransformer's
+        # module-level ClassVar (which would leak into other tests in
+        # the same worker via class identity).
+        class _Low(_GoodTransformer):
+            priority = 100
+
+        class _High(_GoodTransformer):
+            priority = 900
+
+        sorted_ = _sort_and_warn([_High(), _Low()])
+        assert [t.priority for t in sorted_] == [100, 900]
 
     def test_warns_on_priority_tie_same_applies_to(
         self, caplog: pytest.LogCaptureFixture
@@ -356,8 +362,9 @@ class TestHookDemotionTransformer:
     @reference_plugin_required
     def test_multiline_after_prefix_passes_through(self):
         """Multi-line guard: real human prompts that happen to start with
-        ``[testhook]`` aren't demoted. The pattern's body capture rejects
-        newlines, so transform() returns None and the candidate passes."""
+        ``[testhook]`` aren't demoted. Pattern-level body check rejects
+        newlines in the body, so transform() returns None and the
+        candidate passes."""
         from claude_code_log.factories.user_factory import create_user_message
 
         meta = MessageMeta.empty()
@@ -365,6 +372,23 @@ class TestHookDemotionTransformer:
         items = [TextContent(type="text", text=text)]
         result = create_user_message(meta, items, text)
 
+        assert isinstance(result, UserTextMessage)
+
+    @reference_plugin_required
+    def test_newline_immediately_after_prefix_passes_through(self):
+        """Regression for the variant where the newline comes right after
+        ``[testhook]`` with no body text on the prefix line. The
+        pattern's ``\\s*`` after the marker would otherwise consume the
+        newline and slip a multi-line prompt past a body-only guard.
+        The pre-regex whole-text newline check catches this shape."""
+        from claude_code_log.factories.user_factory import create_user_message
+
+        meta = MessageMeta.empty()
+        text = "[testhook]\nactual prompt body here"
+        items = [TextContent(type="text", text=text)]
+        result = create_user_message(meta, items, text)
+
+        # Must pass through — this is a real prompt, not a hook injection.
         assert isinstance(result, UserTextMessage)
 
 
@@ -427,6 +451,138 @@ class TestApplyTransformersExceptionSafety:
             assert "transform()" in caplog.text or "transform" in caplog.text
         finally:
             reset_cache()
+
+
+class TestApplyTransformersReturnTypeEnforcement:
+    """The runtime contract: transformer's return must be a MessageContent
+    that subclass-matches the transformer's applies_to. Wholly-unrelated
+    returns are rejected with a warning; the candidate flows through to
+    the next transformer (or out unchanged)."""
+
+    def test_non_message_content_return_is_rejected(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        class _ReturnsString:
+            name = "test.returns-string"
+            priority = 100
+            applies_to = (UserTextMessage,)
+
+            def transform(self, content, meta):
+                return "not a MessageContent"
+
+        import claude_code_log.plugins as plugins
+
+        plugins._cached_transformers = [_ReturnsString()]
+        try:
+            with caplog.at_level(logging.WARNING):
+                msg = UserTextMessage(meta=MessageMeta.empty(), items=[])
+                result = apply_transformers(msg, msg.meta)
+            assert result is msg
+            assert "non-MessageContent" in caplog.text
+        finally:
+            reset_cache()
+
+    def test_off_target_message_content_return_is_rejected(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        """A UserTextMessage-targeting transformer returning a
+        SystemMessage gets rejected: the return doesn't match
+        ``applies_to``, even though it IS a MessageContent."""
+        from claude_code_log.models import SystemMessage
+
+        class _ReturnsOffTarget:
+            name = "test.returns-off-target"
+            priority = 100
+            applies_to = (UserTextMessage,)
+
+            def transform(self, content, meta):
+                return SystemMessage(meta=meta, level="info", text="off-target")
+
+        import claude_code_log.plugins as plugins
+
+        plugins._cached_transformers = [_ReturnsOffTarget()]
+        try:
+            with caplog.at_level(logging.WARNING):
+                msg = UserTextMessage(meta=MessageMeta.empty(), items=[])
+                result = apply_transformers(msg, msg.meta)
+            assert result is msg
+            assert "applies_to" in caplog.text
+        finally:
+            reset_cache()
+
+    def test_matching_subclass_return_is_accepted(self):
+        """A return that's a subclass of one of ``applies_to`` is
+        accepted (the typical plugin pattern)."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class _PluginText(UserTextMessage):
+            tag: str = ""
+
+        class _ReturnsSubclass:
+            name = "test.returns-subclass"
+            priority = 100
+            applies_to = (UserTextMessage,)
+
+            def transform(self, content, meta):
+                return _PluginText(meta=meta, items=[], tag="ok")
+
+        import claude_code_log.plugins as plugins
+
+        plugins._cached_transformers = [_ReturnsSubclass()]
+        try:
+            msg = UserTextMessage(meta=MessageMeta.empty(), items=[])
+            result = apply_transformers(msg, msg.meta)
+            assert isinstance(result, _PluginText)
+            assert result.tag == "ok"
+        finally:
+            reset_cache()
+
+
+class TestSortAndWarnNonAdjacentCollision:
+    """Tie detection groups by (priority, applies_to), so collisions are
+    caught even when a same-priority but different-applies_to transformer
+    sits between the collision partners in the sort order."""
+
+    def test_non_adjacent_collision_is_warned(self, caplog: pytest.LogCaptureFixture):
+        from claude_code_log.models import ToolUseMessage
+
+        # All at priority=600; module/qualname sort puts them in
+        # alphabetical order T_aaa, T_bbb, T_ccc. T_aaa and T_ccc share
+        # applies_to=(UserTextMessage,); T_bbb sits between them with
+        # applies_to=(ToolUseMessage,). The old pairwise-adjacent check
+        # would have missed the (T_aaa, T_ccc) tie.
+        class T_aaa:  # noqa: N801
+            name = "test.t-aaa"
+            priority = 600
+            applies_to = (UserTextMessage,)
+
+            def transform(self, content, meta):
+                return None
+
+        class T_bbb:  # noqa: N801
+            name = "test.t-bbb"
+            priority = 600
+            applies_to = (ToolUseMessage,)
+
+            def transform(self, content, meta):
+                return None
+
+        class T_ccc:  # noqa: N801
+            name = "test.t-ccc"
+            priority = 600
+            applies_to = (UserTextMessage,)
+
+            def transform(self, content, meta):
+                return None
+
+        with caplog.at_level(logging.WARNING):
+            _sort_and_warn([T_aaa(), T_bbb(), T_ccc()])
+
+        # The (T_aaa, T_ccc) collision must surface.
+        assert "T_aaa" in caplog.text
+        assert "T_ccc" in caplog.text
+        assert "priority tie" in caplog.text
 
 
 # ---------------------------------------------------------------------------

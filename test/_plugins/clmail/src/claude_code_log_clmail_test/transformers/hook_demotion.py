@@ -26,8 +26,19 @@ from claude_code_log.models import (
 
 
 @dataclass
-class TestHookNotificationMessage(MessageContent):
-    """Plugin-defined typed wrapper for ``[testhook] ...`` user turns."""
+class TestHookNotificationMessage(UserTextMessage):
+    """Plugin-defined typed wrapper for ``[testhook] ...`` user turns.
+
+    Subclasses ``UserTextMessage`` (not bare ``MessageContent``) so the
+    runtime contract in ``apply_transformers`` accepts it: a transformer
+    with ``applies_to=(UserTextMessage,)`` MUST return an instance of
+    that class or a subclass. Sibling rewrites would be rejected.
+
+    The inherited ``items`` field is set to an empty list by default;
+    this class carries the parsed ``source`` and ``text`` separately,
+    so ``items`` is unused at render time (the class-side
+    ``format_markdown`` reads ``self.source`` / ``self.text`` directly).
+    """
 
     source: str = ""
     text: str = ""
@@ -77,10 +88,17 @@ class TestHookDemotion:
         text = "\n".join(
             getattr(item, "text", "") for item in content.items if hasattr(item, "text")
         )
+        # Multi-line guard — checked on the *whole* text, before regex.
+        # The pattern's ``\s*`` after ``[testhook]`` would otherwise
+        # consume a newline immediately after the marker, hiding the
+        # multi-line shape from the post-match ``"\n" in m.group(1)``
+        # check. Real human prompts that happen to start with
+        # ``[testhook]`` and continue on the next line pass through
+        # unchanged.
+        if "\n" in text:
+            return None
         m = _PATTERN.match(text)
-        if m is None or "\n" in m.group(1):
-            # Multi-line guard: real human prompts that happen to start
-            # with [testhook] pass through unchanged.
+        if m is None:
             return None
         return TestHookNotificationMessage(
             meta=meta, source="testhook", text=m.group(1)

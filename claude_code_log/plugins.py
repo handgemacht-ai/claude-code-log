@@ -193,18 +193,28 @@ def _sort_and_warn(transformers: list[MessageTransformer]) -> list[MessageTransf
         transformers,
         key=lambda t: (t.priority, type(t).__module__, type(t).__qualname__),
     )
-    for a, b in zip(transformers, transformers[1:]):
-        if a.priority == b.priority and a.applies_to == b.applies_to:
+    # Group by (priority, applies_to) rather than walking adjacent pairs:
+    # the sort key is (priority, module, qualname), so two transformers with
+    # the same priority but different applies_to can sit between two
+    # genuine collision partners. The adjacent-pair check would miss that
+    # case. Group-by gives us every collision regardless of sort position.
+    seen: dict[tuple[int, tuple[type[MessageContent], ...]], MessageTransformer] = {}
+    for t in transformers:
+        key = (t.priority, t.applies_to)
+        first = seen.get(key)
+        if first is not None:
             logger.warning(
                 "priority tie for applies_to=%r at priority=%d: "
                 "using %s.%s before %s.%s",
-                a.applies_to,
-                a.priority,
-                type(a).__module__,
-                type(a).__qualname__,
-                type(b).__module__,
-                type(b).__qualname__,
+                t.applies_to,
+                t.priority,
+                type(first).__module__,
+                type(first).__qualname__,
+                type(t).__module__,
+                type(t).__qualname__,
             )
+        else:
+            seen[key] = t
     return transformers
 
 
@@ -249,9 +259,19 @@ def apply_transformers(
     candidate's class (subclass check). First non-None return wins;
     candidate passes through unchanged if no transformer matches.
 
-    Transformer exceptions are caught and logged at WARNING so a buggy
-    plugin doesn't crash the whole conversion; the candidate falls
-    through to the next transformer (or out unchanged).
+    Two defensive surfaces protect downstream code from misbehaving plugins:
+
+    1. **Exception capture.** Transformer exceptions are caught and
+       logged at WARNING so a buggy plugin doesn't crash the whole
+       conversion; the candidate falls through to the next transformer.
+    2. **Return-type enforcement.** The replacement must be a
+       ``MessageContent`` instance AND match the transformer's
+       ``applies_to`` MRO filter (typically a subclass of one of the
+       declared types). A wholly-unrelated MessageContent — e.g. a
+       UserTextMessage-targeting transformer returning a SystemMessage
+       — is rejected with a warning; the candidate continues to the
+       next transformer. This enforces the contract documented on the
+       :class:`MessageTransformer` Protocol.
     """
     for transformer in load_transformers():
         if not isinstance(candidate, transformer.applies_to):
@@ -266,8 +286,30 @@ def apply_transformers(
                 type(candidate).__name__,
             )
             continue
-        if replacement is not None:
-            return replacement
+        if replacement is None:
+            continue
+        # Static type-checkers see the Protocol's Optional[MessageContent]
+        # return annotation and consider this isinstance() unnecessary
+        # — but plugin authors aren't bound by static typing at runtime,
+        # so this catches the "returned a string / dict / None-ish" class
+        # of plugin bug. Keep the runtime check; suppress the linter.
+        if not isinstance(replacement, MessageContent):  # pyright: ignore[reportUnnecessaryIsInstance]
+            logger.warning(
+                "plugin %r: transform() returned non-MessageContent %r; skipping",
+                transformer.name,
+                type(replacement).__name__,
+            )
+            continue
+        if not isinstance(replacement, transformer.applies_to):
+            logger.warning(
+                "plugin %r: transform() returned %r not matching "
+                "applies_to=%r; skipping",
+                transformer.name,
+                type(replacement).__name__,
+                tuple(t.__name__ for t in transformer.applies_to),
+            )
+            continue
+        return replacement
     return candidate
 
 

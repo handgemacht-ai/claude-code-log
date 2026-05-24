@@ -4290,21 +4290,26 @@ class Renderer:
     def title_content(self, message: TemplateMessage) -> str:
         """Get message title by dispatching to type-specific title method.
 
-        Looks for a method named title_{ClassName} (e.g., title_ToolUseMessage).
-        Falls back to type-based title derived from message_type.
+        Delegates to :meth:`_dispatch_title` so plugin-defined
+        ``MessageContent`` subclasses can supply their own class-side
+        ``title()`` method (Strategy 2 of the plugin dispatch contract).
+        Without delegation, the renderer-only MRO walk fires
+        ``title_ToolUseMessage`` on the base renderer before a plugin
+        subclass's class-side ``title()`` is reached — silently
+        ignoring the plugin's contribution at the top level.
 
-        Args:
-            message: TemplateMessage to get title for.
-
-        Returns:
-            Title string for the message header.
+        Falls back to a title-cased ``message_type`` when neither
+        strategy yields a title (which is what happens for built-in
+        message classes that have no renderer-side title method either).
         """
-        # Try title_{ClassName} dispatch
-        for cls in type(message.content).__mro__:
-            if cls is object:
-                break
-            if method := getattr(self, f"title_{cls.__name__}", None):
-                return method(message.content, message)
+        # Use `is not None` rather than truthiness: a handler that
+        # returns an empty string (e.g. title_ToolResultMessage for
+        # non-error results) is asserting "no header content needed",
+        # not "I didn't handle this". The walrus / truthy form would
+        # incorrectly fall through to the message_type default.
+        title = self._dispatch_title(message.content, message)
+        if title is not None:
+            return title
         # Fallback: convert message_type to title case
         return message.content.message_type.replace("_", " ").replace("-", " ").title()
 
