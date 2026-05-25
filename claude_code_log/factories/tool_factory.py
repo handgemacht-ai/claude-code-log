@@ -207,8 +207,11 @@ def _parse_cat_n_snippet(
                 system_reminder += line + "\n"
             continue
 
-        # Parse regular code line (format: "  123→content")
-        match = re.match(r"\s+(\d+)→(.*)$", line)
+        # Parse regular code line. Two cat-n separator variants seen in the
+        # wild: the arrow form ("  123→content", used by Edit/Write result
+        # snippets) and the literal-tab form ("775\tcontent", used by Read
+        # results since at least Claude Code 2.1.x — see issue #170).
+        match = re.match(r"\s*(\d+)[\t→](.*)$", line)
         if match:
             line_num = int(match.group(1))
             # Capture the first line number as offset
@@ -255,25 +258,57 @@ def _extract_tool_result_text(tool_result: ToolResultContent) -> str:
 
 
 def parse_read_output(
-    tool_result: ToolResultContent, file_path: Optional[str]
+    tool_result: ToolResultContent,
+    file_path: Optional[str],
+    tool_use_result: Optional[ToolUseResult] = None,
 ) -> Optional[ReadOutput]:
     """Parse Read tool result into structured content.
 
+    Prefers the structured ``toolUseResult.file`` payload (clean content
+    plus accurate ``filePath`` / ``startLine`` / ``numLines`` / ``totalLines``
+    metadata) when available; falls back to re-parsing the ``cat -n``
+    formatted ``tool_result.content`` text for older transcripts.
+
     Args:
-        tool_result: The tool result content
+        tool_result: The tool result content (cat-n formatted text)
         file_path: Path to the file that was read (required for ReadOutput)
+        tool_use_result: Structured toolUseResult; ``file`` dict gives us
+            clean content + exact line metadata without re-parsing cat-n
 
     Returns:
         ReadOutput if parsing succeeds, None otherwise
     """
     if not file_path:
         return None
+
+    # Preferred path: structured toolUseResult.file is byte-clean and carries
+    # the exact line metadata. Avoids the lossy cat-n round-trip and gives us
+    # totalLines (which the text-only fallback cannot recover).
+    if isinstance(tool_use_result, dict):
+        file_info: dict[str, Any] = tool_use_result.get("file") or {}
+        content_field: Any = file_info.get("content")
+        if isinstance(content_field, str):
+            num_lines = int(file_info.get("numLines") or len(content_field.split("\n")))
+            total_lines = int(file_info.get("totalLines") or num_lines)
+            return ReadOutput(
+                file_path=str(file_info.get("filePath") or file_path),
+                content=content_field,
+                start_line=int(file_info.get("startLine") or 1),
+                num_lines=num_lines,
+                total_lines=total_lines,
+                is_truncated=num_lines < total_lines,
+                system_reminder=None,
+            )
+
     if not (content := _extract_tool_result_text(tool_result)):
         return None
 
-    # Check if content matches the cat-n format pattern (line_number → content)
+    # Fallback: parse the cat-n formatted text. Accepts both the tab variant
+    # (Read tool result, Claude Code 2.1.x+) and the arrow variant
+    # (Edit/Write result snippets); see _parse_cat_n_snippet for the
+    # combined regex.
     lines = content.split("\n")
-    if not lines or not re.match(r"\s+\d+→", lines[0]):
+    if not lines or not re.match(r"\s*\d+[\t→]", lines[0]):
         return None
 
     result = _parse_cat_n_snippet(lines)
@@ -288,8 +323,8 @@ def parse_read_output(
         content=code_content,
         start_line=line_offset,
         num_lines=num_lines,
-        total_lines=num_lines,  # We don't know total from result
-        is_truncated=False,  # Can't determine from result
+        total_lines=num_lines,  # Not recoverable from text-only fallback
+        is_truncated=False,  # Same — fallback can't tell
         system_reminder=system_reminder,
     )
 
@@ -1266,6 +1301,7 @@ PARSERS_WITH_TOOL_USE_RESULT: set[str] = {
     "WebFetch",
     "Bash",
     "TaskStop",
+    "Read",
 }
 
 
