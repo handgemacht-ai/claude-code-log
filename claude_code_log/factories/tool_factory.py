@@ -288,12 +288,30 @@ def parse_read_output(
         file_info: dict[str, Any] = tool_use_result.get("file") or {}
         content_field: Any = file_info.get("content")
         if isinstance(content_field, str):
-            num_lines = int(file_info.get("numLines") or len(content_field.split("\n")))
-            total_lines = int(file_info.get("totalLines") or num_lines)
+            # ``numLines`` may legitimately be 0 for an empty-file read, so
+            # distinguish *absent* from *zero* explicitly — the
+            # ``... or default`` truthiness shortcut would silently promote
+            # the zero case to the fallback. Same for ``totalLines`` and
+            # ``startLine``. ``splitlines()`` over ``split("\n")`` for the
+            # absent-numLines fallback so content ending in ``\n`` does not
+            # tack on a phantom trailing element ("x\ny\n".splitlines() →
+            # ["x", "y"], length 2 not 3).
+            num_lines_raw = file_info.get("numLines")
+            num_lines = (
+                int(num_lines_raw)
+                if num_lines_raw is not None
+                else len(content_field.splitlines())
+            )
+            total_lines_raw = file_info.get("totalLines")
+            total_lines = (
+                int(total_lines_raw) if total_lines_raw is not None else num_lines
+            )
+            start_line_raw = file_info.get("startLine")
+            start_line = int(start_line_raw) if start_line_raw is not None else 1
             return ReadOutput(
                 file_path=str(file_info.get("filePath") or file_path),
                 content=content_field,
-                start_line=int(file_info.get("startLine") or 1),
+                start_line=start_line,
                 num_lines=num_lines,
                 total_lines=total_lines,
                 is_truncated=num_lines < total_lines,

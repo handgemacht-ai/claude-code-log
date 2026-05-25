@@ -196,6 +196,11 @@ class TestHtmlRendering:
         assert out.is_truncated is True
 
     def test_empty_file(self):
+        # Regression: ``numLines == 0`` and ``totalLines == 0`` must NOT be
+        # promoted to the absent-fallback by a ``... or default`` shortcut.
+        # The previous draft used ``int(file_info.get("numLines") or len(...))``
+        # which silently turned 0 into ``len("".split("\n")) == 1`` —
+        # rendering an empty file as 1 line.
         tr = ToolResultContent(tool_use_id="e1", type="tool_result", content="ignored")
         out = parse_read_output(
             tr,
@@ -212,4 +217,26 @@ class TestHtmlRendering:
         )
         assert isinstance(out, ReadOutput)
         assert out.content == ""
+        assert out.num_lines == 0  # not 1 — see comment above
+        assert out.total_lines == 0
         assert out.is_truncated is False  # 0 == 0
+
+    def test_absent_numlines_uses_splitlines(self):
+        # Regression: the absent-numLines fallback must use ``splitlines()``,
+        # not ``split("\n")``. Content ending in ``\n`` (most file content)
+        # would otherwise overcount by one phantom trailing element.
+        tr = ToolResultContent(tool_use_id="s2", type="tool_result", content="ignored")
+        out = parse_read_output(
+            tr,
+            file_path="/x.py",
+            tool_use_result={
+                "file": {
+                    "filePath": "/x.py",
+                    "content": "x = 1\ny = 2\n",  # 2 real lines, trailing \n
+                    # numLines deliberately absent — exercises fallback
+                    "startLine": 1,
+                }
+            },
+        )
+        assert isinstance(out, ReadOutput)
+        assert out.num_lines == 2  # not 3
