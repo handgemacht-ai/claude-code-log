@@ -427,6 +427,151 @@ class TestToolTransformerWithClassSideRender:
         assert "ClMail communicate" in title
 
 
+class TestToolResultTransformerWithCollapsibleBody:
+    """Result-side transformer + ``render_markdown_collapsible`` helper.
+
+    Covers the ``applies_to=(ToolResultMessage,)`` shape (the
+    other reference transformers match ``ToolUseMessage`` /
+    ``UserTextMessage``) and the long-Markdown-body rendering pattern
+    via the public helper re-exported from ``claude_code_log.plugins``.
+    """
+
+    @reference_plugin_required
+    def test_short_body_renders_inline(self):
+        from claude_code_log.models import ToolResultContent
+        from claude_code_log_clmail_test.transformers.tool_communicate_result import (
+            TOOL_NAME,
+            TestClmailCommunicateResultMessage,
+        )
+
+        tr = ToolResultContent(
+            tool_use_id="t1",
+            type="tool_result",
+            content="short reply body",
+        )
+        instance = TestClmailCommunicateResultMessage(
+            meta=MessageMeta.empty(),
+            tool_use_id="t1",
+            output=tr,
+            tool_name=TOOL_NAME,
+        )
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        renderer = HtmlRenderer(image_export_mode="placeholder")
+        html = renderer._dispatch_format(instance, MagicMock())
+        # Short content stays inline; wrapper carries `markdown` so
+        # host theme CSS for tables / code blocks applies.
+        assert 'class="test-clmail-result markdown"' in html
+        assert "short reply body" in html
+        # No `<details>` collapse for short bodies.
+        assert "<details" not in html
+
+    @reference_plugin_required
+    def test_long_body_collapses_with_preview(self):
+        from claude_code_log.models import ToolResultContent
+        from claude_code_log_clmail_test.transformers.tool_communicate_result import (
+            TOOL_NAME,
+            TestClmailCommunicateResultMessage,
+        )
+
+        # 30 lines > the transformer's line_threshold=20 → collapses.
+        body = "\n".join(f"line {i}" for i in range(30))
+        tr = ToolResultContent(tool_use_id="t2", type="tool_result", content=body)
+        instance = TestClmailCommunicateResultMessage(
+            meta=MessageMeta.empty(),
+            tool_use_id="t2",
+            output=tr,
+            tool_name=TOOL_NAME,
+        )
+        from claude_code_log.html.renderer import HtmlRenderer
+
+        renderer = HtmlRenderer(image_export_mode="placeholder")
+        html = renderer._dispatch_format(instance, MagicMock())
+        # Preview block + full block are both present in a collapsible.
+        assert "<details" in html
+        assert "line 0" in html  # in the preview
+        assert "line 29" in html  # in the full body
+
+    @reference_plugin_required
+    def test_class_side_dispatch_via_strategy_2(self):
+        """The plugin class declares no renderer-side ``format_*`` method —
+        dispatch must reach the class-side ``format_html`` via Strategy 2.
+        Title comes via the same path."""
+        from claude_code_log.html.renderer import HtmlRenderer
+        from claude_code_log.models import ToolResultContent
+        from claude_code_log_clmail_test.transformers.tool_communicate_result import (
+            TOOL_NAME,
+            TestClmailCommunicateResultMessage,
+        )
+
+        tr = ToolResultContent(tool_use_id="t3", type="tool_result", content="x")
+        instance = TestClmailCommunicateResultMessage(
+            meta=MessageMeta.empty(),
+            tool_use_id="t3",
+            output=tr,
+            tool_name=TOOL_NAME,
+        )
+        renderer = HtmlRenderer(image_export_mode="placeholder")
+        title = renderer._dispatch_title(instance, MagicMock())
+        assert title == "✉ ClMail result"
+
+    @reference_plugin_required
+    def test_absent_format_html_synthesizes_from_format_markdown(self):
+        """HtmlRenderer dispatch: a plugin class with ``format_markdown``
+        but no ``format_html`` gets HTML synthesized via mistune,
+        wrapped in ``<div class="markdown">``. The actual class's
+        ``format_markdown`` wins over any inherited renderer-side
+        ``format_<ParentClass>`` method.
+
+        Validates the v1 contract pivot: ``format_html`` is opt-in;
+        absence drives the synthesis fallback (no None sentinel)."""
+        from claude_code_log.factories.user_factory import create_user_message
+        from claude_code_log.html.renderer import HtmlRenderer
+        from claude_code_log_clmail_test.transformers.hook_demotion import (
+            TestHookNotificationMessage,
+        )
+
+        # TestHookNotificationMessage subclasses UserTextMessage and
+        # defines format_markdown only. The host renderer has
+        # format_UserTextMessage — proves the actual-class precedence
+        # rule (synthesis wins over inherited Strategy 1).
+        meta = MessageMeta.empty()
+        items = [TextContent(type="text", text="[testhook] hello world")]
+        result = create_user_message(meta, items, "[testhook] hello world")
+        assert isinstance(result, TestHookNotificationMessage)
+
+        renderer = HtmlRenderer(image_export_mode="placeholder")
+        html = renderer._dispatch_format(result, MagicMock())
+        # Mistune emitted the italics (em) for "*hello world*"; the
+        # synthesizer wrapped the lot in <div class="markdown">.
+        assert html.startswith('<div class="markdown">')
+        assert "<em>" in html
+        assert "hello world" in html
+        # The literal string "None" must NOT appear — the old bug.
+        assert "None" not in html
+
+    @reference_plugin_required
+    def test_has_markdown_property_pins_markdown_css_scope(self):
+        """``has_markdown = True`` on the subclass opts the host template's
+        wrapping ``<div class='content'>`` into the ``markdown`` CSS scope
+        (the host reads ``message.content.has_markdown``). Mirrors
+        built-in ``AwaySummaryMessage`` / ``TeammateMessage``."""
+        from claude_code_log.models import ToolResultContent
+        from claude_code_log_clmail_test.transformers.tool_communicate_result import (
+            TOOL_NAME,
+            TestClmailCommunicateResultMessage,
+        )
+
+        tr = ToolResultContent(tool_use_id="t4", type="tool_result", content="x")
+        instance = TestClmailCommunicateResultMessage(
+            meta=MessageMeta.empty(),
+            tool_use_id="t4",
+            output=tr,
+            tool_name=TOOL_NAME,
+        )
+        assert instance.has_markdown is True
+
+
 class TestApplyTransformersExceptionSafety:
     """A buggy plugin's transform() exception is logged and skipped."""
 

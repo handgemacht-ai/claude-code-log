@@ -125,21 +125,55 @@ Steps:
    your return value, then add `format_markdown` / `format_html` /
    `title` methods. See [§4](#4-class-side-format--title-methods).
 
+   Field-copy patterns for the common parent classes (constructor
+   signatures spelled out so the keyword-only-with-`None`-default
+   fields aren't easy to miss):
+
+   ```python
+   # ToolUseMessage — copying every parent field including the
+   # optional `skill_body` (kw-only, defaults to None; carries the
+   # Skill-tool slash-command body when present per issue #93).
+   return MyToolUseSubclass(
+       meta=content.meta,
+       input=content.input,
+       tool_use_id=content.tool_use_id,
+       tool_name=content.tool_name,
+       skill_body=content.skill_body,  # keep — None is the common case
+   )
+
+   # ToolResultMessage — `is_error` / `tool_name` / `file_path` all
+   # default to False/None but must be copied to preserve the
+   # surrounding context (error styling, downstream tool grouping,
+   # Read/Edit/Write file backlinks).
+   return MyToolResultSubclass(
+       meta=content.meta,
+       tool_use_id=content.tool_use_id,
+       output=content.output,
+       is_error=content.is_error,
+       tool_name=content.tool_name,
+       file_path=content.file_path,
+   )
+   ```
+
 5. **Install and run.** `pip install -e .` against your plugin
    package; the next `claude-code-log` invocation discovers it.
 
 6. **Test it.** See [§9](#9-testing-your-plugin) for layer-by-layer
    coverage suggestions.
 
-The reference plugin demonstrates both branches of the contract:
+The reference plugin demonstrates three branches of the contract:
 
 - [`hook_demotion.py`](../test/_plugins/clmail/src/claude_code_log_clmail_test/transformers/hook_demotion.py)
   — rewrite a `UserTextMessage` based on text-prefix match.
 - [`tool_communicate.py`](../test/_plugins/clmail/src/claude_code_log_clmail_test/transformers/tool_communicate.py)
   — rewrite a `ToolUseMessage` based on `tool_name`.
+- [`tool_communicate_result.py`](../test/_plugins/clmail/src/claude_code_log_clmail_test/transformers/tool_communicate_result.py)
+  — rewrite a `ToolResultMessage`, demonstrating the long-Markdown-body
+  collapsible-rendering pattern via the public
+  [`render_markdown_collapsible`](#41-plugin-facing-helpers) helper.
 
-Read both before writing your own; together they cover ~95 % of the
-shapes a real plugin needs.
+Read all three before writing your own; together they cover ~95 % of
+the shapes a real plugin needs.
 
 ---
 
@@ -200,9 +234,33 @@ Signature contract for each method:
 
 | Method | Signature | Return | Notes |
 |---|---|---|---|
-| `format_markdown` | `(self, renderer, message) -> str` | Markdown source string. | Always provide this; HTML can fall back to it. |
-| `format_html` | `(self, renderer, message) -> Optional[str]` | Raw HTML or `None`. | Returning `None` runs `format_markdown` through mistune. Most plugins do this. |
+| `format_markdown` | `(self, renderer, message) -> str` | Markdown source string. | Define this whenever your class produces meaningful Markdown. Drives both Markdown output AND HTML output (via mistune) unless `format_html` is also defined. |
+| `format_html` | `(self, renderer, message) -> str` | Raw HTML string (real string — no None sentinel). | Define this ONLY when you need HTML different from mistune-of-`format_markdown`. The dispatcher synthesizes that fallback automatically when `format_html` is absent. |
 | `title` | `(self, renderer, message) -> Optional[str]` | Heading text or `None`. | Return `None` for "headless" (inline) messages. Return `""` (empty string, not None) to suppress the heading explicitly — the dispatcher distinguishes the two. |
+
+**`format_html` is opt-in.** If your plugin class defines only
+`format_markdown`, the HtmlRenderer dispatcher automatically
+synthesizes HTML by running the Markdown through mistune and
+wrapping the result in `<div class="markdown">…</div>`. You do NOT
+need to write a `render_markdown(self.format_markdown(...))` shim
+— that's the dispatcher's job.
+
+Define `format_html` only when you need HTML that differs from the
+synthesized fallback (e.g. a collapsible `<details>` block for long
+bodies, custom DOM structure, embedded SVG). When you do, return a
+real string. There is no `None`-as-sentinel: returning `None` would
+render as the literal string `"None"` in the card body (and may
+raise a type error). The reference plugin's `tool_communicate_result.py`
+shows the explicit-`format_html` pattern for a collapsible long-body
+case; `tool_communicate.py` and `hook_demotion.py` show the absent-
+`format_html`-let-the-synthesizer-handle-it pattern.
+
+**Error-shaped results.** Set `is_error=True` on a `ToolResultMessage`
+subclass replacement to inherit the host's standard error chrome
+(🚨 emoji, red `.tool_result.error` CSS class). The mechanism is
+wired in `html/utils.py`: `isinstance(content, ToolResultMessage)
+and content.is_error` triggers both. Bash errors use the same
+primitive — no custom plugin styling needed.
 
 The dispatcher looks up these methods on each MRO node's `__dict__`
 explicitly (not via `getattr`/inheritance). That means: **a class
@@ -210,6 +268,34 @@ opts in by defining the method ON the class itself**. Inheriting
 `format_markdown` from a parent does NOT auto-enable dispatch for
 the subclass; the subclass must define its own or the MRO walk
 moves to the next ancestor.
+
+### 4.1 Plugin-facing helpers
+
+Two helpers are re-exported from `claude_code_log.plugins` for use
+in `format_html` / `format_markdown` methods. The re-export is the
+stable plugin API; the underlying implementation in
+`claude_code_log/html/utils.py` may move or be renamed.
+
+```python
+from claude_code_log.plugins import (
+    render_markdown,
+    render_markdown_collapsible,
+)
+```
+
+| Helper | Signature | Use when |
+|---|---|---|
+| `render_markdown(text)` | `(str) -> str` | You need Markdown→HTML inside a custom `format_html` (e.g. embedding a Markdown fragment in a richer HTML scaffold). |
+| `render_markdown_collapsible(raw_content, css_class, *, line_threshold=20, preview_line_count=5)` | `(str, str, int, int) -> str` | Long Markdown bodies (mail bodies, agent responses, multi-paragraph result text). Returns inline `<div class="{css_class} markdown">…</div>` for short content, a collapsible `<details>` with preview + full body for content exceeding `line_threshold`. |
+
+The reference plugin's
+[`tool_communicate_result.py`](../test/_plugins/clmail/src/claude_code_log_clmail_test/transformers/tool_communicate_result.py)
+shows the collapsible helper in use; the inline-vs-collapsed
+threshold + preview length are both tunable per call.
+
+Add to `claude_code_log.plugins.__all__` only on concrete plugin-author
+demand — every entry is an API commitment. Open an issue if a helper
+you need isn't exposed.
 
 ---
 
@@ -244,6 +330,34 @@ the dispatcher never reaches the parent's renderer-side method.
 `_dispatch_title` for the same reason — without delegation, a
 `title_ToolUseMessage` on the base renderer would shadow your
 class-side `title()` at the top level.
+
+### 5.1 HtmlRenderer extension: actual-class precedence + Markdown synthesis
+
+`HtmlRenderer._dispatch_format` overrides the base walk with two
+additional rules, applied to the actual class (`type(obj)`) before
+the standard MRO walk runs:
+
+1. **`format_html` on the actual class wins outright.** If
+   `type(obj).__dict__["format_html"]` exists, use it. Skip the MRO
+   walk entirely — a plugin author who wrote `format_html` on their
+   subclass owns the HTML rendering.
+2. **`format_markdown` on the actual class triggers synthesis.** If
+   `format_html` is absent but `format_markdown` is defined on the
+   actual class, the dispatcher renders the Markdown through mistune
+   and wraps the result in `<div class="markdown">…</div>`. Skip the
+   MRO walk — the synthesized output is the answer.
+3. **Otherwise, defer to the base walk.** This finds renderer-side
+   `format_<ClassName>` methods for built-in content classes and
+   class-side methods on ancestors via the normal MRO.
+
+The actual-class precedence is the key behavioural difference from
+the base dispatcher: a plugin subclass of `UserTextMessage` that
+defines `format_markdown` (but not `format_html`) gets its Markdown
+promoted to HTML via synthesis even though the base renderer has
+`format_UserTextMessage` that would normally win the MRO walk. The
+intent: when a plugin author wrote `format_markdown` on a subclass,
+they meant their Markdown to drive rendering, not for the parent
+class's built-in renderer behaviour to take over.
 
 ---
 
@@ -297,6 +411,22 @@ filter membership through the bridge.
 - `USER_ONLY` — visible even in user-only views (almost never the
   right choice for a tool/hook plugin; reserved for user-originated
   content).
+
+**`HIGH` vs `FULL` for hook-style content** — the two reference
+plugins make different choices here, deliberately:
+
+- `hook_demotion.py` (this repo's test plugin) uses `FULL` —
+  surfaces only in the most-verbose view. Right when the hook
+  notification is pure noise reduction for typical reviewers.
+- A real-world plugin (e.g. for clmail-style hook notifications a
+  reviewer wants to *see when they fired*) typically picks `HIGH`
+  — surfaces in `HIGH` *and* `FULL`, hidden at `LOW` and below.
+  Right when the hook firing itself is signal worth keeping in the
+  detail view.
+
+The rule of thumb: ask "would a reviewer skimming at `HIGH` want
+to know this happened?" If yes, pick `HIGH`. If only at the
+debug-the-transcript level, pick `FULL`.
 
 ---
 
@@ -373,6 +503,29 @@ Transformers are sorted by `(priority, __module__, __qualname__)`:
   cross-environment ordering when two plugins land at the same
   priority but in different packages. A `(priority, applies_to)`
   collision still triggers a `WARNING` so you can detect overlap.
+
+**Convention for multi-transformer plugins.** When a single plugin
+ships several transformers that share an `applies_to` (e.g. a
+plugin covering five MCP tools, all matching `ToolUseMessage` at
+`TOOL_INPUT_GENERIC - 500`), they will collide with each other on
+the `(priority, applies_to)` tie and emit warnings at startup. Two
+ways to silence the self-collision:
+
+1. **Per-tool offset.** Give each transformer in the plugin a
+   small single-digit offset off the base: `priority =
+   TOOL_INPUT_GENERIC - 504`, `- 503`, `- 502`, `- 501`, `- 500`.
+   The offset range stays narrow enough that the plugin still
+   sits in a coherent "slot" relative to built-ins / other
+   plugins, but each transformer is uniquely ordered against the
+   others in the same plugin.
+2. **Narrow `applies_to`.** If the transformers actually match
+   disjoint subsets (one targets ToolUseMessage, another
+   ToolResultMessage), the tie disappears naturally — same
+   priority is fine.
+
+The per-tool-offset pattern is the right answer when all your
+transformers genuinely share `applies_to` and only differ in the
+`tool_name` they narrow to inside `transform()`.
 
 **Important caveat about v1 semantics.** In v1, plugin transformers
 run as a **post-classification pass**: the built-in factory chain
@@ -477,6 +630,67 @@ core-migrated parent class behaves the same as declaring it
 yourself: the keep-list is bypassed. Usually what you want; mention
 it if you're debugging a "why is my plugin visible at LOW even though
 the tool isn't in `_LOW_KEEP_TOOLS`?" question.
+
+**Markdown-shaped HTML and the `.markdown` CSS scope.** The
+dispatcher returns your `format_html` output unmodified; the host
+template wraps it in `<div class="content">…</div>`, *not*
+`<div class="content markdown">…</div>`. So host theme rules scoped
+under `.markdown` (table borders, code-block backgrounds, `<pre>`
+overflow, list spacing) won't fire on your output unless the wrap
+carries the class. Two ways to opt in:
+
+1. **`has_markdown = True` on the subclass** (preferred when your
+   `format_html` emits Markdown-shaped content end-to-end). The host
+   template at `html/templates/transcript.html` reads
+   `message.content.has_markdown` and flips the `markdown` class
+   onto the wrapping `<div class='content'>` automatically:
+
+   ```python
+   @dataclass
+   class MyMarkdownShapedMessage(ToolResultMessage):
+       @property
+       def has_markdown(self) -> bool:
+           return True  # → <div class='content markdown'>
+   ```
+
+   Mirrors what built-ins (`AwaySummaryMessage`, `TeammateMessage`,
+   `AssistantTextMessage`) already do — no plugin-author divergence.
+   See `tool_communicate_result.py` in the reference plugin for a
+   worked example.
+
+2. **Wrap inline** (`<div class="markdown">…</div>`) when only part
+   of your output is Markdown-shaped or when you need fine-grained
+   scope control:
+
+   ```python
+   return f'<div class="markdown">{render_markdown(self.body)}</div>'
+   ```
+
+`render_markdown_collapsible` already wraps for you (its short-
+content branch emits `<div class="{css_class} markdown">`); only
+the bare `render_markdown` path needs one of the two recipes above.
+
+**Note on the synthesis path.** When you DON'T define `format_html`
+and the HtmlRenderer dispatch synthesizes HTML from your
+`format_markdown` (see [§5.1](#51-htmlrenderer-extension-actual-class-precedence--markdown-synthesis)),
+the synthesizer always wraps the mistune output in
+`<div class="markdown">`. You don't need to set `has_markdown = True`
+for that path — it's implicit in the synthesis. `has_markdown` only
+matters when you implement `format_html` yourself and want the host
+template's outer `<div class='content'>` wrapper to pick up the
+`.markdown` class.
+
+**Don't combine `has_markdown = True` with the synthesis path.** If
+your class has no `format_html` (so synthesis fires AND wraps in
+`<div class="markdown">`) AND you also set `has_markdown = True`,
+the host template flips the `markdown` class onto its outer
+`<div class='content'>` wrapper — you end up with the synthesizer's
+`<div class="markdown">` nested inside `<div class="content markdown">`.
+Benign for CSS (selectors don't care about depth) but visible in
+the DOM, surprising on `view-source`, and harmlessly heavier. Rule
+of thumb: `has_markdown = True` is the right opt-in only for
+classes with an **explicit** `format_html` whose return value does
+NOT already wrap. Synthesis classes leave `has_markdown` alone.
 
 ---
 
