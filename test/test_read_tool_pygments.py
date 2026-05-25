@@ -162,6 +162,18 @@ class TestHtmlRendering:
         # point of using the structured payload.
         assert "775\t" not in html
 
+    def test_title_line_range_matches_rendered_content(self):
+        # Regression for the off-by-one surfaced in PR #172 manual testing:
+        # the fixture's input is ``offset=775, limit=20`` and the cat-n
+        # output renders lines 775–794. The title must agree on those
+        # numbers — previously emitted "lines 776-795" (start shifted by
+        # +1, end computed as offset+limit instead of offset+limit-1).
+        entries = load_transcript(FIXTURE)
+        renderer = HtmlRenderer()
+        html = renderer.generate(entries, title="Read Tool Fixture")
+        assert "lines 775-794" in html
+        assert "lines 776-795" not in html  # the old wrong rendering
+
     def test_unknown_extension_falls_back_to_textlexer(self):
         # Construct a Read output for a file with no extension. Pygments
         # should fall back to TextLexer; rendering must not raise.
