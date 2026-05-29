@@ -734,61 +734,8 @@ def generate_template_messages(
     _enrich_branch_titles(ctx)
 
     # Populate junction forward links on fork-point messages
-    if ctx.junction_targets:
-        # Build UUID → TemplateMessage index for fast lookup
-        uuid_to_msg: dict[str, TemplateMessage] = {}
-        # Build msg_index → TemplateMessage for branch preview lookup
-        idx_to_msg: dict[int, TemplateMessage] = {}
-        for msg in ctx.messages:
-            if msg.meta.uuid:
-                uuid_to_msg[msg.meta.uuid] = msg
-            if msg.message_index is not None:
-                idx_to_msg[msg.message_index] = msg
-        for uuid, target_sids in ctx.junction_targets.items():
-            # Only add forward links for within-session fork branches
-            branch_targets = [sid for sid in target_sids if "@" in sid]
-            if branch_targets and uuid in uuid_to_msg:
-                fork_msg = uuid_to_msg[uuid]
-                fork_msg.fork_point_preview = _fork_point_preview(fork_msg, ctx)
-                for branch_sid in branch_targets:
-                    branch_idx = ctx.session_first_message.get(branch_sid)
-                    if branch_idx is not None:
-                        # Read the branch's preview directly from the
-                        # SessionHeaderMessage rather than parsing its
-                        # composed title — the body header, the index
-                        # nav and this fork-point box all read the same
-                        # raw ``preview`` field and re-compose via
-                        # ``_branch_label`` / ``_branch_label_suffix``
-                        # independently.
-                        preview_text = ""
-                        branch_header = idx_to_msg.get(branch_idx)
-                        if branch_header and isinstance(
-                            branch_header.content, SessionHeaderMessage
-                        ):
-                            preview_text = branch_header.content.preview or ""
-                        # The fork-point template prepends
-                        # ``Branch &bull; ...`` itself, so we hand it
-                        # only the suffix — single source of truth for
-                        # the format keeps the index nav, the body
-                        # header and this link aligned even if the
-                        # ``Branch • `` head ever changes.
-                        link_suffix = _branch_label_suffix(branch_sid, preview_text)
-                        fork_msg.junction_forward_links.append(
-                            (branch_sid, branch_idx, link_suffix)
-                        )
-                # A real fork has ≥ 2 navigable branches. Drop the
-                # indicator when the DAG-level layer left only a
-                # single-branch shell (e.g. a passthrough sibling whose
-                # first message was filtered out — the spurious
-                # parallel-tool_use forks are now collapsed at the DAG
-                # level, but defense-in-depth here covers any residual
-                # cases). When ≥ 2 branches remain, surface the
-                # indicator regardless of whether titles are
-                # human-readable previews or UUID-only fallbacks — the
-                # backlinks are useful navigation either way.
-                if len(fork_msg.junction_forward_links) < 2:
-                    fork_msg.junction_forward_links.clear()
-                    fork_msg.fork_point_preview = ""
+    with log_timing("Link junction forwards", t_start):
+        _link_junction_forwards(ctx)
 
     # Detail-level post-render: remove text-derived types per level
     if detail != DetailLevel.FULL:
@@ -1210,6 +1157,80 @@ def _fork_point_preview(fork_msg: "TemplateMessage", ctx: RenderingContext) -> s
     if len(text) > 80:
         short += "..."
     return short
+
+
+def _link_junction_forwards(ctx: RenderingContext) -> None:
+    """Populate forward navigation links on within-session fork points.
+
+    For each junction (a message whose DAG node fans out into multiple
+    branch sessions), attach links from the fork-point message to each
+    branch's first message so the output can offer "jump to branch"
+    navigation. Runs once ``ctx.messages`` is final.
+
+    The branch preview is read directly from each branch's
+    ``SessionHeaderMessage.preview`` and re-composed via
+    ``_branch_label_suffix`` — the body header, the index nav and this
+    fork-point box all share that single ``preview`` source. A fork with
+    fewer than two navigable branches is dropped (spurious
+    parallel-tool_use forks are collapsed at the DAG level; this is
+    defense-in-depth for any residual single-branch shell).
+    """
+    if not ctx.junction_targets:
+        return
+    # Build UUID → TemplateMessage index for fast lookup
+    uuid_to_msg: dict[str, TemplateMessage] = {}
+    # Build msg_index → TemplateMessage for branch preview lookup
+    idx_to_msg: dict[int, TemplateMessage] = {}
+    for msg in ctx.messages:
+        if msg.meta.uuid:
+            uuid_to_msg[msg.meta.uuid] = msg
+        if msg.message_index is not None:
+            idx_to_msg[msg.message_index] = msg
+    for uuid, target_sids in ctx.junction_targets.items():
+        # Only add forward links for within-session fork branches
+        branch_targets = [sid for sid in target_sids if "@" in sid]
+        if branch_targets and uuid in uuid_to_msg:
+            fork_msg = uuid_to_msg[uuid]
+            fork_msg.fork_point_preview = _fork_point_preview(fork_msg, ctx)
+            for branch_sid in branch_targets:
+                branch_idx = ctx.session_first_message.get(branch_sid)
+                if branch_idx is not None:
+                    # Read the branch's preview directly from the
+                    # SessionHeaderMessage rather than parsing its
+                    # composed title — the body header, the index
+                    # nav and this fork-point box all read the same
+                    # raw ``preview`` field and re-compose via
+                    # ``_branch_label`` / ``_branch_label_suffix``
+                    # independently.
+                    preview_text = ""
+                    branch_header = idx_to_msg.get(branch_idx)
+                    if branch_header and isinstance(
+                        branch_header.content, SessionHeaderMessage
+                    ):
+                        preview_text = branch_header.content.preview or ""
+                    # The fork-point template prepends
+                    # ``Branch &bull; ...`` itself, so we hand it
+                    # only the suffix — single source of truth for
+                    # the format keeps the index nav, the body
+                    # header and this link aligned even if the
+                    # ``Branch • `` head ever changes.
+                    link_suffix = _branch_label_suffix(branch_sid, preview_text)
+                    fork_msg.junction_forward_links.append(
+                        (branch_sid, branch_idx, link_suffix)
+                    )
+            # A real fork has ≥ 2 navigable branches. Drop the
+            # indicator when the DAG-level layer left only a
+            # single-branch shell (e.g. a passthrough sibling whose
+            # first message was filtered out — the spurious
+            # parallel-tool_use forks are now collapsed at the DAG
+            # level, but defense-in-depth here covers any residual
+            # cases). When ≥ 2 branches remain, surface the
+            # indicator regardless of whether titles are
+            # human-readable previews or UUID-only fallbacks — the
+            # backlinks are useful navigation either way.
+            if len(fork_msg.junction_forward_links) < 2:
+                fork_msg.junction_forward_links.clear()
+                fork_msg.fork_point_preview = ""
 
 
 def prepare_session_navigation(
