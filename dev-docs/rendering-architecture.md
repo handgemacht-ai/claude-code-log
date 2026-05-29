@@ -210,24 +210,36 @@ Session Header (root)
                  └─ Sidechain assistant (Task result children)
 ```
 
-#### Other passes (addendum)
+#### Full pass ordering (addendum)
 
-The backbone above is bracketed by further passes in
-`generate_template_messages`, in order: pre-render structural and
-detail filtering (`_filter_messages`, `_filter_by_detail`); session
-metadata prep (`prepare_session_summaries` / `_ai_titles` /
-`_team_names`, `_extract_session_hierarchy`); skill-tool pairing and
-the resulting `_reindex_filtered_context`; branch-title enrichment
-(`_enrich_branch_titles`) and junction forward-link population on fork
-points; optional post-render detail filtering
-(`_filter_template_by_detail`); subagent-block relocation
-(`_relocate_subagent_blocks`); `_mark_messages_with_children`;
-sidechain-duplicate cleanup (`_cleanup_sidechain_duplicates`); and a
-group of trailing metadata/link passes (`_populate_teammate_colors`,
-`_populate_task_metadata`, `_link_async_notifications`,
-`_link_tool_use_notifications`, `_link_cron_jobs_by_id`,
-`_link_task_id_consumers`). The code in `generate_template_messages`
-is the authoritative ordering.
+The four backbone phases above run *within* a longer ordered sequence.
+In code order, `generate_template_messages`:
+
+1. **Setup** — filters warmup sessions, then prepares session metadata:
+   `prepare_session_summaries` + `prepare_session_ai_titles` (merged),
+   `prepare_session_team_names`, and `_extract_session_hierarchy`.
+2. **Pre-render filtering** — `_filter_messages` (structural), then
+   `_filter_by_detail` (entry-level, only below FULL).
+3. **Collect + render** — `_collect_session_info`, then
+   `_render_messages` (**Phase 1**: wrappers, session headers,
+   registration), then `_pair_skill_tool_uses` (which calls
+   `_reindex_filtered_context` internally).
+4. **Branch / junction linking** — `_enrich_branch_titles`, then
+   junction forward-link population on fork points.
+5. **Post-render detail filter** — `_filter_template_by_detail`
+   followed immediately by `_reindex_filtered_context` (only below FULL).
+6. **Nav + structure** — `prepare_session_navigation`, then
+   `_reorder_session_template_messages`, `_identify_message_pairs`
+   (**Phase 2**), `_reorder_paired_messages`,
+   `_relocate_subagent_blocks`, `_build_message_hierarchy`
+   (**Phase 3**), `_mark_messages_with_children`, `_build_message_tree`
+   (**Phase 4**), `_cleanup_sidechain_duplicates`.
+7. **Trailing metadata / link passes** — `_populate_teammate_colors`,
+   `_populate_task_metadata`, `_link_async_notifications`,
+   `_link_tool_use_notifications`, `_link_cron_jobs_by_id`,
+   `_link_task_id_consumers`.
+
+The code in `generate_template_messages` is the authoritative ordering.
 
 ---
 
