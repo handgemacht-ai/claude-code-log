@@ -1048,101 +1048,127 @@ def _assign_sessions_to_pages(
     return pages
 
 
-def _build_session_data_from_messages(
+def compute_session_data(
     messages: List[TranscriptEntry],
+    *,
+    include_cwd: bool = True,
+    warmup_session_ids: Optional[set[str]] = None,
 ) -> Dict[str, SessionCacheData]:
-    """Build session data from messages when cache is unavailable.
+    """Compute per-session ``SessionCacheData`` from a flat message list.
 
-    This is a fallback for pagination when get_cached_project_data() returns None.
+    Shared by every site that needs per-session metadata — the cache
+    writer (``_update_cache_with_session_data``), the pagination
+    cache-miss fallback (``_build_session_data_from_messages``), and
+    the projects-index nav builder (``_collect_project_sessions``).
+    All three previously inlined slight variants of this loop; the
+    divergences were deliberately consolidated by opportunity 9 (see
+    ``work/simplify-converter-renderer.md``) onto two locked rules:
 
-    Args:
-        messages: All messages (deduplicated)
+    - **D1** (count un-keyed assistant usage): assistant entries with
+      a ``requestId`` are deduped via ``seen_request_ids`` (a retried
+      entry is counted exactly once); assistant entries *without* a
+      ``requestId`` are always counted. Both the cache and fallback
+      paths previously used distinct rules — the cache truthy-guard
+      (``request_id and request_id not in seen``) silently zeroed
+      un-keyed usage; the fallback already counted it. Unified here
+      to "count un-keyed everywhere".
 
-    Returns:
-        Dict mapping session_id to SessionCacheData
+    - **D2** (include ``PassthroughTranscriptEntry`` in
+      ``message_count``): Passthrough entries
+      (``type: progress``, ``agent-setting``, …) participate in the
+      DAG chain and contribute to project size. The cache path
+      already counted them today; the fallback excluded them. Unified
+      here to "count Passthrough everywhere".
+
+    Other invariants preserved:
+
+    - ``get_parent_session_id`` coalesces agent synthetic sessionIds
+      (``{trunk}#agent-{id}``) into their parent trunk session.
+    - ``warmup_session_ids`` (caller-supplied; typically from
+      ``get_warmup_session_ids``) is filtered upfront — the entry is
+      never recorded if its coalesced sessionId is a warmup id. Pass
+      ``None`` to skip the filter; callers that need cache-style
+      end-of-loop filtering can prune the returned dict themselves.
+    - ``Summary`` / ``AiTitle`` / ``Attachment`` entries are skipped
+      (they carry no session-content fields; ``Summary`` / ``AiTitle``
+      contribute via ``prepare_session_summaries`` /
+      ``prepare_session_ai_titles`` instead).
+    - The first non-empty ``teamName`` per session wins.
+    - The first user entry whose text passes
+      ``should_use_as_session_starter`` provides the preview.
+    - ``cwd`` is captured from whichever entry first creates the
+      session record (only when ``include_cwd=True``; the
+      pagination fallback historically left ``cwd=None`` and still
+      may, since it's only used by the cache write path).
     """
     from .parser import extract_text_content
 
-    # Pre-compute warmup session IDs to filter them out
-    warmup_session_ids = get_warmup_session_ids(messages)
-
-    # Map summaries + ai-titles to sessions. Both helpers also drive
-    # the renderer's session-header path, so routing the cache-miss
-    # fallback through them single-sources the leafUuid → summary
-    # chain (and the AssistantTranscriptEntry-prioritised
-    # uuid_to_session lookup it relies on). They stay as separate
-    # dicts here because ``SessionCacheData`` exposes ``summary`` and
-    # ``ai_title`` as distinct fields; the precedence collapse
-    # (ai_title > summary) happens at the display layer, not here.
+    warmup = warmup_session_ids or set()
     session_summaries = prepare_session_summaries(messages)
     session_ai_titles = prepare_session_ai_titles(messages)
 
-    # Group messages by session
-    sessions: Dict[str, Dict[str, Any]] = {}
-    # Track requestIds already credited so a retried/repeated assistant
-    # entry isn't counted twice. Mirrors the intent of the canonical
-    # cache path (_update_cache_with_session_data) but, per the
-    # simplification plan (§4 opp 1 / §5 requestId-dedup invariant),
-    # only suppresses *repeats* of an already-seen id — assistant
-    # entries with no requestId at all are still counted. A literal
-    # mirror of the cache guard (`request_id and request_id not in
-    # seen`) would silently drop un-keyed usage. Reconciliation of
-    # the two paths into a single canonical rule is deferred to opp 9.
+    result: Dict[str, SessionCacheData] = {}
+    # Token-dedup is global across the whole projects-worth of
+    # messages: a retried assistant entry shares its ``requestId``
+    # regardless of which session it ended up in. Mirrors
+    # ``compute_project_aggregates``.
     seen_request_ids: set[str] = set()
+
     for message in messages:
         if not hasattr(message, "sessionId") or isinstance(
             message,
             (
                 SummaryTranscriptEntry,
                 AiTitleTranscriptEntry,
-                PassthroughTranscriptEntry,
                 AttachmentTranscriptEntry,
             ),
         ):
             continue
 
         session_id = get_parent_session_id(getattr(message, "sessionId", ""))
-        if not session_id or session_id in warmup_session_ids:
+        if not session_id or session_id in warmup:
             continue
 
-        if session_id not in sessions:
-            sessions[session_id] = {
+        if session_id not in result:
+            kwargs: Dict[str, Any] = {
+                "session_id": session_id,
+                "summary": session_summaries.get(session_id),
+                "ai_title": session_ai_titles.get(session_id),
                 "first_timestamp": getattr(message, "timestamp", ""),
                 "last_timestamp": getattr(message, "timestamp", ""),
                 "message_count": 0,
                 "first_user_message": "",
-                "total_input_tokens": 0,
-                "total_output_tokens": 0,
-                "total_cache_creation_tokens": 0,
-                "total_cache_read_tokens": 0,
-                "team_name": None,
             }
+            if include_cwd:
+                kwargs["cwd"] = getattr(message, "cwd", None)
+            result[session_id] = SessionCacheData(**kwargs)
 
-        sessions[session_id]["message_count"] += 1
+        cache = result[session_id]
+        cache.message_count += 1
         current_timestamp = getattr(message, "timestamp", "")
         if current_timestamp:
-            sessions[session_id]["last_timestamp"] = current_timestamp
+            cache.last_timestamp = current_timestamp
 
-        # Capture the first non-None teamName seen in the session
-        # (teammates feature). Same shape as renderer.prepare_session_team_names.
-        if not sessions[session_id]["team_name"]:
+        # Teammates: first non-None teamName per session wins.
+        if not cache.team_name:
             tn = getattr(message, "teamName", None)
             if tn:
-                sessions[session_id]["team_name"] = tn
+                cache.team_name = tn
 
-        # Get first user message for preview
+        # First user-entry text becomes the preview (gated by
+        # should_use_as_session_starter to skip warmup/system-y
+        # openers).
         if (
             isinstance(message, UserTranscriptEntry)
-            and not sessions[session_id]["first_user_message"]
+            and not cache.first_user_message
             and hasattr(message, "message")
         ):
             first_user_content = extract_text_content(message.message.content)
             if should_use_as_session_starter(first_user_content):
-                sessions[session_id]["first_user_message"] = create_session_preview(
-                    first_user_content
-                )
+                cache.first_user_message = create_session_preview(first_user_content)
 
-        # Extract token usage from assistant messages
+        # Assistant token usage — D1: count un-keyed always, dedup
+        # repeats of a present ``requestId``.
         if isinstance(message, AssistantTranscriptEntry) and hasattr(
             message, "message"
         ):
@@ -1150,45 +1176,96 @@ def _build_session_data_from_messages(
             if hasattr(msg_data, "usage") and msg_data.usage:
                 request_id = getattr(message, "requestId", None)
                 if request_id is not None and request_id in seen_request_ids:
-                    # Already credited via an earlier entry with the
-                    # same requestId — skip to avoid double-counting.
-                    pass
-                else:
-                    if request_id is not None:
-                        seen_request_ids.add(request_id)
-                    usage = msg_data.usage
-                    sessions[session_id]["total_input_tokens"] += (
-                        getattr(usage, "input_tokens", 0) or 0
-                    )
-                    sessions[session_id]["total_output_tokens"] += (
-                        getattr(usage, "output_tokens", 0) or 0
-                    )
-                    sessions[session_id]["total_cache_creation_tokens"] += (
-                        getattr(usage, "cache_creation_input_tokens", 0) or 0
-                    )
-                    sessions[session_id]["total_cache_read_tokens"] += (
-                        getattr(usage, "cache_read_input_tokens", 0) or 0
-                    )
-
-    # Convert to Dict[str, SessionCacheData]
-    result: Dict[str, SessionCacheData] = {}
-    for session_id, data in sessions.items():
-        result[session_id] = SessionCacheData(
-            session_id=session_id,
-            summary=session_summaries.get(session_id),
-            ai_title=session_ai_titles.get(session_id),
-            first_timestamp=data["first_timestamp"],
-            last_timestamp=data["last_timestamp"],
-            message_count=data["message_count"],
-            first_user_message=data["first_user_message"],
-            total_input_tokens=data["total_input_tokens"],
-            total_output_tokens=data["total_output_tokens"],
-            total_cache_creation_tokens=data["total_cache_creation_tokens"],
-            total_cache_read_tokens=data["total_cache_read_tokens"],
-            team_name=data["team_name"],
-        )
+                    continue  # repeat of a credited id — skip
+                if request_id is not None:
+                    seen_request_ids.add(request_id)
+                usage = msg_data.usage
+                cache.total_input_tokens += getattr(usage, "input_tokens", 0) or 0
+                cache.total_output_tokens += getattr(usage, "output_tokens", 0) or 0
+                cache.total_cache_creation_tokens += (
+                    getattr(usage, "cache_creation_input_tokens", 0) or 0
+                )
+                cache.total_cache_read_tokens += (
+                    getattr(usage, "cache_read_input_tokens", 0) or 0
+                )
 
     return result
+
+
+def compute_project_aggregates(messages: List[TranscriptEntry]) -> Dict[str, Any]:
+    """Compute project-wide aggregates (token totals + bookend timestamps).
+
+    Single source of truth for the four token totals and the
+    earliest/latest timestamp pair that appear on project cards in
+    the projects index. Applies the same D1 rule as
+    ``compute_session_data`` (count un-keyed assistant usage,
+    dedup repeats of a present ``requestId``).
+
+    ``total_message_count`` is ``len(messages)`` — the raw count
+    including ``PassthroughTranscriptEntry`` and every other entry
+    type. The cache path always reported this; per D2 the projects
+    index now agrees.
+    """
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_cache_creation_tokens = 0
+    total_cache_read_tokens = 0
+    earliest_timestamp = ""
+    latest_timestamp = ""
+    seen_request_ids: set[str] = set()
+
+    for message in messages:
+        if hasattr(message, "timestamp"):
+            ts = getattr(message, "timestamp", "")
+            if ts:
+                if not latest_timestamp or ts > latest_timestamp:
+                    latest_timestamp = ts
+                if not earliest_timestamp or ts < earliest_timestamp:
+                    earliest_timestamp = ts
+
+        if message.type == "assistant" and hasattr(message, "message"):
+            assistant_message = getattr(message, "message")
+            if not (hasattr(assistant_message, "usage") and assistant_message.usage):
+                continue
+            request_id = getattr(message, "requestId", None)
+            if request_id is not None and request_id in seen_request_ids:
+                continue
+            if request_id is not None:
+                seen_request_ids.add(request_id)
+            usage = assistant_message.usage
+            total_input_tokens += usage.input_tokens or 0
+            total_output_tokens += usage.output_tokens or 0
+            if usage.cache_creation_input_tokens:
+                total_cache_creation_tokens += usage.cache_creation_input_tokens
+            if usage.cache_read_input_tokens:
+                total_cache_read_tokens += usage.cache_read_input_tokens
+
+    return {
+        "total_message_count": len(messages),
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "total_cache_creation_tokens": total_cache_creation_tokens,
+        "total_cache_read_tokens": total_cache_read_tokens,
+        "earliest_timestamp": earliest_timestamp,
+        "latest_timestamp": latest_timestamp,
+    }
+
+
+def _build_session_data_from_messages(
+    messages: List[TranscriptEntry],
+) -> Dict[str, SessionCacheData]:
+    """Build session data from messages when cache is unavailable.
+
+    Pagination cache-miss fallback. Thin delegate to
+    ``compute_session_data``; mirrors the cache writer's
+    warmup-filter shape so the two paths produce identical session
+    sets. The ``cwd`` field was historically unset on this path and
+    remains so (``include_cwd=False``) — only the cache writer needs
+    it and adding it would mean rebuilding the cache on every
+    fallback render.
+    """
+    warmup = get_warmup_session_ids(messages)
+    return compute_session_data(messages, include_cwd=False, warmup_session_ids=warmup)
 
 
 def _generate_paginated_html(
@@ -1763,239 +1840,82 @@ def ensure_fresh_cache(
 def _update_cache_with_session_data(
     cache_manager: CacheManager, messages: list[TranscriptEntry]
 ) -> None:
-    """Update cache with session and project aggregate data."""
-    from .parser import extract_text_content
+    """Update cache with session and project aggregate data.
 
-    # Map summaries + ai-titles via the shared helpers. Both feed
-    # ``SessionCacheData``'s separate ``summary`` and ``ai_title``
-    # fields, so we keep two dicts here (the ai_title > summary
-    # precedence collapse happens at the display layer). Single-
-    # sourcing this with the renderer's session-header path means the
-    # leafUuid → summary chain (which prioritises
-    # ``AssistantTranscriptEntry`` lookups over Pydantic-backup
-    # lookups) is documented in exactly one place.
-    session_summaries = prepare_session_summaries(messages)
-    session_ai_titles = prepare_session_ai_titles(messages)
-
-    # Group messages by session and calculate session data
-    sessions_cache_data: dict[str, SessionCacheData] = {}
-
-    # Track token usage and timestamps for project aggregates
-    total_input_tokens = 0
-    total_output_tokens = 0
-    total_cache_creation_tokens = 0
-    total_cache_read_tokens = 0
-    total_message_count = len(messages)
-    earliest_timestamp = ""
-    latest_timestamp = ""
-    seen_request_ids: set[str] = set()
-
-    for message in messages:
-        # Update project-level timestamp tracking
-        if hasattr(message, "timestamp"):
-            message_timestamp = getattr(message, "timestamp", "")
-            if message_timestamp:
-                if not latest_timestamp or message_timestamp > latest_timestamp:
-                    latest_timestamp = message_timestamp
-                if not earliest_timestamp or message_timestamp < earliest_timestamp:
-                    earliest_timestamp = message_timestamp
-
-        # Process session-level data (skip summaries and ai-title — they
-        # carry no DAG fields and are folded into session metadata above).
-        if hasattr(message, "sessionId") and not isinstance(
-            message,
-            (
-                SummaryTranscriptEntry,
-                AiTitleTranscriptEntry,
-                AttachmentTranscriptEntry,
-            ),
-        ):
-            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
-            if not session_id:
-                continue
-
-            if session_id not in sessions_cache_data:
-                sessions_cache_data[session_id] = SessionCacheData(
-                    session_id=session_id,
-                    summary=session_summaries.get(session_id),
-                    ai_title=session_ai_titles.get(session_id),
-                    first_timestamp=getattr(message, "timestamp", ""),
-                    last_timestamp=getattr(message, "timestamp", ""),
-                    message_count=0,
-                    first_user_message="",
-                    cwd=getattr(message, "cwd", None),
-                )
-
-            session_cache = sessions_cache_data[session_id]
-            session_cache.message_count += 1
-            current_timestamp = getattr(message, "timestamp", "")
-            if current_timestamp:
-                session_cache.last_timestamp = current_timestamp
-
-            # Capture first non-None teamName per session (teammates feature).
-            if not session_cache.team_name:
-                tn = getattr(message, "teamName", None)
-                if tn:
-                    session_cache.team_name = tn
-
-            # Get first user message for preview
-            if (
-                isinstance(message, UserTranscriptEntry)
-                and not session_cache.first_user_message
-                and hasattr(message, "message")
-            ):
-                first_user_content = extract_text_content(message.message.content)
-                if should_use_as_session_starter(first_user_content):
-                    session_cache.first_user_message = create_session_preview(
-                        first_user_content
-                    )
-
-        # Calculate token usage for assistant messages
-        if message.type == "assistant" and hasattr(message, "message"):
-            assistant_message = getattr(message, "message")
-            request_id = getattr(message, "requestId", None)
-            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
-
-            if (
-                hasattr(assistant_message, "usage")
-                and assistant_message.usage
-                and request_id
-                and request_id not in seen_request_ids
-            ):
-                seen_request_ids.add(request_id)
-                usage = assistant_message.usage
-
-                # Add to project totals
-                total_input_tokens += usage.input_tokens or 0
-                total_output_tokens += usage.output_tokens or 0
-                if usage.cache_creation_input_tokens:
-                    total_cache_creation_tokens += usage.cache_creation_input_tokens
-                if usage.cache_read_input_tokens:
-                    total_cache_read_tokens += usage.cache_read_input_tokens
-
-                # Add to session totals
-                if session_id in sessions_cache_data:
-                    session_cache = sessions_cache_data[session_id]
-                    session_cache.total_input_tokens += usage.input_tokens or 0
-                    session_cache.total_output_tokens += usage.output_tokens or 0
-                    if usage.cache_creation_input_tokens:
-                        session_cache.total_cache_creation_tokens += (
-                            usage.cache_creation_input_tokens
-                        )
-                    if usage.cache_read_input_tokens:
-                        session_cache.total_cache_read_tokens += (
-                            usage.cache_read_input_tokens
-                        )
-
-    # Filter out warmup-only and empty sessions before caching
-    warmup_session_ids = get_warmup_session_ids(messages)
+    Thin writer wrapper over the two shared computation helpers
+    (``compute_session_data`` + ``compute_project_aggregates``).
+    Filters the warmup + empty-session sets before persisting — the
+    cache stores only sessions a human would expect to render
+    (agent-only and warmup-only sessions are skipped).
+    """
+    warmup = get_warmup_session_ids(messages)
+    sessions_cache_data = compute_session_data(
+        messages, include_cwd=True, warmup_session_ids=warmup
+    )
+    # Filter empty sessions (agent-only). The warmup filter happens
+    # upstream inside compute_session_data; the empty filter here
+    # remains a cache-only policy (the pagination fallback returns
+    # all sessions verbatim).
     sessions_cache_data = {
         sid: data
         for sid, data in sessions_cache_data.items()
-        if sid not in warmup_session_ids
-        and data.first_user_message  # Filter empty sessions (agent-only)
+        if data.first_user_message
     }
-
-    # Update cache with filtered session data
     cache_manager.update_session_cache(sessions_cache_data)
 
-    # Update cache with project aggregates
-    cache_manager.update_project_aggregates(
-        total_message_count=total_message_count,
-        total_input_tokens=total_input_tokens,
-        total_output_tokens=total_output_tokens,
-        total_cache_creation_tokens=total_cache_creation_tokens,
-        total_cache_read_tokens=total_cache_read_tokens,
-        earliest_timestamp=earliest_timestamp,
-        latest_timestamp=latest_timestamp,
-    )
+    aggregates = compute_project_aggregates(messages)
+    cache_manager.update_project_aggregates(**aggregates)
 
 
 def _collect_project_sessions(messages: list[TranscriptEntry]) -> list[dict[str, Any]]:
-    """Collect session data for project index navigation."""
-    from .parser import extract_text_content
+    """Project per-session metadata into the dict shape used by the
+    projects-index nav template.
 
-    # Pre-compute warmup session IDs to filter them out
-    warmup_session_ids = get_warmup_session_ids(messages)
+    Pure adapter over ``compute_session_data`` (the shared computation
+    used by the cache writer and the pagination fallback). The nav
+    template exposes a single ``summary`` display field per session
+    rather than the ``SessionCacheData`` model's separate ``summary``
+    / ``ai_title`` pair, so the projection collapses them here with
+    ai_title taking precedence — preserving the original loop's
+    ``session_summaries.update(prepare_session_ai_titles(messages))``
+    semantics. Empty sessions (no ``first_user_message``) are filtered
+    out because they're never user-navigable; the ``[No user message
+    found in session.]`` placeholder is the surviving fallback for the
+    rare case where ``first_user_message`` is present but empty
+    (defensive — current code paths can't actually hit this).
+    """
+    warmup = get_warmup_session_ids(messages)
+    sessions = compute_session_data(
+        messages, include_cwd=False, warmup_session_ids=warmup
+    )
 
-    # Pre-process to find and attach session summaries via the shared
-    # helpers, then overlay AI-generated titles directly into the
-    # same dict — projects-index nav exposes only ONE display field
-    # per session, with ai_title taking precedence over leafUuid-
-    # mapped summary. Using ``dict.update`` (last-write-wins per
-    # sessionId) reproduces the original loop's semantics exactly
-    # (and matches ``prepare_session_ai_titles``'s own last-entry-
-    # wins). NOT introducing a separate dict here is deliberate:
-    # that would surface as a behavior change (ai-title precedence
-    # would be dropped).
-    session_summaries = prepare_session_summaries(messages)
-    session_summaries.update(prepare_session_ai_titles(messages))
+    # Collapse summary + ai_title for nav display. Using
+    # ``dict.update`` last-write-wins per sessionId matches
+    # ``prepare_session_ai_titles``'s own last-entry-wins shape.
+    nav_summaries = prepare_session_summaries(messages)
+    nav_summaries.update(prepare_session_ai_titles(messages))
 
-    # Group messages by session (excluding warmup-only sessions,
-    # coalescing agent sessions into their parent)
-    sessions: dict[str, dict[str, Any]] = {}
-    for message in messages:
-        if hasattr(message, "sessionId") and not isinstance(
-            message,
-            (
-                SummaryTranscriptEntry,
-                AiTitleTranscriptEntry,
-                AttachmentTranscriptEntry,
-            ),
-        ):
-            session_id = get_parent_session_id(getattr(message, "sessionId", ""))
-            if not session_id or session_id in warmup_session_ids:
-                continue
-
-            if session_id not in sessions:
-                sessions[session_id] = {
-                    "id": session_id,
-                    "summary": session_summaries.get(session_id),
-                    "first_timestamp": getattr(message, "timestamp", ""),
-                    "last_timestamp": getattr(message, "timestamp", ""),
-                    "message_count": 0,
-                    "first_user_message": "",
-                }
-
-            sessions[session_id]["message_count"] += 1
-            current_timestamp = getattr(message, "timestamp", "")
-            if current_timestamp:
-                sessions[session_id]["last_timestamp"] = current_timestamp
-
-            # Get first user message for preview (skip system messages)
-            if (
-                isinstance(message, UserTranscriptEntry)
-                and not sessions[session_id]["first_user_message"]
-                and hasattr(message, "message")
-            ):
-                first_user_content = extract_text_content(message.message.content)
-                if should_use_as_session_starter(first_user_content):
-                    sessions[session_id]["first_user_message"] = create_session_preview(
-                        first_user_content
-                    )
-
-    # Convert to list format with formatted timestamps
     session_list: list[dict[str, Any]] = []
-    for session_data in sessions.values():
-        timestamp_range = format_timestamp_range(
-            session_data["first_timestamp"],
-            session_data["last_timestamp"],
-        )
-        session_dict: dict[str, Any] = {
-            "id": session_data["id"],
-            "summary": session_data["summary"],
-            "timestamp_range": timestamp_range,
-            "message_count": session_data["message_count"],
-            "first_user_message": session_data["first_user_message"]
-            if session_data["first_user_message"] != ""
-            else "[No user message found in session.]",
-        }
-        # Skip sessions with no user messages (empty sessions / agent-only)
-        if session_data["first_user_message"] == "":
+    for sid, data in sessions.items():
+        # Skip empty (agent-only) sessions — they have no
+        # navigable content.
+        if not data.first_user_message:
             continue
-        session_list.append(session_dict)
+        session_list.append(
+            {
+                "id": sid,
+                "summary": nav_summaries.get(sid),
+                "timestamp_range": format_timestamp_range(
+                    data.first_timestamp,
+                    data.last_timestamp,
+                ),
+                "message_count": data.message_count,
+                "first_user_message": data.first_user_message
+                if data.first_user_message
+                else "[No user message found in session.]",
+            }
+        )
 
-    # Sort by first timestamp (ascending order, oldest first like transcript page)
     return sorted(
         session_list, key=lambda s: s.get("timestamp_range", ""), reverse=False
     )
@@ -2757,59 +2677,22 @@ def process_projects_hierarchy(
             if from_date or to_date:
                 messages = filter_messages_by_date(messages, from_date, to_date)
 
-            # Calculate token usage aggregation and find first/last interaction timestamps
-            total_input_tokens = 0
-            total_output_tokens = 0
-            total_cache_creation_tokens = 0
-            total_cache_read_tokens = 0
-            latest_timestamp = ""
-            earliest_timestamp = ""
-
-            # Track requestIds to avoid double-counting tokens
-            seen_request_ids: set[str] = set()
+            # Project-wide token totals + earliest/latest timestamps
+            # — single-sourced via the shared ``compute_project_aggregates``
+            # helper (same code path the cache writer uses), so the
+            # cached and no-cache index paths now agree on D1
+            # (count un-keyed assistant usage) without each maintaining
+            # its own copy of the dedup logic.
+            aggregates = compute_project_aggregates(messages)
+            total_input_tokens = aggregates["total_input_tokens"]
+            total_output_tokens = aggregates["total_output_tokens"]
+            total_cache_creation_tokens = aggregates["total_cache_creation_tokens"]
+            total_cache_read_tokens = aggregates["total_cache_read_tokens"]
+            earliest_timestamp = aggregates["earliest_timestamp"]
+            latest_timestamp = aggregates["latest_timestamp"]
 
             # Collect session data for this project
             sessions_data = _collect_project_sessions(messages)
-
-            for message in messages:
-                # Track latest and earliest timestamps across all messages
-                if hasattr(message, "timestamp"):
-                    message_timestamp = getattr(message, "timestamp", "")
-                    if message_timestamp:
-                        # Track latest timestamp
-                        if not latest_timestamp or message_timestamp > latest_timestamp:
-                            latest_timestamp = message_timestamp
-
-                        # Track earliest timestamp
-                        if (
-                            not earliest_timestamp
-                            or message_timestamp < earliest_timestamp
-                        ):
-                            earliest_timestamp = message_timestamp
-
-                # Calculate token usage for assistant messages
-                if message.type == "assistant" and hasattr(message, "message"):
-                    assistant_message = getattr(message, "message")
-                    request_id = getattr(message, "requestId", None)
-
-                    if (
-                        hasattr(assistant_message, "usage")
-                        and assistant_message.usage
-                        and request_id
-                        and request_id not in seen_request_ids
-                    ):
-                        # Mark requestId as seen to avoid double-counting
-                        seen_request_ids.add(request_id)
-
-                        usage = assistant_message.usage
-                        total_input_tokens += usage.input_tokens or 0
-                        total_output_tokens += usage.output_tokens or 0
-                        if usage.cache_creation_input_tokens:
-                            total_cache_creation_tokens += (
-                                usage.cache_creation_input_tokens
-                            )
-                        if usage.cache_read_input_tokens:
-                            total_cache_read_tokens += usage.cache_read_input_tokens
 
             # Distinct teamName values across this project's sessions.
             # Mirror the cached path's filtering: skip warmup-only
