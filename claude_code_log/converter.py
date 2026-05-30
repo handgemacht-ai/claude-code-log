@@ -1096,6 +1096,16 @@ def _build_session_data_from_messages(
 
     # Group messages by session
     sessions: Dict[str, Dict[str, Any]] = {}
+    # Track requestIds already credited so a retried/repeated assistant
+    # entry isn't counted twice. Mirrors the intent of the canonical
+    # cache path (_update_cache_with_session_data) but, per the
+    # simplification plan (§4 opp 1 / §5 requestId-dedup invariant),
+    # only suppresses *repeats* of an already-seen id — assistant
+    # entries with no requestId at all are still counted. A literal
+    # mirror of the cache guard (`request_id and request_id not in
+    # seen`) would silently drop un-keyed usage. Reconciliation of
+    # the two paths into a single canonical rule is deferred to opp 9.
+    seen_request_ids: set[str] = set()
     for message in messages:
         if not hasattr(message, "sessionId") or isinstance(
             message,
@@ -1155,19 +1165,27 @@ def _build_session_data_from_messages(
         ):
             msg_data = message.message
             if hasattr(msg_data, "usage") and msg_data.usage:
-                usage = msg_data.usage
-                sessions[session_id]["total_input_tokens"] += (
-                    getattr(usage, "input_tokens", 0) or 0
-                )
-                sessions[session_id]["total_output_tokens"] += (
-                    getattr(usage, "output_tokens", 0) or 0
-                )
-                sessions[session_id]["total_cache_creation_tokens"] += (
-                    getattr(usage, "cache_creation_input_tokens", 0) or 0
-                )
-                sessions[session_id]["total_cache_read_tokens"] += (
-                    getattr(usage, "cache_read_input_tokens", 0) or 0
-                )
+                request_id = getattr(message, "requestId", None)
+                if request_id is not None and request_id in seen_request_ids:
+                    # Already credited via an earlier entry with the
+                    # same requestId — skip to avoid double-counting.
+                    pass
+                else:
+                    if request_id is not None:
+                        seen_request_ids.add(request_id)
+                    usage = msg_data.usage
+                    sessions[session_id]["total_input_tokens"] += (
+                        getattr(usage, "input_tokens", 0) or 0
+                    )
+                    sessions[session_id]["total_output_tokens"] += (
+                        getattr(usage, "output_tokens", 0) or 0
+                    )
+                    sessions[session_id]["total_cache_creation_tokens"] += (
+                        getattr(usage, "cache_creation_input_tokens", 0) or 0
+                    )
+                    sessions[session_id]["total_cache_read_tokens"] += (
+                        getattr(usage, "cache_read_input_tokens", 0) or 0
+                    )
 
     # Convert to Dict[str, SessionCacheData]
     result: Dict[str, SessionCacheData] = {}
