@@ -22,37 +22,23 @@
 | 4 — extract-junction-link-pass | `extract-junction-link-pass` | [#177](https://github.com/daaain/claude-code-log/pull/177) | ✅ merged |
 | 3 — fix-rendering-arch-doc | `fix-rendering-arch-doc` | [#178](https://github.com/daaain/claude-code-log/pull/178) | ✅ merged |
 | §7 — detail-visibility-method | `detail-visibility-method` | [#181](https://github.com/daaain/claude-code-log/pull/181) | ✅ merged |
-| 1 — pagination-token-dedup | `pagination-token-dedup` | [#182](https://github.com/daaain/claude-code-log/pull/182) | ✅ green — monk ✅, CI green, CodeRabbit clean (awaiting maintainer merge) |
-| 6 — factor-session-headers | `factor-session-headers` | [#183](https://github.com/daaain/claude-code-log/pull/183) | ✅ rebased onto main (`50850de`), monk ✅, CodeRabbit clean² — **ready to merge** (CI accepted at merge-time) |
-| 7 — branch-label-source | `branch-label-source` | [#184](https://github.com/daaain/claude-code-log/pull/184) | monk ✅, rebased stacked (`295a84e`), CodeRabbit² found 2 minor doc nits → fixed; CI merge-gated until #183 lands |
-
-> ² **Lifting a stacked PR to main (CONFIRMED recipe, 2026-05-30):** retargeting a
-> PR's base is an `edited` event — triggers neither CI nor CodeRabbit. The reliable
-> order: (1) `git rebase --onto main <old-parent-tip>`, (2) retarget base→main FIRST
-> (`gh api -X PATCH …/pulls/N -f base=main`), (3) THEN `git push --force-with-lease`.
-> Step 3 is a `synchronize` at base=main → auto-fires CI matrix + fresh CodeRabbit
-> (no `@coderabbitai` needed). Verified on #184. The wrong order (force-push then
-> retarget, done on #183) is net-zero → needs a manual `@coderabbitai full review`.
->
-> ¹ **Stacked-PR CI/CodeRabbit nuance:** the test workflow triggers only on
-> `pull_request → main`, and CodeRabbit skips reviews on PRs whose base isn't
-> `main` ("Review skipped" on #183). So a stacked PR gets **no** CI/CodeRabbit
-> while its base is a feature branch. As the parent merges, GitHub auto-retargets
-> the child PR's base to `main`, which then fires its full CI + CodeRabbit on the
-> clean (atomic) diff. So progressive merging gives each PR its automated review
-> at merge-time — opp 1 (#182, base `main`) is the only one auto-validated now.
+| 1 — pagination-token-dedup | `pagination-token-dedup` | [#182](https://github.com/daaain/claude-code-log/pull/182) | ✅ merged |
+| 6 — factor-session-headers | `factor-session-headers` | [#183](https://github.com/daaain/claude-code-log/pull/183) | ✅ merged |
+| 7 — branch-label-source | `branch-label-source` | [#184](https://github.com/daaain/claude-code-log/pull/184) | rebased onto main (`3123b46`), monk ✅, CI green; **needs explicit `@coderabbitai full review`** before the final maintainer merge |
 | 8–12 — Wave C / D | — | — | ⏳ not started |
 
-**Current track (sequential): COMPLETE — all three PRs up, monk-approved.** opp 1 →
-opp 6 → opp 7. Branches are **stacked** — each PR targets the previous branch
-(`--base`) until that branch merges, so CodeRabbit diffs only the new change. opp 1
-lives in `converter.py`; opp 6/7 in `renderer.py` and overlap the branch-header
-block, so 7 must follow 6.
+> The CI/CodeRabbit trigger mechanics for stacked PRs (retarget-then-force-push
+> order; why CodeRabbit needs an explicit `@coderabbitai full review` even at
+> base=`main`) are operational GitHub notes, not part of this plan — see
+> `~/.claude/guidelines/github.md`.
 
-**Maintainer merge sequence (when you're back):** merge **#182** (opp 1, base
-`main`, fully green) → GitHub retargets **#183** to `main`, its CI+CodeRabbit fire →
-merge #183 → #184 retargets to `main`, its CI+CodeRabbit fire → merge **#184**. Each
-gets full automated review on its clean diff at its merge step.
+**Current track (sequential): opp 1 (#182) and opp 6 (#183) MERGED; opp 7 (#184)
+rebased onto `main`, awaiting its explicit CodeRabbit review + final merge.** opp 1
+lived in `converter.py`; opp 6/7 in `renderer.py` and overlap the branch-header
+block, so 7 followed 6. Branches were stacked (each PR based on the previous) for
+clean atomic diffs; each was rebased onto `main` and re-checked as its parent
+merged (the retarget/force-push + `@coderabbitai` mechanics are in the github
+guideline, not here).
 
 ## 1. Executive summary
 
