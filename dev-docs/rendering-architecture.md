@@ -139,7 +139,7 @@ Each parser extracts text from `ToolResultContent` and parses patterns like:
 
 ## 4. The TemplateMessage Wrapper
 
-`TemplateMessage` ([renderer.py:132](../claude_code_log/renderer.py#L132)) wraps `MessageContent` with render-time state:
+`TemplateMessage` (in [renderer.py](../claude_code_log/renderer.py)) wraps `MessageContent` with render-time state:
 
 **MessageContent** (pure transcript data):
 - `meta: MessageMeta` - timestamp, session_id, uuid, is_sidechain, etc.
@@ -161,28 +161,35 @@ Relationship fields (populated by processing phases, using `message_index` for r
 
 ## 5. Format-Neutral Processing Pipeline
 
-The core rendering pipeline is in [renderer.py:generate_template_messages()](../claude_code_log/renderer.py#L523). It returns:
+The core rendering pipeline is in [generate_template_messages()](../claude_code_log/renderer.py). It returns:
 
 1. **Tree of TemplateMessage** - Session headers as roots with nested children
 2. **Session navigation data** - For table of contents
 3. **RenderingContext** - Message registry for `message_index` lookups
 
+> Doc links into `renderer.py` use function/class names rather than
+> line numbers — the file is large and churns, so line anchors drift.
+> Search by symbol name.
+
 ### Processing Phases
 
-The pipeline processes messages through several phases:
+The pipeline runs many strictly-ordered in-place passes over a flat
+`list[TemplateMessage]`. The four below are the conceptual backbone;
+the remaining passes (listed in the addendum) refine ordering,
+hierarchy, and cross-links on top of them.
 
 #### Phase 1: Message Loop
-[_process_messages_loop()](../claude_code_log/renderer.py) creates `TemplateMessage` wrappers for each transcript entry. The loop handles:
-- Inserting session headers at session boundaries
+[_render_messages()](../claude_code_log/renderer.py) creates `TemplateMessage` wrappers for each transcript entry. The loop handles:
+- Inserting session headers at session boundaries (trunk + branch)
 - Creating `MessageContent` via factories
 - Registering messages in `RenderingContext`
 
 #### Phase 2: Pairing
-[_identify_message_pairs()](../claude_code_log/renderer.py#L929) marks related messages:
+[_identify_message_pairs()](../claude_code_log/renderer.py) marks related messages:
 - **Adjacent pairs**: thinking+assistant, bash-input+output, system+slash-command
 - **Indexed pairs**: tool_use+tool_result (by tool_use_id)
 
-After identification, [_reorder_paired_messages()](../claude_code_log/renderer.py#L968) moves `pair_last` messages adjacent to their `pair_first`.
+After identification, [_reorder_paired_messages()](../claude_code_log/renderer.py) moves `pair_last` messages adjacent to their `pair_first`.
 
 #### Phase 3: Hierarchy
 [_build_message_hierarchy()](../claude_code_log/renderer.py) assigns `ancestry` based on message relationships:
@@ -192,7 +199,7 @@ After identification, [_reorder_paired_messages()](../claude_code_log/renderer.p
 - Sidechain messages at level 4+
 
 #### Phase 4: Tree Building
-[_build_message_tree()](../claude_code_log/renderer.py#L1226) populates `children` lists from `ancestry`:
+[_build_message_tree()](../claude_code_log/renderer.py) populates `children` lists from `ancestry`:
 
 ```
 Session Header (root)
@@ -203,11 +210,42 @@ Session Header (root)
                  └─ Sidechain assistant (Task result children)
 ```
 
+#### Full pass ordering (addendum)
+
+The four backbone phases above run *within* a longer ordered sequence.
+In code order, `generate_template_messages`:
+
+1. **Setup** — filters warmup sessions, then prepares session metadata:
+   `prepare_session_summaries` + `prepare_session_ai_titles` (merged),
+   `prepare_session_team_names`, and `_extract_session_hierarchy`.
+2. **Pre-render filtering** — `_filter_messages` (structural), then
+   `_filter_by_detail` (entry-level, only below FULL).
+3. **Collect + render** — `_collect_session_info`, then
+   `_render_messages` (**Phase 1**: wrappers, session headers,
+   registration), then `_pair_skill_tool_uses` (which calls
+   `_reindex_filtered_context` internally).
+4. **Branch / junction linking** — `_enrich_branch_titles`, then
+   junction forward-link population on fork points.
+5. **Post-render detail filter** — `_filter_template_by_detail`
+   followed immediately by `_reindex_filtered_context` (only below FULL).
+6. **Nav + structure** — `prepare_session_navigation`, then
+   `_reorder_session_template_messages`, `_identify_message_pairs`
+   (**Phase 2**), `_reorder_paired_messages`,
+   `_relocate_subagent_blocks`, `_build_message_hierarchy`
+   (**Phase 3**), `_mark_messages_with_children`, `_build_message_tree`
+   (**Phase 4**), `_cleanup_sidechain_duplicates`.
+7. **Trailing metadata / link passes** — `_populate_teammate_colors`,
+   `_populate_task_metadata`, `_link_async_notifications`,
+   `_link_tool_use_notifications`, `_link_cron_jobs_by_id`,
+   `_link_task_id_consumers`.
+
+The code in `generate_template_messages` is the authoritative ordering.
+
 ---
 
 ## 6. RenderingContext
 
-`RenderingContext` ([renderer.py:75](../claude_code_log/renderer.py#L75)) holds per-render state:
+`RenderingContext` (in [renderer.py](../claude_code_log/renderer.py)) holds per-render state:
 
 ```python
 @dataclass
@@ -229,7 +267,7 @@ This enables parallel-safe rendering where each render operation gets its own co
 
 ## 7. The Renderer Class Hierarchy
 
-The base `Renderer` class ([renderer.py:2056](../claude_code_log/renderer.py#L2056)) defines the method-based dispatcher pattern. Subclasses implement format-specific rendering.
+The base `Renderer` class (in [renderer.py](../claude_code_log/renderer.py)) defines the method-based dispatcher pattern. Subclasses implement format-specific rendering.
 
 ### Dispatch Mechanism
 
