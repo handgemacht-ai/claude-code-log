@@ -26,12 +26,13 @@
 | 6 — factor-session-headers | `factor-session-headers` | [#183](https://github.com/daaain/claude-code-log/pull/183) | ✅ rebased onto main (`50850de`), monk ✅, CodeRabbit clean² — **ready to merge** (CI accepted at merge-time) |
 | 7 — branch-label-source | `branch-label-source` | [#184](https://github.com/daaain/claude-code-log/pull/184) | monk ✅, rebased stacked (`295a84e`), CodeRabbit² found 2 minor doc nits → fixed; CI merge-gated until #183 lands |
 
-> ² **Recovering CodeRabbit on a retargeted stacked PR:** retargeting a PR's base
-> to `main` is an `edited` event — it triggers neither CI nor a fresh CodeRabbit
-> review. Post `@coderabbitai full review` to force the review (worked on #183 +
-> #184). For CI on a retargeted PR, a new `synchronize`/`reopened` event is needed.
-> Hypothesis to test on #184 when #183 lands: retarget base→main *first*, then
-> force-push, so the force-push fires both CI and CodeRabbit at base=main.
+> ² **Lifting a stacked PR to main (CONFIRMED recipe, 2026-05-30):** retargeting a
+> PR's base is an `edited` event — triggers neither CI nor CodeRabbit. The reliable
+> order: (1) `git rebase --onto main <old-parent-tip>`, (2) retarget base→main FIRST
+> (`gh api -X PATCH …/pulls/N -f base=main`), (3) THEN `git push --force-with-lease`.
+> Step 3 is a `synchronize` at base=main → auto-fires CI matrix + fresh CodeRabbit
+> (no `@coderabbitai` needed). Verified on #184. The wrong order (force-push then
+> retarget, done on #183) is net-zero → needs a manual `@coderabbitai full review`.
 >
 > ¹ **Stacked-PR CI/CodeRabbit nuance:** the test workflow triggers only on
 > `pull_request → main`, and CodeRabbit skips reviews on PRs whose base isn't
