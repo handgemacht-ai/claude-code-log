@@ -81,10 +81,12 @@ _DETAIL_ORDER: dict[DetailLevel, int] = {
 
 # Guard against drift: if a new DetailLevel value is added without an
 # entry here, ``includes`` would raise KeyError silently on first use.
-# Fail loudly at import time instead.
-assert set(_DETAIL_ORDER.keys()) == set(DetailLevel), (
-    f"_DETAIL_ORDER missing entries for: {set(DetailLevel) - set(_DETAIL_ORDER.keys())}"
-)
+# Fail loudly at import time instead. Uses ``if ... raise`` rather than
+# ``assert`` so the check survives ``python -O`` / ``PYTHONOPTIMIZE``.
+if set(_DETAIL_ORDER.keys()) != set(DetailLevel):
+    raise RuntimeError(
+        f"_DETAIL_ORDER missing entries for: {set(DetailLevel) - set(_DETAIL_ORDER.keys())}"
+    )
 
 
 # =============================================================================

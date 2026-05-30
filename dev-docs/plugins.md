@@ -396,13 +396,19 @@ semantics), guarded by a module-load assertion that every
 content class as `MessageContent.visible_at(detail)` and consults the
 class-side `detail_visibility` ClassVar via `DetailLevel.includes`.
 
-**Opt-in nature.** Built-in `MessageContent` classes declare their own
-`detail_visibility` (e.g. `ToolUseMessage = LOW`, `SystemMessage = FULL`),
-so a plugin class that subclasses a built-in inherits the built-in's
-threshold through normal ClassVar inheritance unless it declares its
-own. Declaring your own opts you out of the orthogonal `_LOW_KEEP_TOOLS`
-tool-name allowlist (for `ToolUseMessage`/`ToolResultMessage`
-subclasses) — your declared visibility is authoritative.
+**Opt-in nature.** Most built-in `MessageContent` classes declare their
+own `detail_visibility` (e.g. `ToolUseMessage = LOW`, `SystemMessage =
+FULL`), and a plugin class subclassing such a built-in inherits the
+parent's threshold through normal ClassVar inheritance unless it
+declares its own. A handful of built-ins (`UserTextMessage`,
+`TeammateMessage`, `TaskNotificationMessage`, `SessionHeaderMessage`)
+do *not* declare a threshold and fall through to the base predicate's
+"visible when unset" default — a plugin subclassing one of those
+inherits no threshold and is likewise visible-by-default unless it
+declares its own. Declaring your own opts you out of the orthogonal
+`_LOW_KEEP_TOOLS` tool-name allowlist (for `ToolUseMessage` /
+`ToolResultMessage` subclasses) — your declared visibility is
+authoritative.
 
 **Practical guide.** Pick based on user-perceived value:
 
