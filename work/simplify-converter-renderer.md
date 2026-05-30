@@ -22,8 +22,8 @@
 | 4 — extract-junction-link-pass | `extract-junction-link-pass` | [#177](https://github.com/daaain/claude-code-log/pull/177) | ✅ merged |
 | 3 — fix-rendering-arch-doc | `fix-rendering-arch-doc` | [#178](https://github.com/daaain/claude-code-log/pull/178) | ✅ merged |
 | §7 — detail-visibility-method | `detail-visibility-method` | [#181](https://github.com/daaain/claude-code-log/pull/181) | ✅ merged |
-| 1 — pagination-token-dedup | `pagination-token-dedup` | _pending_ | 🔄 in progress (alice) |
-| 6 — factor-session-headers | `factor-session-headers` | _pending_ | ⏳ queued (stacked on opp 1) |
+| 1 — pagination-token-dedup | `pagination-token-dedup` | [#182](https://github.com/daaain/claude-code-log/pull/182) | 🟡 in review (monk ✅; CI+CodeRabbit running) |
+| 6 — factor-session-headers | `factor-session-headers` | _pending_ | 🔄 in progress (alice, stacked on opp 1) |
 | 7 — branch-label-source | `branch-label-source` | _pending_ | ⏳ queued (stacked on opp 6) |
 | 8–12 — Wave C / D | — | — | ⏳ not started |
 
