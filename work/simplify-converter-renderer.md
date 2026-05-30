@@ -24,7 +24,7 @@
 | §7 — detail-visibility-method | `detail-visibility-method` | [#181](https://github.com/daaain/claude-code-log/pull/181) | ✅ merged |
 | 1 — pagination-token-dedup | `pagination-token-dedup` | [#182](https://github.com/daaain/claude-code-log/pull/182) | ✅ merged |
 | 6 — factor-session-headers | `factor-session-headers` | [#183](https://github.com/daaain/claude-code-log/pull/183) | ✅ merged |
-| 7 — branch-label-source | `branch-label-source` | [#184](https://github.com/daaain/claude-code-log/pull/184) | rebased onto main (`3123b46`), monk ✅, CI green; **needs explicit `@coderabbitai full review`** before the final maintainer merge |
+| 7 — branch-label-source | `branch-label-source` | [#184](https://github.com/daaain/claude-code-log/pull/184) | rebased onto main (`3123b46`), monk ✅, CI green (11/11), CodeRabbit clean (no actionable comments) — **ready to merge** |
 | 8–12 — Wave C / D | — | — | ⏳ not started |
 
 > The CI/CodeRabbit trigger mechanics for stacked PRs (retarget-then-force-push
