@@ -220,11 +220,15 @@ types created by factories (`BashInputMessage`, `BashOutputMessage`,
 because some content is identifiable only after factory dispatch (e.g.,
 distinguishing `BashInputMessage` from the tool_use that produced it).
 
-Important interaction: `_filter_template_by_detail` runs **before**
-`_pair_skill_tool_uses` and other reorder passes, so paired-message
-indices need re-mapping (`_reindex_filtered_context`). The reindex
-pass also has to update cached parent-message references on
-`SessionHeaderMessage` (see PR #131 fix).
+Important interaction: `_pair_skill_tool_uses` runs **before**
+`_filter_template_by_detail`, and each pass that drops messages calls
+`_reindex_filtered_context` to remap surviving indices (the skill-fold
+pass remaps after dropping the slash-command body and the redundant
+"Launching skill" tool_result; the detail filter remaps after dropping
+content types below `FULL`). The reindex pass also has to update
+cached parent-message references on `SessionHeaderMessage` (see PR
+#131 fix). See [rendering-architecture.md § 5](rendering-architecture.md)
+for the full pass order.
 
 ### 2.7 Image export
 
@@ -399,8 +403,8 @@ Terms that appear across multiple subsystems — defined once here.
   title is composed by `_branch_label` in the shape `Branch •
   <uuid8> • <preview>`, with the preview computed once by scanning
   the branch's DAG-line uuids for the first user entry with text
-  (via `extract_text_content` + `create_session_preview` in
-  `utils.py`, which calls `simplify_command_tags` to strip raw
+  (via `extract_text_content` in `parser.py` + `create_session_preview`
+  in `utils.py`, which calls `simplify_command_tags` to strip raw
   `<command-name>` XML soup down to `/cmd`). When troubleshooting
   branch-heading rendering, those are the functions to inspect.
 
