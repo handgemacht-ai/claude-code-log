@@ -886,3 +886,167 @@ class TestPaginationFallbackWithoutCache:
         assert "Message 0 from user" in page1_content or "Response" in page1_content, (
             "Paginated HTML should contain messages when cache is unavailable"
         )
+
+
+class TestBuildSessionDataRequestIdDedup:
+    """Pin the requestId-dedup behavior of ``_build_session_data_from_messages``
+    — the cache-miss fallback exercised when ``get_cached_project_data``
+    returns ``None`` during pagination.
+
+    The function must:
+
+    1. Dedup repeat assistant entries that carry the SAME requestId
+       (e.g. a retried request preserved in the JSONL stream) so their
+       usage is counted exactly once.
+    2. KEEP counting assistant entries that have NO requestId at all.
+
+    The literal mirror of the canonical cache path's guard
+    (``request_id and request_id not in seen``) would silently drop
+    rule 2 — these tests guard against that regression.
+    """
+
+    def _make_assistant_entry(
+        self,
+        session_id: str,
+        seq: int,
+        request_id,
+        input_tokens: int,
+        output_tokens: int,
+    ):
+        """Helper: one assistant JSONL entry with a chosen requestId
+        (``None`` means the key is omitted entirely, mirroring real
+        transcripts that pre-date the field).
+        """
+        entry = {
+            "type": "assistant",
+            "uuid": f"{session_id}-assistant-{seq}",
+            "timestamp": f"2023-01-01T10:00:{seq:02d}Z",
+            "sessionId": session_id,
+            "version": "1.0.0",
+            "parentUuid": None,
+            "isSidechain": False,
+            "userType": "assistant",
+            "cwd": "/test",
+            "message": {
+                "id": f"msg-{session_id}-{seq}",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-3",
+                "content": [{"type": "text", "text": f"Response {seq}"}],
+                "usage": {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                },
+            },
+        }
+        if request_id is not None:
+            entry["requestId"] = request_id
+        return entry
+
+    def _make_user_entry(self, session_id: str, seq: int):
+        return {
+            "type": "user",
+            "uuid": f"{session_id}-user-{seq}",
+            "timestamp": f"2023-01-01T09:00:{seq:02d}Z",
+            "sessionId": session_id,
+            "version": "1.0.0",
+            "parentUuid": None,
+            "isSidechain": False,
+            "userType": "user",
+            "cwd": "/test",
+            "message": {"role": "user", "content": f"Hi {seq}"},
+        }
+
+    def _build(self, raw_entries):
+        """Write a single JSONL, parse via ``load_transcript`` (real
+        path) and feed the result to ``_build_session_data_from_messages``.
+        """
+        from claude_code_log.converter import (
+            load_transcript,
+            _build_session_data_from_messages,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl = Path(tmp) / "session.jsonl"
+            with open(jsonl, "w", encoding="utf-8") as f:
+                for entry in raw_entries:
+                    f.write(json.dumps(entry) + "\n")
+            messages = load_transcript(jsonl)
+        return _build_session_data_from_messages(messages)
+
+    def test_repeated_request_id_is_counted_once(self):
+        """Two assistant entries sharing a requestId count as one
+        usage credit — guards against a retried/duplicated request
+        inflating session totals on the cache-miss path."""
+        sid = "session-dedup"
+        entries = [
+            self._make_user_entry(sid, 0),
+            self._make_assistant_entry(sid, 1, "req-dup", 100, 50),
+            self._make_assistant_entry(sid, 2, "req-dup", 100, 50),
+        ]
+        data = self._build(entries)
+
+        assert sid in data
+        assert data[sid].total_input_tokens == 100, (
+            "duplicate requestId must not double-count input_tokens "
+            f"(got {data[sid].total_input_tokens})"
+        )
+        assert data[sid].total_output_tokens == 50, (
+            "duplicate requestId must not double-count output_tokens "
+            f"(got {data[sid].total_output_tokens})"
+        )
+
+    def test_assistant_entry_without_request_id_is_still_counted(self):
+        """Assistant entries with NO requestId must still contribute
+        their usage. This is the whole point of opp 1: do not adopt
+        the canonical cache path's truthy guard, which would silently
+        drop these entries.
+        """
+        sid = "session-unkeyed"
+        entries = [
+            self._make_user_entry(sid, 0),
+            self._make_assistant_entry(sid, 1, None, 30, 10),
+        ]
+        data = self._build(entries)
+
+        assert sid in data
+        assert data[sid].total_input_tokens == 30, (
+            "un-keyed assistant usage must be counted "
+            f"(got {data[sid].total_input_tokens}; a literal mirror "
+            "of the canonical guard would drop it)"
+        )
+        assert data[sid].total_output_tokens == 10
+
+    def test_distinct_request_ids_both_counted(self):
+        """Two assistant entries with DIFFERENT requestIds each
+        contribute their usage — the dedup set must not over-fire."""
+        sid = "session-distinct"
+        entries = [
+            self._make_user_entry(sid, 0),
+            self._make_assistant_entry(sid, 1, "req-A", 10, 5),
+            self._make_assistant_entry(sid, 2, "req-B", 20, 7),
+        ]
+        data = self._build(entries)
+
+        assert sid in data
+        assert data[sid].total_input_tokens == 30
+        assert data[sid].total_output_tokens == 12
+
+    def test_mixed_keyed_and_unkeyed(self):
+        """End-to-end mix: a fresh requestId (counted), a repeat of
+        that id (dedup'd), and an un-keyed entry (counted). Pins
+        rules 1 + 2 together on one session."""
+        sid = "session-mixed"
+        entries = [
+            self._make_user_entry(sid, 0),
+            self._make_assistant_entry(sid, 1, "req-X", 7, 3),
+            self._make_assistant_entry(sid, 2, "req-X", 7, 3),
+            self._make_assistant_entry(sid, 3, None, 4, 2),
+        ]
+        data = self._build(entries)
+
+        assert sid in data
+        # 7 (req-X first) + 0 (req-X repeat dedup'd) + 4 (un-keyed) = 11
+        assert data[sid].total_input_tokens == 11
+        # 3 + 0 + 2 = 5
+        assert data[sid].total_output_tokens == 5
