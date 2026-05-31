@@ -1045,16 +1045,27 @@ class TestAgentDagIntegration:
 
 
 # =============================================================================
-# Test: current_render_session reset across sessions
+# Test: render_session_id does not leak across sessions
 # =============================================================================
 
 
 class TestRenderSessionResetAcrossSessions:
-    """Test that current_render_session is reset when entering a new session.
+    """Pin that a within-session branch in session A doesn't leak its
+    render_session_id into session B.
 
-    Bug: _render_messages() sets current_render_session when entering a
-    within-session fork branch but never clears it on new sessions,
-    causing subsequent session messages to inherit a stale branch ID.
+    Historical context: pre-D11 the renderer tracked the current
+    render session via a loop-local ``current_render_session``
+    variable, set on each branch-start trigger and cleared on each
+    new trunk session. An early bug let the variable carry across
+    sessions and pollute the next trunk's messages with a stale
+    branch sid. D11 (``crux-derive-render-session-id-from-dag``)
+    replaced the loop variable with a precomputed
+    ``uuid_to_render_sid`` map derived from the SessionTree, so the
+    polluted-state shape is structurally impossible — each uuid's
+    render_session_id is determined by its DAG line, not by walk
+    order. The test still pins the OUTCOME (s2 messages resolve to
+    ``s2``), which is what any future implementation must continue
+    to guarantee.
     """
 
     def test_second_session_not_polluted_by_first_session_branch(
@@ -1096,6 +1107,323 @@ class TestRenderSessionResetAcrossSessions:
             assert msg.render_session_id == "s2", (
                 f"Message {msg.meta.uuid} has render_session_id={msg.render_session_id!r}, "
                 f"expected 's2' — branch tracking from s1 leaked into s2"
+            )
+
+    def test_branch_first_uuid_filtered_out_still_groups_correctly(
+        self, tmp_path: Path
+    ) -> None:
+        """The D11 latent-bug regression.
+
+        Pre-D11 the renderer derived ``render_session_id`` from a
+        loop-local ``current_render_session`` variable flipped at
+        the branch-start trigger (the line whose uuid matched the
+        branch's ``first_uuid``). If ``_filter_by_detail`` dropped
+        that ``first_uuid`` entry at non-FULL detail, the trigger
+        never fired and subsequent surviving branch entries silently
+        inherited a stale render_session_id — landing in the wrong
+        session group in the final tree.
+
+        D11 replaces the loop variable with a precomputed
+        ``uuid_to_render_sid`` map derived from the SessionTree.
+        Every uuid in a branch DAG-line maps to that branch's sid
+        regardless of which entries survive filtering, so the fix
+        is structural.
+
+        Fixture shape that triggers the bug:
+
+        - Trunk: ``u`` (user) → ``a`` (assistant, ends in tool_use).
+        - Fork at ``a``: two assistant children with ONLY a
+          ``tool_use`` content item (no text). Both are dropped by
+          ``_filter_by_detail`` at MINIMAL (strip_types = ThinkingContent,
+          ToolUseContent, ToolResultContent → no text_items left).
+        - Branch 1 continues: ``c1`` (user, parent ``b1``).
+        - Branch 2 continues: ``c2`` (user, parent ``b2``).
+
+        At MINIMAL, ``b1`` and ``b2`` are stripped from
+        ``filtered_messages``, so the pre-D11 branch-start trigger
+        never fires for either branch. ``c1`` and ``c2`` would
+        then both fall through to the trunk's ``render_session_id``
+        ("s1") instead of their respective branch sids — the bug.
+
+        The map-driven derivation reads grouping from the
+        SessionTree (built from PRE-filter messages), so
+        ``uuid_to_render_sid[c1]`` is branch1's sid and
+        ``uuid_to_render_sid[c2]`` is branch2's sid regardless of
+        filtering.
+        """
+        from claude_code_log.models import DetailLevel
+        from claude_code_log.renderer import generate_template_messages
+
+        # Helper: assistant with ONLY a tool_use content item (no
+        # text). At MINIMAL detail, _filter_by_detail strips
+        # ToolUseContent and drops the entry entirely (no surviving
+        # text_items).
+        def _make_assistant_tool_only(
+            uuid: str, parent_uuid: str, timestamp: str
+        ) -> dict[str, Any]:
+            return {
+                "type": "assistant",
+                "timestamp": timestamp,
+                "parentUuid": parent_uuid,
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": uuid,
+                "requestId": f"req_{uuid}",
+                "message": {
+                    "id": uuid,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-sonnet",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"toolu_{uuid}",
+                            "name": "Grep",
+                            "input": {"pattern": "x"},
+                        }
+                    ],
+                    "stop_reason": "tool_use",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            }
+
+        entries = [
+            _make_user_entry("u", "s1", "2025-07-01T10:00:00.000Z", None, "hello"),
+            _make_assistant_entry(
+                "a", "s1", "2025-07-01T10:01:00.000Z", "u", "going to fork"
+            ),
+            # Branch 1: tool_use-only first entry (will be filtered out
+            # at MINIMAL) → text-bearing user message (survives).
+            _make_assistant_tool_only("b1", "a", "2025-07-01T10:02:00.000Z"),
+            _make_user_entry(
+                "c1", "s1", "2025-07-01T10:03:00.000Z", "b1", "BRANCH 1 LOCAL"
+            ),
+            # Branch 2 sibling — same shape (the fork-collapse logic in
+            # dag.py treats this as a real fork because both children
+            # have non-dead descendants).
+            _make_assistant_tool_only("b2", "a", "2025-07-01T10:04:00.000Z"),
+            _make_user_entry(
+                "c2", "s1", "2025-07-01T10:05:00.000Z", "b2", "BRANCH 2 LOCAL"
+            ),
+        ]
+        _write_jsonl(tmp_path / "s1.jsonl", entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        # Sanity: the SessionTree (built pre-filter) MUST see both
+        # branches — otherwise the fixture doesn't actually exercise
+        # the bug.
+        assert session_tree is not None
+        branch_sids = [sid for sid in session_tree.sessions if "@" in sid]
+        assert len(branch_sids) == 2, (
+            f"fixture must produce 2 branches; got {branch_sids}. "
+            "If this fails, the fork-collapse heuristic in dag.py "
+            "absorbed one of the siblings — adjust the fixture so "
+            "both children have non-dead descendants of distinct types."
+        )
+
+        # Render at MINIMAL — b1 and b2 are stripped.
+        _, _, ctx = generate_template_messages(
+            messages,
+            session_tree=session_tree,
+            detail=DetailLevel.MINIMAL,
+        )
+
+        # b1 and b2 should NOT appear in the rendered messages
+        # (sanity: confirms the filter is doing what we expect).
+        rendered_uuids = {m.meta.uuid for m in ctx.messages if m.meta.uuid}
+        assert "b1" not in rendered_uuids, (
+            f"b1 should be filtered out at MINIMAL; got rendered_uuids={rendered_uuids}"
+        )
+        assert "b2" not in rendered_uuids
+
+        # c1 and c2 SHOULD appear and resolve to their respective
+        # branch sids — NOT to "s1" (trunk).
+        by_uuid = {m.meta.uuid: m for m in ctx.messages if m.meta.uuid in ("c1", "c2")}
+        assert set(by_uuid) == {"c1", "c2"}, (
+            f"expected c1+c2 in rendered messages; got {set(by_uuid)}"
+        )
+
+        # Each branch's surviving user message should have render_session_id
+        # equal to one of the branch sids (and NOT "s1").
+        c1_sid = by_uuid["c1"].render_session_id
+        c2_sid = by_uuid["c2"].render_session_id
+        assert c1_sid != "s1", (
+            "c1.render_session_id == 's1' — the loop-variable bug. "
+            "Expected a branch sid ('s1@<uuid12>')."
+        )
+        assert c2_sid != "s1"
+        assert "@" in c1_sid, (
+            f"c1.render_session_id must be a branch sid; got {c1_sid!r}"
+        )
+        assert "@" in c2_sid
+        # The two branches must be DIFFERENT (each user message
+        # belongs to its own branch, not to both).
+        assert c1_sid != c2_sid, (
+            f"c1 and c2 must resolve to DIFFERENT branch sids; got both = {c1_sid!r}"
+        )
+        # And each must be one of the SessionTree-known branch sids.
+        assert c1_sid in branch_sids
+        assert c2_sid in branch_sids
+
+    def test_trunk_header_registers_before_branch_when_trunk_msgs_filtered(
+        self, tmp_path: Path
+    ) -> None:
+        """CodeRabbit-flagged regression on the D11 map-driven trigger.
+
+        Scenario: every trunk-session entry is filtered out at non-
+        FULL detail (e.g., all the trunk's assistants are tool_use-
+        only and stripped at MINIMAL), so the FIRST surviving
+        message processed for that trunk session is a BRANCH
+        descendant. Without the trunk-header-before-branch-header
+        guard, the branch trigger registers the branch header before
+        any trunk message has registered the trunk header. Result:
+
+        - ``ctx.messages`` order: branch_header(0), trunk_header(1),
+          branch's content(2)...
+        - ``_reorder_session_template_messages`` preserves the
+          session-header encounter order → branch ends up as a root
+          section, NOT nested under its parent trunk session.
+        - The branch header's ``parent_message_index`` is also
+          ``None`` because the trunk header isn't in
+          ``ctx.session_first_message`` yet when the branch header
+          is built.
+
+        The fix: when about to register a branch header, FIRST
+        ensure the branch's parent trunk session header is in
+        ``seen_sessions`` and ``ctx.session_first_message``; create
+        it on the fly if not. Pre-D11 the bug couldn't manifest
+        because the branch trigger fired only on the branch's
+        ``first_uuid``, and that uuid's own meta.session_id is the
+        trunk sid which would create the trunk header on the same
+        message iteration before any branch content; D11's wider
+        trigger (any surviving branch line uuid) exposed the gap.
+
+        Fixture: trunk's only message ``a1`` is a tool_use-only
+        assistant (filtered at MINIMAL). Two branches off it, each
+        also starting with a tool_use-only assistant (filtered)
+        then a surviving user-text. At MINIMAL only ``c1`` and
+        ``c2`` survive — both are branch descendants whose parent
+        trunk has no surviving entry.
+
+        Asserts (failure modes the fix prevents):
+
+        - Trunk header for ``s1`` exists in ``ctx.messages`` and
+          appears BEFORE any branch header for ``s1@...``.
+        - Every branch header's ``parent_message_index`` points to
+          a registered message (NOT ``None``).
+        """
+        from claude_code_log.models import DetailLevel, SessionHeaderMessage
+        from claude_code_log.renderer import generate_template_messages
+
+        def _make_assistant_tool_only(
+            uuid: str, parent_uuid: str | None, timestamp: str
+        ) -> dict[str, Any]:
+            return {
+                "type": "assistant",
+                "timestamp": timestamp,
+                "parentUuid": parent_uuid,
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": uuid,
+                "requestId": f"req_{uuid}",
+                "message": {
+                    "id": uuid,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-sonnet",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"toolu_{uuid}",
+                            "name": "Grep",
+                            "input": {"pattern": "x"},
+                        }
+                    ],
+                    "stop_reason": "tool_use",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            }
+
+        # Trunk root is a tool-only assistant → filtered at MINIMAL.
+        # Fork at a1 → two tool-only assistant siblings (both
+        # filtered) each followed by a surviving user-text.
+        entries = [
+            _make_assistant_tool_only("a1", None, "2025-09-01T10:01:00.000Z"),
+            _make_assistant_tool_only("b1", "a1", "2025-09-01T10:02:00.000Z"),
+            _make_user_entry(
+                "c1", "s1", "2025-09-01T10:03:00.000Z", "b1", "BRANCH 1 LOCAL"
+            ),
+            _make_assistant_tool_only("b2", "a1", "2025-09-01T10:04:00.000Z"),
+            _make_user_entry(
+                "c2", "s1", "2025-09-01T10:05:00.000Z", "b2", "BRANCH 2 LOCAL"
+            ),
+        ]
+        _write_jsonl(tmp_path / "s1.jsonl", entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        assert session_tree is not None
+        branch_sids = sorted(sid for sid in session_tree.sessions if "@" in sid)
+        assert len(branch_sids) == 2, (
+            f"fixture must produce 2 branches; got {branch_sids}"
+        )
+
+        _, _, ctx = generate_template_messages(
+            messages,
+            session_tree=session_tree,
+            detail=DetailLevel.MINIMAL,
+        )
+
+        # Collect every session header in encounter order.
+        header_order: list[tuple[int, str, bool, object]] = []
+        for i, m in enumerate(ctx.messages):
+            if isinstance(m.content, SessionHeaderMessage):
+                header_order.append(
+                    (
+                        i,
+                        m.content.session_id,
+                        m.content.is_branch,
+                        m.content.parent_message_index,
+                    )
+                )
+
+        # 1) Trunk header for "s1" MUST be registered (and it must
+        #    NOT be a branch header).
+        trunk_headers = [h for h in header_order if h[1] == "s1" and not h[2]]
+        assert len(trunk_headers) == 1, (
+            "expected exactly 1 trunk header for 's1' in ctx.messages; "
+            f"got {trunk_headers}. Full header order: {header_order}"
+        )
+        trunk_idx = trunk_headers[0][0]
+
+        # 2) Every branch header for an "s1@..." sid MUST appear
+        #    AFTER the trunk header.
+        branch_headers = [h for h in header_order if h[2]]
+        assert len(branch_headers) == 2, (
+            f"expected 2 branch headers; got {branch_headers}"
+        )
+        for idx, sid, _is_branch, parent_msg_idx in branch_headers:
+            assert idx > trunk_idx, (
+                f"branch header {sid!r} at index {idx} appears BEFORE "
+                f"trunk header at index {trunk_idx} — _reorder_session_"
+                f"template_messages will emit it as a root, not nested "
+                "under the trunk. Header order: " + str(header_order)
+            )
+            # 3) Branch header's parent_message_index points to a
+            #    REGISTERED message (the trunk header), not None.
+            assert parent_msg_idx is not None, (
+                f"branch header {sid!r} has parent_message_index=None — "
+                "the trunk header wasn't in ctx.session_first_message "
+                "when the branch header was built. Header order: " + str(header_order)
+            )
+            assert parent_msg_idx == trunk_idx, (
+                f"branch header {sid!r}.parent_message_index={parent_msg_idx} "
+                f"should point to trunk header at {trunk_idx}"
             )
 
 
