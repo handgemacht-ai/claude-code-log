@@ -1268,6 +1268,164 @@ class TestRenderSessionResetAcrossSessions:
         assert c1_sid in branch_sids
         assert c2_sid in branch_sids
 
+    def test_trunk_header_registers_before_branch_when_trunk_msgs_filtered(
+        self, tmp_path: Path
+    ) -> None:
+        """CodeRabbit-flagged regression on the D11 map-driven trigger.
+
+        Scenario: every trunk-session entry is filtered out at non-
+        FULL detail (e.g., all the trunk's assistants are tool_use-
+        only and stripped at MINIMAL), so the FIRST surviving
+        message processed for that trunk session is a BRANCH
+        descendant. Without the trunk-header-before-branch-header
+        guard, the branch trigger registers the branch header before
+        any trunk message has registered the trunk header. Result:
+
+        - ``ctx.messages`` order: branch_header(0), trunk_header(1),
+          branch's content(2)...
+        - ``_reorder_session_template_messages`` preserves the
+          session-header encounter order → branch ends up as a root
+          section, NOT nested under its parent trunk session.
+        - The branch header's ``parent_message_index`` is also
+          ``None`` because the trunk header isn't in
+          ``ctx.session_first_message`` yet when the branch header
+          is built.
+
+        The fix: when about to register a branch header, FIRST
+        ensure the branch's parent trunk session header is in
+        ``seen_sessions`` and ``ctx.session_first_message``; create
+        it on the fly if not. Pre-D11 the bug couldn't manifest
+        because the branch trigger fired only on the branch's
+        ``first_uuid``, and that uuid's own meta.session_id is the
+        trunk sid which would create the trunk header on the same
+        message iteration before any branch content; D11's wider
+        trigger (any surviving branch line uuid) exposed the gap.
+
+        Fixture: trunk's only message ``a1`` is a tool_use-only
+        assistant (filtered at MINIMAL). Two branches off it, each
+        also starting with a tool_use-only assistant (filtered)
+        then a surviving user-text. At MINIMAL only ``c1`` and
+        ``c2`` survive — both are branch descendants whose parent
+        trunk has no surviving entry.
+
+        Asserts (failure modes the fix prevents):
+
+        - Trunk header for ``s1`` exists in ``ctx.messages`` and
+          appears BEFORE any branch header for ``s1@...``.
+        - Every branch header's ``parent_message_index`` points to
+          a registered message (NOT ``None``).
+        """
+        from claude_code_log.models import DetailLevel, SessionHeaderMessage
+        from claude_code_log.renderer import generate_template_messages
+
+        def _make_assistant_tool_only(
+            uuid: str, parent_uuid: str | None, timestamp: str
+        ) -> dict[str, Any]:
+            return {
+                "type": "assistant",
+                "timestamp": timestamp,
+                "parentUuid": parent_uuid,
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": uuid,
+                "requestId": f"req_{uuid}",
+                "message": {
+                    "id": uuid,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-sonnet",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"toolu_{uuid}",
+                            "name": "Grep",
+                            "input": {"pattern": "x"},
+                        }
+                    ],
+                    "stop_reason": "tool_use",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            }
+
+        # Trunk root is a tool-only assistant → filtered at MINIMAL.
+        # Fork at a1 → two tool-only assistant siblings (both
+        # filtered) each followed by a surviving user-text.
+        entries = [
+            _make_assistant_tool_only("a1", None, "2025-09-01T10:01:00.000Z"),
+            _make_assistant_tool_only("b1", "a1", "2025-09-01T10:02:00.000Z"),
+            _make_user_entry(
+                "c1", "s1", "2025-09-01T10:03:00.000Z", "b1", "BRANCH 1 LOCAL"
+            ),
+            _make_assistant_tool_only("b2", "a1", "2025-09-01T10:04:00.000Z"),
+            _make_user_entry(
+                "c2", "s1", "2025-09-01T10:05:00.000Z", "b2", "BRANCH 2 LOCAL"
+            ),
+        ]
+        _write_jsonl(tmp_path / "s1.jsonl", entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        assert session_tree is not None
+        branch_sids = sorted(sid for sid in session_tree.sessions if "@" in sid)
+        assert len(branch_sids) == 2, (
+            f"fixture must produce 2 branches; got {branch_sids}"
+        )
+
+        _, _, ctx = generate_template_messages(
+            messages,
+            session_tree=session_tree,
+            detail=DetailLevel.MINIMAL,
+        )
+
+        # Collect every session header in encounter order.
+        header_order: list[tuple[int, str, bool, object]] = []
+        for i, m in enumerate(ctx.messages):
+            if isinstance(m.content, SessionHeaderMessage):
+                header_order.append(
+                    (
+                        i,
+                        m.content.session_id,
+                        m.content.is_branch,
+                        m.content.parent_message_index,
+                    )
+                )
+
+        # 1) Trunk header for "s1" MUST be registered (and it must
+        #    NOT be a branch header).
+        trunk_headers = [h for h in header_order if h[1] == "s1" and not h[2]]
+        assert len(trunk_headers) == 1, (
+            "expected exactly 1 trunk header for 's1' in ctx.messages; "
+            f"got {trunk_headers}. Full header order: {header_order}"
+        )
+        trunk_idx = trunk_headers[0][0]
+
+        # 2) Every branch header for an "s1@..." sid MUST appear
+        #    AFTER the trunk header.
+        branch_headers = [h for h in header_order if h[2]]
+        assert len(branch_headers) == 2, (
+            f"expected 2 branch headers; got {branch_headers}"
+        )
+        for idx, sid, _is_branch, parent_msg_idx in branch_headers:
+            assert idx > trunk_idx, (
+                f"branch header {sid!r} at index {idx} appears BEFORE "
+                f"trunk header at index {trunk_idx} — _reorder_session_"
+                f"template_messages will emit it as a root, not nested "
+                "under the trunk. Header order: " + str(header_order)
+            )
+            # 3) Branch header's parent_message_index points to a
+            #    REGISTERED message (the trunk header), not None.
+            assert parent_msg_idx is not None, (
+                f"branch header {sid!r} has parent_message_index=None — "
+                "the trunk header wasn't in ctx.session_first_message "
+                "when the branch header was built. Header order: " + str(header_order)
+            )
+            assert parent_msg_idx == trunk_idx, (
+                f"branch header {sid!r}.parent_message_index={parent_msg_idx} "
+                f"should point to trunk header at {trunk_idx}"
+            )
+
 
 # =============================================================================
 # Test: PassthroughTranscriptEntry for DAG chain continuity

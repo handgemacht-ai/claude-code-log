@@ -3886,6 +3886,45 @@ def _render_messages(
             and effective_session not in seen_sessions
             and not is_agent_session(msg_session_id)
         ):
+            # Ensure the branch's PARENT trunk session header is
+            # registered FIRST. At non-FULL detail every trunk
+            # message of the branch's parent session can be
+            # filtered out, leaving a branch descendant as the
+            # first surviving entry for that trunk session. Without
+            # this guard, the branch header would register before
+            # any trunk header → ``_reorder_session_template_messages``
+            # (which preserves session-header encounter order) would
+            # emit the branch header as a root section instead of
+            # nesting it under its parent trunk, and the branch
+            # header's ``parent_message_index`` would also be
+            # ``None`` because the trunk header isn't in
+            # ``ctx.session_first_message`` yet. Closes the
+            # CodeRabbit-flagged regression on PR #190.
+            #
+            # ``msg_session_id`` is the JSONL ``sessionId`` of the
+            # branch's own entry (the trunk session id, e.g. ``s1``
+            # — branch sids only exist in the in-memory DAG, never
+            # in the source JSONL). Use it as the parent trunk sid.
+            parent_trunk_sid = msg_session_id or "unknown"
+            if (
+                parent_trunk_sid
+                and parent_trunk_sid not in seen_sessions
+                and not is_agent_session(parent_trunk_sid)
+            ):
+                seen_sessions.add(parent_trunk_sid)
+                trunk_summary = sessions.get(parent_trunk_sid, {}).get("summary")
+                trunk_header_content = _build_trunk_header(
+                    parent_trunk_sid,
+                    trunk_summary,
+                    session_hierarchy,
+                    session_summaries,
+                    session_team_names,
+                    ctx,
+                )
+                trunk_header = TemplateMessage(trunk_header_content)
+                msg_index = ctx.register(trunk_header)
+                ctx.session_first_message[parent_trunk_sid] = msg_index
+
             seen_sessions.add(effective_session)
             branch_header_content = _build_branch_header(
                 effective_session,
