@@ -141,19 +141,18 @@ def format_askuserquestion_result(content: str) -> str:
 
     Returns HTML with styled Q&A blocks matching the input styling.
     """
-    # Check if this is a successful answer
-    if not content.startswith("User has answered your question"):
-        # Return as-is for errors or unexpected format
-        return ""
-
-    # Extract the Q&A portion between the colon and the final sentence
-    # Pattern: 'User has answered your questions: "Q"="A", "Q"="A". You can now...'
+    # Extract the Q&A portion between the colon and the final sentence. The
+    # summary sentence has used two wordings across harness versions (#180):
+    # 'User has answered your questions: "Q"="A", ... . You can now continue...'
+    # 'Your questions have been answered: "Q"="A", ... . You can now continue...'
     match = re.match(
-        r"User has answered your questions?: (.+)\. You can now continue",
+        r"(?:User has answered your questions?|Your questions have been answered): "
+        r"(.+)\. You can now continue",
         content,
         re.DOTALL,
     )
     if not match:
+        # Return as-is for errors or unexpected format
         return ""
 
     qa_portion = match.group(1)
@@ -524,8 +523,27 @@ def format_task_output(output: TaskOutput) -> str:
     return "".join(parts)
 
 
+def _answer_selections(answer: str, multi_select: bool) -> set[str]:
+    """Return the set of option labels the answer selected.
+
+    Single-select answers equal one option label verbatim (so an exact match
+    handles labels that themselves contain a comma). Multi-select answers join
+    the chosen labels with ", " — split on that delimiter and match each part.
+    """
+    selections = {answer.strip()}
+    if multi_select:
+        selections.update(part.strip() for part in answer.split(", "))
+    return {s for s in selections if s}
+
+
 def format_askuserquestion_output(output: AskUserQuestionOutput) -> str:
     """Format AskUserQuestion tool result with styled Q&A pairs.
+
+    When the structured ``toolUseResult`` supplied the original options
+    (issue #180), each answered question renders the offered options with the
+    chosen one(s) highlighted — a self-contained "what was offered, what was
+    picked" card. Without options (text-fallback parse) it degrades to a plain
+    Q→A line.
 
     Args:
         output: Parsed AskUserQuestionOutput with Q&A pairs
@@ -538,15 +556,52 @@ def format_askuserquestion_output(output: AskUserQuestionOutput) -> str:
     ]
 
     for qa in output.answers:
-        escaped_q = escape_html(qa.question)
-        escaped_a = escape_html(qa.answer)
         html_parts.append('<div class="question-block answered">')
+        if qa.header:
+            html_parts.append(
+                f'<div class="question-header">{escape_html(qa.header)}</div>'
+            )
         html_parts.append(
-            f'<div class="question-text"><span class="qa-label">Q:</span> {escaped_q}</div>'
+            f'<div class="question-text"><span class="qa-label">Q:</span> '
+            f"{escape_html(qa.question)}</div>"
         )
-        html_parts.append(
-            f'<div class="answer-text"><span class="qa-label answer">A:</span> {escaped_a}</div>'
-        )
+
+        selections = _answer_selections(qa.answer, qa.multi_select)
+        matched_any = False
+        if qa.options:
+            html_parts.append('<ul class="question-options">')
+            for opt in qa.options:
+                is_selected = opt.label in selections
+                matched_any = matched_any or is_selected
+                li_class = (
+                    "question-option selected" if is_selected else "question-option"
+                )
+                check = (
+                    '<span class="option-check" aria-hidden="true">✓</span> '
+                    if is_selected
+                    else ""
+                )
+                if opt.description:
+                    desc_html = (
+                        f'<span class="option-desc"> — '
+                        f"{escape_html(opt.description)}</span>"
+                    )
+                else:
+                    desc_html = ""
+                html_parts.append(
+                    f'<li class="{li_class}">{check}'
+                    f"<strong>{escape_html(opt.label)}</strong>{desc_html}</li>"
+                )
+            html_parts.append("</ul>")
+
+        # Show the explicit answer line when there are no options to highlight,
+        # or when the answer didn't match any offered option (e.g. free text).
+        if not qa.options or not matched_any:
+            html_parts.append(
+                f'<div class="answer-text"><span class="qa-label answer">A:</span> '
+                f"{escape_html(qa.answer)}</div>"
+            )
+
         html_parts.append("</div>")
 
     html_parts.append("</div>")

@@ -15,13 +15,14 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .agent_metadata_factory import parse_agent_result_metadata
 from ..plugins import apply_transformers
 from ..models import (
     # Tool input models
     AskUserQuestionInput,
+    AskUserQuestionItem,
     BashInput,
     EditInput,
     ExitPlanModeInput,
@@ -522,48 +523,105 @@ def parse_bash_output(
     return BashOutput(content=content, has_ansi=has_ansi, background_task_id=bg_task_id)
 
 
+# The result summary sentence has carried two wordings across harness
+# versions: the original "User has answered your question(s): ..." and the
+# current "Your questions have been answered: ..." (issue #180). Accept both.
+_ASKUSERQUESTION_SUMMARY_RE = re.compile(
+    r"(?:User has answered your questions?|Your questions have been answered): "
+    r"(.+)\. You can now continue",
+    re.DOTALL,
+)
+_ASKUSERQUESTION_PAIR_RE = re.compile(r'"([^"]+)"="([^"]+)"')
+
+
+def _parse_askuserquestion_structured(
+    data: dict[str, Any],
+) -> Optional[AskUserQuestionOutput]:
+    """Build the output from the structured ``toolUseResult`` (preferred).
+
+    ``toolUseResult`` carries an ``answers`` map (question text → chosen
+    answer) plus the original ``questions`` (with headers/options), which is
+    both more robust than scraping the summary sentence and rich enough to
+    render the offered options with the chosen one highlighted.
+    """
+    raw_answers = data.get("answers")
+    if not isinstance(raw_answers, dict) or not raw_answers:
+        return None
+    answers_map = cast(dict[Any, Any], raw_answers)
+
+    # Index the original questions by their text for header/option lookup.
+    questions_by_text: dict[str, AskUserQuestionItem] = {}
+    raw_questions = data.get("questions")
+    if isinstance(raw_questions, list):
+        for rq in cast(list[Any], raw_questions):
+            try:
+                item = AskUserQuestionItem.model_validate(rq)
+            except ValidationError:
+                continue
+            if item.question:
+                questions_by_text[item.question] = item
+
+    answers: list[AskUserQuestionAnswer] = []
+    for q_text, a_text in answers_map.items():
+        if not isinstance(q_text, str) or not isinstance(a_text, str):
+            continue
+        item = questions_by_text.get(q_text)
+        answers.append(
+            AskUserQuestionAnswer(
+                question=q_text,
+                answer=a_text,
+                header=item.header if item else None,
+                options=list(item.options) if item else [],
+                multi_select=item.multiSelect if item else False,
+            )
+        )
+
+    if not answers:
+        return None
+    return AskUserQuestionOutput(answers=answers, raw_message="")
+
+
+def _parse_askuserquestion_text(content: str) -> Optional[AskUserQuestionOutput]:
+    """Fallback: scrape the result summary sentence for Q/A pairs."""
+    match = _ASKUSERQUESTION_SUMMARY_RE.match(content)
+    if not match:
+        return None
+    pairs = _ASKUSERQUESTION_PAIR_RE.findall(match.group(1))
+    if not pairs:
+        return None
+    answers = [AskUserQuestionAnswer(question=q, answer=a) for q, a in pairs]
+    return AskUserQuestionOutput(answers=answers, raw_message=content)
+
+
 def parse_askuserquestion_output(
-    tool_result: ToolResultContent, file_path: Optional[str]
+    tool_result: ToolResultContent,
+    file_path: Optional[str],
+    tool_use_result: Optional[ToolUseResult] = None,
 ) -> Optional[AskUserQuestionOutput]:
     """Parse AskUserQuestion tool result into structured content.
 
-    Parses the result format:
-    'User has answered your questions: "Q1"="A1", "Q2"="A2". You can now continue...'
+    Prefers the structured ``toolUseResult`` (answers map + original
+    questions); falls back to parsing the summary sentence, which has used
+    two wordings across harness versions (issue #180):
+    'User has answered your questions: "Q1"="A1", ...' and
+    'Your questions have been answered: "Q1"="A1", ...'.
 
     Args:
-        tool_result: The tool result content
+        tool_result: The tool result content (used for the text fallback)
         file_path: Unused for AskUserQuestion tool
+        tool_use_result: Structured toolUseResult when available
 
     Returns:
-        AskUserQuestionOutput with Q&A pairs
+        AskUserQuestionOutput with Q&A pairs, or None.
     """
     del file_path  # Unused
+    if isinstance(tool_use_result, dict):
+        structured = _parse_askuserquestion_structured(tool_use_result)
+        if structured is not None:
+            return structured
     if not (content := _extract_tool_result_text(tool_result)):
         return None
-    # Check if this is a successful answer
-    if not content.startswith("User has answered your question"):
-        return None
-
-    # Extract the Q&A portion between the colon and the final sentence
-    match = re.match(
-        r"User has answered your questions?: (.+)\. You can now continue",
-        content,
-        re.DOTALL,
-    )
-    if not match:
-        return None
-
-    qa_portion = match.group(1)
-
-    # Parse "Question"="Answer" pairs
-    qa_pattern = re.compile(r'"([^"]+)"="([^"]+)"')
-    pairs = qa_pattern.findall(qa_portion)
-
-    if not pairs:
-        return None
-
-    answers = [AskUserQuestionAnswer(question=q, answer=a) for q, a in pairs]
-    return AskUserQuestionOutput(answers=answers, raw_message=content)
+    return _parse_askuserquestion_text(content)
 
 
 def parse_exitplanmode_output(
@@ -1321,6 +1379,7 @@ PARSERS_WITH_TOOL_USE_RESULT: set[str] = {
     "Bash",
     "TaskStop",
     "Read",
+    "AskUserQuestion",
 }
 
 

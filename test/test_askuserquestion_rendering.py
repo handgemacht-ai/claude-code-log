@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """Test cases for AskUserQuestion tool rendering."""
 
+from claude_code_log.factories.tool_factory import parse_askuserquestion_output
 from claude_code_log.html import (
     format_askuserquestion_input,
+    format_askuserquestion_output,
     format_askuserquestion_result,
 )
 from claude_code_log.models import (
+    AskUserQuestionAnswer,
     AskUserQuestionInput,
     AskUserQuestionItem,
     AskUserQuestionOption,
+    AskUserQuestionOutput,
+    ToolResultContent,
 )
 
 
@@ -301,3 +306,145 @@ class TestAskUserQuestionResultRendering:
 
         assert "Preference?" in html
         assert "Option with comma, here" in html
+
+    def test_format_result_new_wording(self):
+        """Regression for #180: the current harness wording must parse.
+
+        The result sentence changed from 'User has answered your questions:'
+        to 'Your questions have been answered:'. Both must render styled Q&A.
+        """
+        content = (
+            'Your questions have been answered: "Which DB?"="PostgreSQL". '
+            "You can now continue with these answers in mind."
+        )
+        html = format_askuserquestion_result(content)
+        assert 'class="question-block answered"' in html
+        assert "Which DB?" in html
+        assert "PostgreSQL" in html
+
+
+def _result_content(tool_use_result):
+    """A ToolResultContent whose text is irrelevant (structured path wins)."""
+    return ToolResultContent(
+        type="tool_result",
+        tool_use_id="toolu_x",
+        content="Your questions have been answered: ... You can now continue.",
+    ), tool_use_result
+
+
+class TestAskUserQuestionParser:
+    """parse_askuserquestion_output: structured-first, text fallback (#180)."""
+
+    def test_parse_structured_carries_options(self):
+        """Structured toolUseResult yields answers enriched with options."""
+        tool_use_result = {
+            "questions": [
+                {
+                    "question": "Which DB?",
+                    "header": "Database",
+                    "multiSelect": False,
+                    "options": [
+                        {"label": "PostgreSQL", "description": "Relational."},
+                        {"label": "SQLite", "description": "Embedded."},
+                    ],
+                }
+            ],
+            "answers": {"Which DB?": "PostgreSQL"},
+        }
+        tool_result, tur = _result_content(tool_use_result)
+        out = parse_askuserquestion_output(tool_result, None, tur)
+        assert out is not None
+        assert len(out.answers) == 1
+        qa = out.answers[0]
+        assert qa.question == "Which DB?"
+        assert qa.answer == "PostgreSQL"
+        assert qa.header == "Database"
+        assert [o.label for o in qa.options] == ["PostgreSQL", "SQLite"]
+        assert qa.multi_select is False
+
+    def test_parse_structured_preferred_over_text(self):
+        """When both are present, the structured answers map wins."""
+        tool_use_result = {"answers": {"Q?": "A from structure"}}
+        tool_result = ToolResultContent(
+            type="tool_result",
+            tool_use_id="toolu_x",
+            content='Your questions have been answered: "Q?"="A from text". '
+            "You can now continue.",
+        )
+        out = parse_askuserquestion_output(tool_result, None, tool_use_result)
+        assert out is not None
+        assert out.answers[0].answer == "A from structure"
+
+    def test_parse_text_fallback_new_wording(self):
+        """No structured data → fall back to the new-wording summary string."""
+        tool_result = ToolResultContent(
+            type="tool_result",
+            tool_use_id="toolu_x",
+            content='Your questions have been answered: "Q1"="A1", "Q2"="A2". '
+            "You can now continue with these answers in mind.",
+        )
+        out = parse_askuserquestion_output(tool_result, None, None)
+        assert out is not None
+        assert [(a.question, a.answer) for a in out.answers] == [
+            ("Q1", "A1"),
+            ("Q2", "A2"),
+        ]
+        # Text fallback has no option context.
+        assert out.answers[0].options == []
+
+    def test_parse_non_answer_returns_none(self):
+        tool_result = ToolResultContent(
+            type="tool_result", tool_use_id="toolu_x", content="User cancelled."
+        )
+        assert parse_askuserquestion_output(tool_result, None, None) is None
+
+
+class TestAskUserQuestionEnrichedOutput:
+    """format_askuserquestion_output: options with the chosen one marked."""
+
+    def _output(self, multi_select=False, answer="PostgreSQL"):
+        return AskUserQuestionOutput(
+            answers=[
+                AskUserQuestionAnswer(
+                    question="Which DB?",
+                    answer=answer,
+                    header="Database",
+                    multi_select=multi_select,
+                    options=[
+                        AskUserQuestionOption(label="PostgreSQL", description="Rel."),
+                        AskUserQuestionOption(label="SQLite", description="Emb."),
+                    ],
+                )
+            ],
+            raw_message="",
+        )
+
+    def test_selected_option_marked_others_not(self):
+        html = format_askuserquestion_output(self._output())
+        # The chosen option gets the selected class + check mark.
+        assert 'class="question-option selected"' in html
+        assert "option-check" in html
+        # The unchosen option is a plain option (no 'selected').
+        assert html.count('class="question-option selected"') == 1
+        assert 'class="question-option"' in html
+        # Header preserved.
+        assert "Database" in html
+
+    def test_no_redundant_answer_line_when_option_matched(self):
+        """When an option is highlighted, the bare 'A:' line is dropped."""
+        html = format_askuserquestion_output(self._output())
+        assert "qa-label answer" not in html
+
+    def test_free_text_answer_falls_back_to_answer_line(self):
+        """An answer matching no option still shows explicitly as 'A:'."""
+        html = format_askuserquestion_output(self._output(answer="MongoDB"))
+        assert "question-option selected" not in html
+        assert "qa-label answer" in html
+        assert "MongoDB" in html
+
+    def test_multiselect_marks_each_chosen_option(self):
+        html = format_askuserquestion_output(
+            self._output(multi_select=True, answer="PostgreSQL, SQLite")
+        )
+        assert html.count('class="question-option selected"') == 2
+        assert "qa-label answer" not in html
