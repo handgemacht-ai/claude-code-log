@@ -593,6 +593,66 @@ def _parse_askuserquestion_text(content: str) -> Optional[AskUserQuestionOutput]
     return AskUserQuestionOutput(answers=answers, raw_message=content)
 
 
+_ASKUSERQUESTION_CLARIFY_Q_RE = re.compile(r'-\s+"(.*)"$')
+_ASKUSERQUESTION_CLARIFY_A_RE = re.compile(r"Answer:\s*(.*)$")
+
+
+def _parse_askuserquestion_clarify(content: str) -> Optional[AskUserQuestionOutput]:
+    """Parse the "clarify" rejection result (issue #180).
+
+    When the user types a free-form reply instead of picking an option, the
+    tool use is rejected and the result is an ``is_error`` message of the form::
+
+        The user doesn't want to proceed with this tool use. ...
+            Questions asked:
+        - "<question>"
+          Answer: <free-form reply>
+        - "<question>"
+          (No answer provided)
+
+    We surface it as a normal answered card: each question with the user's
+    free-form reply as the chosen answer (empty when none was given). Options
+    are recovered later from the paired tool_use input by the renderer.
+    """
+    if "Questions asked:" not in content:
+        return None
+    lowered = content.lower()
+    if "clarify" not in lowered and "doesn't want to proceed" not in lowered:
+        return None
+
+    tail = content.split("Questions asked:", 1)[1]
+    answers: list[AskUserQuestionAnswer] = []
+    cur_q: Optional[str] = None
+    cur_ans: list[str] = []
+    no_answer = False
+
+    def flush() -> None:
+        nonlocal cur_q, cur_ans, no_answer
+        if cur_q is not None:
+            answer = "" if no_answer else "\n".join(cur_ans).strip()
+            answers.append(AskUserQuestionAnswer(question=cur_q, answer=answer))
+        cur_q, cur_ans, no_answer = None, [], False
+
+    for raw in tail.splitlines():
+        line = raw.strip()
+        if q_match := _ASKUSERQUESTION_CLARIFY_Q_RE.match(line):
+            flush()
+            cur_q = q_match.group(1)
+        elif cur_q is None:
+            continue
+        elif line == "(No answer provided)":
+            no_answer = True
+        elif a_match := _ASKUSERQUESTION_CLARIFY_A_RE.match(line):
+            cur_ans.append(a_match.group(1))
+        elif line:
+            cur_ans.append(line)
+    flush()
+
+    if not answers:
+        return None
+    return AskUserQuestionOutput(answers=answers, raw_message=content)
+
+
 def parse_askuserquestion_output(
     tool_result: ToolResultContent,
     file_path: Optional[str],
@@ -621,7 +681,9 @@ def parse_askuserquestion_output(
             return structured
     if not (content := _extract_tool_result_text(tool_result)):
         return None
-    return _parse_askuserquestion_text(content)
+    return _parse_askuserquestion_text(content) or _parse_askuserquestion_clarify(
+        content
+    )
 
 
 def parse_exitplanmode_output(
@@ -1519,12 +1581,19 @@ def create_tool_result_message(
         tool_use_result,
     )
 
+    # An AskUserQuestion "clarify" rejection arrives as an ``is_error`` result,
+    # but we re-present it as a normal answered card (questions + the user's
+    # free-form reply), so drop the error framing (#180).
+    is_error = tool_result.is_error or False
+    if is_error and isinstance(parsed_output, AskUserQuestionOutput):
+        is_error = False
+
     # Create content model with rendering context
     content_model: MessageContent = ToolResultMessage(
         meta,
         tool_use_id=tool_result.tool_use_id,
         output=parsed_output,
-        is_error=tool_result.is_error or False,
+        is_error=is_error,
         tool_name=result_tool_name,
         file_path=result_file_path,
     )
@@ -1537,5 +1606,5 @@ def create_tool_result_message(
         message_type="tool_result",
         content=content_model,
         tool_use_id=tool_result.tool_use_id,
-        is_error=tool_result.is_error or False,
+        is_error=is_error,
     )

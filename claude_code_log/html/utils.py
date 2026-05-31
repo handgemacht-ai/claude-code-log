@@ -309,6 +309,26 @@ def render_markdown(text: str) -> str:
         return str(renderer(text))
 
 
+def render_markdown_inline(text: str) -> str:
+    """Render markdown but unwrap a single enclosing ``<p>`` for inline use.
+
+    Question/option text from AskUserQuestion is LLM-authored, so it carries
+    real Markdown (inline code, emphasis, links). Rendering it inline lets a
+    label or one-line question keep its formatting without a block ``<p>``
+    breaking the surrounding flow. Multi-paragraph content keeps its blocks.
+
+    Uses the ``escape=True`` renderer so raw HTML in the text (``<script>``,
+    ``<option>``, …) is escaped to literal characters rather than injected —
+    these short fields were previously HTML-escaped, so keep that contract.
+    """
+    with timing_stat("_markdown_timings"):
+        renderer = _get_user_markdown_renderer()
+        html = str(renderer(text)).strip()
+    if html.startswith("<p>") and html.endswith("</p>") and html.count("<p>") == 1:
+        return html[len("<p>") : -len("</p>")]
+    return html
+
+
 @functools.lru_cache(maxsize=1)
 def _get_user_markdown_renderer() -> mistune.Markdown:
     """Markdown renderer for user-authored text.
