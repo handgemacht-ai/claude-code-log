@@ -1812,29 +1812,51 @@ class TestExperimentsWorktreesTeammates:
     ) -> None:
         """Each subagent's sidechain content must nest under its OWN
         Task/Agent tool_result, not collapse under whichever rendered
-        last. Pre-relocation, all sidechain ``ancestry`` ended in the
-        same tool_result d-id; post-relocation each agent has a distinct
-        anchor.
+        last. With nested-DOM rendering, every ``assistant sidechain``
+        card lives inside the ``.children`` container of its anchoring
+        tool_result; pre-relocation they all shared a single anchor.
+        Walk each sidechain card up to its nearest enclosing
+        ``.message.tool_result`` and assert ≥6 distinct anchors (one per
+        subagent). Pre-fix the count was 1.
         """
-        import re
+        from html.parser import HTMLParser
 
         project = self._project_dir(temp_projects_copy)
         convert_jsonl_to_html(project)
         html = (project / "combined_transcripts.html").read_text(encoding="utf-8")
 
-        # Every `assistant sidechain` row carries an ancestry tail like
-        # `d-0 d-1 d-26 d-<anchor>`. Collect the immediate parent (last
-        # d-id before message_index) — there should be at least 6
-        # distinct values, one per subagent. Pre-fix the count was 1.
-        pattern = re.compile(
-            r"message assistant sidechain ((?:d-\d+ ?)+)' data-message-id"
-        )
-        anchors: set[str] = set()
-        for match in pattern.finditer(html):
-            ancestry = match.group(1).strip().split()
-            anchors.add(ancestry[-1])  # immediate parent
-        assert len(anchors) >= 6, (
-            f"expected ≥6 distinct anchors for the 6 subagents, got {anchors}"
+        # Walk the DOM with a stack of open <div>s, tracking each div's
+        # class list + data-message-id. For every `.message.assistant.
+        # sidechain` card, find the nearest enclosing `.message.tool_result`
+        # on the stack and record its id. Distinct ids = distinct anchors.
+        class AnchorWalker(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.stack: list[tuple[set[str], str | None]] = []
+                self.anchors: set[str] = set()
+
+            def handle_starttag(self, tag, attrs):
+                if tag != "div":
+                    return
+                ad = dict(attrs)
+                classes = set((ad.get("class") or "").split())
+                mid = ad.get("data-message-id")
+                if {"message", "assistant", "sidechain"} <= classes:
+                    for cls, anchor_id in reversed(self.stack):
+                        if "message" in cls and "tool_result" in cls and anchor_id:
+                            self.anchors.add(anchor_id)
+                            break
+                self.stack.append((classes, mid))
+
+            def handle_endtag(self, tag):
+                if tag == "div" and self.stack:
+                    self.stack.pop()
+
+        walker = AnchorWalker()
+        walker.feed(html)
+        assert len(walker.anchors) >= 6, (
+            f"expected ≥6 distinct tool_result anchors for the 6 subagents, "
+            f"got {walker.anchors}"
         )
 
     def test_no_subagent_collapse_markup(self, temp_projects_copy: Path) -> None:
