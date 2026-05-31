@@ -1109,6 +1109,165 @@ class TestRenderSessionResetAcrossSessions:
                 f"expected 's2' — branch tracking from s1 leaked into s2"
             )
 
+    def test_branch_first_uuid_filtered_out_still_groups_correctly(
+        self, tmp_path: Path
+    ) -> None:
+        """The D11 latent-bug regression.
+
+        Pre-D11 the renderer derived ``render_session_id`` from a
+        loop-local ``current_render_session`` variable flipped at
+        the branch-start trigger (the line whose uuid matched the
+        branch's ``first_uuid``). If ``_filter_by_detail`` dropped
+        that ``first_uuid`` entry at non-FULL detail, the trigger
+        never fired and subsequent surviving branch entries silently
+        inherited a stale render_session_id — landing in the wrong
+        session group in the final tree.
+
+        D11 replaces the loop variable with a precomputed
+        ``uuid_to_render_sid`` map derived from the SessionTree.
+        Every uuid in a branch DAG-line maps to that branch's sid
+        regardless of which entries survive filtering, so the fix
+        is structural.
+
+        Fixture shape that triggers the bug:
+
+        - Trunk: ``u`` (user) → ``a`` (assistant, ends in tool_use).
+        - Fork at ``a``: two assistant children with ONLY a
+          ``tool_use`` content item (no text). Both are dropped by
+          ``_filter_by_detail`` at MINIMAL (strip_types = ThinkingContent,
+          ToolUseContent, ToolResultContent → no text_items left).
+        - Branch 1 continues: ``c1`` (user, parent ``b1``).
+        - Branch 2 continues: ``c2`` (user, parent ``b2``).
+
+        At MINIMAL, ``b1`` and ``b2`` are stripped from
+        ``filtered_messages``, so the pre-D11 branch-start trigger
+        never fires for either branch. ``c1`` and ``c2`` would
+        then both fall through to the trunk's ``render_session_id``
+        ("s1") instead of their respective branch sids — the bug.
+
+        The map-driven derivation reads grouping from the
+        SessionTree (built from PRE-filter messages), so
+        ``uuid_to_render_sid[c1]`` is branch1's sid and
+        ``uuid_to_render_sid[c2]`` is branch2's sid regardless of
+        filtering.
+        """
+        from claude_code_log.models import DetailLevel
+        from claude_code_log.renderer import generate_template_messages
+
+        # Helper: assistant with ONLY a tool_use content item (no
+        # text). At MINIMAL detail, _filter_by_detail strips
+        # ToolUseContent and drops the entry entirely (no surviving
+        # text_items).
+        def _make_assistant_tool_only(
+            uuid: str, parent_uuid: str, timestamp: str
+        ) -> dict[str, Any]:
+            return {
+                "type": "assistant",
+                "timestamp": timestamp,
+                "parentUuid": parent_uuid,
+                "isSidechain": False,
+                "userType": "human",
+                "cwd": "/tmp",
+                "sessionId": "s1",
+                "version": "1.0.0",
+                "uuid": uuid,
+                "requestId": f"req_{uuid}",
+                "message": {
+                    "id": uuid,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-3-sonnet",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"toolu_{uuid}",
+                            "name": "Grep",
+                            "input": {"pattern": "x"},
+                        }
+                    ],
+                    "stop_reason": "tool_use",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            }
+
+        entries = [
+            _make_user_entry("u", "s1", "2025-07-01T10:00:00.000Z", None, "hello"),
+            _make_assistant_entry(
+                "a", "s1", "2025-07-01T10:01:00.000Z", "u", "going to fork"
+            ),
+            # Branch 1: tool_use-only first entry (will be filtered out
+            # at MINIMAL) → text-bearing user message (survives).
+            _make_assistant_tool_only("b1", "a", "2025-07-01T10:02:00.000Z"),
+            _make_user_entry(
+                "c1", "s1", "2025-07-01T10:03:00.000Z", "b1", "BRANCH 1 LOCAL"
+            ),
+            # Branch 2 sibling — same shape (the fork-collapse logic in
+            # dag.py treats this as a real fork because both children
+            # have non-dead descendants).
+            _make_assistant_tool_only("b2", "a", "2025-07-01T10:04:00.000Z"),
+            _make_user_entry(
+                "c2", "s1", "2025-07-01T10:05:00.000Z", "b2", "BRANCH 2 LOCAL"
+            ),
+        ]
+        _write_jsonl(tmp_path / "s1.jsonl", entries)
+
+        messages, session_tree = load_directory_transcripts(tmp_path, silent=True)
+        # Sanity: the SessionTree (built pre-filter) MUST see both
+        # branches — otherwise the fixture doesn't actually exercise
+        # the bug.
+        assert session_tree is not None
+        branch_sids = [sid for sid in session_tree.sessions if "@" in sid]
+        assert len(branch_sids) == 2, (
+            f"fixture must produce 2 branches; got {branch_sids}. "
+            "If this fails, the fork-collapse heuristic in dag.py "
+            "absorbed one of the siblings — adjust the fixture so "
+            "both children have non-dead descendants of distinct types."
+        )
+
+        # Render at MINIMAL — b1 and b2 are stripped.
+        _, _, ctx = generate_template_messages(
+            messages,
+            session_tree=session_tree,
+            detail=DetailLevel.MINIMAL,
+        )
+
+        # b1 and b2 should NOT appear in the rendered messages
+        # (sanity: confirms the filter is doing what we expect).
+        rendered_uuids = {m.meta.uuid for m in ctx.messages if m.meta.uuid}
+        assert "b1" not in rendered_uuids, (
+            f"b1 should be filtered out at MINIMAL; got rendered_uuids={rendered_uuids}"
+        )
+        assert "b2" not in rendered_uuids
+
+        # c1 and c2 SHOULD appear and resolve to their respective
+        # branch sids — NOT to "s1" (trunk).
+        by_uuid = {m.meta.uuid: m for m in ctx.messages if m.meta.uuid in ("c1", "c2")}
+        assert set(by_uuid) == {"c1", "c2"}, (
+            f"expected c1+c2 in rendered messages; got {set(by_uuid)}"
+        )
+
+        # Each branch's surviving user message should have render_session_id
+        # equal to one of the branch sids (and NOT "s1").
+        c1_sid = by_uuid["c1"].render_session_id
+        c2_sid = by_uuid["c2"].render_session_id
+        assert c1_sid != "s1", (
+            "c1.render_session_id == 's1' — the loop-variable bug. "
+            "Expected a branch sid ('s1@<uuid12>')."
+        )
+        assert c2_sid != "s1"
+        assert "@" in c1_sid, (
+            f"c1.render_session_id must be a branch sid; got {c1_sid!r}"
+        )
+        assert "@" in c2_sid
+        # The two branches must be DIFFERENT (each user message
+        # belongs to its own branch, not to both).
+        assert c1_sid != c2_sid, (
+            f"c1 and c2 must resolve to DIFFERENT branch sids; got both = {c1_sid!r}"
+        )
+        # And each must be one of the SessionTree-known branch sids.
+        assert c1_sid in branch_sids
+        assert c2_sid in branch_sids
+
 
 # =============================================================================
 # Test: PassthroughTranscriptEntry for DAG chain continuity
