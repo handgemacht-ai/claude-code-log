@@ -276,30 +276,32 @@ def synthetic_typical_messages(tmp_path: Path):
 
 
 class TestBuildSessionDataCharacterization:
-    """Pin the current outputs of the pagination cache-miss fallback
-    (`_build_session_data_from_messages`). C9b will reroute this
-    through the shared `compute_session_data` helper; deliberate D1
-    delta = un-keyed usage stays counted (already opp-1 behavior);
-    deliberate D2 delta = `message_count` will RISE by the number
-    of Passthrough entries in the session.
+    """Pin the outputs of the pagination cache-miss fallback
+    (`_build_session_data_from_messages`). Post-C9b: routes through
+    the shared `compute_session_data` helper. The D2 delta (count
+    Passthrough in `message_count`) is the visible flip on this
+    side; D1 was already opp-1 behavior here (count un-keyed usage),
+    so it's unchanged.
     """
 
     def test_d1_d2_fixture_pinned(self, synthetic_d1_d2_messages):
         _project_dir, messages, s1, s2 = synthetic_d1_d2_messages
         out = _build_session_data_from_messages(messages)
 
-        # Session set: D2 Passthrough excluded → only the two real
-        # sessions appear, no synthetic agent ids.
+        # Session set: only the two real sessions appear, no
+        # synthetic agent ids. (Passthrough doesn't manifest as its
+        # own session.)
         assert set(out.keys()) == {s1, s2}
 
-        # === Session 1: includes un-keyed assistant (D1 counted by
-        # the fallback today) but EXCLUDES the Passthrough entry
-        # (D2 excluded by the fallback today).
+        # === Session 1: includes un-keyed assistant (D1 counted —
+        # was already opp-1 behavior here) AND now includes the
+        # Passthrough entry in message_count (D2 flip).
         s1_data = out[s1]
-        # 1 user + 2 assistants = 3; Passthrough not counted.
-        assert s1_data.message_count == 3, (
-            "fallback currently excludes PassthroughTranscriptEntry "
-            f"from message_count; got {s1_data.message_count}"
+        # 1 user + 2 assistants + 1 Passthrough = 4 (D2 flip:
+        # was 3 pre-C9b; Passthrough now counted everywhere).
+        assert s1_data.message_count == 4, (
+            "post-C9b: PassthroughTranscriptEntry counts in "
+            f"message_count on the fallback path too; got {s1_data.message_count}"
         )
         # Both assistant usages counted: 10+100, 5+50, 2+20, 3+30.
         assert s1_data.total_input_tokens == 110
@@ -332,13 +334,12 @@ class TestBuildSessionDataCharacterization:
 
 
 class TestUpdateCacheCharacterization:
-    """Pin the current outputs of the canonical cache path
-    (`_update_cache_with_session_data`). C9b will rewrite this as a
-    thin wrapper around `compute_session_data`; the deliberate D1
-    delta = un-keyed usage will START being counted (today the
-    canonical path's `request_id and request_id not in seen` guard
-    silently zeroes it); D2 = PassthroughTranscriptEntry will
-    continue to be counted in `message_count` (no change here).
+    """Pin the outputs of the canonical cache path
+    (`_update_cache_with_session_data`). Post-C9b: thin wrapper over
+    `compute_session_data` + `compute_project_aggregates`. The D1
+    delta (count un-keyed usage) is the visible flip on this side;
+    D2 was already cache-path behavior here (count Passthrough),
+    so it's unchanged.
     """
 
     def _cache(self, project_dir: Path, tmp_path: Path) -> CacheManager:
@@ -359,26 +360,23 @@ class TestUpdateCacheCharacterization:
 
         assert set(sessions.keys()) == {s1, s2}
 
-        # === Session 1: cache path INCLUDES the Passthrough entry
-        # in message_count (D2 current behavior) but DROPS the
-        # un-keyed assistant's usage (D1 current behavior — the
-        # `request_id and request_id not in seen` truthy guard
-        # silently zeroes the un-keyed entry's contribution).
+        # === Session 1: cache path counts Passthrough in
+        # message_count (unchanged from pre-C9b — was always cache
+        # behavior) AND NOW counts the un-keyed assistant's usage
+        # (D1 flip: pre-C9b's truthy guard silently dropped it; the
+        # unified rule counts it).
         s1_data = sessions[s1]
-        # 1 user + 2 assistants + 1 Passthrough = 4 today.
-        assert s1_data.message_count == 4, (
-            "cache path currently COUNTS PassthroughTranscriptEntry "
-            f"in message_count; got {s1_data.message_count}"
-        )
-        # ONLY the keyed assistant's usage is counted today (10, 5,
-        # 2, 3). The un-keyed one's (100, 50, 20, 30) is dropped.
-        assert s1_data.total_input_tokens == 10, (
-            "cache path currently drops un-keyed assistant usage; "
+        # 1 user + 2 assistants + 1 Passthrough = 4.
+        assert s1_data.message_count == 4
+        # Both assistant usages counted (D1 flip): 10+100, 5+50,
+        # 2+20, 3+30. Pre-C9b cache path returned 10/5/2/3.
+        assert s1_data.total_input_tokens == 110, (
+            "post-C9b: cache path now counts un-keyed assistant usage; "
             f"got {s1_data.total_input_tokens}"
         )
-        assert s1_data.total_output_tokens == 5
-        assert s1_data.total_cache_creation_tokens == 2
-        assert s1_data.total_cache_read_tokens == 3
+        assert s1_data.total_output_tokens == 55
+        assert s1_data.total_cache_creation_tokens == 22
+        assert s1_data.total_cache_read_tokens == 33
 
         # === Session 2: identical shape to fallback (no D1/D2
         # entries in this session).
@@ -418,6 +416,42 @@ class TestUpdateCacheCharacterization:
         assert (
             cache_data.total_cache_read_tokens == fallback.total_cache_read_tokens == 3
         )
+
+    def test_d1_d2_fixture_cache_equals_fallback(
+        self, tmp_path, synthetic_d1_d2_messages
+    ):
+        """Post-C9b: the cache path and fallback path produce
+        IDENTICAL ``SessionCacheData`` on the D1/D2 fixture too —
+        because the unified ``compute_session_data`` helper applies
+        the same D1/D2 rules at both call sites. The pre-C9b
+        cache-vs-fallback divergence on this fixture (cache
+        message_count=4 + tokens=10; fallback message_count=3 +
+        tokens=110) is exactly the gap C9b closes.
+        """
+        project_dir, messages, s1, s2 = synthetic_d1_d2_messages
+        cm = self._cache(project_dir, tmp_path)
+
+        _update_cache_with_session_data(cm, messages)
+        cached = cm.get_cached_project_data()
+        assert cached is not None
+        fallback = _build_session_data_from_messages(messages)
+
+        # Same session set.
+        assert set(cached.sessions.keys()) == set(fallback.keys()) == {s1, s2}
+
+        # Same per-session totals on s1 (the D1/D2 trigger session).
+        c1, f1 = cached.sessions[s1], fallback[s1]
+        assert c1.message_count == f1.message_count == 4  # incl. Passthrough
+        assert c1.total_input_tokens == f1.total_input_tokens == 110  # incl. un-keyed
+        assert c1.total_output_tokens == f1.total_output_tokens == 55
+        assert c1.total_cache_creation_tokens == f1.total_cache_creation_tokens == 22
+        assert c1.total_cache_read_tokens == f1.total_cache_read_tokens == 33
+
+        # And on s2 (no D1/D2 triggers, sanity).
+        c2, f2 = cached.sessions[s2], fallback[s2]
+        assert c2.message_count == f2.message_count == 2
+        assert c2.total_input_tokens == f2.total_input_tokens == 7
+        assert c2.total_output_tokens == f2.total_output_tokens == 3
 
 
 # ----- characterization: index inline-aggregate loop -----------------------
@@ -500,24 +534,27 @@ class TestIndexInlineAggregateLoopCharacterization:
 
         html = self._drive_with_cache_disabled(projects_root, output_dir)
 
-        # The inline loop applies the cache-path's dedup rule:
-        # `request_id and request_id not in seen`. So the un-keyed
-        # assistant (D1 trigger) does NOT contribute to project
-        # token totals. The keyed ones in s1 (10/5/2/3) + s2 (7/3/0/0)
-        # do: 17, 8, 2, 3. PassthroughTranscriptEntry has no usage,
-        # so it doesn't matter for token totals (D2 affects
-        # message_count, not tokens — caught by the cache-path /
-        # fallback tests above).
+        # Post-C9b: the index path now routes through the shared
+        # ``compute_project_aggregates`` helper, which applies the
+        # unified D1 rule: count un-keyed assistant usage, dedup
+        # repeats of a present requestId. So s1's three assistant
+        # entries all contribute (10 keyed + 100 un-keyed) and s2's
+        # one contributes (7 keyed): 117, 58, 22, 33.
+        # PassthroughTranscriptEntry carries no usage, so it doesn't
+        # affect token totals (D2 affects message_count, pinned at
+        # the cache + fallback layers; for the index-layer message_
+        # count pinning see ``test_d1_d2_fixture_message_count_via_cache``
+        # below).
         input_total, output_total, cache_create, cache_read = (
             self._extract_token_totals(html)
         )
-        assert input_total == 17, (
-            "index inline loop currently drops un-keyed assistant "
-            f"usage (cache-path dedup rule); got input_total={input_total}"
+        assert input_total == 117, (
+            "post-C9b: index inline path counts un-keyed assistant "
+            f"usage via compute_project_aggregates; got input_total={input_total}"
         )
-        assert output_total == 8
-        assert cache_create == 2
-        assert cache_read == 3
+        assert output_total == 58
+        assert cache_create == 22
+        assert cache_read == 33
 
     def test_typical_fixture_aggregates(self, tmp_path, synthetic_typical_messages):
         project_dir, _messages, _sid = synthetic_typical_messages
@@ -538,3 +575,49 @@ class TestIndexInlineAggregateLoopCharacterization:
         assert output_total == 6
         assert cache_create == 1
         assert cache_read == 3
+
+    def test_d1_d2_fixture_message_count_via_cache(
+        self, tmp_path, synthetic_d1_d2_messages
+    ):
+        """Pin D2 at the index layer too.
+
+        The rendered project card surfaces token totals (token line),
+        but ``message_count`` is exposed via the cached
+        ``SessionCacheData`` rather than a stable text seam on the
+        card. During the index-fallback path,
+        ``process_projects_hierarchy`` calls
+        ``_update_cache_with_session_data`` upfront (so the cache is
+        rebuilt from the same `messages` the inline loop then
+        aggregates). Reading the cache post-run lets us assert the
+        D2 rule (Passthrough counted in message_count) holds at the
+        index layer, closing the gap monk flagged in #3446 —
+        message_count would otherwise be silently unpinned on this
+        site.
+        """
+        project_dir, _messages, s1, s2 = synthetic_d1_d2_messages
+        projects_root = tmp_path / "projects-root"
+        projects_root.mkdir()
+        (projects_root / project_dir.name).symlink_to(project_dir)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        # Drive the index fallback so the cache write inside it runs
+        # on this fixture's messages.
+        self._drive_with_cache_disabled(projects_root, output_dir)
+
+        # Read back from the actual cache that `process_projects_
+        # hierarchy` populated. The default cache DB path is
+        # ``<project_parent>/claude-code-log-cache.db``; since the
+        # converter walked through ``projects_root/<project_name>``
+        # (the symlink path), its CacheManager keyed off
+        # ``projects_root``. Reuse that same parent so we hit the
+        # right DB.
+        cache = CacheManager(
+            projects_root / project_dir.name,
+            library_version=get_library_version(),
+        )
+        cached = cache.get_cached_project_data()
+        assert cached is not None
+        # D2 at the index layer: Passthrough counts.
+        assert cached.sessions[s1].message_count == 4
+        assert cached.sessions[s2].message_count == 2
