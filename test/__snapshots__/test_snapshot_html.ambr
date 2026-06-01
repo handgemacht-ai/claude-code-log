@@ -2207,7 +2207,9 @@
       font-weight: 700;
   }
   
-  .question-option:not(.selected) {
+  /* Only dim unchosen options in the answered/result card — the input question
+     card has no selection, so its options must stay full-opacity. */
+  .askuserquestion-result .question-option:not(.selected) {
       opacity: 0.7;
   }
   
@@ -8140,7 +8142,9 @@
       font-weight: 700;
   }
   
-  .question-option:not(.selected) {
+  /* Only dim unchosen options in the answered/result card — the input question
+     card has no selection, so its options must stay full-opacity. */
+  .askuserquestion-result .question-option:not(.selected) {
       opacity: 0.7;
   }
   
@@ -16165,7 +16169,9 @@
       font-weight: 700;
   }
   
-  .question-option:not(.selected) {
+  /* Only dim unchosen options in the answered/result card — the input question
+     card has no selection, so its options must stay full-opacity. */
+  .askuserquestion-result .question-option:not(.selected) {
       opacity: 0.7;
   }
   
@@ -22203,7 +22209,9 @@
       font-weight: 700;
   }
   
-  .question-option:not(.selected) {
+  /* Only dim unchosen options in the answered/result card — the input question
+     card has no selection, so its options must stay full-opacity. */
+  .askuserquestion-result .question-option:not(.selected) {
       opacity: 0.7;
   }
   
@@ -28472,7 +28480,9 @@
       font-weight: 700;
   }
   
-  .question-option:not(.selected) {
+  /* Only dim unchosen options in the answered/result card — the input question
+     card has no selection, so its options must stay full-opacity. */
+  .askuserquestion-result .question-option:not(.selected) {
       opacity: 0.7;
   }
   
@@ -34609,7 +34619,9 @@
       font-weight: 700;
   }
   
-  .question-option:not(.selected) {
+  /* Only dim unchosen options in the answered/result card — the input question
+     card has no selection, so its options must stay full-opacity. */
+  .askuserquestion-result .question-option:not(.selected) {
       opacity: 0.7;
   }
   
@@ -40803,7 +40815,9 @@
       font-weight: 700;
   }
   
-  .question-option:not(.selected) {
+  /* Only dim unchosen options in the answered/result card — the input question
+     card has no selection, so its options must stay full-opacity. */
+  .askuserquestion-result .question-option:not(.selected) {
       opacity: 0.7;
   }
   

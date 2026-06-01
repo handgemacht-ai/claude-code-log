@@ -523,11 +523,13 @@ def parse_bash_output(
     return BashOutput(content=content, has_ansi=has_ansi, background_task_id=bg_task_id)
 
 
-# The result summary sentence has carried two wordings across harness
-# versions: the original "User has answered your question(s): ..." and the
-# current "Your questions have been answered: ..." (issue #180). Accept both.
+# The result summary sentence has carried a few wordings across harness
+# versions: "User has answered your question:" / "...questions:" / the literal
+# "...question(s):", and the current "Your questions have been answered: ..."
+# (issue #180). Accept them all.
 _ASKUSERQUESTION_SUMMARY_RE = re.compile(
-    r"(?:User has answered your questions?|Your questions have been answered): "
+    r"(?:User has answered your question(?:s|\(s\))?"
+    r"|Your questions have been answered): "
     r"(.+)\. You can now continue",
     re.DOTALL,
 )

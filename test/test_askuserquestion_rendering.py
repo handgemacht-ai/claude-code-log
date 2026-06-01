@@ -398,6 +398,18 @@ class TestAskUserQuestionParser:
         )
         assert parse_askuserquestion_output(tool_result, None, None) is None
 
+    def test_parse_legacy_paren_s_wording(self):
+        """The legacy literal 'question(s)' wording also parses (CR on #189)."""
+        tool_result = ToolResultContent(
+            type="tool_result",
+            tool_use_id="toolu_x",
+            content='User has answered your question(s): "Q1"="A1". '
+            "You can now continue with the user's answers in mind.",
+        )
+        out = parse_askuserquestion_output(tool_result, None, None)
+        assert out is not None
+        assert [(a.question, a.answer) for a in out.answers] == [("Q1", "A1")]
+
     def test_parse_clarify_rejection_free_form(self):
         """The 'clarify' rejection (free-form reply) parses to per-question
         answers — free-form text where given, empty where not (#180)."""
@@ -474,6 +486,17 @@ class TestAskUserQuestionEnrichedOutput:
             self._output(multi_select=True, answer="PostgreSQL, SQLite")
         )
         assert html.count('class="question-option selected"') == 2
+
+    def test_multiparagraph_free_form_answer_is_inline_safe(self):
+        """A multi-paragraph free-form reply must not emit block <p> inside the
+        inline <strong> wrapper of the selected block (CR on PR #189)."""
+        html = format_askuserquestion_output(
+            self._output(answer="First paragraph.\n\nSecond paragraph.")
+        )
+        assert "<strong><p>" not in html
+        assert "</p>" not in html  # no stray block tags in the inline block
+        assert "<br>" in html  # paragraph break folded to <br>
+        assert "First paragraph." in html and "Second paragraph." in html
 
 
 def _render_transcript(entries: list[dict]) -> str:
@@ -574,7 +597,7 @@ class TestAskUserQuestionCollapse:
         ]
         html = _render_transcript(entries)
         # Input card is ghosted: the "Asking questions..." title is gone.
-        assert "Asking questions" not in html
+        assert "❓ Asking questions" not in html
         # The result card highlights the chosen option…
         assert 'class="question-option selected"' in html
         # …and Markdown in the question renders (backticks → <code>).
@@ -583,7 +606,7 @@ class TestAskUserQuestionCollapse:
     def test_unpaired_question_keeps_input_card(self):
         """A tool_use with no answering result (session blocked) still shows."""
         html = _render_transcript([_auq_tool_use("a1", None, "t1", self.QUESTIONS)])
-        assert "Asking questions" in html
+        assert "❓ Asking questions" in html
 
     def test_free_form_reply_not_rendered_as_error(self):
         q = self.QUESTIONS
