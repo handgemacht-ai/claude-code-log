@@ -28,12 +28,14 @@ async-agents targeted ghost (which proved the alternative works).
 Each new index-bearing field is a "remember to remap X" obligation
 on every contributor.
 
-The ghosting approach inverts the model: dropped messages stay in
-`ctx.messages` (preserving every index), but carry an `is_ghosted`
-flag. Downstream passes that *iterate* messages learn to skip
-ghosts; passes that read stored indices keep working unchanged. The
-two reindex-callers + `_reindex_filtered_context` itself all
-disappear once both callers migrate.
+The ghosting approach inverts the model: dropped messages become
+`None` slots in `ctx.messages` (preserving every index and freeing
+the dropped object for GC). Downstream passes that *iterate*
+messages learn to skip the `None` slots; passes that read stored
+indices keep working unchanged because the stable indices around
+the dropped slots don't shift. The two reindex-callers +
+`_reindex_filtered_context` itself all disappear once both callers
+migrate.
 
 This document covers the **entire** migration: the unified flag, the
 pass-by-pass changes, the single-axis collapse of pre-render
@@ -83,52 +85,74 @@ of the *output*, not out of the *registry*.
 
 ---
 
-## 2. The unified `is_ghosted` flag
+## 2. Ghosts as `None` slots in `ctx.messages`
 
 ### 2.1 Model
 
-Add one bool to `TemplateMessage` (defined in `renderer.py`):
+No new field. Widen the slot type instead:
 
 ```python
-class TemplateMessage:
-    # ... existing fields ...
-    self.is_ghosted: bool = False
+class RenderingContext:
+    messages: list[Optional[TemplateMessage]]  # was list[TemplateMessage]
 ```
 
-That's the entire model change. No new methods; no per-content-type
-flags. Setting `is_ghosted = True` opts the message out of the
-*visible* render path while keeping it in every internal index.
+Ghosting a message becomes `ctx.messages[idx] = None`. The slot
+stays, so every index around it (and every stored reference to
+that index from another message) keeps pointing at the same
+position. The dropped `TemplateMessage` itself is freed by GC —
+no memory bloat from keeping a "tombstone" object alive.
+
+`RenderingContext.get(idx)` already returns `None` when out of
+range; with the wider slot type it just naturally returns `None`
+for ghosted slots too. No signature change.
 
 ### 2.2 Semantics
 
-A ghosted message:
+A ghosted slot:
 
-- **Keeps** its `message_index` (so pair-refs, parent_message_index,
-  junction_forward_links, session_first_message all stay valid).
-- **Keeps** its `meta`, `render_session_id`, `content` (for any pass
-  that needs to inspect it, e.g. the `_pair_skill_tool_uses`
-  detection scan that runs over `ctx.messages` after ghosts exist).
-- **Skipped** by passes that compute *visible* structure:
-  `_build_message_hierarchy` (no ancestry contribution, children
-  grafted), `_identify_message_pairs` (cannot participate in pairs),
-  `_build_message_tree` (not emitted as a root), and the format
-  renderers' iteration (not rendered).
+- **Keeps the index intact** — pair-refs, parent_message_index,
+  junction_forward_links, session_first_message all stay valid
+  because the LIST LENGTH and the indices of OTHER messages don't
+  shift. Stored references to the ghost's own index now resolve
+  to `None`, which in practice never happens (see below).
+- **Is freed** — the original `TemplateMessage` object is
+  dereferenced and GC'd. No content/meta/render_session_id kept
+  around.
+- **Doesn't participate** in any pass that iterates
+  `ctx.messages`: hierarchy stack (no contribution → children
+  graft to the next non-None ancestor), pair-id (no entry in the
+  index dicts), tree-build (not emitted as a root, can't be
+  someone's parent), format renderers (skipped by iteration).
+
+**Stored references never target a None slot in practice.** The
+things the reindex pass remapped today all reference
+*session/branch headers* (`parent_message_index`,
+`session_first_message`, `junction_forward_links` targets) or
+*paired content messages* (`pair_first/last/middle`). The detect-
+and-ghost passes drop neither category: `_pair_skill_tool_uses`
+ghosts only the slash-body + the launching-skill tool_result;
+`_ghost_template_by_detail` ghosts content classes per the
+`detail_visibility` predicate, never session headers. So `ctx.get(
+stored_index)` never returns `None` for any reference set today —
+the wider slot type is a forward-compatibility convenience, not a
+new failure mode contributors need to handle.
 
 ### 2.3 Helper
 
 A single helper in `renderer.py`, used by every iterator:
 
 ```python
-def _visible(messages: Iterable[TemplateMessage]) -> Iterator[TemplateMessage]:
-    """Yield only non-ghost messages."""
-    return (m for m in messages if not m.is_ghosted)
+def _visible(
+    messages: Iterable[Optional[TemplateMessage]],
+) -> Iterator[TemplateMessage]:
+    """Yield only non-None messages (filter ghosts)."""
+    return (m for m in messages if m is not None)
 ```
 
 Most passes use `_visible(messages)` instead of `messages` directly.
-Where positional lookups are needed (`message_by_index`), the
-existing pattern keeps working — ghosts have `message_index` like
-anyone else, so the map still resolves; passes that don't WANT to
-resolve to a ghost check `if msg.is_ghosted` after the lookup.
+Where positional lookups happen (`message_by_index`), the build
+loop already does `if message.message_index is not None` per the
+existing code — folding a None check in costs nothing.
 
 ---
 
@@ -139,23 +163,23 @@ The pipeline order (from `generate_template_messages`):
 | Order | Pass | Today's behavior | Post-ghost behavior |
 |---|---|---|---|
 | 1 | `_render_messages` | builds `ctx.messages` | unchanged |
-| 2 | `_pair_skill_tool_uses` | deletes 1–2 msgs + reindexes | sets `is_ghosted = True`; no reindex |
-| 3 | `_link_junction_forwards` | reads ctx.messages + writes indices | unchanged — indices stable |
-| 4 | `_filter_template_by_detail` + reindex | deletes many + reindexes | rewritten as `_ghost_template_by_detail(ctx, detail)`; no reindex |
+| 2 | `_pair_skill_tool_uses` | deletes 1–2 msgs + reindexes | sets `ctx.messages[idx] = None`; no reindex |
+| 3 | `_link_junction_forwards` | reads ctx.messages + writes indices | unchanged — indices stable; skips None slots |
+| 4 | `_filter_template_by_detail` + reindex | deletes many + reindexes | rewritten as `_ghost_template_by_detail(ctx, detail)`; sets None slots; no reindex |
 | 5 | `prepare_session_navigation` | reads `ctx.session_first_message` | unchanged |
-| 6 | `_reorder_session_template_messages` | reorders by render_session_id | unchanged (ghosts ride along with their session) |
-| 7 | `_identify_message_pairs` | sequential pair scan | skips ghosts in adjacency walk AND in indexed pairing |
-| 8 | `_reorder_paired_messages` | moves pair_last adjacent | unchanged (ghosts not paired so they don't move) |
-| 9 | `_relocate_subagent_blocks` | moves blocks under anchors | unchanged (works on render_session_id / sessionId) |
-| 10 | `_build_message_hierarchy` | ancestry from level stack | **skip ghosts + graft children** |
-| 11 | `_mark_messages_with_children` | counts via ancestry | naturally correct (ancestry already grafted past ghosts) |
-| 12 | `_build_message_tree` | tree by ancestry | skip ghosts from root_messages; children list already excludes them |
+| 6 | `_reorder_session_template_messages` | reorders by render_session_id | skips None slots; otherwise unchanged |
+| 7 | `_identify_message_pairs` | sequential pair scan | iterates `_visible(messages)` in BOTH the index dict build AND the adjacency walk |
+| 8 | `_reorder_paired_messages` | moves pair_last adjacent | unchanged (None slots not paired so they don't move) |
+| 9 | `_relocate_subagent_blocks` | moves blocks under anchors | skips None slots; otherwise unchanged |
+| 10 | `_build_message_hierarchy` | ancestry from level stack | **skip None + graft children** (None never pushed onto stack) |
+| 11 | `_mark_messages_with_children` | counts via ancestry | naturally correct (ancestry already grafted past Nones) |
+| 12 | `_build_message_tree` | tree by ancestry | skip None from root_messages; children list already excludes them |
 | 13 | `_cleanup_sidechain_duplicates` | mutates parent.children | unchanged (already operates on the post-ghost tree) |
 | 14 | Format renderers | iterate root_messages → children | naturally exclude ghosts (they're absent from the tree) |
 
 The detailed changes per pass:
 
-### 3.1 `_pair_skill_tool_uses` — set ghosts instead of deleting
+### 3.1 `_pair_skill_tool_uses` — None-out the consumed slots
 
 Today's tail (line ~3360):
 
@@ -171,13 +195,13 @@ After:
 ```python
 consumed_indices.add(other.message_index)
 # ...
-for msg in ctx.messages:
-    if msg.message_index in consumed_indices:
-        msg.is_ghosted = True
+for idx in consumed_indices:
+    ctx.messages[idx] = None
 # No reindex.
 ```
 
-Same selection logic; the only change is the action.
+Same selection logic, smaller action. The dropped TemplateMessages
+are freed by GC immediately.
 
 ### 3.2 `_ghost_template_by_detail(ctx, detail)` — replaces filter + reindex
 
@@ -196,25 +220,32 @@ if detail != DetailLevel.FULL:
     _ghost_template_by_detail(ctx, detail)  # mutates in place
 ```
 
-Where `_ghost_template_by_detail` is `_filter_template_by_detail`
-with the result-list collection replaced by `msg.is_ghosted = True`.
-Same visibility predicate, same `_LOW_KEEP_TOOLS` opt-out, same
-sidechain rule — only the side-effect changes.
+Where `_ghost_template_by_detail` walks `ctx.messages`, runs the
+existing visibility predicate (same `_content_visible_at`, same
+`_LOW_KEEP_TOOLS` opt-out, same sidechain rule) and assigns
+`ctx.messages[i] = None` for each non-visible slot. The selection
+logic is byte-identical to today's `_filter_template_by_detail`;
+the only change is the side-effect (None-out the slot rather than
+omit the entry from a kept list).
 
-### 3.3 `_identify_message_pairs` — skip ghosts in BOTH passes
+### 3.3 `_identify_message_pairs` — skip Nones in BOTH passes
 
 Two places:
 
-1. **`_build_pairing_indices`** (the dict-building first pass): ghost
-   messages must NOT be added to the indices. Otherwise an index-based
-   pairing could attach a real tool_result to a ghost tool_use.
+1. **`_build_pairing_indices`** (the dict-building first pass): None
+   slots must NOT be added to the indices. Otherwise an index-based
+   pairing could attach a real tool_result to a ghosted tool_use.
+   Easy: iterate `_visible(messages)`.
 
 2. **Sequential scan**: when looking at `messages[i]`,
-   `messages[i+1]`, `messages[i+2]` for adjacency, ghosts must be
-   skipped. Easiest implementation: iterate `_visible(messages)` and
-   keep i/i+1/i+2 as positions in the visible subsequence.
+   `messages[i+1]`, `messages[i+2]` for adjacency, None slots must
+   be skipped. Easiest implementation: collapse the input via
+   `list(_visible(messages))` and walk the visible subsequence (the
+   sequential scan can't be replaced by index lookups — see the
+   adjacency-only pair types: thinking+assistant, bash-input+output,
+   system+output, and the UserSlash→Slash→CommandOutput triple).
 
-Edge case: a ghost ToolUseMessage with a corresponding non-ghost
+Edge case: a ghosted ToolUseMessage with a corresponding non-ghost
 ToolResultMessage — the result should NOT be paired (no visible
 "use" to pair against), so it just renders as an orphan tool_result.
 This is acceptable and matches today's behavior (when the filter
@@ -222,7 +253,7 @@ drops the tool_use, the result also drops in most detail levels;
 where it doesn't, an orphan tool_result is the correct visible
 shape).
 
-### 3.4 `_build_message_hierarchy` — skip ghosts + graft children
+### 3.4 `_build_message_hierarchy` — skip Nones + graft children
 
 The critical pass. Today (line 2148):
 
@@ -242,13 +273,11 @@ After:
 
 ```python
 for message in messages:
-    if message.is_ghosted:
-        # Don't push ghost onto stack: its real children, when they
-        # arrive, will compute ancestry against the SURVIVING stack
-        # (the ghost's would-be ancestor), naturally grafting up.
-        message.ancestry = []  # ghosts have no ancestry of their own
-        continue
-
+    if message is None:
+        continue  # ghosted slot — don't push onto stack; real
+                  # children will compute ancestry against the
+                  # SURVIVING stack (the ghost's would-be ancestor),
+                  # naturally grafting up.
     current_level = ...
     while hierarchy_stack and hierarchy_stack[-1][0] >= current_level:
         hierarchy_stack.pop()
@@ -258,23 +287,20 @@ for message in messages:
     message.ancestry = ancestry
 ```
 
-That's the entire children-grafting mechanism: a ghost never
-contributes to the stack, so its children "see through" it to the
-next non-ghost ancestor. No explicit graft step needed.
+That's the entire children-grafting mechanism: a None slot never
+contributes to the stack, so its real children "see through" it to
+the next surviving ancestor. No explicit graft step needed.
 
-### 3.5 `_mark_messages_with_children` — works for free
+### 3.5 `_mark_messages_with_children` — skip Nones
 
-Reads ancestry indices, increments counts on ancestors. Since
-ancestry now skips ghosts (per 3.4), ghosts naturally don't appear
-in any non-ghost message's ancestry — so they're not incremented
-*as* parents, and they're not counted *as* children either (per
-3.4, ghosts have `ancestry = []` so the `if not message.ancestry`
-guard skips them at iteration time).
+Reads ancestry indices, increments counts on ancestors. Per 3.4 a
+ghosted slot is None, so its `message_index → message` mapping
+isn't built in the first place; ancestor lookups (`if immediate_
+parent_index in message_by_index`) naturally don't resolve through
+ghosts. Adding `if message is None: continue` at the top of each
+loop is purely a defensive readability improvement.
 
-Optional small change: skip ghosts at the top of the loop for
-clarity / a microperf win, but functionally unnecessary.
-
-### 3.6 `_build_message_tree` — exclude ghosts from roots
+### 3.6 `_build_message_tree` — exclude Nones from roots
 
 Today (line 2255):
 
@@ -296,30 +322,27 @@ After:
 
 ```python
 for message in messages:
-    if message.is_ghosted:
-        message.children = []
-        continue  # don't add to roots, don't add as child
+    if message is None:
+        continue  # skip ghost slots — no children to clear
     message.children = []
 for message in messages:
-    if message.is_ghosted:
-        continue
+    if message is None:
+        continue  # not a root, not a child of anyone
     if not message.ancestry:
         root_messages.append(message)
     else:
         immediate_parent_index = message.ancestry[-1]
         if immediate_parent_index in message_by_index:
             parent = message_by_index[immediate_parent_index]
-            # parent might be a ghost (its message_index resolved in
-            # the map) — but per 3.4 a ghost has ancestry=[] so any
-            # non-ghost child's ancestry skips it. Defensive guard:
-            if not parent.is_ghosted:
-                parent.children.append(message)
+            parent.children.append(message)
 ```
 
-The defensive guard inside `else` is belt-and-braces — by 3.4's
-invariant a non-ghost message's ancestry never names a ghost. But
-the guard means the tree-build is correct even if some future code
-path violates the invariant.
+Per 3.4's invariant (a non-None message's ancestry never names a
+ghost), the parent lookup always resolves to a non-None message —
+no defensive `if parent is not None` guard needed beyond the
+existing `if immediate_parent_index in message_by_index` check
+(which already short-circuits because Nones aren't in the index
+map).
 
 ### 3.7 Format renderers (HTML + Markdown) — no change
 
@@ -414,7 +437,7 @@ content-item-stripping responsibilities that today live in
 Each strip rule is naturally expressible on the post-render
 TemplateMessage: ToolUseMessage / ToolResultMessage / ThinkingMessage
 already have their own classes; the strip becomes
-`msg.is_ghosted = True` for the class. (Effectively: the per-class
+`ctx.messages[i] = None` for the slot. (Effectively: the per-class
 `detail_visibility` declarations already encode these rules — see
 [plugins.md §6](../dev-docs/plugins.md) — so the pre-render strip
 collapses into the post-render visibility predicate.)
@@ -445,13 +468,19 @@ phases, each a separate PR, each independently merge-able:
 
 ### Phase 1 — `wf/ghosting/skill-fold` (small, safe)
 
-- Add `TemplateMessage.is_ghosted = False`.
-- Migrate `_pair_skill_tool_uses` to set `is_ghosted` instead of
-  deleting + reindexing.
-- Implement steps 3.4 (hierarchy graft) and 3.6 (tree skip ghosts)
+- Widen `RenderingContext.messages` slot type to
+  `list[Optional[TemplateMessage]]`. No new field on
+  `TemplateMessage`.
+- Add the `_visible()` helper.
+- Migrate `_pair_skill_tool_uses` to None-out consumed slots
+  instead of deleting + reindexing.
+- Implement steps 3.4 (hierarchy graft) and 3.6 (tree skip Nones)
   — both are needed for the Skill ghost to render correctly.
-- Implement step 3.3 (pair-id skip ghosts) — defensive; the Skill
+- Implement step 3.3 (pair-id skip Nones) — defensive; the Skill
   ghosts aren't paired but the next phase needs this.
+- Walk every `ctx.messages` reader in `renderer.py` (and html/,
+  markdown/, json/) and ensure each handles a `None` slot. Most
+  iterators just need `_visible(...)` or an `if m is None: continue`.
 - Leave `_filter_template_by_detail` and its reindex call
   unchanged.
 - Leave `_reindex_filtered_context` in place (still called by the
@@ -463,12 +492,15 @@ phases, each a separate PR, each independently merge-able:
   prerequisite even before the detail-filter migration.
 
 Estimate: ~150 lines net change. Lowest risk; lays the
-infrastructure.
+infrastructure. (The widened slot type changes the type annotation
+in one place and surfaces `None`-handling additions across every
+iterator — Pyright will surface any reader I missed.)
 
 ### Phase 2 — `wf/ghosting/detail-filter` (medium)
 
 - Migrate `_filter_template_by_detail` + reindex to
-  `_ghost_template_by_detail` (set `is_ghosted` instead of deleting).
+  `_ghost_template_by_detail` (None-out non-visible slots instead
+  of deleting).
 - Delete `_reindex_filtered_context` (no more callers).
 - Re-run per-detail-level snapshot suite. EXPECTED:
   byte-identical (ghosting produces the same visible output as
@@ -568,22 +600,16 @@ behavior, not just passes vacuously.
 ### 7.1 Hidden index reader
 
 Some pass we haven't catalogued might read `len(ctx.messages)` or
-iterate `ctx.messages` and assume no ghosts. Mitigation:
-`_visible(...)` helper in the renderer + targeted code-review of
-the full `renderer.py` (find every `ctx.messages` reference) before
-Phase 1 lands.
+iterate `ctx.messages` and assume no `None` slots. Mitigations:
+the `_visible(...)` helper in the renderer covers the common case,
+and widening the slot type to `list[Optional[TemplateMessage]]`
+makes Pyright surface every reader that dereferences a slot
+without a `None` check (it'll flag `msg.content` / `msg.meta` etc.
+on the un-narrowed type). The Phase-1 walk-through of every
+`ctx.messages` reader in `renderer.py` + `html/` + `markdown/` +
+`json/` closes the rest.
 
-### 7.2 Memory bloat
-
-Ghosts stay in memory. The pre-render filter at MINIMAL drops the
-most messages (no tools, no thinking, no sidechain), often the
-majority of a long transcript. Keeping them in `ctx.messages` could
-~triple peak memory at MINIMAL for huge transcripts. Mitigation:
-acceptable for the dominant use case (transcripts in the
-single-MB-to-tens-of-MB range); revisit if a profiling pass shows
-real-world peak going past 1 GB.
-
-### 7.3 Markdown chunk-boundary subtlety (Phase 3 only)
+### 7.2 Markdown chunk-boundary subtlety (Phase 3 only)
 
 When a single transcript entry's content items are split into
 multiple TemplateMessages, pre-render filtering keeps factory
@@ -594,12 +620,16 @@ anchors may move. If a snapshot's `d-{N}` references shift, the
 HTML is "different bytes, same logical content" — needs careful
 review per snapshot.
 
-### 7.4 Plugin contract
+### 7.3 Plugin contract
 
-Third-party `MessageContent` subclasses interact with ghosting only
-via `is_ghosted` (or not at all, since they don't set it). Their
-`visible_at` predicate continues to drive whether they get ghosted,
-identical to today. No plugin-contract change.
+Third-party `MessageContent` subclasses interact with the slot
+state only indirectly — their `visible_at` predicate continues to
+drive whether they get ghosted (via the post-render
+`_ghost_template_by_detail` pass), identical to today. The slot
+itself is `Optional[TemplateMessage]` from the renderer's
+perspective; plugin classes never see a `None` because the iterator
+they reach (the format renderer's recursion over the tree) is
+already post-filter. No plugin-contract change.
 
 ---
 
