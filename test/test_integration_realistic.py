@@ -1812,12 +1812,14 @@ class TestExperimentsWorktreesTeammates:
     ) -> None:
         """Each subagent's sidechain content must nest under its OWN
         Task/Agent tool_result, not collapse under whichever rendered
-        last. With nested-DOM rendering, every ``assistant sidechain``
-        card lives inside the ``.children`` container of its anchoring
-        tool_result; pre-relocation they all shared a single anchor.
-        Walk each sidechain card up to its nearest enclosing
-        ``.message.tool_result`` and assert ≥6 distinct anchors (one per
-        subagent). Pre-fix the count was 1.
+        last. With the dissociated nested-DOM (issue #174), each message
+        renders as ``.message-node > [.message card] + [.children]`` — so a
+        sidechain card is NOT a DOM descendant of its anchoring
+        tool_result; the anchor card is a *sibling* of the ``.children``
+        container that (transitively) holds the sidechain. Resolve each
+        ``assistant sidechain`` card to the tool_result card of its nearest
+        enclosing ``.message-node`` and assert ≥6 distinct anchors (one per
+        subagent). Pre-relocation they all shared a single anchor (count 1).
         """
         from html.parser import HTMLParser
 
@@ -1825,14 +1827,18 @@ class TestExperimentsWorktreesTeammates:
         convert_jsonl_to_html(project)
         html = (project / "combined_transcripts.html").read_text(encoding="utf-8")
 
-        # Walk the DOM with a stack of open <div>s, tracking each div's
-        # class list + data-message-id. For every `.message.assistant.
-        # sidechain` card, find the nearest enclosing `.message.tool_result`
-        # on the stack and record its id. Distinct ids = distinct anchors.
+        # Walk the DOM with a stack of open <div>s. Each ``.message-node``
+        # frame records the card (class list + id) found directly inside it.
+        # For every ``.message.assistant.sidechain`` card, scan enclosing
+        # message-node frames for the nearest whose card is a tool_result —
+        # that is its anchor. (Its own node's card is the sidechain itself,
+        # never a tool_result, so it's skipped naturally.) Distinct anchor
+        # ids = distinct anchors.
         class AnchorWalker(HTMLParser):
             def __init__(self) -> None:
                 super().__init__()
-                self.stack: list[tuple[set[str], str | None]] = []
+                # frame: {is_node, card_classes, card_id}
+                self.stack: list[dict[str, object]] = []
                 self.anchors: set[str] = set()
 
             def handle_starttag(self, tag, attrs):
@@ -1841,12 +1847,31 @@ class TestExperimentsWorktreesTeammates:
                 ad = dict(attrs)
                 classes = set((ad.get("class") or "").split())
                 mid = ad.get("data-message-id")
-                if {"message", "assistant", "sidechain"} <= classes:
-                    for cls, anchor_id in reversed(self.stack):
-                        if "message" in cls and "tool_result" in cls and anchor_id:
-                            self.anchors.add(anchor_id)
+                is_node = "message-node" in classes
+                if "message" in classes and not is_node:
+                    # A message card: attach to its nearest message-node frame.
+                    for frame in reversed(self.stack):
+                        if frame["is_node"]:
+                            frame["card_classes"] = classes
+                            frame["card_id"] = mid
                             break
-                self.stack.append((classes, mid))
+                    if {"message", "assistant", "sidechain"} <= classes:
+                        for frame in reversed(self.stack):
+                            if not frame["is_node"]:
+                                continue
+                            cc = frame["card_classes"]
+                            anchor_id = frame["card_id"]
+                            if (
+                                isinstance(cc, set)
+                                and "tool_result" in cc
+                                and "message" in cc
+                                and isinstance(anchor_id, str)
+                            ):
+                                self.anchors.add(anchor_id)
+                                break
+                self.stack.append(
+                    {"is_node": is_node, "card_classes": None, "card_id": None}
+                )
 
             def handle_endtag(self, tag):
                 if tag == "div" and self.stack:

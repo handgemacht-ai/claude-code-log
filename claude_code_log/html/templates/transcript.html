@@ -103,6 +103,10 @@
     {%- set formatted_timestamp = message.rendered_timestamp %}
     {% if is_session_header(message) %}
     {% if not message.is_branch_header %}<div class="session-divider"></div>{% endif %}
+    {# Structural wrapper: the message card and its nested .children render as
+       SIBLINGS here, so the card's border/background/margins frame only the
+       card itself, not the whole subtree (issue #174 nested-DOM follow-up). #}
+    <div class='message-node'>
     <div class='message session-header{% if message.is_branch_header %} branch-header{% endif %}' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}' id='msg-{{ message.message_id }}'{% if message.branch_depth %} style='margin-left: {{ message.branch_depth * 2 }}em'{% endif %}>
         <div class='header'>{% if message.is_branch_header %}&#x21b3; {% else %}Session: {% endif %}{{ html_content|safe }}</div>
         {% if message.has_children %}
@@ -126,15 +130,28 @@
             {% endif %}
         </div>
         {% endif %}
-        {% if message.children %}
-        <div class='children'>
-            {% for child in message.children %}{{ render_message(child) }}{% endfor %}
+    </div>
+    {% if message.children %}
+    <div class='children'>
+        {% for child in message.children %}{{ render_message(child) }}{% endfor %}
+    </div>
+    {% endif %}
+    {% if message.junction_forward_links %}
+    {# Fork point element — structural navigation marker, sibling of the card #}
+    <div class='fork-point'>
+        <div class='fork-point-header'>&#x2442; Fork point{% if message.fork_point_preview %} &bull; {{ message.fork_point_preview }}{% endif %}</div>
+        <div class='fork-point-branches'>
+            {% for branch_sid, branch_idx, branch_preview in message.junction_forward_links %}
+            <a href='#msg-d-{{ branch_idx }}' class='fork-point-branch'>&#x21b3; Branch{% if branch_preview %} &bull; {{ branch_preview }}{% endif %}</a>
+            {% endfor %}
         </div>
-        {% endif %}
+    </div>
+    {% endif %}
     </div>
     {% elif message.should_render %}
     {%- set msg_css_class = css_class_from_message(message) %}
     {% set markdown = message.content.has_markdown if message.content else false %}
+    <div class='message-node'>
     <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>
             {% set msg_emoji = get_message_emoji(message) -%}
@@ -173,15 +190,14 @@
             {% endif %}
         </div>
         {% endif %}
-        {% if message.children %}
-        <div class='children'>
-            {% for child in message.children %}{{ render_message(child) }}{% endfor %}
-        </div>
-        {% endif %}
+    </div>
+    {% if message.children %}
+    <div class='children'>
+        {% for child in message.children %}{{ render_message(child) }}{% endfor %}
     </div>
     {% endif %}
-    {% if message.junction_forward_links and message.should_render %}
-    {# Fork point element — rendered OUTSIDE the message box as a structural navigation element #}
+    {% if message.junction_forward_links %}
+    {# Fork point element — structural navigation marker, sibling of the card #}
     <div class='fork-point'>
         <div class='fork-point-header'>&#x2442; Fork point{% if message.fork_point_preview %} &bull; {{ message.fork_point_preview }}{% endif %}</div>
         <div class='fork-point-branches'>
@@ -189,6 +205,8 @@
             <a href='#msg-d-{{ branch_idx }}' class='fork-point-branch'>&#x21b3; Branch{% if branch_preview %} &bull; {{ branch_preview }}{% endif %}</a>
             {% endfor %}
         </div>
+    </div>
+    {% endif %}
     </div>
     {% endif %}
     {% endmacro %}
@@ -666,11 +684,16 @@
                 return document.querySelector('.message[data-message-id="' + sel + '"]');
             }
             function getChildrenContainer(messageEl) {
-                return messageEl ? messageEl.querySelector(':scope > .children') : null;
+                // .children is now a SIBLING of the card inside the shared
+                // .message-node wrapper (dissociated DOM), not a descendant.
+                const wrapper = messageEl ? messageEl.parentElement : null;
+                return wrapper ? wrapper.querySelector(':scope > .children') : null;
             }
             function getImmediateChildMessages(messageEl) {
                 const cc = getChildrenContainer(messageEl);
-                return cc ? Array.from(cc.querySelectorAll(':scope > .message')) : [];
+                // Each child is wrapped in its own .message-node; its card is
+                // that wrapper's direct .message child.
+                return cc ? Array.from(cc.querySelectorAll(':scope > .message-node > .message')) : [];
             }
             function setSectionState(section, folded, icon) {
                 if (!section) return;
@@ -766,24 +789,26 @@
             setInitialFoldState();
 
             // Unfold any folded ancestors so an anchor target (e.g. a tool_use
-            // jumped to from the session index) is actually visible. Ancestry
-            // is now DOM nesting, so walk up the .children/.message chain and
-            // reveal each ancestor's children container.
+            // jumped to from the session index) is actually visible. In the
+            // dissociated DOM a card's ancestors are .message-node and
+            // .children wrappers, NOT the parent .message cards — so walk up
+            // and reveal each hidden .children container, syncing the
+            // controlling card's fold bar (its sibling within the node).
             function unfoldAncestorsOf(hash) {
                 if (!hash || !hash.startsWith('#msg-')) return;
                 const target = document.getElementById(hash.slice(1));
                 if (!target) return;
                 let node = target.parentElement;
                 while (node) {
-                    if (node.classList && node.classList.contains('message')) {
-                        const cc = getChildrenContainer(node);
-                        if (cc && cc.style.display === 'none') {
-                            cc.style.display = '';
-                            const foldBar = node.querySelector(':scope > .fold-bar');
-                            if (foldBar) {
-                                setSectionState(foldBar.querySelector('.fold-one-level'), false, '▼');
-                                setSectionState(foldBar.querySelector('.fold-all-levels'), false, '▼▼');
-                            }
+                    if (node.classList && node.classList.contains('children')
+                        && node.style.display === 'none') {
+                        node.style.display = '';
+                        const wrapper = node.parentElement; // .message-node
+                        const card = wrapper ? wrapper.querySelector(':scope > .message') : null;
+                        const foldBar = card ? card.querySelector(':scope > .fold-bar') : null;
+                        if (foldBar) {
+                            setSectionState(foldBar.querySelector('.fold-one-level'), false, '▼');
+                            setSectionState(foldBar.querySelector('.fold-all-levels'), false, '▼▼');
                         }
                     }
                     node = node.parentElement;
