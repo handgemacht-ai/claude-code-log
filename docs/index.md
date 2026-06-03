@@ -52,5 +52,5 @@ uvx claude-code-log@latest --tui
 
 ## Example output
 
-📄 **[View example HTML output](https://github.com/daaain/claude-code-log/releases/latest/download/claude-code-log-transcript.html)**
-— a real page generated from this project's own development (large file, ~100 MB).
+📄 **[View example HTML output](example.md)** — a real page generated from a
+sample of this project's own development, regenerated on every docs build.

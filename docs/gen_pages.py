@@ -25,6 +25,25 @@ sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 
 from generate_tui_docs import build_keybindings_markdown  # noqa: E402
 from generate_tui_screenshots import Screenshot, generate_screenshots  # noqa: E402
+from generate_example_output import generate_example_html  # noqa: E402
+
+
+def _emit_example_output() -> bool:
+    """Render the bundled sample project into the site at examples/transcript.html.
+
+    Returns True on success. Failures are swallowed (with a warning) so a render
+    hiccup can never block the rest of the docs build.
+    """
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            html = generate_example_html(Path(tmp) / "transcript.html")
+            data = html.read_bytes()
+        with mkdocs_gen_files.open("examples/transcript.html", "wb") as fh:
+            fh.write(data)
+        return True
+    except Exception as exc:  # noqa: BLE001 - never let the example break docs
+        print(f"WARNING: example output generation failed: {exc}", file=sys.stderr)
+        return False
 
 
 def _emit_screenshots() -> list[Screenshot]:
@@ -84,3 +103,37 @@ def _build_page() -> str:
 
 with mkdocs_gen_files.open("reference/tui.md", "w") as fh:
     fh.write(_build_page())
+
+
+def _build_example_page(generated: bool) -> str:
+    parts = [
+        "# Example output",
+        "",
+        (
+            "This is a real, self-contained page produced by `claude-code-log`, "
+            "rendered from a sample of this project's own early development "
+            "(23 sessions) that ships in the repo. It is regenerated on every "
+            "docs build, so it always reflects the current rendering."
+        ),
+        "",
+    ]
+    if generated:
+        parts += [
+            "[Open the full example transcript]"
+            "(examples/transcript.html){ .md-button target=_blank }",
+            "",
+            '<iframe src="../examples/transcript.html" title="Example transcript" '
+            'style="width:100%;height:80vh;border:1px solid var(--md-default-fg-color--lightest);'
+            'border-radius:4px;margin-top:1rem;"></iframe>',
+        ]
+    else:
+        parts.append(
+            "_The example could not be generated in this build environment. "
+            "Run `python scripts/generate_example_output.py` locally to preview it._"
+        )
+    return "\n".join(parts).rstrip() + "\n"
+
+
+_example_generated = _emit_example_output()
+with mkdocs_gen_files.open("example.md", "w") as fh:
+    fh.write(_build_example_page(_example_generated))

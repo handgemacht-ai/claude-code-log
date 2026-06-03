@@ -189,10 +189,6 @@ test/test_data/*.html
 .local.code-workspace
 local.ps1
 
-# Release showcase asset (the example transcript HTML uploaded to GitHub
-# releases by `just copy-example`); kept out of docs/ so it doesn't end up in
-# the MkDocs site.
-release-assets/
 
 # Integration test data - exclude generated cache/HTML, keep JSONL files
 test/test_data/real_projects/*/cache/

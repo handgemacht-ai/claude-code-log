@@ -233,6 +233,11 @@ Key points:
   `BINDINGS` for the keybindings tables (`scripts/generate_tui_docs.py`) and
   captures SVG screenshots of the running TUI
   (`scripts/generate_tui_screenshots.py`). Both scripts are runnable standalone.
+- **Example output** (`example.md` + `examples/transcript.html`) is rendered at
+  build time from a bundled sample project
+  (`scripts/generate_example_output.py`, also `just example`) — no private data
+  or release asset involved. Generation is fault-tolerant so a render hiccup
+  can't block the build.
 - **Development** section surfaces `dev-docs/` (symlinked as `docs/development`).
   `CONTRIBUTING.md` and `CHANGELOG.md` are symlinked in as `docs/contributing.md`
   and `docs/changelog.md`. A build hook (`docs/hooks.py`) rewrites links to repo

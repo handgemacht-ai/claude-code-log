@@ -66,6 +66,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Example output: example.md
   - User Guide:
       - Restoring archived sessions: restoring-archived-sessions.md
   - Reference:
