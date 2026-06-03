@@ -147,6 +147,8 @@ venv.bak/
 
 # mkdocs documentation
 /site
+# Locally-generated TUI screenshots (regenerated at build time by gen-files)
+docs/assets/tui/
 
 # mypy
 .mypy_cache/

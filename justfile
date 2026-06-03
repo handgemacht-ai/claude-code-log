@@ -77,6 +77,18 @@ ty:
 
 ci: format test-all lint typecheck ty
 
+# Regenerate the auto-generated TUI docs assets (screenshots) into docs/assets/tui
+docs-gen:
+    uv run python scripts/generate_tui_screenshots.py docs/assets/tui
+
+# Serve the documentation site locally with live reload (http://127.0.0.1:8000)
+docs-serve:
+    DISABLE_MKDOCS_2_WARNING=true uv run mkdocs serve
+
+# Build the documentation site (strict: fails on broken links/nav)
+docs-build:
+    DISABLE_MKDOCS_2_WARNING=true uv run mkdocs build --strict
+
 build:
     -rm dist/*
     uv build
