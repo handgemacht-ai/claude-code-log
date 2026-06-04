@@ -163,8 +163,10 @@ class TestGhostedForkAnchorBackrefRepair:
 
         survivors = [m for m in ctx.messages if m is not None]
 
-        # Sanity: the fork anchor IS ghosted at USER_ONLY (otherwise this
-        # test is exercising nothing — the repair pass would be a no-op).
+        # Precondition: the fork anchor MUST be ghosted at USER_ONLY,
+        # otherwise this test exercises nothing — the repair pass would be a
+        # no-op and the regression could rot silently. Assert it directly so
+        # a preserved anchor fails here instead of passing vacuously below.
         anchor_idx = next(
             (
                 i
@@ -173,13 +175,11 @@ class TestGhostedForkAnchorBackrefRepair:
             ),
             None,
         )
-        if anchor_idx is None:
-            ghosted_assistants = [i for i, m in enumerate(ctx.messages) if m is None]
-            assert ghosted_assistants, (
-                "fork-anchor assistant 'a-anchor' was neither preserved "
-                "nor ghosted — the fixture is wrong (USER_ONLY should "
-                f"ghost it). ctx.messages length={len(ctx.messages)}"
-            )
+        assert anchor_idx is None, (
+            "expected fork-anchor assistant 'a-anchor' to be ghosted at "
+            "USER_ONLY; otherwise this test does not validate stale-anchor "
+            f"repair. anchor still present at index {anchor_idx}."
+        )
 
         # The actual invariant: no branch header points at a ghost slot.
         branch_headers = [
