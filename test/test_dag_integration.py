@@ -653,8 +653,14 @@ class TestWithinSessionForkRealData:
                 self.fork_inside_children = 0
 
             def handle_starttag(self, tag, attrs):
+                # Track only <div> nesting so pushes here stay balanced with
+                # the <div>-only pops in handle_endtag — otherwise non-div
+                # tags would leave stale ancestors on the stack and a
+                # fork-point OUTSIDE .children could be miscounted as inside.
+                if tag != "div":
+                    return
                 classes = set((dict(attrs).get("class") or "").split())
-                if tag == "div" and "fork-point" in classes:
+                if "fork-point" in classes:
                     self.fork_total += 1
                     if any("children" in c for c in self.classes_stack):
                         self.fork_inside_children += 1
