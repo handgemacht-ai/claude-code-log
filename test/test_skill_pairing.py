@@ -928,6 +928,109 @@ class TestSkillFoldGhostAnchorRepair:
             "the live session_first_message entry was incorrectly dropped"
         )
 
+    def test_session_nav_omits_anchor_for_ghosted_fork_point(self) -> None:
+        """`prepare_session_navigation` must NOT retarget a ghosted fork
+        point's nav anchor at the parent session header.
+
+        The fork-point nav item resolves its anchor by scanning
+        `_visible(ctx.messages)` for `attachment_uuid`. When that message
+        was ghosted (e.g. a folded Skill slot), the scan can't find it, so
+        `message_index` must stay None (anchor omitted) — NOT fall back to
+        `session_first_message[parent_sid]`, which would silently undo
+        `_drop_anchor_refs_into_ghosts` and point the fork link at the
+        parent session header. Regression for the CodeRabbit finding on
+        the #193 fix.
+        """
+        from claude_code_log.models import (
+            MessageMeta,
+            SessionHeaderMessage,
+            UserSlashCommandMessage,
+        )
+        from claude_code_log.renderer import (
+            RenderingContext,
+            TemplateMessage,
+            prepare_session_navigation,
+        )
+
+        ctx = RenderingContext()
+
+        def _reg(content: object) -> TemplateMessage:
+            msg = TemplateMessage(content)  # type: ignore[arg-type]
+            ctx.register(msg)
+            return msg
+
+        # idx 0: parent session header (a live anchor we must NOT fall back to)
+        _reg(
+            SessionHeaderMessage(
+                MessageMeta(session_id="root", timestamp="", uuid="root-hdr"),
+                title="root",
+                session_id="root",
+            )
+        )
+        # idx 1: the fork point — ghosted below.
+        fork_pt = _reg(
+            UserSlashCommandMessage(
+                MessageMeta(session_id="root", timestamp="", uuid="fork-pt"),
+                text="x",
+            )
+        )
+        # idx 2: branch header.
+        _reg(
+            SessionHeaderMessage(
+                MessageMeta(session_id="root@b", timestamp="", uuid="branch-hdr"),
+                title="Branch • b",
+                session_id="root@b",
+                parent_session_id="root",
+                attachment_uuid="fork-pt",
+                is_branch=True,
+            )
+        )
+
+        ctx.session_first_message["root"] = 0
+        ctx.session_first_message["root@b"] = 2
+        # Ghost the fork point, mirroring what _pair_skill_tool_uses does.
+        assert fork_pt.message_index is not None
+        ctx.messages[fork_pt.message_index] = None
+
+        sessions = {
+            "root": {
+                "first_user_message": "hello",
+                "first_timestamp": "",
+                "last_timestamp": "",
+                "summary": None,
+                "message_count": 1,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "total_cache_creation_tokens": 0,
+                "total_cache_read_tokens": 0,
+            }
+        }
+        session_hierarchy = {
+            "root": {"depth": 0},
+            "root@b": {
+                "is_branch": True,
+                "attachment_uuid": "fork-pt",
+                "parent_session_id": "root",
+                "depth": 1,
+            },
+        }
+
+        nav = prepare_session_navigation(sessions, ["root"], ctx, session_hierarchy)
+
+        fork_items = [n for n in nav if n.get("is_fork_point")]
+        assert len(fork_items) == 1, (
+            f"expected exactly one fork-point nav item; got {len(fork_items)}"
+        )
+        fork = fork_items[0]
+        assert fork["message_index"] is None, (
+            f"fork-point nav anchor points at message_index={fork['message_index']} "
+            "(the parent session header) instead of being omitted — the ghosted "
+            "fork point was retargeted, undoing the anchor repair."
+        )
+        assert fork["parent_message_index"] is None, (
+            "fork-point nav parent_message_index fell back to the parent header"
+        )
+
 
 class TestReindexBranchBackrefs:
     """Index-remap regression: ``_reindex_filtered_context`` must update

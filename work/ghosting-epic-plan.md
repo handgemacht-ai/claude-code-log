@@ -198,10 +198,25 @@ consumed_indices.add(other.message_index)
 for idx in consumed_indices:
     ctx.messages[idx] = None
 # No reindex.
+_drop_anchor_refs_into_ghosts(ctx)
 ```
 
 Same selection logic, smaller action. The dropped TemplateMessages
 are freed by GC immediately.
+
+`_drop_anchor_refs_into_ghosts(ctx)` is the anchor-repair tail: a
+branch header's `parent_message_index` and the `session_first_message`
+map are cached in `_render_messages` — *before* this pass — so a fork
+point landing on a consumed slot leaves a cached index pointing at a
+ghost. The rendered `#msg-d-{N}` backlink is emitted from that raw
+index (`ctx.get()` returning None does not suppress it), so the ref
+itself is nulled: the anchor is omitted rather than dangling.
+`junction_forward_links` are populated *after* this pass
+(`_link_junction_forwards`), so they are out of scope here.
+`prepare_session_navigation` independently resolves the fork anchor by
+scanning `_visible(ctx.messages)` for `attachment_uuid`; it must leave
+`fork_msg_idx = None` when the fork point was ghosted rather than
+falling back to the parent session header.
 
 ### 3.2 `_ghost_template_by_detail(ctx, detail)` — replaces filter + reindex
 
@@ -474,6 +489,12 @@ phases, each a separate PR, each independently merge-able:
 - Add the `_visible()` helper.
 - Migrate `_pair_skill_tool_uses` to None-out consumed slots
   instead of deleting + reindexing.
+- Add `_drop_anchor_refs_into_ghosts` (called from the tail of
+  `_pair_skill_tool_uses`) so a fork point landing on a consumed slot
+  doesn't leave a dangling `#msg-d-{N}` backlink: null the cached
+  `parent_message_index` / `session_first_message` refs that resolve
+  to a ghost, and leave the `prepare_session_navigation` fork anchor
+  unset rather than retargeting it at the parent session header.
 - Implement steps 3.4 (hierarchy graft) and 3.6 (tree skip Nones)
   — both are needed for the Skill ghost to render correctly.
 - Implement step 3.3 (pair-id skip Nones) — defensive; the Skill

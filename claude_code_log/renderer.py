@@ -1397,8 +1397,15 @@ def prepare_session_navigation(
                 insert_pos += 1
 
             # Fork point nav item — find the junction message and a
-            # meaningful preview (walk up past system hooks to find it)
-            fork_msg_idx = ctx.session_first_message.get(parent_sid)
+            # meaningful preview (walk up past system hooks to find it).
+            # Leave ``fork_msg_idx`` None until the fork point is actually
+            # located among the visible messages: if it was ghosted (e.g.
+            # a slash body or launch tool_result consumed by
+            # ``_pair_skill_tool_uses``), the ``_visible`` loop skips it and
+            # the anchor must be *omitted*, not retargeted at the parent
+            # session header. Falling back to ``session_first_message`` here
+            # would silently undo ``_drop_anchor_refs_into_ghosts``.
+            fork_msg_idx = None
             fork_preview = ""
             fork_msg = None
             for msg in _visible(ctx.messages):
@@ -1426,7 +1433,7 @@ def prepare_session_navigation(
                 "first_user_message": fork_label,
                 "token_summary": "",
                 "parent_session_id": parent_sid,
-                "parent_message_index": ctx.session_first_message.get(parent_sid),
+                "parent_message_index": fork_msg_idx,
                 "depth": parent_depth + 1,
                 "is_fork_point": True,
             }
@@ -3375,6 +3382,24 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
     if not slash_by_source:
         return
 
+    # Index the canonical "Launching skill:" tool_results once, keyed the
+    # same way as the slash bodies. tool_use_ids are session-unique, so each
+    # (render_session_id, tool_use_id) maps to at most one non-error launch
+    # result — this keeps folding linear instead of rescanning ctx.messages
+    # per Skill. An error result or a divergent payload sharing the
+    # tool_use_id is excluded here and stays visible.
+    launch_result_by_source: dict[tuple[str, str], int] = {}
+    for msg in _visible(ctx.messages):
+        if (
+            isinstance(msg.content, ToolResultMessage)
+            and not msg.content.is_error
+            and msg.message_index is not None
+            and _is_launching_skill_payload(msg.content.output)
+        ):
+            launch_result_by_source.setdefault(
+                (msg.render_session_id, msg.content.tool_use_id), msg.message_index
+            )
+
     consumed_indices: set[int] = set()
     for msg in _visible(ctx.messages):
         if not (
@@ -3388,22 +3413,12 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
         msg.content.skill_body = slash.content.text
         if slash.message_index is not None:
             consumed_indices.add(slash.message_index)
-        # The matching tool_result carries the redundant "Launching skill: ..."
-        # string; drop it. Same-session, non-error, payload-prefix-checked
-        # so a real error result or a divergent payload sharing the
-        # tool_use_id stays visible.
-        for other in _visible(ctx.messages):
-            if (
-                not isinstance(other.content, ToolResultMessage)
-                or other.render_session_id != msg.render_session_id
-                or other.content.tool_use_id != msg.content.tool_use_id
-                or other.content.is_error
-                or other.message_index is None
-            ):
-                continue
-            if not _is_launching_skill_payload(other.content.output):
-                continue
-            consumed_indices.add(other.message_index)
+        # Drop the matching, redundant "Launching skill: ..." tool_result.
+        launch_idx = launch_result_by_source.get(
+            (msg.render_session_id, msg.content.tool_use_id)
+        )
+        if launch_idx is not None:
+            consumed_indices.add(launch_idx)
 
     if not consumed_indices:
         return
