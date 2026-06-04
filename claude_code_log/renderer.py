@@ -3419,6 +3419,41 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
     for idx in consumed_indices:
         ctx.messages[idx] = None
 
+    # A branch header's ``parent_message_index`` and the
+    # ``session_first_message`` map are cached during ``_render_messages``
+    # — *before* this pass. If a fork point happened to land on a slot we
+    # just ghosted, that cached index now refers to a ``None`` slot and the
+    # rendered ``#msg-d-{N}`` backlink would dangle (the anchor href is
+    # emitted from the raw index; ``ctx.get()`` returning ``None`` doesn't
+    # suppress it). Null those stale refs so the anchor is simply omitted.
+    # ``junction_forward_links`` are populated *after* this pass
+    # (``_link_junction_forwards``), so they need no repair here.
+    _drop_anchor_refs_into_ghosts(ctx)
+
+
+def _drop_anchor_refs_into_ghosts(ctx: RenderingContext) -> None:
+    """Null anchor-target refs that now point at a ghosted (``None``) slot.
+
+    Keeps the index-stability contract honest for the only anchor sources
+    cached before ghosting runs: ``session_first_message`` and each branch
+    header's ``parent_message_index``. See ``_pair_skill_tool_uses`` for
+    why junction forward links are out of scope. Phase 2 of the ghosting
+    epic adds a broader ``_repair_stale_anchor_refs`` for the detail-filter
+    ghost path; this is the skill-fold-scoped counterpart.
+    """
+    ctx.session_first_message = {
+        sid: idx
+        for sid, idx in ctx.session_first_message.items()
+        if ctx.get(idx) is not None
+    }
+    for msg in _visible(ctx.messages):
+        if (
+            isinstance(msg.content, SessionHeaderMessage)
+            and msg.content.parent_message_index is not None
+            and ctx.get(msg.content.parent_message_index) is None
+        ):
+            msg.content.parent_message_index = None
+
 
 def _reindex_filtered_context(
     ctx: RenderingContext, filtered: list[TemplateMessage]

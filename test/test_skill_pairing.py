@@ -738,6 +738,20 @@ class TestSkillFoldOnFork:
             "the slash body should be ghosted, not surviving in ctx.messages"
         )
 
+        # Pin that BOTH consumed slots are ghosted — not just the slash
+        # body — so the "exactly 2 ghosts" count above can't be satisfied
+        # vacuously by ghosting some unrelated slot. Assert by uuid-absence:
+        # the launch tool_result lives in entry 'u-launch', the slash body
+        # in 'u-meta-body'.
+        survivor_uuids = {m.meta.uuid for m in survivors}
+        assert "u-launch" not in survivor_uuids, (
+            "the canonical 'Launching skill:' tool_result (uuid 'u-launch') "
+            "should be ghosted, not surviving in ctx.messages"
+        )
+        assert "u-meta-body" not in survivor_uuids, (
+            "the slash-command body (uuid 'u-meta-body') should be ghosted"
+        )
+
         # === 3) The within-session branch header for the Skill-
         # bearing branch must resolve its parent_message_index to
         # the fork-anchor message (uuid 'c'), NOT to a phantom slot.
@@ -778,6 +792,140 @@ class TestSkillFoldOnFork:
             f"uuid={parent_msg.meta.uuid!r}, expected 'c' (the fork anchor). "
             "This would surface as a wrong 'from #msg-d-N' backlink in the "
             "rendered branch header — exactly the PR #131 failure class."
+        )
+
+
+class TestSkillFoldGhostAnchorRepair:
+    """``_pair_skill_tool_uses`` ghosts the slash body + launch tool_result
+    *in place* (None slots). Anchor-target refs cached earlier — a branch
+    header's ``parent_message_index`` and the ``session_first_message`` map,
+    both populated in ``_render_messages`` before this pass — may point at a
+    slot we just ghosted. The rendered ``#msg-d-{N}`` backlink is emitted
+    from that raw index, so a ``ctx.get()`` that returns None for a ghost
+    does NOT suppress the href; the ref itself must be nulled.
+
+    This is the exposure CodeRabbit flagged on #193 (the broader
+    ``_repair_stale_anchor_refs`` lives in Phase 2). Constructed via a
+    manual context — the same unit style as ``TestReindexBranchBackrefs``
+    — to land a fork point precisely on a soon-to-be-ghosted skill slot
+    without fighting the DAG's fork-collapse heuristic.
+    """
+
+    def test_anchor_ref_into_ghosted_skill_slot_is_nulled(self) -> None:
+        from claude_code_log.models import (
+            MessageMeta,
+            SessionHeaderMessage,
+            ToolResultContent,
+            ToolResultMessage,
+            ToolUseContent,
+            ToolUseMessage,
+            UserSlashCommandMessage,
+        )
+        from claude_code_log.renderer import (
+            RenderingContext,
+            TemplateMessage,
+            _pair_skill_tool_uses,
+        )
+
+        sid = "root"
+        tid = "skill-tool-1"
+        ctx = RenderingContext()
+
+        def _reg(content: object) -> TemplateMessage:
+            msg = TemplateMessage(content)  # type: ignore[arg-type]
+            ctx.register(msg)
+            return msg
+
+        # idx 0: trunk user
+        _reg(
+            UserSlashCommandMessage(
+                MessageMeta(session_id=sid, timestamp="", uuid="u-trunk"), text="hi"
+            )
+        )
+        # idx 1: Skill tool_use
+        _reg(
+            ToolUseMessage(
+                MessageMeta(session_id=sid, timestamp="", uuid="a-skill"),
+                input=ToolUseContent(
+                    type="tool_use",
+                    id=tid,
+                    name="Skill",
+                    input={"skill": "forky:skill", "args": ""},
+                ),
+                tool_use_id=tid,
+                tool_name="Skill",
+            )
+        )
+        # idx 2: canonical launch tool_result — ghosted AND the fork anchor.
+        launch = _reg(
+            ToolResultMessage(
+                MessageMeta(session_id=sid, timestamp="", uuid="u-launch"),
+                tool_use_id=tid,
+                output=ToolResultContent(
+                    type="tool_result",
+                    tool_use_id=tid,
+                    content="Launching skill: forky:skill",
+                    is_error=False,
+                ),
+            )
+        )
+        # idx 3: slash body — ghosted.
+        slash = _reg(
+            UserSlashCommandMessage(
+                MessageMeta(
+                    session_id=sid,
+                    timestamp="",
+                    uuid="u-meta-body",
+                    is_meta=True,
+                    source_tool_use_id=tid,
+                ),
+                text="# expanded skill body",
+            )
+        )
+        # idx 4: a branch header whose fork anchor IS the launch tool_result.
+        branch = _reg(
+            SessionHeaderMessage(
+                MessageMeta(session_id=f"{sid}@a-skill", timestamp="", uuid=""),
+                title="Branch • test",
+                session_id=f"{sid}@a-skill",
+                parent_session_id=sid,
+                parent_message_index=launch.message_index,
+                attachment_uuid="u-launch",
+                is_branch=True,
+            )
+        )
+
+        assert launch.message_index is not None and slash.message_index is not None
+        ctx.session_first_message[sid] = 0
+        # A session whose first message resolves to a soon-ghosted slot.
+        ctx.session_first_message["ghost-first"] = launch.message_index
+
+        _pair_skill_tool_uses(ctx)
+
+        # Both consumed slots ghosted in place.
+        assert ctx.messages[launch.message_index] is None, (
+            "launch tool_result slot should be ghosted (None)"
+        )
+        assert ctx.messages[slash.message_index] is None, (
+            "slash-body slot should be ghosted (None)"
+        )
+
+        # THE GUARD: the branch backlink into the ghosted fork anchor is
+        # nulled so the rendered '#msg-d-{N}' href doesn't dangle.
+        assert isinstance(branch.content, SessionHeaderMessage)
+        assert branch.content.parent_message_index is None, (
+            "branch header parent_message_index still points at a ghosted "
+            f"slot (={branch.content.parent_message_index}) — the dead-anchor "
+            "guard in _pair_skill_tool_uses did not run."
+        )
+
+        # session_first_message entries resolving to a ghost are dropped;
+        # the live one survives.
+        assert "ghost-first" not in ctx.session_first_message, (
+            "session_first_message kept an entry pointing at a ghosted slot"
+        )
+        assert ctx.session_first_message.get(sid) == 0, (
+            "the live session_first_message entry was incorrectly dropped"
         )
 
 
