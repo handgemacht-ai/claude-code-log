@@ -13,6 +13,7 @@ from claude_code_log.html.utils import (
     is_memory_tool,
     memory_short_path,
 )
+from claude_code_log.markdown.renderer import MarkdownRenderer
 from claude_code_log.models import (
     EditInput,
     MessageMeta,
@@ -134,6 +135,34 @@ class TestMemoryTitles:
         title = self.r.title_EditInput(inp, _tool_use("Edit", inp))
         assert "📝" in title
         assert "🧠" not in title
+
+
+class TestMemoryMarkdownTitles:
+    """Markdown renderer mirrors the 🧠 memory titles (parity with HTML)."""
+
+    def setup_method(self):
+        self.r = MarkdownRenderer()
+
+    def test_read_memory_title(self):
+        inp = ReadInput(file_path=MEM)
+        title = self.r.title_ReadInput(inp, _tool_use("Read", inp))
+        assert title == "🧠 Read memory `MEMORY.md`"
+
+    def test_write_memory_title(self):
+        inp = WriteInput(file_path=MEM_SUB, content="x")
+        title = self.r.title_WriteInput(inp, _tool_use("Write", inp))
+        assert title == "🧠 Write memory `topics/debugging.md`"
+
+    def test_edit_memory_title(self):
+        inp = EditInput(file_path=MEM, old_string="a", new_string="b")
+        title = self.r.title_EditInput(inp, _tool_use("Edit", inp))
+        assert title == "🧠 Edit memory `MEMORY.md`"
+
+    def test_non_memory_read_keeps_plain_icon(self):
+        inp = ReadInput(file_path="/home/u/proj/src/main.py")
+        title = self.r.title_ReadInput(inp, _tool_use("Read", inp))
+        assert "🧠" not in title
+        assert "main.py" in title
 
 
 class TestMemoryCssModifier:

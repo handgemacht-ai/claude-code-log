@@ -9,7 +9,8 @@ short path; "N days old" recall badge deferred; Bash refs skipped).
 
 - `is_memory_path()` / `is_memory_tool()` / `memory_short_path()` helpers
   (`html/utils.py`), anchored on `/.claude/projects/<slug>/memory/`.
-- 🧠 titles for memory Read/Write/Edit (`html/renderer.py`).
+- 🧠 titles for memory Read/Write/Edit in **both** the HTML (`html/renderer.py`)
+  and Markdown (`markdown/renderer.py`) renderers.
 - `memory` CSS modifier on the tool_use call **and** its tool_result
   (`html/utils.py:_get_css_classes_from_content`).
 - `memory` filter toggle (`transcript.html`) behaving as a cross-cutting
@@ -20,9 +21,11 @@ short path; "N days old" recall badge deferred; Bash refs skipped).
 
 ## Follow-ups (deferred, not in v1)
 
-- **Custom `autoMemoryDirectory`** relocates memory outside the default path,
-  so the path-anchored regex won't detect it. Make the location configurable
-  if this comes up. (Noted as a code comment on `_MEMORY_PATH_RE`.)
+- **Custom `autoMemoryDirectory` / Windows paths** — the path-anchored regex
+  is forward-slash anchored and assumes the default location, so a custom
+  `autoMemoryDirectory` or Windows backslash paths won't be detected. Make the
+  location/separator configurable if this comes up. (Both noted as code
+  comments on `_MEMORY_PATH_RE`.)
 - **Render the memory directory itself** (issue Q2) — standalone browser of
   `MEMORY.md` + topic files. Bigger feature; deferred.
 - **"N days old" recall badge** from the `<system-reminder>` age marker.

@@ -61,9 +61,12 @@ if TYPE_CHECKING:
 # bare ``memory/`` substring so a project's own ``memory/`` folder can't yield
 # false positives (issue #192).
 #
-# Limitation: a custom ``autoMemoryDirectory`` setting relocates memory outside
-# this path and won't be detected. Acceptable for v1; could be made
-# configurable later. See work/parse-memory-spike.md.
+# Limitations (acceptable for v1; see work/parse-memory-spike.md):
+#  - A custom ``autoMemoryDirectory`` setting relocates memory outside this
+#    path and won't be detected.
+#  - Forward-slash anchored, so Windows backslash paths
+#    (…\.claude\projects\slug\memory\…) won't match.
+# Both could be addressed by making the location/separator configurable later.
 _MEMORY_PATH_RE = re.compile(r"/\.claude/projects/[^/]+/memory/")
 
 
@@ -81,9 +84,9 @@ def is_memory_path(file_path: Optional[str]) -> bool:
 def is_memory_tool(tool_name: Optional[str], file_path: Optional[str]) -> bool:
     """True if a tool call/result is an auto-memory interaction.
 
-    A file tool (Read/Write/Edit/MultiEdit) acting on a path inside a
-    ``memory/`` directory. Used to tag both the ``tool_use`` call and its
-    paired ``tool_result`` with the ``memory`` CSS modifier.
+    A file tool (Read/Write/Edit) acting on a path inside a ``memory/``
+    directory. Used to tag both the ``tool_use`` call and its paired
+    ``tool_result`` with the ``memory`` CSS modifier.
     """
     return tool_name in _MEMORY_TOOL_NAMES and is_memory_path(file_path)
 
