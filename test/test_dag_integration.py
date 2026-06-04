@@ -1287,7 +1287,9 @@ class TestRenderSessionResetAcrossSessions:
 
         # b1 and b2 should NOT appear in the rendered messages
         # (sanity: confirms the filter is doing what we expect).
-        rendered_uuids = {m.meta.uuid for m in ctx.messages if m.meta.uuid}
+        rendered_uuids = {
+            m.meta.uuid for m in ctx.messages if m is not None and m.meta.uuid
+        }
         assert "b1" not in rendered_uuids, (
             f"b1 should be filtered out at MINIMAL; got rendered_uuids={rendered_uuids}"
         )
@@ -1295,7 +1297,11 @@ class TestRenderSessionResetAcrossSessions:
 
         # c1 and c2 SHOULD appear and resolve to their respective
         # branch sids — NOT to "s1" (trunk).
-        by_uuid = {m.meta.uuid: m for m in ctx.messages if m.meta.uuid in ("c1", "c2")}
+        by_uuid = {
+            m.meta.uuid: m
+            for m in ctx.messages
+            if m is not None and m.meta.uuid in ("c1", "c2")
+        }
         assert set(by_uuid) == {"c1", "c2"}, (
             f"expected c1+c2 in rendered messages; got {set(by_uuid)}"
         )
@@ -1436,7 +1442,7 @@ class TestRenderSessionResetAcrossSessions:
         # Collect every session header in encounter order.
         header_order: list[tuple[int, str, bool, object]] = []
         for i, m in enumerate(ctx.messages):
-            if isinstance(m.content, SessionHeaderMessage):
+            if m is not None and isinstance(m.content, SessionHeaderMessage):
                 header_order.append(
                     (
                         i,
@@ -1468,16 +1474,21 @@ class TestRenderSessionResetAcrossSessions:
                 f"template_messages will emit it as a root, not nested "
                 "under the trunk. Header order: " + str(header_order)
             )
-            # 3) Branch header's parent_message_index points to a
-            #    REGISTERED message (the trunk header), not None.
-            assert parent_msg_idx is not None, (
-                f"branch header {sid!r} has parent_message_index=None — "
-                "the trunk header wasn't in ctx.session_first_message "
-                "when the branch header was built. Header order: " + str(header_order)
-            )
-            assert parent_msg_idx == trunk_idx, (
-                f"branch header {sid!r}.parent_message_index={parent_msg_idx} "
-                f"should point to trunk header at {trunk_idx}"
+            # 3) Single-axis collapse (Phase 3): the fork anchor a1 is a
+            #    tool-only assistant, ghosted at MINIMAL. Pre-collapse a1 was
+            #    dropped pre-render and the branch backlink fell back to the
+            #    trunk header; now a1 is built-then-ghosted, so the branch's
+            #    parent_message_index points at a1's ghosted slot and the
+            #    anchor-repair pass correctly NULLS it — the "from #msg-d-N"
+            #    backlink is omitted (rendered as plain text via the
+            #    `is not None` guard) rather than mis-targeting the trunk
+            #    header. The D11 invariant under test — trunk header registered
+            #    BEFORE the branch (assertions 1+2) — is unaffected.
+            assert parent_msg_idx is None, (
+                f"branch header {sid!r}.parent_message_index={parent_msg_idx}: "
+                "expected None because its fork anchor (tool-only assistant "
+                "'a1') is ghosted at MINIMAL, so the backlink must be omitted. "
+                "Header order: " + str(header_order)
             )
 
 

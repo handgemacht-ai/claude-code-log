@@ -21,15 +21,9 @@ from claude_code_log.converter import convert_jsonl_to, load_transcript
 from claude_code_log.html.renderer import HtmlRenderer
 from claude_code_log.markdown.renderer import MarkdownRenderer
 from claude_code_log.models import (
-    AssistantTranscriptEntry,
     DetailLevel,
-    SystemTranscriptEntry,
-    ThinkingContent,
-    ToolResultContent,
-    ToolUseContent,
-    UserTranscriptEntry,
 )
-from claude_code_log.renderer import _filter_by_detail, generate_template_messages
+from claude_code_log.renderer import generate_template_messages
 
 
 # -- Test data helpers --------------------------------------------------------
@@ -127,129 +121,137 @@ def _write_jsonl(entries: list[dict], path: Path) -> Path:
     return path
 
 
-# -- Unit tests for _filter_compact ------------------------------------------
+# -- Single-axis collapse: the pre-render detail filter is gone --------------
+
+
+def test_pre_render_detail_filter_is_deleted():
+    """``_filter_by_detail`` (and its reindex helper) must stay deleted.
+
+    Single-axis collapse (Phase 3) folded all detail stripping into the
+    post-render ``_ghost_template_by_detail`` pass. Pin the deletion so the
+    pre-render filter can't be reintroduced and quietly recreate the
+    two-axis complexity the ghosting epic removed.
+    """
+    import claude_code_log.renderer as renderer
+
+    assert not hasattr(renderer, "_filter_by_detail"), (
+        "_filter_by_detail was reintroduced — detail filtering must happen "
+        "only post-render via _ghost_template_by_detail (single-axis)."
+    )
+    assert not hasattr(renderer, "_reindex_filtered_context"), (
+        "_reindex_filtered_context was reintroduced — ghosting keeps indices "
+        "stable, so no reindex pass should exist."
+    )
+
+
+# -- MINIMAL detail filtering (end-to-end) -----------------------------------
 
 
 class TestFilterMinimal:
-    """Test the _filter_compact function directly on parsed TranscriptEntry lists."""
+    """MINIMAL detail filtering, end-to-end via ``generate_template_messages``.
+
+    Single-axis collapse (Phase 3) removed the pre-render
+    ``_filter_by_detail``; all stripping now happens post-render in
+    ``_ghost_template_by_detail`` via per-class ``detail_visibility``. These
+    pin the same MINIMAL contract through the public pipeline by asserting on
+    the *visible* (non-ghost) messages, since the stripped content is ghosted
+    (``None`` slot) rather than removed pre-render.
+    """
+
+    def _render_minimal(self, entries, tmp_path):
+        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
+        root_messages, _, ctx = generate_template_messages(
+            messages, detail=DetailLevel.MINIMAL
+        )
+        types: set[str] = set()
+        _collect_types(root_messages, types)
+        visible = [m for m in ctx.messages if m is not None]
+        return types, visible
 
     def test_keeps_user_and_assistant_text(self, tmp_path):
-        """Plain user and assistant messages pass through."""
-        entries = [
-            _user_entry("Hello"),
-            _assistant_entry("Hi there!"),
-        ]
-        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(result) == 2
-        assert isinstance(result[0], UserTranscriptEntry)
-        assert isinstance(result[1], AssistantTranscriptEntry)
+        """Plain user and assistant text remain visible."""
+        types, _ = self._render_minimal(
+            [_user_entry("Hello"), _assistant_entry("Hi there!")], tmp_path
+        )
+        assert "user" in types
+        assert "assistant" in types
 
     def test_removes_system_entries(self, tmp_path):
-        """System entries are dropped entirely."""
-        entries = [
-            _user_entry("Hello"),
-            _system_entry("model changed"),
-            _assistant_entry("Hi"),
-        ]
-        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(result) == 2
-        assert all(not isinstance(m, SystemTranscriptEntry) for m in result)
+        """System entries are not visible at MINIMAL."""
+        types, _ = self._render_minimal(
+            [
+                _user_entry("Hello"),
+                _system_entry("model changed"),
+                _assistant_entry("Hi"),
+            ],
+            tmp_path,
+        )
+        assert "system" not in types
+        assert "user" in types and "assistant" in types
 
     def test_strips_tool_use_from_assistant(self, tmp_path):
-        """Tool use items within assistant entries are stripped."""
-        entries = [
-            _user_entry("Do something"),
-            _assistant_entry(
-                "I'll run a command.",
-                extra_content=[_tool_use_item()],
-            ),
-        ]
-        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(result) == 2
-        # Assistant entry should have text but no tool_use
-        assistant = result[1]
-        assert isinstance(assistant, AssistantTranscriptEntry)
-        for item in assistant.message.content:
-            assert not isinstance(item, ToolUseContent)
+        """An assistant turn with text + tool_use keeps the text, ghosts the tool_use."""
+        types, _ = self._render_minimal(
+            [
+                _user_entry("Do something"),
+                _assistant_entry(
+                    "I'll run a command.", extra_content=[_tool_use_item()]
+                ),
+            ],
+            tmp_path,
+        )
+        assert "tool_use" not in types
+        assert "assistant" in types
 
     def test_strips_tool_result_from_user(self, tmp_path):
-        """Tool result items within user entries are stripped."""
-        entries = [
-            _user_entry(
-                "Here's the result",
-                extra_content=[_tool_result_item()],
-            ),
-        ]
-        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(result) == 1
-        user = result[0]
-        assert isinstance(user, UserTranscriptEntry)
-        for item in user.message.content:
-            assert not isinstance(item, ToolResultContent)
+        """Tool_result content is not visible at MINIMAL."""
+        types, _ = self._render_minimal(
+            [_user_entry("Here's the result", extra_content=[_tool_result_item()])],
+            tmp_path,
+        )
+        assert "tool_result" not in types
 
     def test_strips_thinking_from_assistant(self, tmp_path):
-        """Thinking items within assistant entries are stripped."""
-        entries = [
-            _assistant_entry(
-                "Here's my answer.",
-                extra_content=[_thinking_item()],
-            ),
-        ]
-        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(result) == 1
-        assistant = result[0]
-        assert isinstance(assistant, AssistantTranscriptEntry)
-        for item in assistant.message.content:
-            assert not isinstance(item, ThinkingContent)
+        """Thinking content is not visible at MINIMAL."""
+        types, _ = self._render_minimal(
+            [_assistant_entry("Here's my answer.", extra_content=[_thinking_item()])],
+            tmp_path,
+        )
+        assert "thinking" not in types
+        assert "assistant" in types
 
     def test_drops_assistant_with_only_tool_use(self, tmp_path):
-        """Assistant entries with only tool_use (no text) are dropped entirely."""
-        # Build an entry where the only content is a tool_use (no text at all)
+        """An assistant turn whose only content is a tool_use yields no
+        visible content message — only the session header survives."""
         entry = _assistant_entry("placeholder", extra_content=[_tool_use_item()])
-        # Remove the text item, keeping only tool_use
         entry["message"]["content"] = [_tool_use_item()]
-        messages = load_transcript(_write_jsonl([entry], tmp_path / "t.jsonl"))
-        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(result) == 0
+        _types, visible = self._render_minimal([entry], tmp_path)
+        # No content message from the tool-only assistant; headers are all
+        # that remain.
+        assert visible, "expected at least a session header to survive"
+        assert all(m.is_session_header for m in visible), (
+            "tool-only assistant should produce no visible content at MINIMAL; "
+            f"got {[m.type for m in visible]}"
+        )
 
     def test_removes_sidechain_entries(self, tmp_path):
-        """Sidechain (subagent) entries are dropped."""
+        """Sidechain (subagent) messages are not visible at MINIMAL."""
         sidechain_user = _user_entry("Subagent prompt")
         sidechain_user["isSidechain"] = True
         sidechain_assistant = _assistant_entry("Subagent reply")
         sidechain_assistant["isSidechain"] = True
-        entries = [
-            _user_entry("Main prompt"),
-            sidechain_user,
-            sidechain_assistant,
-            _assistant_entry("Main reply"),
-        ]
-        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        result = _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(result) == 2
-        for m in result:
-            assert isinstance(m, (UserTranscriptEntry, AssistantTranscriptEntry))
-            assert not m.isSidechain
-
-    def test_does_not_mutate_original(self, tmp_path):
-        """Filtering creates copies, not mutations of the original."""
-        entries = [
-            _assistant_entry(
-                "Some text",
-                extra_content=[_tool_use_item()],
-            ),
-        ]
-        messages = load_transcript(_write_jsonl(entries, tmp_path / "t.jsonl"))
-        first = messages[0]
-        assert isinstance(first, AssistantTranscriptEntry)
-        original_content_count = len(first.message.content)
-        _filter_by_detail(messages, DetailLevel.MINIMAL)
-        assert len(first.message.content) == original_content_count
+        _types, visible = self._render_minimal(
+            [
+                _user_entry("Main prompt"),
+                sidechain_user,
+                sidechain_assistant,
+                _assistant_entry("Main reply"),
+            ],
+            tmp_path,
+        )
+        assert not any(m.is_sidechain for m in visible), (
+            "sidechain messages should be ghosted (not visible) at MINIMAL"
+        )
 
 
 # -- Tests for HIGH detail level -----------------------------------------------

@@ -212,23 +212,28 @@ how much of the transcript renders:
   (designed for feeding to downstream agents, e.g. building a
   requirements doc).
 
-Filtering happens in two passes: a *pre-render* pass on `TranscriptEntry`
-that strips content items (e.g., tool_use blocks from assistant turns),
-and a *post-render* pass on `TemplateMessage` that drops whole content
-types created by factories (`BashInputMessage`, `BashOutputMessage`,
-`CommandOutputMessage` at low/minimal). The two-pass shape exists
-because some content is identifiable only after factory dispatch (e.g.,
-distinguishing `BashInputMessage` from the tool_use that produced it).
+Filtering happens in a single *post-render* pass on `TemplateMessage`:
+`_ghost_template_by_detail` sets each non-visible slot in
+`RenderingContext.messages` to `None` ("ghosting"), keyed by the content
+class's `detail_visibility` predicate (plus the `_LOW_KEEP_TOOLS`
+allowlist at `low` and sidechain dropping below `FULL`). Indices stay
+stable — surviving messages keep their `message_index`, so there is no
+reindex; the rendered tree simply skips ghost slots. Earlier revisions
+ran a *second*, pre-render `_filter_by_detail` pass on `TranscriptEntry`
+plus a `_reindex_filtered_context` remap after every deletion; the
+ghosting model collapsed both into this one axis (see
+[`work/ghosting-epic-plan.md`](../work/ghosting-epic-plan.md)).
 
-Important interaction: `_pair_skill_tool_uses` runs **before**
-`_filter_template_by_detail`, and each pass that drops messages calls
-`_reindex_filtered_context` to remap surviving indices (the skill-fold
-pass remaps after dropping the slash-command body and the redundant
-"Launching skill" tool_result; the detail filter remaps after dropping
-content types below `FULL`). The reindex pass also has to update
-cached parent-message references on `SessionHeaderMessage` (see PR
-#131 fix). See [rendering-architecture.md § 5](rendering-architecture.md)
-for the full pass order.
+Important interaction: `_pair_skill_tool_uses` also ghosts in place (the
+slash-command body and the redundant "Launching skill" tool_result).
+Because anchor-target references can be cached before a slot is ghosted —
+a branch header's `parent_message_index`, `session_first_message`
+entries, junction forward-links — each ghosting step sanitizes them
+afterward: `_pair_skill_tool_uses` calls `_drop_anchor_refs_into_ghosts`
+and `_ghost_template_by_detail` calls `_repair_stale_anchor_refs`, so no
+`#msg-d-{N}` backlink dangles (see PR #131 fix). See
+[rendering-architecture.md § 5](rendering-architecture.md) for the full
+pass order.
 
 ### 2.7 Image export
 
