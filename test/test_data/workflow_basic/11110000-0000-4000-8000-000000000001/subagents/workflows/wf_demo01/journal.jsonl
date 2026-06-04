@@ -1,0 +1,6 @@
+{"type": "started", "key": "v2:hash0", "agentId": "ag000001"}
+{"type": "started", "key": "v2:hash1", "agentId": "ag000002"}
+{"type": "started", "key": "v2:hash2", "agentId": "ag000003"}
+{"type": "result", "key": "v2:hash0", "agentId": "ag000001", "result": {"area": "loader", "summary": "Discovery glob misses subagents/workflows.", "key_functions": ["_scan_sidechain_uuids", "load_directory_transcripts"], "opportunities": ["extend glob to subagents/workflows/<runId>"]}}
+{"type": "result", "key": "v2:hash1", "agentId": "ag000002", "result": {"area": "hierarchy", "summary": "Tree already nests; level table can retire.", "key_functions": ["_build_message_tree"], "opportunities": ["derive depth from tree position"]}}
+{"type": "result", "key": "v2:hash2", "agentId": "ag000003", "result": "## Plan\n\nLand parsing first, then render workflow runs on the nested DOM."}
