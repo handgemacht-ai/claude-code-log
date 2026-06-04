@@ -133,3 +133,45 @@ class TestWorkflowMetaParsing:
 
     def test_no_meta_block_returns_empty(self) -> None:
         assert parse_workflow_meta("const x = 1\nawait agent('hi')\n") == ("", "", [])
+
+    def test_decoy_local_meta_ignored_for_exported_block(self) -> None:
+        # CR #205: only the EXPORTED `meta` declaration is the header source;
+        # a non-export local `meta = {...}` before it must not be mis-parsed.
+        script = (
+            "const meta = { name: 'DECOY', description: 'local' }\n"
+            "export const meta = {\n"
+            "  name: 'real-wf',\n"
+            "  description: 'the real one',\n"
+            "  phases: [{ title: 'Map' }],\n"
+            "}\n"
+        )
+        assert parse_workflow_meta(script) == ("real-wf", "the real one", ["Map"])
+
+
+class TestWorkflowMarkdownEscaping:
+    """CR #205 (Major): script-derived meta fields must be HTML-tag-neutralized
+    before injection into the Markdown header (the script body itself is fenced
+    and safe)."""
+
+    def test_header_neutralizes_html_tags(self) -> None:
+        from claude_code_log.models import WorkflowToolInput
+
+        script = (
+            "export const meta = {\n"
+            "  name: 'pwn <script>alert(1)</script>',\n"
+            "  description: 'd <img src=x onerror=alert(2)>',\n"
+            "  phases: [{ title: 'P <b>x</b>' }],\n"
+            "}\n"
+        )
+        out = MarkdownRenderer().format_WorkflowToolInput(
+            WorkflowToolInput(script=script),
+            None,  # type: ignore[arg-type]  # message is unused by this formatter
+        )
+        # Inspect only the header (everything before the fenced script, where
+        # the raw tags legitimately appear inside a code block).
+        header = out.split("```")[0]
+        assert "<script>" not in header
+        assert "<img" not in header
+        assert "<b>" not in header
+        # Neutralized text still readable in the header.
+        assert "alert(1)" in header

@@ -1047,13 +1047,18 @@ class MarkdownRenderer(Renderer):
 
         parts: list[str] = []
         header_bits: list[str] = []
+        # Neutralize raw HTML tags in script-derived fields before injecting
+        # into Markdown (CR #205) — mirrors the file's _protect_html_tags
+        # posture so a permissive viewer can't interpret e.g. a <script> in a
+        # workflow name/description/phase. (The script body itself is fenced.)
         if name:
-            header_bits.append(f"**{name}**")
+            header_bits.append(f"**{_protect_html_tags(name)}**")
         if description:
-            header_bits.append(description)
+            header_bits.append(_protect_html_tags(description))
         header = " — ".join(header_bits)
         if phases:
-            phase_text = "_(phases: " + ", ".join(phases) + ")_"
+            safe_phases = ", ".join(_protect_html_tags(p) for p in phases)
+            phase_text = f"_(phases: {safe_phases})_"
             header = f"{header} {phase_text}" if header else phase_text
         if header:
             parts.append(header)

@@ -31,7 +31,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 
-_WF_META_RE = re.compile(r"meta\s*=\s*\{(.*?)\n\}", re.DOTALL)
+_WF_META_RE = re.compile(
+    r"export\s+(?:const|let|var)\s+meta\s*=\s*\{(.*?)\n\}", re.DOTALL
+)
 _WF_NAME_RE = re.compile(r"\bname\s*:\s*['\"]([^'\"]*)['\"]")
 _WF_DESC_RE = re.compile(r"\bdescription\s*:\s*['\"]([^'\"]*)['\"]")
 _WF_PHASES_KEY_RE = re.compile(r"\bphases\s*:")
@@ -43,14 +45,15 @@ def parse_workflow_meta(script: str) -> tuple[str, str, list[str]]:
     script's ``export const meta = {...}`` block — a display aid shared by
     the HTML and Markdown renderers (issue #174).
 
-    Assumes the canonical top-level form the Workflow tool mandates: a
-    column-0 ``export const meta = { ... \\n}`` (the closing-brace anchor is
-    at column 0; an indented close yields no header). All lookups are scoped
-    to the meta-block slice, so they can't pick up ``name:``/``title:``
-    elsewhere in the orchestrator body. Phase titles are collected from every
-    ``title:`` *after* the ``phases:`` key, so a ``detail`` string containing
-    ``]`` doesn't truncate the list. Returns empty values when the block or a
-    field isn't found.
+    Matches only the **exported** declaration the Workflow tool mandates —
+    ``export const meta = { ... \\n}`` (also ``let``/``var``) — so an
+    unrelated local ``meta = {...}`` elsewhere in the orchestrator can't be
+    mis-parsed as the header. The closing-brace anchor is at column 0 (an
+    indented close yields no header). All field lookups are scoped to the
+    matched block, so they can't pick up ``name:``/``title:`` elsewhere in
+    the body. Phase titles are collected from every ``title:`` *after* the
+    ``phases:`` key, so a ``detail`` string containing ``]`` doesn't truncate
+    the list. Returns empty values when the block or a field isn't found.
     """
     block_m = _WF_META_RE.search(script)
     if not block_m:
