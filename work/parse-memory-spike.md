@@ -13,6 +13,11 @@ short path; "N days old" recall badge deferred; Bash refs skipped).
   and Markdown (`markdown/renderer.py`) renderers.
 - `memory` CSS modifier on the tool_use call **and** its tool_result
   (`html/utils.py:_get_css_classes_from_content`).
+- Memory file **bodies** (Read result + Write input) render as rendered
+  Markdown via the usual collapsible-markdown helper
+  (`render_markdown_collapsible`), instead of syntax-highlighted source —
+  gated on `is_memory_path` in `html/tool_formatters.py`. (Edit stays as a
+  highlighted snippet/diff — it's a partial region, not a full doc.)
 - `memory` filter toggle (`transcript.html`) behaving as a cross-cutting
   modifier (like `sidechain`) that both hides memory noise and isolates
   memory-only; `memory` timeline lane (`components/timeline.html`) in lockstep.

@@ -6,7 +6,11 @@ give them a 🧠 title, and tag them with a ``memory`` CSS modifier so the
 filter toolbar + timeline can isolate/hide them.
 """
 
-from claude_code_log.html.renderer import HtmlRenderer
+import re
+from pathlib import Path
+
+from claude_code_log.converter import load_transcript
+from claude_code_log.html.renderer import HtmlRenderer, generate_html
 from claude_code_log.html.utils import (
     css_class_from_message,
     is_memory_path,
@@ -148,6 +152,27 @@ class TestMemoryTitles:
         title = self.r.title_EditInput(inp, _tool_use("Edit", inp))
         assert "📝" in title
         assert "🧠" not in title
+
+
+class TestMemoryBodyMarkdown:
+    """Memory file bodies (which are Markdown) render as rendered Markdown via
+    the usual collapsible-markdown helper, not as syntax-highlighted source."""
+
+    def _render(self) -> str:
+        fixture = Path(__file__).parent / "test_data" / "memory_interactions.jsonl"
+        return generate_html(load_transcript(fixture), "Memory Body Markdown")
+
+    def test_read_memory_body_rendered_as_markdown(self):
+        html = self._render()
+        # The MEMORY.md read result ('# Memory index\n\n- build: `just ci`')
+        # renders as Markdown (h1 + inline code) inside a markdown wrapper.
+        assert re.search(r'class="read-tool-result markdown"', html)
+        assert re.search(r"<h1[^>]*>Memory index", html)
+        assert "<code>just ci</code>" in html
+
+    def test_write_memory_body_rendered_as_markdown(self):
+        html = self._render()
+        assert re.search(r'class="write-tool-content markdown"', html)
 
 
 class TestMemoryMarkdownTitles:

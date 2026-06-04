@@ -22,6 +22,7 @@ from typing import Any, Optional, cast
 
 from .utils import (
     escape_html,
+    is_memory_path,
     render_collapsible_code,
     render_file_content_collapsible,
     render_markdown_collapsible,
@@ -398,6 +399,15 @@ def format_read_output(output: ReadOutput) -> str:
             f"<div class='system-reminder'>🤖 <em>{escaped_reminder}</em></div>"
         )
 
+    # Auto-memory files are Markdown (MEMORY.md + topic .md), so render a
+    # recalled-memory body as rendered Markdown rather than syntax-highlighted
+    # source — using the project's usual collapsible-markdown helper (#192).
+    if is_memory_path(output.file_path):
+        return (
+            render_markdown_collapsible(output.content, "read-tool-result")
+            + suffix_html
+        )
+
     return render_file_content_collapsible(
         output.content,
         output.file_path,
@@ -631,6 +641,10 @@ def format_write_input(write_input: WriteInput) -> str:
         write_input: Typed WriteInput with file_path and content.
     Note: File path is now shown in the header, so we skip it here.
     """
+    # Memory files are Markdown — render a written memory body as rendered
+    # Markdown rather than highlighted source (#192).
+    if is_memory_path(write_input.file_path):
+        return render_markdown_collapsible(write_input.content, "write-tool-content")
     return render_file_content_collapsible(
         write_input.content, write_input.file_path, "write-tool-content"
     )
