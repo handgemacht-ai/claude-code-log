@@ -23,6 +23,7 @@ from typing import Any, Optional, cast
 from .utils import (
     escape_html,
     render_collapsible_code,
+    render_async_result_body,
     render_file_content_collapsible,
     render_markdown_collapsible,
     render_markdown_inline,
@@ -63,6 +64,7 @@ from ..models import (
     WebSearchOutput,
     WebFetchInput,
     WebFetchOutput,
+    WorkflowToolInput,
     WriteInput,
     WriteOutput,
 )
@@ -533,7 +535,7 @@ def format_task_output(output: TaskOutput) -> str:
             "</div>"
         )
         parts.append(
-            render_markdown_collapsible(output.async_final_answer, "task-async-answer")
+            render_async_result_body(output.async_final_answer, "task-async-answer")
         )
     return "".join(parts)
 
@@ -1159,6 +1161,76 @@ def format_tool_result_content_raw(tool_result: ToolResultContent) -> str:
     """
 
 
+# -- Workflow tool input (issue #174) -----------------------------------------
+
+_WF_META_RE = re.compile(r"meta\s*=\s*\{(.*?)\n\}", re.DOTALL)
+_WF_NAME_RE = re.compile(r"\bname\s*:\s*['\"]([^'\"]*)['\"]")
+_WF_DESC_RE = re.compile(r"\bdescription\s*:\s*['\"]([^'\"]*)['\"]")
+_WF_PHASES_RE = re.compile(r"phases\s*:\s*\[(.*?)\]", re.DOTALL)
+_WF_TITLE_RE = re.compile(r"title\s*:\s*['\"]([^'\"]+)['\"]")
+
+
+def _parse_workflow_meta(script: str) -> tuple[str, str, list[str]]:
+    """Best-effort extraction of ``(name, description, phase_titles)`` from a
+    Workflow script's ``export const meta = {...}`` block.
+
+    Returns empty values when the block (or a field) isn't found — this is
+    purely a display aid, scoped to the meta block so it can't pick up
+    ``name:``/``title:`` occurrences elsewhere in the orchestrator body.
+    """
+    block_m = _WF_META_RE.search(script)
+    if not block_m:
+        return "", "", []
+    block = block_m.group(1)
+    name_m = _WF_NAME_RE.search(block)
+    desc_m = _WF_DESC_RE.search(block)
+    phases_m = _WF_PHASES_RE.search(block)
+    phases = _WF_TITLE_RE.findall(phases_m.group(1)) if phases_m else []
+    return (
+        name_m.group(1) if name_m else "",
+        desc_m.group(1) if desc_m else "",
+        phases,
+    )
+
+
+def format_workflow_input(workflow_input: WorkflowToolInput) -> str:
+    """Format a ``Workflow`` tool_use (issue #174): a header from the script's
+    ``meta`` block (name / description / phase pills) above the JavaScript
+    orchestrator source, syntax-highlighted and collapsible when long."""
+    script = workflow_input.script or ""
+    name, description, phases = _parse_workflow_meta(script)
+
+    header_parts: list[str] = []
+    if name:
+        header_parts.append(f"<span class='workflow-name'>{escape_html(name)}</span>")
+    if description:
+        header_parts.append(
+            f"<span class='workflow-description'>{escape_html(description)}</span>"
+        )
+    if phases:
+        pills = "".join(
+            f"<span class='workflow-phase-pill'>{escape_html(p)}</span>" for p in phases
+        )
+        header_parts.append(f"<span class='workflow-phases'>{pills}</span>")
+    header = (
+        f"<div class='workflow-meta'>{''.join(header_parts)}</div>"
+        if header_parts
+        else ""
+    )
+
+    if not script.strip():
+        return header
+
+    body = render_file_content_collapsible(
+        script,
+        "workflow.js",
+        "workflow-script",
+        line_threshold=12,
+        preview_line_count=6,
+    )
+    return f"{header}{body}"
+
+
 # -- Public Exports -----------------------------------------------------------
 
 __all__ = [
@@ -1176,6 +1248,7 @@ __all__ = [
     "format_grep_input",
     "format_websearch_input",
     "format_webfetch_input",
+    "format_workflow_input",
     "format_monitor_input",
     "format_schedulewakeup_input",
     "format_croncreate_input",

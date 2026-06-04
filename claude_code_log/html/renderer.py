@@ -57,6 +57,7 @@ from ..models import (
     SkillInput,
     WebSearchInput,
     WebFetchInput,
+    WorkflowToolInput,
     MonitorInput,
     MonitorOutput,
     ScheduleWakeupInput,
@@ -168,6 +169,7 @@ from .tool_formatters import (
     format_websearch_input,
     format_websearch_output,
     format_webfetch_input,
+    format_workflow_input,
     format_webfetch_output,
     format_monitor_input,
     format_monitor_output,
@@ -810,6 +812,12 @@ class HtmlRenderer(Renderer):
     def format_WebFetchInput(self, input: WebFetchInput, _: TemplateMessage) -> str:
         """Format → prompt text if long, empty if shown in title."""
         return format_webfetch_input(input)
+
+    def format_WorkflowToolInput(
+        self, input: WorkflowToolInput, _: TemplateMessage
+    ) -> str:
+        """Format → meta header (name/description/phases) + highlighted JS script."""
+        return format_workflow_input(input)
 
     def format_WebFetchOutput(self, output: WebFetchOutput, _: TemplateMessage) -> str:
         """Format → collapsible markdown with metadata badge."""

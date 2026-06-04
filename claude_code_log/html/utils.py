@@ -15,6 +15,7 @@ HTML-specific output.
 
 import functools
 import html
+import json
 import re
 from pathlib import Path
 from typing import Any, Optional, TYPE_CHECKING
@@ -587,6 +588,36 @@ def render_file_content_collapsible(
 
     html_parts.append("</div>")
     return "".join(html_parts)
+
+
+def render_async_result_body(text: str, css_class: str) -> str:
+    """Render an async-result body, JSON-aware (issue #174 D4).
+
+    A JSON-shaped payload — ``lstrip()`` starts with ``{"`` per cboos's
+    heuristic, and so possibly truncated — is pretty-printed when it parses
+    and Pygments-highlighted as JSON (collapsible when long); everything
+    else (plain markdown answers from non-workflow async agents) falls back
+    to the existing markdown rendering, so this is a safe no-op for them.
+
+    (Spilling to the full untruncated ``tool-results/<taskId>.txt`` is a
+    separate enhancement — it needs the taskId plumbed to this layer — and
+    is deferred to a follow-up.)
+    """
+    stripped = (text or "").lstrip()
+    if stripped.startswith('{"'):
+        rendered = text
+        try:
+            rendered = json.dumps(json.loads(text), indent=2, ensure_ascii=False)
+        except (json.JSONDecodeError, ValueError):
+            pass  # truncated / variant payload — highlight the raw text as-is
+        return render_file_content_collapsible(
+            rendered,
+            "result.json",
+            css_class,
+            line_threshold=10,
+            preview_line_count=6,
+        )
+    return render_markdown_collapsible(text, css_class)
 
 
 # -- Template Environment -----------------------------------------------------

@@ -38,6 +38,7 @@ from ..models import (
     TaskListInput,
     TaskOutputInput,
     TaskStopInput,
+    WorkflowToolInput,
     TaskUpdateInput,
     TeamCreateInput,
     TeamDeleteInput,
@@ -134,6 +135,8 @@ TOOL_INPUT_MODELS: dict[str, type[BaseModel]] = {
     # TaskStop kills a background task. Same ``task_id`` shape /
     # id space as TaskOutput (PR #158 follow-up).
     "TaskStop": TaskStopInput,
+    # Dynamic Workflow orchestrator (issue #174): input.script is JS.
+    "Workflow": WorkflowToolInput,
 }
 
 

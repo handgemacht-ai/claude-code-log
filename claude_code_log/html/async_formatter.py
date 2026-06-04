@@ -22,7 +22,7 @@ from ..models import (
     TaskOutputInput,
     TaskOutputResult,
 )
-from .utils import escape_html, render_markdown_collapsible
+from .utils import escape_html, render_async_result_body
 
 
 def _row(label: str, value_html: str) -> str:
@@ -170,6 +170,6 @@ def format_task_notification_content(content: TaskNotificationMessage) -> str:
         )
     if content.result_text and not content.result_is_duplicate:
         parts.append(
-            render_markdown_collapsible(content.result_text, "task-notification-result")
+            render_async_result_body(content.result_text, "task-notification-result")
         )
     return "".join(parts)
