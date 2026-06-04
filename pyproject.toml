@@ -64,6 +64,14 @@ markers = [
 # Use custom stubs for untyped libraries
 extra-paths = ["stubs"]
 
+[tool.ty.src]
+# docs/gen_pages.py is a build-time mkdocs-gen-files script: it imports
+# `mkdocs_gen_files` (a docs-only dependency) and the standalone helpers in
+# scripts/ via sys.path manipulation, neither of which ty can resolve in the
+# default environment. It is not part of the type-checked source (pyright only
+# `include`s claude_code_log), so exclude it here to match that intent.
+exclude = ["docs"]
+
 [tool.pyright]
 # Pyright configuration with strict settings
 include = ["claude_code_log"]           # TODO: , "test"
