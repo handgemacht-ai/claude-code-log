@@ -401,13 +401,16 @@ would point the fork link at the parent session header and undo
 `_drop_anchor_refs_into_ghosts`). The template guards the fork link
 against a `None` index. Mirrors the ghost-aware repair contract.
 
-### 3.10 `_reorder_session_template_messages` — unchanged
+### 3.10 `_reorder_session_template_messages` — ghost-filter boundary
 
-Reorders by `render_session_id`. Ghosts have render_session_id
-like everyone else, so they ride along with their session and end
-up in the reordered list. They'll be invisible in the final output
-because the tree-build (3.6) excludes them — but they pass through
-this pass unchanged. No change.
+This pass is where ghosts are *materialized out*. It accepts the
+ghost-aware `list[Optional[TemplateMessage]]`, skips `None` slots
+while grouping by `render_session_id`, and returns a None-free
+`list[TemplateMessage]` (the no-header early-return uses
+`list(_visible(messages))`). Because the boundary is here, every
+downstream pass (`_identify_message_pairs`, `_reorder_paired_messages`,
+tree-build, format renderers) consumes a None-free list and needs no
+ghost-skipping — Pyright enforces that via the narrowed return type.
 
 ### 3.11 `_reorder_paired_messages` — unchanged
 

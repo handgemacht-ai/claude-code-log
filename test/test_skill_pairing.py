@@ -228,7 +228,7 @@ class TestSkillPairing:
             for m in ctx.messages
             if m is not None
             and isinstance(m.content, ToolResultMessage)
-            and m.tool_use_id == "toolu_X"
+            and m.content.tool_use_id == "toolu_X"
         ]
         assert tr == [], (
             "The redundant 'Launching skill: X' tool_result should be dropped"
