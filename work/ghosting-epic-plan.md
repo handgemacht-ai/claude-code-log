@@ -124,18 +124,25 @@ A ghosted slot:
   index dicts), tree-build (not emitted as a root, can't be
   someone's parent), format renderers (skipped by iteration).
 
-**Stored references never target a None slot in practice.** The
-things the reindex pass remapped today all reference
-*session/branch headers* (`parent_message_index`,
+**Stored references can target a None slot, and the ghosting
+passes repair them.** The things the reindex pass remapped today
+reference *session/branch headers* (`parent_message_index`,
 `session_first_message`, `junction_forward_links` targets) or
-*paired content messages* (`pair_first/last/middle`). The detect-
-and-ghost passes drop neither category: `_pair_skill_tool_uses`
-ghosts only the slash-body + the launching-skill tool_result;
-`_ghost_template_by_detail` ghosts content classes per the
-`detail_visibility` predicate, never session headers. So `ctx.get(
-stored_index)` never returns `None` for any reference set today —
-the wider slot type is a forward-compatibility convenience, not a
-new failure mode contributors need to handle.
+*paired content messages* (`pair_first/last/middle`). Session
+headers are never ghosted, but a *fork point* can coincide with a
+slot a detect-and-ghost pass removes — e.g. a within-session fork
+attached to a slash-body or launching-skill tool_result that
+`_pair_skill_tool_uses` ghosts, or (Phase 2) a fork-point assistant
+that `_ghost_template_by_detail` ghosts at low detail. When that
+happens, a cached `parent_message_index` / `session_first_message`
+entry resolves through `ctx.get(...)` to `None`, and the rendered
+`#msg-d-{N}` backlink (emitted from the raw index) would dangle.
+Each ghosting pass therefore repairs its own cached refs:
+`_pair_skill_tool_uses` calls `_drop_anchor_refs_into_ghosts`
+(and `prepare_session_navigation` leaves the fork anchor unset for
+a ghosted target rather than retargeting it); Phase 2 adds
+`_repair_stale_anchor_refs`. `junction_forward_links` are populated
+*after* the skill-fold pass, so they need no repair there.
 
 ### 2.3 Helper
 
@@ -382,10 +389,17 @@ Reads `ctx.junction_targets` (from session_hierarchy) and
 reference branch headers by message_index. All indices are stable
 under ghosting. No change.
 
-### 3.9 `prepare_session_navigation` — unchanged
+### 3.9 `prepare_session_navigation` — ghost-aware fork anchor
 
-Reads `ctx.session_first_message` and emits the nav. All indices
-stable. No change.
+Reads `ctx.session_first_message` and emits the nav. Indices stay
+stable, but the fork-point nav item resolves its anchor by scanning
+`_visible(ctx.messages)` for the junction `attachment_uuid`. When the
+fork point was ghosted (e.g. a folded Skill slot), that scan can't
+find it, so `fork_msg_idx` stays `None` and the anchor is *omitted*
+rather than falling back to `session_first_message[parent_sid]` (which
+would point the fork link at the parent session header and undo
+`_drop_anchor_refs_into_ghosts`). The template guards the fork link
+against a `None` index. Mirrors the ghost-aware repair contract.
 
 ### 3.10 `_reorder_session_template_messages` — unchanged
 
