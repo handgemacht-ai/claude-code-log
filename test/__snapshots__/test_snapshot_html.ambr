@@ -3558,6 +3558,7 @@
               'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
               'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
               'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+              'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -3587,6 +3588,11 @@
                   // Check for sidechain first (sub-assistant messages)
                   if (classList.includes('sidechain')) {
                       messageType = 'sidechain';
+                  } else if (classList.includes('memory')) {
+                      // Auto-memory interactions (Read/Write/Edit on a memory/
+                      // path, #192) get their own lane, gated by the 'memory'
+                      // filter toggle — kept in lockstep with applyFilter.
+                      messageType = 'memory';
                   } else if (classList.some(c => c.startsWith('system-'))) {
                       // Drift-proof: any `system-*` modifier (system-info,
                       // system-warning, system-error, system-away-summary, …)
@@ -3825,7 +3831,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -4090,6 +4096,8 @@
                   <button class="filter-toggle active" data-type="tool">🛠️ Tool <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
+                          class="count">(0)</span></button>
+                  <button class="filter-toggle active" data-type="memory">🧠 Memory <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
               </div>
@@ -4679,7 +4687,7 @@
   
               // Count messages by type and update button labels
               function updateMessageCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -4767,6 +4775,16 @@
                           shouldShow = expandedTypes.some(type => message.classList.contains(type));
                       }
   
+                      // Memory is a cross-cutting modifier on tool messages (#192):
+                      // a memory-tagged message additionally requires the 'memory'
+                      // toggle to be active. Because 'memory' is itself an
+                      // expandable type, turning everything else off but leaving
+                      // 'memory' on isolates memory interactions; turning 'memory'
+                      // off while 'tool' stays on hides them from the tool stream.
+                      if (shouldShow && message.classList.contains('memory')) {
+                          shouldShow = expandedTypes.includes('memory');
+                      }
+  
                       if (shouldShow) {
                           message.classList.remove('filtered-hidden');
                       } else {
@@ -4787,7 +4805,7 @@
               }
   
               function updateVisibleCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);
@@ -9381,6 +9399,7 @@
               'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
               'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
               'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+              'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -9410,6 +9429,11 @@
                   // Check for sidechain first (sub-assistant messages)
                   if (classList.includes('sidechain')) {
                       messageType = 'sidechain';
+                  } else if (classList.includes('memory')) {
+                      // Auto-memory interactions (Read/Write/Edit on a memory/
+                      // path, #192) get their own lane, gated by the 'memory'
+                      // filter toggle — kept in lockstep with applyFilter.
+                      messageType = 'memory';
                   } else if (classList.some(c => c.startsWith('system-'))) {
                       // Drift-proof: any `system-*` modifier (system-info,
                       // system-warning, system-error, system-away-summary, …)
@@ -9648,7 +9672,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -9913,6 +9937,8 @@
                   <button class="filter-toggle active" data-type="tool">🛠️ Tool <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
+                          class="count">(0)</span></button>
+                  <button class="filter-toggle active" data-type="memory">🧠 Memory <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
               </div>
@@ -10401,7 +10427,7 @@
   
               // Count messages by type and update button labels
               function updateMessageCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -10489,6 +10515,16 @@
                           shouldShow = expandedTypes.some(type => message.classList.contains(type));
                       }
   
+                      // Memory is a cross-cutting modifier on tool messages (#192):
+                      // a memory-tagged message additionally requires the 'memory'
+                      // toggle to be active. Because 'memory' is itself an
+                      // expandable type, turning everything else off but leaving
+                      // 'memory' on isolates memory interactions; turning 'memory'
+                      // off while 'tool' stays on hides them from the tool stream.
+                      if (shouldShow && message.classList.contains('memory')) {
+                          shouldShow = expandedTypes.includes('memory');
+                      }
+  
                       if (shouldShow) {
                           message.classList.remove('filtered-hidden');
                       } else {
@@ -10509,7 +10545,7 @@
               }
   
               function updateVisibleCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);
@@ -17286,6 +17322,7 @@
               'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
               'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
               'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+              'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -17315,6 +17352,11 @@
                   // Check for sidechain first (sub-assistant messages)
                   if (classList.includes('sidechain')) {
                       messageType = 'sidechain';
+                  } else if (classList.includes('memory')) {
+                      // Auto-memory interactions (Read/Write/Edit on a memory/
+                      // path, #192) get their own lane, gated by the 'memory'
+                      // filter toggle — kept in lockstep with applyFilter.
+                      messageType = 'memory';
                   } else if (classList.some(c => c.startsWith('system-'))) {
                       // Drift-proof: any `system-*` modifier (system-info,
                       // system-warning, system-error, system-away-summary, …)
@@ -17553,7 +17595,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -17818,6 +17860,8 @@
                   <button class="filter-toggle active" data-type="tool">🛠️ Tool <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
+                          class="count">(0)</span></button>
+                  <button class="filter-toggle active" data-type="memory">🧠 Memory <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
               </div>
@@ -18522,7 +18566,7 @@
   
               // Count messages by type and update button labels
               function updateMessageCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -18610,6 +18654,16 @@
                           shouldShow = expandedTypes.some(type => message.classList.contains(type));
                       }
   
+                      // Memory is a cross-cutting modifier on tool messages (#192):
+                      // a memory-tagged message additionally requires the 'memory'
+                      // toggle to be active. Because 'memory' is itself an
+                      // expandable type, turning everything else off but leaving
+                      // 'memory' on isolates memory interactions; turning 'memory'
+                      // off while 'tool' stays on hides them from the tool stream.
+                      if (shouldShow && message.classList.contains('memory')) {
+                          shouldShow = expandedTypes.includes('memory');
+                      }
+  
                       if (shouldShow) {
                           message.classList.remove('filtered-hidden');
                       } else {
@@ -18630,7 +18684,7 @@
               }
   
               function updateVisibleCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);
@@ -23224,6 +23278,7 @@
               'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
               'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
               'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+              'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -23253,6 +23308,11 @@
                   // Check for sidechain first (sub-assistant messages)
                   if (classList.includes('sidechain')) {
                       messageType = 'sidechain';
+                  } else if (classList.includes('memory')) {
+                      // Auto-memory interactions (Read/Write/Edit on a memory/
+                      // path, #192) get their own lane, gated by the 'memory'
+                      // filter toggle — kept in lockstep with applyFilter.
+                      messageType = 'memory';
                   } else if (classList.some(c => c.startsWith('system-'))) {
                       // Drift-proof: any `system-*` modifier (system-info,
                       // system-warning, system-error, system-away-summary, …)
@@ -23491,7 +23551,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -23756,6 +23816,8 @@
                   <button class="filter-toggle active" data-type="tool">🛠️ Tool <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
+                          class="count">(0)</span></button>
+                  <button class="filter-toggle active" data-type="memory">🧠 Memory <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
               </div>
@@ -24727,7 +24789,7 @@
   
               // Count messages by type and update button labels
               function updateMessageCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -24815,6 +24877,16 @@
                           shouldShow = expandedTypes.some(type => message.classList.contains(type));
                       }
   
+                      // Memory is a cross-cutting modifier on tool messages (#192):
+                      // a memory-tagged message additionally requires the 'memory'
+                      // toggle to be active. Because 'memory' is itself an
+                      // expandable type, turning everything else off but leaving
+                      // 'memory' on isolates memory interactions; turning 'memory'
+                      // off while 'tool' stays on hides them from the tool stream.
+                      if (shouldShow && message.classList.contains('memory')) {
+                          shouldShow = expandedTypes.includes('memory');
+                      }
+  
                       if (shouldShow) {
                           message.classList.remove('filtered-hidden');
                       } else {
@@ -24835,7 +24907,7 @@
               }
   
               function updateVisibleCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);
@@ -29429,6 +29501,7 @@
               'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
               'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
               'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+              'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -29458,6 +29531,11 @@
                   // Check for sidechain first (sub-assistant messages)
                   if (classList.includes('sidechain')) {
                       messageType = 'sidechain';
+                  } else if (classList.includes('memory')) {
+                      // Auto-memory interactions (Read/Write/Edit on a memory/
+                      // path, #192) get their own lane, gated by the 'memory'
+                      // filter toggle — kept in lockstep with applyFilter.
+                      messageType = 'memory';
                   } else if (classList.some(c => c.startsWith('system-'))) {
                       // Drift-proof: any `system-*` modifier (system-info,
                       // system-warning, system-error, system-away-summary, …)
@@ -29696,7 +29774,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -29961,6 +30039,8 @@
                   <button class="filter-toggle active" data-type="tool">🛠️ Tool <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
+                          class="count">(0)</span></button>
+                  <button class="filter-toggle active" data-type="memory">🧠 Memory <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
               </div>
@@ -30777,7 +30857,7 @@
   
               // Count messages by type and update button labels
               function updateMessageCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -30865,6 +30945,16 @@
                           shouldShow = expandedTypes.some(type => message.classList.contains(type));
                       }
   
+                      // Memory is a cross-cutting modifier on tool messages (#192):
+                      // a memory-tagged message additionally requires the 'memory'
+                      // toggle to be active. Because 'memory' is itself an
+                      // expandable type, turning everything else off but leaving
+                      // 'memory' on isolates memory interactions; turning 'memory'
+                      // off while 'tool' stays on hides them from the tool stream.
+                      if (shouldShow && message.classList.contains('memory')) {
+                          shouldShow = expandedTypes.includes('memory');
+                      }
+  
                       if (shouldShow) {
                           message.classList.remove('filtered-hidden');
                       } else {
@@ -30885,7 +30975,7 @@
               }
   
               function updateVisibleCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);
@@ -35479,6 +35569,7 @@
               'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
               'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
               'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+              'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -35508,6 +35599,11 @@
                   // Check for sidechain first (sub-assistant messages)
                   if (classList.includes('sidechain')) {
                       messageType = 'sidechain';
+                  } else if (classList.includes('memory')) {
+                      // Auto-memory interactions (Read/Write/Edit on a memory/
+                      // path, #192) get their own lane, gated by the 'memory'
+                      // filter toggle — kept in lockstep with applyFilter.
+                      messageType = 'memory';
                   } else if (classList.some(c => c.startsWith('system-'))) {
                       // Drift-proof: any `system-*` modifier (system-info,
                       // system-warning, system-error, system-away-summary, …)
@@ -35746,7 +35842,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -36011,6 +36107,8 @@
                   <button class="filter-toggle active" data-type="tool">🛠️ Tool <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
+                          class="count">(0)</span></button>
+                  <button class="filter-toggle active" data-type="memory">🧠 Memory <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
               </div>
@@ -36888,7 +36986,7 @@
   
               // Count messages by type and update button labels
               function updateMessageCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -36976,6 +37074,16 @@
                           shouldShow = expandedTypes.some(type => message.classList.contains(type));
                       }
   
+                      // Memory is a cross-cutting modifier on tool messages (#192):
+                      // a memory-tagged message additionally requires the 'memory'
+                      // toggle to be active. Because 'memory' is itself an
+                      // expandable type, turning everything else off but leaving
+                      // 'memory' on isolates memory interactions; turning 'memory'
+                      // off while 'tool' stays on hides them from the tool stream.
+                      if (shouldShow && message.classList.contains('memory')) {
+                          shouldShow = expandedTypes.includes('memory');
+                      }
+  
                       if (shouldShow) {
                           message.classList.remove('filtered-hidden');
                       } else {
@@ -36996,7 +37104,7 @@
               }
   
               function updateVisibleCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);
@@ -41590,6 +41698,7 @@
               'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
               'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
               'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+              'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
               'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
               'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
               'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -41619,6 +41728,11 @@
                   // Check for sidechain first (sub-assistant messages)
                   if (classList.includes('sidechain')) {
                       messageType = 'sidechain';
+                  } else if (classList.includes('memory')) {
+                      // Auto-memory interactions (Read/Write/Edit on a memory/
+                      // path, #192) get their own lane, gated by the 'memory'
+                      // filter toggle — kept in lockstep with applyFilter.
+                      messageType = 'memory';
                   } else if (classList.some(c => c.startsWith('system-'))) {
                       // Drift-proof: any `system-*` modifier (system-info,
                       // system-warning, system-error, system-away-summary, …)
@@ -41857,7 +41971,7 @@
                       axis: 2
                   },
                   groupOrder: (a, b) => {
-                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                      const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                       return order.indexOf(a.id) - order.indexOf(b.id);
                   }
               };
@@ -42122,6 +42236,8 @@
                   <button class="filter-toggle active" data-type="tool">🛠️ Tool <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
+                          class="count">(0)</span></button>
+                  <button class="filter-toggle active" data-type="memory">🧠 Memory <span
                           class="count">(0)</span></button>
                   <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
               </div>
@@ -42826,7 +42942,7 @@
   
               // Count messages by type and update button labels
               function updateMessageCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -42914,6 +43030,16 @@
                           shouldShow = expandedTypes.some(type => message.classList.contains(type));
                       }
   
+                      // Memory is a cross-cutting modifier on tool messages (#192):
+                      // a memory-tagged message additionally requires the 'memory'
+                      // toggle to be active. Because 'memory' is itself an
+                      // expandable type, turning everything else off but leaving
+                      // 'memory' on isolates memory interactions; turning 'memory'
+                      // off while 'tool' stays on hides them from the tool stream.
+                      if (shouldShow && message.classList.contains('memory')) {
+                          shouldShow = expandedTypes.includes('memory');
+                      }
+  
                       if (shouldShow) {
                           message.classList.remove('filtered-hidden');
                       } else {
@@ -42934,7 +43060,7 @@
               }
   
               function updateVisibleCounts() {
-                  const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                  const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
   
                   messageTypes.forEach(type => {
                       const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);

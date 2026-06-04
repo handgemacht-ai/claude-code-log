@@ -53,6 +53,52 @@ if TYPE_CHECKING:
     from ..renderer import TemplateMessage
 
 
+# -- Auto-memory detection ----------------------------------------------------
+# Claude's auto-memory (https://code.claude.com/docs/en/memory#auto-memory)
+# has no dedicated tool: it surfaces in transcripts as ordinary Read/Write/Edit
+# calls whose file_path points into the per-project memory directory. We anchor
+# on the full default path ``~/.claude/projects/<slug>/memory/`` rather than a
+# bare ``memory/`` substring so a project's own ``memory/`` folder can't yield
+# false positives (issue #192).
+#
+# Limitation: a custom ``autoMemoryDirectory`` setting relocates memory outside
+# this path and won't be detected. Acceptable for v1; could be made
+# configurable later. See work/parse-memory-spike.md.
+_MEMORY_PATH_RE = re.compile(r"/\.claude/projects/[^/]+/memory/")
+
+
+# File tools whose paths we flag as memory interactions. Bash references a
+# memory path inside its command string (not a typed field) and is rare, so
+# it's intentionally out of scope for v1 (issue #192).
+_MEMORY_TOOL_NAMES = frozenset({"Read", "Write", "Edit"})
+
+
+def is_memory_path(file_path: Optional[str]) -> bool:
+    """True if ``file_path`` lives inside an auto-memory directory."""
+    return bool(file_path) and _MEMORY_PATH_RE.search(file_path) is not None
+
+
+def is_memory_tool(tool_name: Optional[str], file_path: Optional[str]) -> bool:
+    """True if a tool call/result is an auto-memory interaction.
+
+    A file tool (Read/Write/Edit/MultiEdit) acting on a path inside a
+    ``memory/`` directory. Used to tag both the ``tool_use`` call and its
+    paired ``tool_result`` with the ``memory`` CSS modifier.
+    """
+    return tool_name in _MEMORY_TOOL_NAMES and is_memory_path(file_path)
+
+
+def memory_short_path(file_path: str) -> str:
+    """Return the path relative to the ``memory/`` directory.
+
+    e.g. ``…/memory/MEMORY.md`` -> ``MEMORY.md``,
+    ``…/memory/sub/topic.md`` -> ``sub/topic.md``. Falls back to the full
+    path if the marker isn't found (shouldn't happen for memory paths).
+    """
+    parts = _MEMORY_PATH_RE.split(file_path, maxsplit=1)
+    return parts[-1] if len(parts) > 1 else file_path
+
+
 # -- CSS Class Registry -------------------------------------------------------
 # Maps content types to their CSS classes.
 # The first class is typically the base type (user, assistant, system, etc.),
@@ -112,8 +158,19 @@ def _get_css_classes_from_content(content: MessageContent) -> list[str]:
             # Dynamic modifiers based on content attributes
             if isinstance(content, SystemMessage):
                 result.append(f"system-{content.level}")
-            elif isinstance(content, ToolResultMessage) and content.is_error:
-                result.append("error")
+            elif isinstance(content, ToolResultMessage):
+                if content.is_error:
+                    result.append("error")
+                # Memory interaction (recalled memory): tag the result so the
+                # filter/timeline hide or isolate the whole call+result pair.
+                if is_memory_tool(content.tool_name, content.file_path):
+                    result.append("memory")
+            elif isinstance(content, ToolUseMessage):
+                # Memory interaction (writing/recalling memory): a Read/Write/
+                # Edit on a path inside the project's memory/ directory (#192).
+                file_path = getattr(content.input, "file_path", None)
+                if is_memory_tool(content.tool_name, file_path):
+                    result.append("memory")
             return result
     return []
 

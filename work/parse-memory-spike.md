@@ -1,7 +1,36 @@
 # Spike: Parse / render auto-memory (issue #192)
 
-**Status:** investigation complete, awaiting scope confirmation. No
-implementation yet.
+**Status:** v1 implemented (title + filter only). Scope confirmed by cboos:
+title + filter ONLY, dir-browser deferred; dedicated `memory` filter toggle
+with timeline lane in lockstep; minor-Q defaults accepted (relative-to-memory/
+short path; "N days old" recall badge deferred; Bash refs skipped).
+
+## What v1 ships
+
+- `is_memory_path()` / `is_memory_tool()` / `memory_short_path()` helpers
+  (`html/utils.py`), anchored on `/.claude/projects/<slug>/memory/`.
+- 🧠 titles for memory Read/Write/Edit (`html/renderer.py`).
+- `memory` CSS modifier on the tool_use call **and** its tool_result
+  (`html/utils.py:_get_css_classes_from_content`).
+- `memory` filter toggle (`transcript.html`) behaving as a cross-cutting
+  modifier (like `sidechain`) that both hides memory noise and isolates
+  memory-only; `memory` timeline lane (`components/timeline.html`) in lockstep.
+- Tests: `test/test_memory_rendering.py` (titles + CSS), `test/test_memory_browser.py`
+  (toggle hide/isolate + timeline lane), `test/test_data/memory_interactions.jsonl`.
+
+## Follow-ups (deferred, not in v1)
+
+- **Custom `autoMemoryDirectory`** relocates memory outside the default path,
+  so the path-anchored regex won't detect it. Make the location configurable
+  if this comes up. (Noted as a code comment on `_MEMORY_PATH_RE`.)
+- **Render the memory directory itself** (issue Q2) — standalone browser of
+  `MEMORY.md` + topic files. Bigger feature; deferred.
+- **"N days old" recall badge** from the `<system-reminder>` age marker.
+- **Bash** references to memory paths (path lives in the command string).
+
+---
+
+## Original investigation (kept for reference)
 
 ## The question (issue #192)
 

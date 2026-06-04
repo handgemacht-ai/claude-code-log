@@ -77,6 +77,8 @@
                         class="count">(0)</span></button>
                 <button class="filter-toggle active" data-type="sidechain">🔗 Sub-assistant <span
                         class="count">(0)</span></button>
+                <button class="filter-toggle active" data-type="memory">🧠 Memory <span
+                        class="count">(0)</span></button>
                 <button class="filter-toggle active" data-type="image">🖼️ Images <span class="count">(0)</span></button>
             </div>
             <div class="filter-actions">
@@ -433,7 +435,7 @@
 
             // Count messages by type and update button labels
             function updateMessageCounts() {
-                const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
 
                 messageTypes.forEach(type => {
                     const messages = document.querySelectorAll(`.message.${type}:not(.session-header)`);
@@ -521,6 +523,16 @@
                         shouldShow = expandedTypes.some(type => message.classList.contains(type));
                     }
 
+                    // Memory is a cross-cutting modifier on tool messages (#192):
+                    // a memory-tagged message additionally requires the 'memory'
+                    // toggle to be active. Because 'memory' is itself an
+                    // expandable type, turning everything else off but leaving
+                    // 'memory' on isolates memory interactions; turning 'memory'
+                    // off while 'tool' stays on hides them from the tool stream.
+                    if (shouldShow && message.classList.contains('memory')) {
+                        shouldShow = expandedTypes.includes('memory');
+                    }
+
                     if (shouldShow) {
                         message.classList.remove('filtered-hidden');
                     } else {
@@ -541,7 +553,7 @@
             }
 
             function updateVisibleCounts() {
-                const messageTypes = ['assistant', 'sidechain', 'system', 'thinking', 'image'];
+                const messageTypes = ['assistant', 'sidechain', 'memory', 'system', 'thinking', 'image'];
 
                 messageTypes.forEach(type => {
                     const visibleMessages = document.querySelectorAll(`.message.${type}:not(.session-header):not(.filtered-hidden)`);

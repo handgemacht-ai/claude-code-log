@@ -30,6 +30,7 @@
             'system': { id: 'system', content: '⚙️ System', style: 'background-color: #ffeee1;' },
             'image': { id: 'image', content: '🖼️ Image', style: 'background-color: #e1f5fe;' },
             'sidechain': { id: 'sidechain', content: '🔗 Sub-assistant', style: 'background-color: #f5f5f5;' },
+            'memory': { id: 'memory', content: '🧠 Memory', style: 'background-color: #ede7f6;' },
             'slash-command': { id: 'slash-command', content: '⌨️ Slash Command', style: 'background-color: #e8eaf6;' },
             'command-output': { id: 'command-output', content: '📋 Command Output', style: 'background-color: #efebe9;' },
             'bash-input': { id: 'bash-input', content: '💻 Bash Input', style: 'background-color: #e8eaf6;' },
@@ -59,6 +60,11 @@
                 // Check for sidechain first (sub-assistant messages)
                 if (classList.includes('sidechain')) {
                     messageType = 'sidechain';
+                } else if (classList.includes('memory')) {
+                    // Auto-memory interactions (Read/Write/Edit on a memory/
+                    // path, #192) get their own lane, gated by the 'memory'
+                    // filter toggle — kept in lockstep with applyFilter.
+                    messageType = 'memory';
                 } else if (classList.some(c => c.startsWith('system-'))) {
                     // Drift-proof: any `system-*` modifier (system-info,
                     // system-warning, system-error, system-away-summary, …)
@@ -297,7 +303,7 @@
                     axis: 2
                 },
                 groupOrder: (a, b) => {
-                    const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'tool_use', 'tool_result', 'image'];
+                    const order = ['user', 'teammate', 'task-notification', 'system', 'slash-command', 'command-output', 'bash-input', 'bash-output', 'thinking', 'assistant', 'sidechain', 'memory', 'tool_use', 'tool_result', 'image'];
                     return order.indexOf(a.id) - order.indexOf(b.id);
                 }
             };
