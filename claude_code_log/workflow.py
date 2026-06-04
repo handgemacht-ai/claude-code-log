@@ -112,6 +112,30 @@ def _read_jsonl(path: Path) -> list[Any]:
     return rows
 
 
+def _as_int(value: Any) -> Optional[int]:
+    """Coerce a snapshot value to ``int`` defensively, else ``None``.
+
+    Snapshot fields come straight from JSON and a variant/malformed payload
+    could carry a numeric value as a string (``"phaseIndex": "1"``) or float.
+    Normalising here keeps every numeric field a real ``int | None`` so
+    downstream numeric comparisons (e.g. phase-index range checks) can never
+    raise ``TypeError`` and crash the whole run parse. ``bool`` is rejected
+    (it's an ``int`` subclass but never a meaningful count/index).
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def _parse_journal(path: Path) -> tuple[list[str], dict[str, Any]]:
     """Parse ``journal.jsonl`` into (agent order, {agentId: result}).
 
@@ -210,8 +234,8 @@ def parse_workflow_run(
             task_id = raw.get("taskId") or ""
             workflow_name = raw.get("workflowName") or ""
             status = raw.get("status") or ""
-            total_tokens = raw.get("totalTokens")
-            agent_count = raw.get("agentCount")
+            total_tokens = _as_int(raw.get("totalTokens"))
+            agent_count = _as_int(raw.get("agentCount"))
             run_result = raw.get("result")
 
     # Union of journal order with any snapshot-only agent ids (defensive).
@@ -234,14 +258,14 @@ def parse_workflow_run(
             WorkflowAgent(
                 agent_id=aid,
                 label=meta.get("label") or "",
-                phase_index=meta.get("phaseIndex"),
+                phase_index=_as_int(meta.get("phaseIndex")),
                 phase_title=meta.get("phaseTitle") or "",
                 model=meta.get("model") or "",
                 state=meta.get("state") or "",
-                tokens=meta.get("tokens"),
-                tool_calls=meta.get("toolCalls"),
-                duration_ms=meta.get("durationMs"),
-                attempt=meta.get("attempt"),
+                tokens=_as_int(meta.get("tokens")),
+                tool_calls=_as_int(meta.get("toolCalls")),
+                duration_ms=_as_int(meta.get("durationMs")),
+                attempt=_as_int(meta.get("attempt")),
                 result=results.get(aid),
                 result_preview=meta.get("resultPreview") or "",
                 entries=entries,

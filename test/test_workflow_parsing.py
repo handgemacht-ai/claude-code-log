@@ -157,6 +157,68 @@ class TestWipWithoutSnapshot:
         assert parse_workflow_run(empty, None) is None
 
 
+class TestVariantNumericFields:
+    """A variant/malformed snapshot may carry numeric fields as strings
+    (e.g. ``"phaseIndex": "1"``). These must be coerced to ``int``, never
+    crash the parse on a numeric comparison, and still group correctly."""
+
+    def _run(self, tmp_path: Path):
+        run_dir = tmp_path / "subagents" / "workflows" / "wf_variant"
+        run_dir.mkdir(parents=True)
+        (run_dir / "journal.jsonl").write_text(
+            json.dumps({"type": "result", "key": "k", "agentId": "v1", "result": "ok"})
+            + "\n",
+            encoding="utf-8",
+        )
+        snapshot = tmp_path / "workflows" / "wf_variant.json"
+        snapshot.parent.mkdir(parents=True)
+        snapshot.write_text(
+            json.dumps(
+                {
+                    "runId": "wf_variant",
+                    "status": "completed",
+                    "totalTokens": "100",  # string, not int
+                    "agentCount": "1",
+                    "phases": [{"title": "Map"}],
+                    "workflowProgress": [
+                        {
+                            "type": "workflow_agent",
+                            "agentId": "v1",
+                            "phaseTitle": "Map",
+                            "phaseIndex": "1",  # string, not int
+                            "tokens": "50",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return parse_workflow_run(run_dir, snapshot)
+
+    def test_string_numeric_fields_are_coerced_not_crashed(
+        self, tmp_path: Path
+    ) -> None:
+        run = self._run(tmp_path)  # must not raise
+        assert run is not None
+        a = run.agents[0]
+        assert a.phase_index == 1 and isinstance(a.phase_index, int)
+        assert a.tokens == 50
+        assert run.total_tokens == 100
+        assert run.agent_count == 1
+        # grouped under Map by title despite the string phaseIndex
+        assert [x.agent_id for x in run.phases[0].agents] == ["v1"]
+
+    def test_unparseable_numeric_becomes_none(self, tmp_path: Path) -> None:
+        run = self._run(tmp_path)
+        assert run is not None
+        # sanity: a genuinely non-numeric value would coerce to None, not crash
+        from claude_code_log.workflow import _as_int
+
+        assert _as_int("not-a-number") is None
+        assert _as_int(None) is None
+        assert _as_int(True) is None
+
+
 class TestLoaderOrphanSuppression:
     """The directory loader must scan workflow side-channel UUIDs so the
     fixture loads without spurious orphan warnings (CR/dev-docs invariant)."""

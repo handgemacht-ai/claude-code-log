@@ -363,7 +363,9 @@ snapshots serially (`-n0`), review the diff is structure-only.
 **Per-area refinements:**
 1. **Loader/discovery** (low snapshot): extend `_scan_sidechain_uuids`
    glob (`converter.py:131`) to also match
-   `*/subagents/workflows/*/{agent-*.jsonl,journal.jsonl}`; add a
+   `*/subagents/workflows/*/*.jsonl` (covers both `agent-*.jsonl` and
+   `journal.jsonl` — `Path.glob()` has no `{a,b}` brace expansion, so a
+   single suffix glob is used rather than a brace set); add a
    `_load_workflow_runs` pass in `load_directory_transcripts` *after*
    main load, *before* `_integrate_agent_entries` — extract Workflow
    tool_uses, get `runId` **from the tool_result**, load journal +
