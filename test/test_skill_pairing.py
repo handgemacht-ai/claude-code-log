@@ -196,7 +196,9 @@ class TestSkillPairing:
         skill_tool_uses = [
             m.content
             for m in ctx.messages
-            if isinstance(m.content, ToolUseMessage) and m.content.tool_name == "Skill"
+            if m is not None
+            and isinstance(m.content, ToolUseMessage)
+            and m.content.tool_name == "Skill"
         ]
         assert len(skill_tool_uses) == 1
         assert skill_tool_uses[0].skill_body == body
@@ -206,11 +208,13 @@ class TestSkillPairing:
         _, _, ctx = generate_template_messages(messages)
 
         slash = [
-            m for m in ctx.messages if isinstance(m.content, UserSlashCommandMessage)
+            m
+            for m in ctx.messages
+            if m is not None and isinstance(m.content, UserSlashCommandMessage)
         ]
         assert slash == [], (
             f"UserSlashCommandMessage should be consumed when paired; got "
-            f"{[type(m.content).__name__ for m in ctx.messages]}"
+            f"{[type(m.content).__name__ if m is not None else 'GHOST' for m in ctx.messages]}"
         )
 
     def test_launching_skill_tool_result_dropped(self, tmp_path: Path) -> None:
@@ -222,7 +226,9 @@ class TestSkillPairing:
         tr = [
             m
             for m in ctx.messages
-            if isinstance(m.content, ToolResultMessage) and m.tool_use_id == "toolu_X"
+            if m is not None
+            and isinstance(m.content, ToolResultMessage)
+            and m.content.tool_use_id == "toolu_X"
         ]
         assert tr == [], (
             "The redundant 'Launching skill: X' tool_result should be dropped"
@@ -260,9 +266,15 @@ class TestSkillPairing:
         _, _, ctx = generate_template_messages(messages)
 
         tool_uses = [
-            m.content for m in ctx.messages if isinstance(m.content, ToolUseMessage)
+            m.content
+            for m in ctx.messages
+            if m is not None and isinstance(m.content, ToolUseMessage)
         ]
-        results = [m for m in ctx.messages if isinstance(m.content, ToolResultMessage)]
+        results = [
+            m
+            for m in ctx.messages
+            if m is not None and isinstance(m.content, ToolResultMessage)
+        ]
         assert len(tool_uses) == 1
         assert tool_uses[0].skill_body is None
         assert len(results) == 1  # Bash tool_result is NOT dropped
@@ -286,7 +298,9 @@ class TestSkillPairing:
         _, _, ctx = generate_template_messages(messages)
 
         slash = [
-            m for m in ctx.messages if isinstance(m.content, UserSlashCommandMessage)
+            m
+            for m in ctx.messages
+            if m is not None and isinstance(m.content, UserSlashCommandMessage)
         ]
         assert len(slash) == 1  # Still rendered as a standalone slash-command
 
@@ -309,7 +323,9 @@ class TestSkillPairing:
         _, _, ctx = generate_template_messages(messages)
 
         slash = [
-            m for m in ctx.messages if isinstance(m.content, UserSlashCommandMessage)
+            m
+            for m in ctx.messages
+            if m is not None and isinstance(m.content, UserSlashCommandMessage)
         ]
         # No pair found → slash-command is not consumed, renders standalone.
         assert len(slash) == 1
@@ -420,6 +436,8 @@ class TestSkillPairing:
 
         skill_uses_by_session: dict[str, ToolUseMessage] = {}
         for m in ctx.messages:
+            if m is None:
+                continue
             if isinstance(m.content, ToolUseMessage) and m.content.tool_name == "Skill":
                 skill_uses_by_session[m.meta.session_id] = m.content
         assert set(skill_uses_by_session) == {session_a, session_b}, (
@@ -491,7 +509,8 @@ class TestSkillPairing:
         results = [
             m.content
             for m in ctx.messages
-            if isinstance(m.content, ToolResultMessage)
+            if m is not None
+            and isinstance(m.content, ToolResultMessage)
             and m.content.tool_use_id == "toolu_ERR"
         ]
         assert len(results) == 1, (
@@ -549,7 +568,8 @@ class TestSkillPairing:
         results = [
             m.content
             for m in ctx.messages
-            if isinstance(m.content, ToolResultMessage)
+            if m is not None
+            and isinstance(m.content, ToolResultMessage)
             and m.content.tool_use_id == "toolu_ODD"
         ]
         assert len(results) == 1
@@ -559,6 +579,457 @@ class TestSkillPairing:
         output = results[0].output
         assert isinstance(output, ToolResultContent)
         assert output.content == "Some unrelated payload"
+
+
+class TestSkillFoldOnFork:
+    """The D12-prerequisite test the verifier flagged as missing.
+
+    Skill-fold happens inside a within-session branch, rendered at
+    FULL detail. Pre-ghosting this path went through
+    ``_reindex_filtered_context`` (which the
+    ``TestReindexBranchBackrefs`` tests below exercise). Post-Phase-1
+    of the ghosting epic (`work/ghosting-epic-plan.md`),
+    ``_pair_skill_tool_uses`` ghosts the consumed slots in place
+    instead of deleting + reindexing — so the branch header's
+    ``parent_message_index`` (set at register time in
+    ``_render_messages``) is never touched. The fork-anchor index
+    stays valid because no slot before it was deleted.
+
+    The test asserts the visible-output contract: skill folded,
+    slash + launching-skill tool_result ghosted, branch header
+    backlink resolves to the actual fork anchor (NOT to whatever
+    shifted into the old index after a phantom reindex). This is
+    the failure mode PR #131 introduced (under the old reindex
+    path) and the verifier called out as missing coverage for D12;
+    landing it under the ghosting path means D12 inherits the
+    coverage when it lands.
+    """
+
+    def test_skill_fold_inside_fork_at_full_keeps_branch_backref(
+        self, tmp_path: Path
+    ) -> None:
+        from claude_code_log.models import SessionHeaderMessage, ToolUseMessage
+
+        # Trunk: u-trunk-1 → a-trunk-1 → c (fork point).
+        # Both children of c are ASSISTANTS — bypasses the DAG's
+        # fork-collapse heuristic that absorbs an assistant +
+        # user-child pair as a tool-result side-branch (see
+        # ``_stitch_tool_results`` in dag.py). With two assistant
+        # siblings + distinct timestamps, the DAG sees a real fork.
+        # Branch 1: a-skill (assistant Skill tool_use) → u-launch
+        #   tool_result → u-meta-body (isMeta sourceToolUseID) →
+        #   a-skill-reply.
+        # Branch 2 sibling: a-other (assistant text) → u-other-reply.
+        sid = "sess-fork-skill"
+        tool_id = "toolu_SKILL_F"
+        skill_body = "# Forky Skill\n\nBody **inside** the branch."
+        entries = [
+            _user(
+                "u-trunk-1",
+                None,
+                "2026-01-01T10:00:00Z",
+                [{"type": "text", "text": "hello"}],
+                session_id=sid,
+            ),
+            _assistant_text(
+                "a-trunk-1", "u-trunk-1", "2026-01-01T10:00:01Z", "ok", session_id=sid
+            ),
+            _user(
+                "c",
+                "a-trunk-1",
+                "2026-01-01T10:00:02Z",
+                [{"type": "text", "text": "fork point"}],
+                session_id=sid,
+            ),
+            # ---- Branch 1: Skill spawn inside the branch
+            _assistant_tool_use(
+                "a-skill",
+                "c",
+                "2026-01-01T10:00:03Z",
+                "Skill",
+                tool_id,
+                {"skill": "forky:skill", "args": ""},
+                session_id=sid,
+            ),
+            _user(
+                "u-launch",
+                "a-skill",
+                "2026-01-01T10:00:04Z",
+                [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": "Launching skill: forky:skill",
+                        "is_error": False,
+                    }
+                ],
+                session_id=sid,
+            ),
+            _user(
+                "u-meta-body",
+                "u-launch",
+                "2026-01-01T10:00:05Z",
+                [{"type": "text", "text": skill_body}],
+                is_meta=True,
+                source_tool_use_id=tool_id,
+                session_id=sid,
+            ),
+            _assistant_text(
+                "a-skill-reply",
+                "u-meta-body",
+                "2026-01-01T10:00:06Z",
+                "skill ran",
+                session_id=sid,
+            ),
+            # ---- Branch 2 sibling: starts with an ASSISTANT
+            # (same role as branch 1's first entry) to bypass the
+            # fork-collapse heuristic, then a user reply so the
+            # branch isn't a single-entry dead-end.
+            _assistant_text(
+                "a-other",
+                "c",
+                "2026-01-01T10:00:07Z",
+                "other path",
+                session_id=sid,
+            ),
+            _user(
+                "u-other-reply",
+                "a-other",
+                "2026-01-01T10:00:08Z",
+                [{"type": "text", "text": "other reply"}],
+                session_id=sid,
+            ),
+        ]
+        messages = load_transcript(_write_jsonl(tmp_path / "fork-skill.jsonl", entries))
+        _, _, ctx = generate_template_messages(messages)
+
+        # === 1) Skill body folded into the Skill tool_use.
+        skill_tool_uses = [
+            m.content
+            for m in ctx.messages
+            if m is not None
+            and isinstance(m.content, ToolUseMessage)
+            and m.content.tool_name == "Skill"
+        ]
+        assert len(skill_tool_uses) == 1, (
+            f"expected exactly one Skill tool_use, got {len(skill_tool_uses)}"
+        )
+        assert skill_tool_uses[0].skill_body == skill_body, (
+            "Skill body should be folded onto the tool_use's skill_body field; "
+            f"got skill_body={skill_tool_uses[0].skill_body!r}"
+        )
+
+        # === 2) The slash-command body slot AND the launching-skill
+        # tool_result slot are GHOSTED (None) — not removed from
+        # ctx.messages. This is the new ghosting contract; pre-
+        # Phase-1 the consumed slots were deleted + reindexed.
+        ghost_slots = [i for i, m in enumerate(ctx.messages) if m is None]
+        assert len(ghost_slots) == 2, (
+            f"expected exactly 2 ghosted slots (slash body + "
+            f"launching-skill tool_result); got {len(ghost_slots)} at {ghost_slots}. "
+            f"ctx.messages length = {len(ctx.messages)}"
+        )
+
+        # No surviving UserSlashCommandMessage (the slash body is the ghost).
+        survivors = [m for m in ctx.messages if m is not None]
+        from claude_code_log.models import UserSlashCommandMessage as _USM
+
+        assert not any(isinstance(m.content, _USM) for m in survivors), (
+            "the slash body should be ghosted, not surviving in ctx.messages"
+        )
+
+        # Pin that BOTH consumed slots are ghosted — not just the slash
+        # body — so the "exactly 2 ghosts" count above can't be satisfied
+        # vacuously by ghosting some unrelated slot. Assert by uuid-absence:
+        # the launch tool_result lives in entry 'u-launch', the slash body
+        # in 'u-meta-body'.
+        survivor_uuids = {m.meta.uuid for m in survivors}
+        assert "u-launch" not in survivor_uuids, (
+            "the canonical 'Launching skill:' tool_result (uuid 'u-launch') "
+            "should be ghosted, not surviving in ctx.messages"
+        )
+        assert "u-meta-body" not in survivor_uuids, (
+            "the slash-command body (uuid 'u-meta-body') should be ghosted"
+        )
+
+        # === 3) The within-session branch header for the Skill-
+        # bearing branch must resolve its parent_message_index to
+        # the fork-anchor message (uuid 'c'), NOT to a phantom slot.
+        # This is the PR #131 regression class under the ghosting
+        # path: pre-Phase-1 a buggy reindex could shift the cached
+        # parent_message_index; post-Phase-1 there's no reindex at
+        # all, so the index set at register time stays valid as
+        # long as the fork anchor itself wasn't ghosted (it wasn't —
+        # the trunk-side anchor is never a Skill-fold target).
+        branch_headers = [
+            m
+            for m in survivors
+            if isinstance(m.content, SessionHeaderMessage) and m.content.is_branch
+        ]
+        # The Skill-bearing branch is the one rooted at 'a-skill'.
+        # (Branch sids are ``{trunk}@{first_uuid12}`` per dag.py.)
+        skill_branches = [
+            m for m in branch_headers if m.content.session_id.endswith("@a-skill")
+        ]
+        assert len(skill_branches) == 1, (
+            f"expected exactly one branch header rooted at 'a-skill'; got "
+            f"{[m.content.session_id for m in branch_headers]}"
+        )
+        skill_branch = skill_branches[0]
+        parent_idx = skill_branch.content.parent_message_index
+        assert parent_idx is not None, (
+            "skill-bearing branch header's parent_message_index is None — "
+            "expected it to resolve to the fork anchor 'c'."
+        )
+        parent_msg = ctx.get(parent_idx)
+        assert parent_msg is not None, (
+            f"branch header parent_message_index={parent_idx} resolved to None — "
+            "the fork anchor was either ghosted (unexpected) or the index was "
+            "phantom-shifted."
+        )
+        assert parent_msg.meta.uuid == "c", (
+            f"branch header parent_message_index={parent_idx} resolves to "
+            f"uuid={parent_msg.meta.uuid!r}, expected 'c' (the fork anchor). "
+            "This would surface as a wrong 'from #msg-d-N' backlink in the "
+            "rendered branch header — exactly the PR #131 failure class."
+        )
+
+
+class TestSkillFoldGhostAnchorRepair:
+    """``_pair_skill_tool_uses`` ghosts the slash body + launch tool_result
+    *in place* (None slots). Anchor-target refs cached earlier — a branch
+    header's ``parent_message_index`` and the ``session_first_message`` map,
+    both populated in ``_render_messages`` before this pass — may point at a
+    slot we just ghosted. The rendered ``#msg-d-{N}`` backlink is emitted
+    from that raw index, so a ``ctx.get()`` that returns None for a ghost
+    does NOT suppress the href; the ref itself must be nulled.
+
+    This is the exposure CodeRabbit flagged on #193 (the broader
+    ``_repair_stale_anchor_refs`` lives in Phase 2). Constructed via a
+    manual context — the same unit style as ``TestReindexBranchBackrefs``
+    — to land a fork point precisely on a soon-to-be-ghosted skill slot
+    without fighting the DAG's fork-collapse heuristic.
+    """
+
+    def test_anchor_ref_into_ghosted_skill_slot_is_nulled(self) -> None:
+        from claude_code_log.models import (
+            MessageMeta,
+            SessionHeaderMessage,
+            ToolResultContent,
+            ToolResultMessage,
+            ToolUseContent,
+            ToolUseMessage,
+            UserSlashCommandMessage,
+        )
+        from claude_code_log.renderer import (
+            RenderingContext,
+            TemplateMessage,
+            _pair_skill_tool_uses,
+        )
+
+        sid = "root"
+        tid = "skill-tool-1"
+        ctx = RenderingContext()
+
+        def _reg(content: object) -> TemplateMessage:
+            msg = TemplateMessage(content)  # type: ignore[arg-type]
+            ctx.register(msg)
+            return msg
+
+        # idx 0: trunk user
+        _reg(
+            UserSlashCommandMessage(
+                MessageMeta(session_id=sid, timestamp="", uuid="u-trunk"), text="hi"
+            )
+        )
+        # idx 1: Skill tool_use
+        _reg(
+            ToolUseMessage(
+                MessageMeta(session_id=sid, timestamp="", uuid="a-skill"),
+                input=ToolUseContent(
+                    type="tool_use",
+                    id=tid,
+                    name="Skill",
+                    input={"skill": "forky:skill", "args": ""},
+                ),
+                tool_use_id=tid,
+                tool_name="Skill",
+            )
+        )
+        # idx 2: canonical launch tool_result — ghosted AND the fork anchor.
+        launch = _reg(
+            ToolResultMessage(
+                MessageMeta(session_id=sid, timestamp="", uuid="u-launch"),
+                tool_use_id=tid,
+                output=ToolResultContent(
+                    type="tool_result",
+                    tool_use_id=tid,
+                    content="Launching skill: forky:skill",
+                    is_error=False,
+                ),
+            )
+        )
+        # idx 3: slash body — ghosted.
+        slash = _reg(
+            UserSlashCommandMessage(
+                MessageMeta(
+                    session_id=sid,
+                    timestamp="",
+                    uuid="u-meta-body",
+                    is_meta=True,
+                    source_tool_use_id=tid,
+                ),
+                text="# expanded skill body",
+            )
+        )
+        # idx 4: a branch header whose fork anchor IS the launch tool_result.
+        branch = _reg(
+            SessionHeaderMessage(
+                MessageMeta(session_id=f"{sid}@a-skill", timestamp="", uuid=""),
+                title="Branch • test",
+                session_id=f"{sid}@a-skill",
+                parent_session_id=sid,
+                parent_message_index=launch.message_index,
+                attachment_uuid="u-launch",
+                is_branch=True,
+            )
+        )
+
+        assert launch.message_index is not None and slash.message_index is not None
+        ctx.session_first_message[sid] = 0
+        # A session whose first message resolves to a soon-ghosted slot.
+        ctx.session_first_message["ghost-first"] = launch.message_index
+
+        _pair_skill_tool_uses(ctx)
+
+        # Both consumed slots ghosted in place.
+        assert ctx.messages[launch.message_index] is None, (
+            "launch tool_result slot should be ghosted (None)"
+        )
+        assert ctx.messages[slash.message_index] is None, (
+            "slash-body slot should be ghosted (None)"
+        )
+
+        # THE GUARD: the branch backlink into the ghosted fork anchor is
+        # nulled so the rendered '#msg-d-{N}' href doesn't dangle.
+        assert isinstance(branch.content, SessionHeaderMessage)
+        assert branch.content.parent_message_index is None, (
+            "branch header parent_message_index still points at a ghosted "
+            f"slot (={branch.content.parent_message_index}) — the dead-anchor "
+            "guard in _pair_skill_tool_uses did not run."
+        )
+
+        # session_first_message entries resolving to a ghost are dropped;
+        # the live one survives.
+        assert "ghost-first" not in ctx.session_first_message, (
+            "session_first_message kept an entry pointing at a ghosted slot"
+        )
+        assert ctx.session_first_message.get(sid) == 0, (
+            "the live session_first_message entry was incorrectly dropped"
+        )
+
+    def test_session_nav_omits_anchor_for_ghosted_fork_point(self) -> None:
+        """`prepare_session_navigation` must NOT retarget a ghosted fork
+        point's nav anchor at the parent session header.
+
+        The fork-point nav item resolves its anchor by scanning
+        `_visible(ctx.messages)` for `attachment_uuid`. When that message
+        was ghosted (e.g. a folded Skill slot), the scan can't find it, so
+        `message_index` must stay None (anchor omitted) — NOT fall back to
+        `session_first_message[parent_sid]`, which would silently undo
+        `_drop_anchor_refs_into_ghosts` and point the fork link at the
+        parent session header. Regression for the CodeRabbit finding on
+        the #193 fix.
+        """
+        from claude_code_log.models import (
+            MessageMeta,
+            SessionHeaderMessage,
+            UserSlashCommandMessage,
+        )
+        from claude_code_log.renderer import (
+            RenderingContext,
+            TemplateMessage,
+            prepare_session_navigation,
+        )
+
+        ctx = RenderingContext()
+
+        def _reg(content: object) -> TemplateMessage:
+            msg = TemplateMessage(content)  # type: ignore[arg-type]
+            ctx.register(msg)
+            return msg
+
+        # idx 0: parent session header (a live anchor we must NOT fall back to)
+        _reg(
+            SessionHeaderMessage(
+                MessageMeta(session_id="root", timestamp="", uuid="root-hdr"),
+                title="root",
+                session_id="root",
+            )
+        )
+        # idx 1: the fork point — ghosted below.
+        fork_pt = _reg(
+            UserSlashCommandMessage(
+                MessageMeta(session_id="root", timestamp="", uuid="fork-pt"),
+                text="x",
+            )
+        )
+        # idx 2: branch header.
+        _reg(
+            SessionHeaderMessage(
+                MessageMeta(session_id="root@b", timestamp="", uuid="branch-hdr"),
+                title="Branch • b",
+                session_id="root@b",
+                parent_session_id="root",
+                attachment_uuid="fork-pt",
+                is_branch=True,
+            )
+        )
+
+        ctx.session_first_message["root"] = 0
+        ctx.session_first_message["root@b"] = 2
+        # Ghost the fork point, mirroring what _pair_skill_tool_uses does.
+        assert fork_pt.message_index is not None
+        ctx.messages[fork_pt.message_index] = None
+
+        sessions = {
+            "root": {
+                "first_user_message": "hello",
+                "first_timestamp": "",
+                "last_timestamp": "",
+                "summary": None,
+                "message_count": 1,
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+                "total_cache_creation_tokens": 0,
+                "total_cache_read_tokens": 0,
+            }
+        }
+        session_hierarchy = {
+            "root": {"depth": 0},
+            "root@b": {
+                "is_branch": True,
+                "attachment_uuid": "fork-pt",
+                "parent_session_id": "root",
+                "depth": 1,
+            },
+        }
+
+        nav = prepare_session_navigation(sessions, ["root"], ctx, session_hierarchy)
+
+        fork_items = [n for n in nav if n.get("is_fork_point")]
+        assert len(fork_items) == 1, (
+            f"expected exactly one fork-point nav item; got {len(fork_items)}"
+        )
+        fork = fork_items[0]
+        assert fork["message_index"] is None, (
+            f"fork-point nav anchor points at message_index={fork['message_index']} "
+            "(the parent session header) instead of being omitted — the ghosted "
+            "fork point was retargeted, undoing the anchor repair."
+        )
+        assert fork["parent_message_index"] is None, (
+            "fork-point nav parent_message_index fell back to the parent header"
+        )
 
 
 class TestReindexBranchBackrefs:

@@ -15,9 +15,17 @@
         {% if session.is_fork_point is defined and session.is_fork_point %}
         <div class='session-nav-item session-fork-point'
             style='margin-left: {{ session.depth * 24 }}px'>
+            {% if session.message_index is not none %}
             <a href='#msg-d-{{ session.message_index }}' class='fork-link'>
                 &#x2442; {{ session.first_user_message }}
             </a>
+            {% else %}
+            {# Fork point was ghosted (e.g. a folded Skill slot) — show the
+               label without a dangling anchor. #}
+            <span class='fork-link'>
+                &#x2442; {{ session.first_user_message }}
+            </span>
+            {% endif %}
         </div>
         {% elif session.is_compaction_point is defined and session.is_compaction_point %}
         <div class='session-nav-item session-compaction-point'

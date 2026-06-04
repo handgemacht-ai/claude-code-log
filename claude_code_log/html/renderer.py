@@ -396,6 +396,8 @@ class HtmlRenderer(Renderer):
         ``pair_last`` link stays intact so that ghosting still fires (#180).
         """
         for msg in ctx.messages:
+            if msg is None:
+                continue  # ghosted slot (ghosting epic Phase 1)
             content = msg.content
             if not isinstance(content, ToolResultMessage):
                 continue

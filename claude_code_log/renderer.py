@@ -7,6 +7,7 @@ import re
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Any, Optional, Tuple, cast
 from datetime import datetime
 
@@ -100,12 +101,18 @@ class RenderingContext:
 
     Attributes:
         messages: Registry of all TemplateMessage objects (message_index = index).
+            A slot may be ``None`` — a "ghost" — when a pass drops the message
+            from the visible render path while preserving its index slot so
+            every stored reference (parent_message_index, session_first_message,
+            junction_forward_links, pair_first/last/middle) stays valid. See
+            ``work/ghosting-epic-plan.md``. Iterators that don't want to see
+            ghosts should use ``_visible(...)`` or ``if m is None: continue``.
         tool_use_context: Maps tool_use_id -> ToolUseContent for result rendering.
         session_first_message: Maps session_id -> index of first message in session.
     """
 
-    messages: list[TemplateMessage] = field(
-        default_factory=lambda: []  # type: list[TemplateMessage]
+    messages: list[Optional[TemplateMessage]] = field(
+        default_factory=lambda: []  # type: list[Optional[TemplateMessage]]
     )
     tool_use_context: dict[str, ToolUseContent] = field(
         default_factory=lambda: {}  # type: dict[str, ToolUseContent]
@@ -167,15 +174,37 @@ class RenderingContext:
     def get(self, message_index: int) -> Optional["TemplateMessage"]:
         """Get a TemplateMessage by its message_index.
 
+        Returns ``None`` if the index is out of range OR if the slot
+        has been ghosted (``ctx.messages[idx] = None``). Callers
+        already check the return value for ``None`` (out-of-range
+        was the only failure mode pre-ghosting); the ghost case
+        flows through the same check.
+
         Args:
             message_index: The message_index (index) to look up.
 
         Returns:
-            The TemplateMessage if found, None if out of range.
+            The TemplateMessage if found and not ghosted, else None.
         """
         if 0 <= message_index < len(self.messages):
             return self.messages[message_index]
         return None
+
+
+def _visible(
+    messages: Iterable[Optional["TemplateMessage"]],
+) -> Iterator["TemplateMessage"]:
+    """Yield only non-ghost messages.
+
+    Ghosts are ``None`` slots in ``RenderingContext.messages`` —
+    see ``RenderingContext.messages`` docstring and
+    ``work/ghosting-epic-plan.md`` for the model. Use this helper
+    instead of ``for m in messages`` when the loop body shouldn't
+    touch a ghosted slot.
+    """
+    for m in messages:
+        if m is not None:
+            yield m
 
 
 # -- Template Classes ---------------------------------------------------------
@@ -726,7 +755,12 @@ def generate_template_messages(
     with log_timing("Link junction forwards", t_start):
         _link_junction_forwards(ctx)
 
-    # Detail-level post-render: remove text-derived types per level
+    # Detail-level post-render: remove text-derived types per level.
+    # ``_filter_template_by_detail`` strips ghost (None) slots
+    # alongside non-visible content so the kept list passed to
+    # ``_reindex_filtered_context`` is None-free. Phase 2 of the
+    # ghosting epic will rewrite this pair into a single ghost-style
+    # pass and delete ``_reindex_filtered_context``.
     if detail != DetailLevel.FULL:
         with log_timing(f"Detail post-render filter ({detail.value})", t_start):
             filtered = _filter_template_by_detail(ctx.messages, detail)
@@ -1115,7 +1149,9 @@ def _fork_point_preview(fork_msg: "TemplateMessage", ctx: RenderingContext) -> s
         parent_uuid = msg.meta.parent_uuid
         if not parent_uuid:
             break
-        parent = next((m for m in ctx.messages if m.meta.uuid == parent_uuid), None)
+        parent = next(
+            (m for m in _visible(ctx.messages) if m.meta.uuid == parent_uuid), None
+        )
         if parent is None:
             break
         msg = parent
@@ -1162,7 +1198,7 @@ def _link_junction_forwards(ctx: RenderingContext) -> None:
     uuid_to_msg: dict[str, TemplateMessage] = {}
     # Build msg_index → TemplateMessage for branch preview lookup
     idx_to_msg: dict[int, TemplateMessage] = {}
-    for msg in ctx.messages:
+    for msg in _visible(ctx.messages):
         if msg.meta.uuid:
             uuid_to_msg[msg.meta.uuid] = msg
         if msg.message_index is not None:
@@ -1307,7 +1343,7 @@ def prepare_session_navigation(
         # case (the post-pass ``_enrich_branch_titles`` used to
         # back-fill). We just read what's there.
         branch_previews: dict[str, str] = {}
-        for msg in ctx.messages:
+        for msg in _visible(ctx.messages):
             if not isinstance(msg.content, SessionHeaderMessage):
                 continue
             if not msg.content.is_branch:
@@ -1361,11 +1397,18 @@ def prepare_session_navigation(
                 insert_pos += 1
 
             # Fork point nav item — find the junction message and a
-            # meaningful preview (walk up past system hooks to find it)
-            fork_msg_idx = ctx.session_first_message.get(parent_sid)
+            # meaningful preview (walk up past system hooks to find it).
+            # Leave ``fork_msg_idx`` None until the fork point is actually
+            # located among the visible messages: if it was ghosted (e.g.
+            # a slash body or launch tool_result consumed by
+            # ``_pair_skill_tool_uses``), the ``_visible`` loop skips it and
+            # the anchor must be *omitted*, not retargeted at the parent
+            # session header. Falling back to ``session_first_message`` here
+            # would silently undo ``_drop_anchor_refs_into_ghosts``.
+            fork_msg_idx = None
             fork_preview = ""
             fork_msg = None
-            for msg in ctx.messages:
+            for msg in _visible(ctx.messages):
                 if msg.meta.uuid == attachment_uuid and msg.message_index is not None:
                     fork_msg_idx = msg.message_index
                     fork_msg = msg
@@ -1390,7 +1433,7 @@ def prepare_session_navigation(
                 "first_user_message": fork_label,
                 "token_summary": "",
                 "parent_session_id": parent_sid,
-                "parent_message_index": ctx.session_first_message.get(parent_sid),
+                "parent_message_index": fork_msg_idx,
                 "depth": parent_depth + 1,
                 "is_fork_point": True,
             }
@@ -1426,14 +1469,14 @@ def prepare_session_navigation(
     # pre-compaction context was replaced with a summary — a real content
     # discontinuity that's useful to jump to.
     compact_by_session: dict[str, list[TemplateMessage]] = {}
-    for msg in ctx.messages:
+    for msg in _visible(ctx.messages):
         if isinstance(msg.content, CompactedSummaryMessage):
             compact_by_session.setdefault(msg.render_session_id, []).append(msg)
 
     # Build a uuid → TemplateMessage lookup so each compaction landmark
     # can read preTokens / trigger from its preceding system entry.
     uuid_to_msg: dict[str, TemplateMessage] = {
-        msg.meta.uuid: msg for msg in ctx.messages if msg.meta.uuid
+        msg.meta.uuid: msg for msg in _visible(ctx.messages) if msg.meta.uuid
     }
 
     for comp_sid, comp_msgs in compact_by_session.items():
@@ -2300,7 +2343,7 @@ def _populate_teammate_colors(ctx: RenderingContext) -> None:
     """
     from .models import TeammateMessage
 
-    for template_msg in ctx.messages:
+    for template_msg in _visible(ctx.messages):
         content = template_msg.content
         if not isinstance(content, TeammateMessage):
             continue
@@ -2334,7 +2377,7 @@ def _populate_task_metadata(ctx: RenderingContext) -> None:
         ToolResultMessage,
     )
 
-    for template_msg in ctx.messages:
+    for template_msg in _visible(ctx.messages):
         content = template_msg.content
         if not isinstance(content, ToolResultMessage):
             continue
@@ -2394,7 +2437,7 @@ def _link_cron_jobs_by_id(ctx: RenderingContext) -> None:
     # together — the create call is the one a reader expects to
     # navigate to.
     job_id_to_call_index: dict[str, int] = {}
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         if not isinstance(tm.content, ToolResultMessage):
             continue
         if tm.content.tool_name != "CronCreate":
@@ -2414,7 +2457,7 @@ def _link_cron_jobs_by_id(ctx: RenderingContext) -> None:
         return
 
     # Step 2: stamp consumer sites.
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         if not isinstance(tm.content, ToolResultMessage):
             continue
         output = tm.content.output
@@ -2492,7 +2535,7 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
     # seen later in the transcript.
     bg_task_id_to_call_index: dict[tuple[str, str], int] = {}
     todo_task_id_to_call_index: dict[tuple[str, str], int] = {}
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         if not isinstance(tm.content, ToolResultMessage):
             continue
         # The CALL we want to link to is the tool_use, not the result —
@@ -2552,7 +2595,7 @@ def _link_task_id_consumers(ctx: RenderingContext) -> None:
     # — and record the first consumer's index per (session, bg_id) for
     # the forward-link direction.
     bg_task_id_to_first_consumer: dict[tuple[str, str], int] = {}
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         if not isinstance(tm.content, ToolUseMessage):
             continue
         session_key = tm.render_session_id or ""
@@ -2617,7 +2660,7 @@ def _link_tool_use_notifications(ctx: RenderingContext) -> None:
     """
     # Build tool_use_id → message_index map across all messages.
     tool_use_index: dict[str, int] = {}
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         if tm.type == "tool_use" and tm.tool_use_id and tm.message_index is not None:
             # First occurrence wins — multiple tool_uses sharing the same
             # tool_use_id is malformed input; the backlink target should
@@ -2626,7 +2669,7 @@ def _link_tool_use_notifications(ctx: RenderingContext) -> None:
     if not tool_use_index:
         return
 
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         content = tm.content
         if not isinstance(content, TaskNotificationMessage):
             continue
@@ -2704,7 +2747,7 @@ def _link_async_notifications(
     spawn_target_kept = detail not in (DetailLevel.MINIMAL, DetailLevel.USER_ONLY)
     # Index notifications by task_id so we can find them in O(1).
     notifications: dict[str, TaskNotificationMessage] = {}
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         if isinstance(tm.content, TaskNotificationMessage) and tm.content.task_id:
             notifications.setdefault(tm.content.task_id, tm.content)
     if not notifications:
@@ -2723,7 +2766,7 @@ def _link_async_notifications(
     # tagged on the entry's meta — so an unrelated tool_result that
     # happens to mention "agentId:" in its raw text doesn't hijack a
     # notification meant for a real spawn.
-    for tm in ctx.messages:
+    for tm in _visible(ctx.messages):
         content = tm.content
         if not isinstance(content, ToolResultMessage):
             continue
@@ -2977,7 +3020,7 @@ def _cleanup_sidechain_duplicates(root_messages: list[TemplateMessage]) -> None:
 
 
 def _reorder_session_template_messages(
-    messages: list[TemplateMessage],
+    messages: list[Optional[TemplateMessage]],
 ) -> list[TemplateMessage]:
     """Reorder template messages to group all messages under their correct session headers.
 
@@ -2990,8 +3033,13 @@ def _reorder_session_template_messages(
     This must be called BEFORE _identify_message_pairs and _reorder_paired_messages,
     since those functions expect messages to be in session-grouped order.
 
+    Accepts ghost-aware input (None slots) — see
+    ``work/ghosting-epic-plan.md``; ghosts are silently dropped from
+    the returned list, so downstream passes that consume this
+    function's output don't need ghost-awareness.
+
     Args:
-        messages: Template messages (including session headers)
+        messages: Template messages (including session headers); may contain None ghost slots.
 
     Returns:
         Reordered messages with all messages grouped under their session headers
@@ -3001,6 +3049,8 @@ def _reorder_session_template_messages(
     session_messages_map: dict[str, list[TemplateMessage]] = {}
 
     for message in messages:
+        if message is None:
+            continue
         if message.is_session_header:
             session_headers.append(message)
             # Initialize the list for this session (preserves session order)
@@ -3014,9 +3064,12 @@ def _reorder_session_template_messages(
                     session_messages_map[sid] = []
                 session_messages_map[sid].append(message)
 
-    # If no session headers, return original order
+    # If no session headers, return original order — but materialise
+    # the non-ghost subset so the caller sees ``list[TemplateMessage]``
+    # (callers downstream of this function are typed against the
+    # non-Optional shape and shouldn't have to ghost-skip).
     if not session_headers:
-        return messages
+        return list(_visible(messages))
 
     # Second pass: for each session header, insert all messages with that session_id
     result: list[TemplateMessage] = []
@@ -3319,7 +3372,7 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
     # transcripts spanning multiple sessions can't cross-pair via stray
     # tool_use_id collisions.
     slash_by_source: dict[tuple[str, str], TemplateMessage] = {}
-    for msg in ctx.messages:
+    for msg in _visible(ctx.messages):
         if (
             isinstance(msg.content, UserSlashCommandMessage)
             and msg.meta.source_tool_use_id
@@ -3329,8 +3382,26 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
     if not slash_by_source:
         return
 
+    # Index the canonical "Launching skill:" tool_results once, keyed the
+    # same way as the slash bodies. tool_use_ids are session-unique, so each
+    # (render_session_id, tool_use_id) maps to at most one non-error launch
+    # result — this keeps folding linear instead of rescanning ctx.messages
+    # per Skill. An error result or a divergent payload sharing the
+    # tool_use_id is excluded here and stays visible.
+    launch_result_by_source: dict[tuple[str, str], int] = {}
+    for msg in _visible(ctx.messages):
+        if (
+            isinstance(msg.content, ToolResultMessage)
+            and not msg.content.is_error
+            and msg.message_index is not None
+            and _is_launching_skill_payload(msg.content.output)
+        ):
+            launch_result_by_source.setdefault(
+                (msg.render_session_id, msg.content.tool_use_id), msg.message_index
+            )
+
     consumed_indices: set[int] = set()
-    for msg in ctx.messages:
+    for msg in _visible(ctx.messages):
         if not (
             isinstance(msg.content, ToolUseMessage) and msg.content.tool_name == "Skill"
         ):
@@ -3342,32 +3413,61 @@ def _pair_skill_tool_uses(ctx: RenderingContext) -> None:
         msg.content.skill_body = slash.content.text
         if slash.message_index is not None:
             consumed_indices.add(slash.message_index)
-        # The matching tool_result carries the redundant "Launching skill: ..."
-        # string; drop it. Same-session, non-error, payload-prefix-checked
-        # so a real error result or a divergent payload sharing the
-        # tool_use_id stays visible.
-        for other in ctx.messages:
-            if (
-                not isinstance(other.content, ToolResultMessage)
-                or other.render_session_id != msg.render_session_id
-                or other.content.tool_use_id != msg.content.tool_use_id
-                or other.content.is_error
-                or other.message_index is None
-            ):
-                continue
-            if not _is_launching_skill_payload(other.content.output):
-                continue
-            consumed_indices.add(other.message_index)
+        # Drop the matching, redundant "Launching skill: ..." tool_result.
+        launch_idx = launch_result_by_source.get(
+            (msg.render_session_id, msg.content.tool_use_id)
+        )
+        if launch_idx is not None:
+            consumed_indices.add(launch_idx)
 
     if not consumed_indices:
         return
 
-    kept = [
-        msg
-        for msg in ctx.messages
-        if msg.message_index is None or msg.message_index not in consumed_indices
-    ]
-    _reindex_filtered_context(ctx, kept)
+    # Ghost the consumed slots in place. The TemplateMessages are
+    # freed by GC; the indices around them stay stable so every
+    # stored reference (parent_message_index, junction_forward_links,
+    # session_first_message, pair_first/last/middle) keeps pointing
+    # at the right slot — no reindex needed. Downstream iterators
+    # see None at the ghosted positions and skip via ``_visible(...)``
+    # or an explicit ``if m is None: continue``. See
+    # ``work/ghosting-epic-plan.md`` §3.1.
+    for idx in consumed_indices:
+        ctx.messages[idx] = None
+
+    # A branch header's ``parent_message_index`` and the
+    # ``session_first_message`` map are cached during ``_render_messages``
+    # — *before* this pass. If a fork point happened to land on a slot we
+    # just ghosted, that cached index now refers to a ``None`` slot and the
+    # rendered ``#msg-d-{N}`` backlink would dangle (the anchor href is
+    # emitted from the raw index; ``ctx.get()`` returning ``None`` doesn't
+    # suppress it). Null those stale refs so the anchor is simply omitted.
+    # ``junction_forward_links`` are populated *after* this pass
+    # (``_link_junction_forwards``), so they need no repair here.
+    _drop_anchor_refs_into_ghosts(ctx)
+
+
+def _drop_anchor_refs_into_ghosts(ctx: RenderingContext) -> None:
+    """Null anchor-target refs that now point at a ghosted (``None``) slot.
+
+    Keeps the index-stability contract honest for the only anchor sources
+    cached before ghosting runs: ``session_first_message`` and each branch
+    header's ``parent_message_index``. See ``_pair_skill_tool_uses`` for
+    why junction forward links are out of scope. Phase 2 of the ghosting
+    epic adds a broader ``_repair_stale_anchor_refs`` for the detail-filter
+    ghost path; this is the skill-fold-scoped counterpart.
+    """
+    ctx.session_first_message = {
+        sid: idx
+        for sid, idx in ctx.session_first_message.items()
+        if ctx.get(idx) is not None
+    }
+    for msg in _visible(ctx.messages):
+        if (
+            isinstance(msg.content, SessionHeaderMessage)
+            and msg.content.parent_message_index is not None
+            and ctx.get(msg.content.parent_message_index) is None
+        ):
+            msg.content.parent_message_index = None
 
 
 def _reindex_filtered_context(
@@ -3400,7 +3500,11 @@ def _reindex_filtered_context(
         msg.pair_middle = None
         msg.pair_last = None
 
-    ctx.messages = filtered
+    # ``ctx.messages`` is typed ``list[Optional[TemplateMessage]]``
+    # to support ghosting; the reindex rebuilds it from the
+    # non-ghost ``filtered`` list, which is naturally a subset of
+    # that wider type.
+    ctx.messages = list(filtered)
     ctx.session_first_message = {
         sid: new_idx
         for sid, old_idx in ctx.session_first_message.items()
@@ -3446,7 +3550,7 @@ def _reindex_filtered_context(
 
 
 def _filter_template_by_detail(
-    messages: list[TemplateMessage],
+    messages: list[Optional[TemplateMessage]],
     detail: DetailLevel,
 ) -> list[TemplateMessage]:
     """Post-render filter: remove TemplateMessage types per detail level.
@@ -3455,9 +3559,15 @@ def _filter_template_by_detail(
     to each content class's ``visible_at`` predicate / ``detail_visibility``
     ClassVar. At ``LOW``, the ``_LOW_KEEP_TOOLS`` allowlist narrows
     built-in tool messages further to a specific set of tool names.
+
+    Accepts ghost-aware input (None slots); ghosts are silently
+    skipped (they were already dropped from the visible render path
+    by an earlier pass — see ``work/ghosting-epic-plan.md``).
     """
     result: list[TemplateMessage] = []
     for msg in messages:
+        if msg is None:
+            continue
         visible = _content_visible_at(msg.content, detail)
 
         # LOW keep-list: built-in ToolUseMessage / ToolResultMessage declare
@@ -3699,7 +3809,7 @@ def _build_branch_header(
     attachment_uuid = b_hier.get("attachment_uuid")
     parent_msg_idx = None
     if attachment_uuid:
-        for msg in ctx.messages:
+        for msg in _visible(ctx.messages):
             if msg.meta.uuid == attachment_uuid and msg.message_index is not None:
                 parent_msg_idx = msg.message_index
                 break
@@ -3754,7 +3864,7 @@ def _build_branch_header(
     # Get fork point preview for backlink text
     fork_context = ""
     if attachment_uuid:
-        for fmsg in ctx.messages:
+        for fmsg in _visible(ctx.messages):
             if fmsg.meta.uuid == attachment_uuid:
                 fork_context = _fork_point_preview(fmsg, ctx)
                 break
