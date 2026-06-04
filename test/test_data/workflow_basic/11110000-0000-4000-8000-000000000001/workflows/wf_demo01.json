@@ -1,0 +1,84 @@
+{
+  "runId": "wf_demo01",
+  "taskId": "task_demo01",
+  "status": "completed",
+  "workflowName": "demo-review",
+  "timestamp": "2026-06-04T10:00:00.000Z",
+  "durationMs": 5000,
+  "agentCount": 3,
+  "totalTokens": 303,
+  "totalToolCalls": 9,
+  "defaultModel": "claude-sonnet-4-6",
+  "scriptPath": "11110000-0000-4000-8000-000000000001/workflows/scripts/demo-review-wf_demo01.js",
+  "phases": [
+    {
+      "title": "Map",
+      "detail": "scan dimensions"
+    },
+    {
+      "title": "Synthesize",
+      "detail": "merge findings"
+    }
+  ],
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Map"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "Synthesize"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 0,
+      "label": "review:loader",
+      "phaseIndex": 1,
+      "phaseTitle": "Map",
+      "agentId": "ag000001",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "attempt": 1,
+      "tokens": 100,
+      "toolCalls": 2,
+      "durationMs": 1000,
+      "resultPreview": "{\"area\": \"loader\", \"summary\": \"Discovery glob misses subagen"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "review:hierarchy",
+      "phaseIndex": 1,
+      "phaseTitle": "Map",
+      "agentId": "ag000002",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "attempt": 1,
+      "tokens": 101,
+      "toolCalls": 3,
+      "durationMs": 1001,
+      "resultPreview": "{\"area\": \"hierarchy\", \"summary\": \"Tree already nests; level "
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "synthesize",
+      "phaseIndex": 2,
+      "phaseTitle": "Synthesize",
+      "agentId": "ag000003",
+      "model": "claude-opus-4-8",
+      "state": "done",
+      "attempt": 1,
+      "tokens": 102,
+      "toolCalls": 4,
+      "durationMs": 1002,
+      "resultPreview": "## Plan\n\nLand parsing first, then render workflow runs on th"
+    }
+  ],
+  "result": {
+    "plan": "Land parsing first.",
+    "areaCount": 2
+  }
+}
