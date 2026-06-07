@@ -21,6 +21,7 @@ from .models import (
     SummaryTranscriptEntry,
     QueueOperationTranscriptEntry,
     ToolUseContent,
+    ToolResultContent,
     UserTranscriptEntry,
     AssistantTranscriptEntry,
     PassthroughTranscriptEntry,
@@ -601,6 +602,60 @@ def _stitch_tool_results(
     return dead_ends + user_with_cont
 
 
+def _is_continuation_fork(
+    parent: MessageNode,
+    children: list[str],
+    nodes: dict[str, MessageNode],
+) -> bool:
+    """True for the assistant-continuation tool-flow artifact.
+
+    An assistant turn that issues tool_use(s) records, as same-session
+    children, BOTH the tool_result(s) for those calls AND the turn's
+    continuation — a further assistant message: the next parallel tool_use, or
+    a ``max_tokens``-split continuation. When *both* sides carry live
+    conversation the existing ``_stitch_tool_results`` variants bail (they each
+    need one side to be dead-end/structural), and the walk would otherwise
+    mis-read this as a real rewind and fork — recursively, since each
+    continuation hits the same shape, producing a staircase of spurious
+    branches.
+
+    This recognizes the shape so the caller can linearize it instead. It is
+    distinct from a genuine user rewind: a rewind forks at a *user* turn into
+    new user *prompts*; here the parent is an assistant and **every** user
+    child is a ``tool_result`` for one of the parent's own ``tool_use`` ids.
+    """
+    if not isinstance(parent.entry, AssistantTranscriptEntry):
+        return False
+    parent_tool_ids = {
+        item.id
+        for item in parent.entry.message.content
+        if isinstance(item, ToolUseContent)
+    }
+    if not parent_tool_ids:
+        return False
+    has_assistant_continuation = False
+    has_tool_result = False
+    for child_uuid in children:
+        entry = nodes[child_uuid].entry
+        if isinstance(entry, AssistantTranscriptEntry):
+            has_assistant_continuation = True
+        elif isinstance(entry, UserTranscriptEntry):
+            content = entry.message.content
+            if isinstance(content, str):
+                return False  # a user-typed rewind prompt, not a tool_result
+            results = [x for x in content if isinstance(x, ToolResultContent)]
+            if not results or not all(
+                r.tool_use_id in parent_tool_ids for r in results
+            ):
+                return False
+            has_tool_result = True
+        else:
+            # Any other child type (structural/system) is handled by the
+            # earlier variants; be conservative and don't claim this shape.
+            return False
+    return has_assistant_continuation and has_tool_result
+
+
 def _walk_session_with_forks(
     root: MessageNode,
     session_id: str,
@@ -754,6 +809,20 @@ def _walk_session_with_forks(
                             chain.append(o)
                         current = nodes[live]
                         continue
+
+                if _is_continuation_fork(current, same_session_children, nodes):
+                    # Tool-flow continuation, NOT a rewind: an assistant turn
+                    # whose tool_result(s) and continuation (next tool_use /
+                    # max_tokens split) landed as siblings. End the chain here
+                    # and re-enqueue each child as a same-line (non-branch)
+                    # continuation; the timestamp merge in
+                    # ``extract_session_dag_lines`` re-links the segments
+                    # chronologically, so the turn renders linearly instead of
+                    # as a recursive staircase of spurious forks.
+                    for child_uuid in same_session_children:
+                        queue.append((child_uuid, line_id, parent_line_id))
+                    current = None
+                    continue
 
                 unique_timestamps = {nodes[c].timestamp for c in same_session_children}
                 if len(unique_timestamps) == 1:
