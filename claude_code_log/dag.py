@@ -8,7 +8,10 @@ See dev-docs/dag.md for the full architecture spec.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .workflow import WorkflowRun
 
 from .models import (
     AiTitleTranscriptEntry,
@@ -93,6 +96,9 @@ class SessionTree:
     sessions: dict[str, SessionDAGLine]
     roots: list[str]  # Root session IDs (no parent session)
     junction_points: dict[str, JunctionPoint]
+    # Parsed dynamic-workflow runs keyed by runId (issue #174 PR3), populated
+    # by load_directory_transcripts. Empty for single-file / non-workflow loads.
+    workflow_runs: dict[str, "WorkflowRun"] = field(default_factory=dict)
 
 
 # =============================================================================

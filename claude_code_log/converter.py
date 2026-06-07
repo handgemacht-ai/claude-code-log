@@ -718,6 +718,14 @@ def load_directory_transcripts(
         )
     ]
 
+    # Discover + parse any dynamic-workflow runs under this directory and stash
+    # them on the tree, keyed by runId, for the renderer to splice in (#174 PR3).
+    from .workflow import load_workflow_runs
+
+    tree.workflow_runs = {
+        run.run_id: run for run in load_workflow_runs(directory_path, silent=silent)
+    }
+
     return dag_ordered + non_dag_entries, tree
 
 
