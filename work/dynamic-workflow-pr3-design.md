@@ -148,6 +148,41 @@ Fixture (`workflow_basic`, runId `wf_demo01`, has_snapshot): 2 phases
 ag000003 in Synthesize → markdown string). Each `agent-*.jsonl` has 3 entries
 (user, assistant, assistant). Drives the splice tests directly.
 
+## POST-IMPLEMENTATION additions (2026-06-07) — cboos decision
+
+Step 3 (the splice) landed and is green on the directory path (verified
+end-to-end on REAL data: the `wf_dd551b62-a1d` run renders 3 phases + 42 agent
+cards). Two follow-ups were then folded into PR3 after cboos rendered a single
+`.jsonl` and saw no children:
+
+**Root cause of "no children":** the SINGLE-FILE path
+(`claude-code-log <SID>.jsonl`) never populated `session_tree.workflow_runs`
+(only the directory loader did) → the splice's guard never fired. NOT a
+cache/pagination issue.
+
+**Addition 1 — single-file workflow support.** `convert_jsonl_to`'s single-file
+branch now calls `workflow.load_session_workflow_runs(<SID>.jsonl)` (derives the
+sibling `<SID>/subagents/workflows/` + `<SID>/workflows/<runId>.json`, mirroring
+the directory loader via the shared `_runs_in_session_dir`), and when runs exist
+builds a `SessionTree` carrying `workflow_runs` + `workflow_links`. Gated on
+"runs exist" so the common no-workflow single-file render stays byte-identical
+(`session_tree` left `None`).
+
+**Addition 2 — pagination-boundary fix.** Run↔tool_use linkage now resolves at
+full-session scope BEFORE pagination: `workflow.map_workflow_runs_by_tool_use`
+scans the raw entries for each Workflow tool_use's `id` and its paired
+tool_result's `Task ID: <taskId>` (== `run.task_id`), producing a
+`{tool_use_id: WorkflowRun}` map stored on `SessionTree.workflow_links`.
+`_link_workflow_runs` PREFERS this map (no tool_result needed in the current
+page); the per-render tool_result scan remains the fallback for direct
+`generate_template_messages` calls. This makes a tool_use on page N link to its
+run even when the tool_result is the first message of page N+1. (Latent on the
+real `-main` run — its tool_use sits mid-page at paged position 54996 — but a
+genuine edge bug worth closing.)
+
+Tests: `TestSingleFileWorkflowRender`, `TestWorkflowPaginationBoundary` in
+`test/test_workflow_rendering.py`.
+
 ## Step 3 implementation map (wiring points located — build this next)
 
 **A. Node types** (`models.py`, after `ToolUseMessage` ~L1141, before the
