@@ -60,7 +60,11 @@ Splice pass (after `_build_message_tree`, before render):
 
 ## Open risk
 - `message_index` allocation for synthetic nodes must not collide with existing
-  indices (anchors/timeline). Use `max(existing)+1...` counter.
+  indices (anchors/timeline). Use a SINGLE monotonic allocator that persists and
+  advances across ALL workflow splices in the session (a session may have
+  several / concurrent Workflow tool_uses) — NOT `max(original)+1` recomputed
+  per workflow, which would collide run #2's nodes with run #1's grafted ones.
+  See step D.1.
 - Side-channel entries → TemplateMessages: simplest is a recursive
   `generate_template_messages(agent.entries)` and graft its non-session-header
   nodes; verify it doesn't emit spurious session headers per agent.
@@ -108,8 +112,19 @@ to `components/message_styles.css`.
 **D. Splice pass** (`renderer.py`, new `_splice_workflow_runs(root_messages,
 ctx)` called AFTER `_build_message_tree` (~L821), BEFORE
 `_link_async_notifications`; guard: only when a Workflow tool_use has
-`input.workflow_run`). For each such tool_use TemplateMessage:
-  1. counter = `max(message_index over all messages) + 1`.
+`input.workflow_run`).
+
+  1. **ONE session-wide monotonic allocator** — establish a single
+     `next_index = max(existing message_index) + 1` ONCE before iterating the
+     workflow tool_uses, and advance it across EVERY splice. A session can hold
+     several Workflow tool_uses (even concurrent ones — not sane, but nothing
+     structurally forbids it); recomputing `max(original messages)+1`
+     independently per workflow would make run #2's synthetic nodes COLLIDE
+     with run #1's already-grafted ones. Equivalent safe alternative: recompute
+     the max over ALL messages *including already-grafted synthetic nodes* before
+     each run. Either way the counter must never reset between runs.
+
+Then, for each Workflow tool_use TemplateMessage with a linked run:
   2. For each `run.phases` (or flat `run.agents` when no snapshot): build a
      `WorkflowPhaseMessage` TemplateMessage; under it a `WorkflowAgentMessage`
      TemplateMessage per agent; under each agent, render `agent.entries` and
