@@ -456,6 +456,8 @@ def _format_type_counts(type_counts: dict[str, int]) -> str:
         "system-error": ("error", "errors"),
         "system-info": ("info", "infos"),
         "sidechain": ("task", "tasks"),
+        "workflow_phase": ("phase", "phases"),
+        "workflow_agent": ("agent", "agents"),
     }
 
     # Handle special case: tool_use and tool_result together = "tool pairs"
