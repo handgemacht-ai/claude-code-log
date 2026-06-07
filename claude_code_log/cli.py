@@ -706,6 +706,17 @@ def _validate_git_link_template(template: str) -> None:
     ),
 )
 @click.option(
+    "--no-recaps",
+    is_flag=True,
+    help=(
+        "Suppress '※ recap' (away-summary) messages. Recaps are otherwise "
+        "shown at every detail level — they are themselves a high-level "
+        "summary of activity (#179). Use this to get a 'really user-only' "
+        "view (--detail user-only --no-recaps) or to drop the recap/agent "
+        "redundancy at --detail minimal."
+    ),
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -735,6 +746,7 @@ def main(
     compact: bool,
     git_link: Optional[str],
     no_timestamps: bool,
+    no_recaps: bool,
     debug: bool,
 ) -> None:
     """Convert Claude transcript JSONL files to HTML or Markdown.
@@ -1004,6 +1016,7 @@ def main(
                 detail=detail_level,
                 compact=compact,
                 no_timestamps=no_timestamps,
+                no_recaps=no_recaps,
             )
             click.echo(f"Successfully exported session to {output_path}")
             if open_browser:
@@ -1064,6 +1077,7 @@ def main(
                 filter_path=filter_path,
                 write_combined=write_combined,
                 no_timestamps=no_timestamps,
+                no_recaps=no_recaps,
             )
 
             # Count processed projects
@@ -1123,6 +1137,7 @@ def main(
             update_cache=output is None,
             write_combined=write_combined,
             no_timestamps=no_timestamps,
+            no_recaps=no_recaps,
         )
         if input_path.is_file():
             click.echo(f"Successfully converted {input_path} to {output_path}")

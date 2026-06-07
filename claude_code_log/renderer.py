@@ -666,6 +666,7 @@ def generate_template_messages(
     messages: list[TranscriptEntry],
     session_tree: Optional["SessionTree"] = None,
     detail: DetailLevel | str = DetailLevel.FULL,
+    no_recaps: bool = False,
 ) -> Tuple[list[TemplateMessage], list[dict[str, Any]], RenderingContext]:
     """Generate root messages and session navigation from transcript messages.
 
@@ -770,9 +771,11 @@ def generate_template_messages(
     # (``session_first_message``, ``parent_message_index``,
     # ``junction_forward_links``) so dropped fork-points don't leave
     # dead ``#msg-d-{N}`` links.
-    if detail != DetailLevel.FULL:
+    # ``--no-recaps`` suppresses recaps even at FULL, so run the ghost pass
+    # whenever filtering OR recap suppression is requested (#179).
+    if detail != DetailLevel.FULL or no_recaps:
         with log_timing(f"Detail post-render filter ({detail.value})", t_start):
-            _ghost_template_by_detail(ctx, detail)
+            _ghost_template_by_detail(ctx, detail, no_recaps=no_recaps)
 
     # Prepare session navigation data (uses ctx for session header indices)
     session_nav: list[dict[str, Any]] = []
@@ -3395,6 +3398,7 @@ def _drop_anchor_refs_into_ghosts(ctx: RenderingContext) -> None:
 def _ghost_template_by_detail(
     ctx: RenderingContext,
     detail: DetailLevel,
+    no_recaps: bool = False,
 ) -> None:
     """Ghost (set to None) ctx.messages slots that aren't visible at ``detail``.
 
@@ -3455,6 +3459,12 @@ def _ghost_template_by_detail(
             detail in (DetailLevel.MINIMAL, DetailLevel.LOW, DetailLevel.USER_ONLY)
             and msg.is_sidechain
         ):
+            visible = False
+
+        # ``--no-recaps`` (#179): recaps are otherwise visible at every level
+        # (AwaySummaryMessage.detail_visibility == USER_ONLY); this is the
+        # explicit opt-out, applied regardless of detail level.
+        if visible and no_recaps and isinstance(msg.content, AwaySummaryMessage):
             visible = False
 
         if not visible:
@@ -4270,6 +4280,10 @@ class Renderer:
 
     detail: DetailLevel = DetailLevel.FULL
     compact: bool = False
+    # When True, suppress ``※ recap`` (away_summary) messages at every detail
+    # level (#179). Recaps are otherwise always visible (see
+    # ``AwaySummaryMessage.detail_visibility``).
+    no_recaps: bool = False
 
     # Output format identifier consulted by the class-side dispatch path
     # below. Subclasses override to ``"html"`` etc.; the default
@@ -4619,6 +4633,7 @@ def get_renderer(
     detail: DetailLevel = DetailLevel.FULL,
     compact: bool = False,
     no_timestamps: bool = False,
+    no_recaps: bool = False,
 ) -> Renderer:
     """Get a renderer instance for the specified format.
 
@@ -4631,6 +4646,9 @@ def get_renderer(
         no_timestamps: If True, suppress per-message timestamp lines
             in Markdown output (issue #160). Ignored for HTML/JSON
             since they don't emit those lines.
+        no_recaps: If True, suppress ``※ recap`` (away_summary) messages at
+            every detail level (issue #179). Recaps are otherwise always
+            visible.
 
     Returns:
         A Renderer instance for the specified format.
@@ -4658,6 +4676,7 @@ def get_renderer(
         raise ValueError(f"Unsupported format: {format}")
     renderer.detail = detail
     renderer.compact = compact
+    renderer.no_recaps = no_recaps
     return renderer
 
 

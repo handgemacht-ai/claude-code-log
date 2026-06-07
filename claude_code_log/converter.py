@@ -1292,6 +1292,7 @@ def _generate_paginated_html(
     session_tree: Optional[SessionTree] = None,
     detail: DetailLevel = DetailLevel.FULL,
     compact: bool = False,
+    no_recaps: bool = False,
 ) -> Path:
     """Generate paginated HTML files for combined transcript.
 
@@ -1311,7 +1312,7 @@ def _generate_paginated_html(
     from .html.renderer import HtmlRenderer
     from .utils import format_timestamp, variant_suffix as _variant_suffix
 
-    suffix = _variant_suffix(detail, compact, "html")
+    suffix = _variant_suffix(detail, compact, "html", no_recaps=no_recaps)
 
     # Check if page size changed - if so, invalidate all pages
     cached_page_size = cache_manager.get_page_size_config()
@@ -1455,6 +1456,7 @@ def _generate_paginated_html(
         page_renderer = HtmlRenderer()
         page_renderer.detail = detail
         page_renderer.compact = compact
+        page_renderer.no_recaps = no_recaps
         html_content = page_renderer.generate(
             page_messages,
             page_title,
@@ -1531,6 +1533,7 @@ def convert_jsonl_to(
     output_root: Optional[Path] = None,
     write_combined: bool = True,
     no_timestamps: bool = False,
+    no_recaps: bool = False,
 ) -> Path:
     """Convert JSONL transcript(s) to the specified format.
 
@@ -1571,7 +1574,7 @@ def convert_jsonl_to(
 
     from .utils import variant_suffix as _variant_suffix
 
-    suffix = _variant_suffix(detail, compact, format, no_timestamps)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps, no_recaps)
 
     # Output destination decoupled from `input_path` (#151). Both
     # branches below assign to `effective_output_dir`; declare it
@@ -1665,6 +1668,7 @@ def convert_jsonl_to(
         detail=detail,
         compact=compact,
         no_timestamps=no_timestamps,
+        no_recaps=no_recaps,
     )
 
     # Decide whether to use pagination (HTML only, directory mode, no date filter)
@@ -1726,6 +1730,7 @@ def convert_jsonl_to(
             session_tree=session_tree,
             detail=detail,
             compact=compact,
+            no_recaps=no_recaps,
         )
     else:
         # Use single-file generation for small projects or filtered views
@@ -1790,6 +1795,7 @@ def convert_jsonl_to(
             compact=compact,
             write_combined=write_combined,
             no_timestamps=no_timestamps,
+            no_recaps=no_recaps,
         )
 
     return output_path
@@ -1972,6 +1978,7 @@ def _generate_individual_session_files(
     compact: bool = False,
     write_combined: bool = True,
     no_timestamps: bool = False,
+    no_recaps: bool = False,
 ) -> int:
     """Generate individual files for each session in the specified format.
 
@@ -1981,7 +1988,7 @@ def _generate_individual_session_files(
     from .utils import variant_suffix as _variant_suffix
 
     ext = get_file_extension(format)
-    suffix = _variant_suffix(detail, compact, format, no_timestamps)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps, no_recaps)
     # Pre-compute warmup sessions to exclude them
     warmup_session_ids = get_warmup_session_ids(messages)
 
@@ -2020,6 +2027,7 @@ def _generate_individual_session_files(
         detail=detail,
         compact=compact,
         no_timestamps=no_timestamps,
+        no_recaps=no_recaps,
     )
     regenerated_count = 0
 
@@ -2124,6 +2132,7 @@ def generate_single_session_file(
     detail: DetailLevel = DetailLevel.FULL,
     compact: bool = False,
     no_timestamps: bool = False,
+    no_recaps: bool = False,
 ) -> Path:
     """Generate a single session output file for the given session ID.
 
@@ -2226,7 +2235,7 @@ def generate_single_session_file(
     from .utils import variant_suffix as _variant_suffix
 
     ext = get_file_extension(format)
-    suffix = _variant_suffix(detail, compact, format, no_timestamps)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps, no_recaps)
     output_dir = input_path
     if output is not None:
         # User's explicit path wins; no suffix appended.
@@ -2242,6 +2251,7 @@ def generate_single_session_file(
         detail=detail,
         compact=compact,
         no_timestamps=no_timestamps,
+        no_recaps=no_recaps,
     )
     session_content = renderer.generate_session(
         session_messages, matched_id, session_title, cache_manager, output_dir
@@ -2313,6 +2323,7 @@ def process_projects_hierarchy(
     filter_path: Optional[str] = None,
     write_combined: bool = True,
     no_timestamps: bool = False,
+    no_recaps: bool = False,
 ) -> Path:
     """Process the entire ~/.claude/projects/ hierarchy and create linked output files.
 
@@ -2390,7 +2401,7 @@ def process_projects_hierarchy(
     # all need to use the same name. Hard-coding "combined_transcripts.html"
     # would make non-default --format / --detail / --compact
     # combinations cache-miss forever and link to the wrong file.
-    variant = _variant_suffix(detail, compact, output_format, no_timestamps)
+    variant = _variant_suffix(detail, compact, output_format, no_timestamps, no_recaps)
     combined_ext = get_file_extension(output_format)
     combined_name = f"combined_transcripts{variant}.{combined_ext}"
 
@@ -2561,6 +2572,7 @@ def process_projects_hierarchy(
                     output_root=(dest_dir if dest_dir != project_dir else None),
                     write_combined=write_combined,
                     no_timestamps=no_timestamps,
+                    no_recaps=no_recaps,
                 )
 
                 # Track timing

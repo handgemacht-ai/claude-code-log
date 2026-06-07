@@ -212,6 +212,13 @@ how much of the transcript renders:
   (designed for feeding to downstream agents, e.g. building a
   requirements doc).
 
+Recaps (`AwaySummaryMessage`) are a cross-cutting exception: they are a
+high-level summary of activity, so they stay visible at *every* level
+(`detail_visibility = USER_ONLY`), including `user-only`. The `--no-recaps`
+flag suppresses them at all levels — giving `--detail user-only --no-recaps`
+for a truly user-only view, or `--detail minimal --no-recaps` to drop the
+recap/agent redundancy (#179).
+
 Filtering happens in a single *post-render* pass on `TemplateMessage`:
 `_ghost_template_by_detail` sets each non-visible slot in
 `RenderingContext.messages` to `None` ("ghosting"), keyed by the content
