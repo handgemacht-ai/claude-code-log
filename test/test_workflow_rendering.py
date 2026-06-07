@@ -284,9 +284,15 @@ class TestWorkflowRunSplice:
     def test_phases_and_agents_nested_under_tool_use(self) -> None:
         host, _ctx = self._tree()
         # Two phases (Map, Synthesize) attached to the Workflow tool_use.
+        from claude_code_log.models import WorkflowPhaseMessage
+
         phases = [c for c in host.children if c.type == "workflow_phase"]
         assert len(phases) == 2
-        titles = [c.content.title for c in phases]  # type: ignore[attr-defined]
+        titles = [
+            c.content.title
+            for c in phases
+            if isinstance(c.content, WorkflowPhaseMessage)
+        ]
         assert titles == ["Map", "Synthesize"]
         # Map has 2 agents, Synthesize 1; all are workflow_agent children.
         agents_by_phase = [
