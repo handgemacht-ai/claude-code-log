@@ -32,7 +32,7 @@ from .utils import (
     resolve_memory_body_links,
 )
 from ..utils import strip_error_tags
-from ..workflow import parse_workflow_meta
+from ..workflow import resolve_workflow_header
 from ..models import (
     AskUserQuestionInput,
     AskUserQuestionItem,
@@ -1190,7 +1190,9 @@ def format_workflow_input(workflow_input: WorkflowToolInput) -> str:
     ``meta`` block (name / description / phase pills) above the JavaScript
     orchestrator source, syntax-highlighted and collapsible when long."""
     script = workflow_input.script or ""
-    name, description, phases = parse_workflow_meta(script)
+    name, description, phases = resolve_workflow_header(
+        workflow_input.workflow_run, script
+    )
 
     header_parts: list[str] = []
     if name:

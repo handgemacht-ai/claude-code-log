@@ -1556,6 +1556,13 @@ class WorkflowToolInput(BaseModel):
 
     script: str = ""
 
+    # Renderer-set (issue #174 PR3): the parsed WorkflowRun linked to this
+    # tool_use by taskId, when its <runId>.json snapshot was found on disk.
+    # Lets the formatter prefer the authoritative snapshot meta (name /
+    # description / phases) over the best-effort JS-`meta` regex. Typed Any to
+    # avoid importing the dataclass into this Pydantic model.
+    workflow_run: Optional[Any] = None
+
     model_config = {"extra": "allow"}
 
 

@@ -134,6 +134,89 @@ class TestWorkflowMetaParsing:
     def test_no_meta_block_returns_empty(self) -> None:
         assert parse_workflow_meta("const x = 1\nawait agent('hi')\n") == ("", "", [])
 
+
+_JS_META = (
+    "export const meta = {\n"
+    "  name: 'js-name',\n"
+    "  description: 'js-desc',\n"
+    "  phases: [{ title: 'Map' }],\n"
+    "}\n"
+)
+
+
+class TestSnapshotFirstHeader:
+    """PR3 / cboos refinement: the header prefers the authoritative
+    <runId>.json snapshot over the best-effort JS-meta regex, warns on JS-meta
+    drift, and falls back to the regex for a running (no-snapshot) workflow."""
+
+    def _run(self, **kw):
+        from claude_code_log.workflow import WorkflowPhase, WorkflowRun
+
+        return WorkflowRun(
+            run_id="r",
+            workflow_name=kw.get("name", "SNAP-NAME"),
+            has_snapshot=kw.get("has_snapshot", True),
+            phases=kw.get(
+                "phases",
+                [
+                    WorkflowPhase(index=0, title="Alpha"),
+                    WorkflowPhase(index=1, title="Beta"),
+                ],
+            ),
+        )
+
+    def test_snapshot_name_and_phases_win_description_from_js(self) -> None:
+        from claude_code_log.workflow import resolve_workflow_header
+
+        name, desc, phases = resolve_workflow_header(self._run(), _JS_META)
+        assert name == "SNAP-NAME"  # snapshot workflowName wins over JS name
+        assert phases == ["Alpha", "Beta"]  # snapshot phases win over JS phases
+        assert desc == "js-desc"  # description has no snapshot source → JS
+
+    def test_no_snapshot_falls_back_to_js(self) -> None:
+        from claude_code_log.workflow import resolve_workflow_header
+
+        assert resolve_workflow_header(None, _JS_META) == (
+            "js-name",
+            "js-desc",
+            ["Map"],
+        )
+
+    def test_drift_warning_when_js_meta_misses(self, caplog) -> None:
+        import logging
+
+        from claude_code_log.workflow import resolve_workflow_header
+
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.workflow"):
+            # snapshot has name+phases, but the script has no `export const meta`
+            resolve_workflow_header(self._run(), "const x = 1\n")
+        assert any("may have drifted" in r.message for r in caplog.records)
+
+
+class TestWorkflowRunLinkage:
+    """PR3 step 1-2: a parsed run links to its Workflow tool_use by taskId on a
+    directory load, so the formatter can render snapshot-first."""
+
+    def test_run_links_to_tool_use_input(self) -> None:
+        from claude_code_log.converter import load_directory_transcripts
+        from claude_code_log.models import ToolUseMessage, WorkflowToolInput
+        from claude_code_log.renderer import generate_template_messages
+
+        msgs, tree = load_directory_transcripts(TRUNK.parent, silent=True)
+        assert "wf_demo01" in tree.workflow_runs
+        _roots, _nav, ctx = generate_template_messages(msgs, session_tree=tree)
+        linked = [
+            tm.content.input.workflow_run
+            for tm in ctx.messages
+            if tm is not None
+            and isinstance(tm.content, ToolUseMessage)
+            and tm.content.tool_name == "Workflow"
+            and isinstance(tm.content.input, WorkflowToolInput)
+        ]
+        assert len(linked) == 1
+        assert linked[0] is not None
+        assert linked[0].run_id == "wf_demo01"
+
     def test_decoy_local_meta_ignored_for_exported_block(self) -> None:
         # CR #205: only the EXPORTED `meta` declaration is the header source;
         # a non-export local `meta = {...}` before it must not be mis-parsed.

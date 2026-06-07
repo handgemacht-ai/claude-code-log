@@ -26,10 +26,13 @@ import with ``converter``.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
+
+logger = logging.getLogger(__name__)
 
 _WF_META_RE = re.compile(
     r"export\s+(?:const|let|var)\s+meta\s*=\s*\{(.*?)\n\}", re.DOTALL
@@ -70,6 +73,45 @@ def parse_workflow_meta(script: str) -> tuple[str, str, list[str]]:
         desc_m.group(1) if desc_m else "",
         phases,
     )
+
+
+def resolve_workflow_header(
+    run: "Optional[WorkflowRun]", script: str
+) -> tuple[str, str, list[str]]:
+    """Resolve ``(name, description, phase_titles)`` for the Workflow header,
+    **snapshot-first** (issue #174 PR3 / cboos's refinement).
+
+    Prefers the authoritative ``<runId>.json`` (``run.workflow_name`` and
+    ``run.phases`` titles) when a snapshot is present, effectively *back-filling*
+    the header from the JSON. Falls back to the best-effort JS-``meta`` regex
+    (:func:`parse_workflow_meta`) for a running workflow with no snapshot.
+    ``description`` always comes from the JS meta — the snapshot carries no
+    description field.
+
+    When a snapshot IS present but the JS-``meta`` parse missed a field the
+    snapshot supplies, emit a warning so JS-format drift is noticeable (we can
+    then adapt the regex).
+    """
+    name_js, description, phases_js = parse_workflow_meta(script)
+
+    if run is not None and getattr(run, "has_snapshot", False):
+        if run.workflow_name and not name_js:
+            logger.warning(
+                "Workflow meta: JS `name` not parsed but snapshot has "
+                "workflowName=%r — the script's `meta` format may have drifted.",
+                run.workflow_name,
+            )
+        if run.phases and not phases_js:
+            logger.warning(
+                "Workflow meta: JS `phases` not parsed but snapshot has %d "
+                "phase(s) — the script's `meta` format may have drifted.",
+                len(run.phases),
+            )
+        name = run.workflow_name or name_js
+        phase_titles = [p.title for p in run.phases] or phases_js
+        return name, description, phase_titles
+
+    return name_js, description, phases_js
 
 
 if TYPE_CHECKING:

@@ -177,7 +177,13 @@ def _trunk() -> list[dict]:
                 {
                     "type": "tool_result",
                     "tool_use_id": "toolu_wf01",
-                    "content": '{"status":"async_launched","runId":"wf_demo01"}',
+                    # Real Workflow tool_results put the human stub + "Task ID: <id>"
+                    # in the content; the runId lives only in toolUseResult. The
+                    # renderer links a run to its tool_use by this taskId.
+                    "content": (
+                        f"Workflow launched in background. Task ID: {TASK_ID}\n"
+                        "Summary: Review the diff across dimensions."
+                    ),
                 }
             ],
             tool_use_result={

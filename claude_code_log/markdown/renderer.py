@@ -1045,10 +1045,10 @@ class MarkdownRenderer(Renderer):
         would emit nothing for the script (a regression from the pre-PR
         ToolUseContent ``**script:**`` fallback).
         """
-        from ..workflow import parse_workflow_meta
+        from ..workflow import resolve_workflow_header
 
         script = input.script or ""
-        name, description, phases = parse_workflow_meta(script)
+        name, description, phases = resolve_workflow_header(input.workflow_run, script)
 
         parts: list[str] = []
         header_bits: list[str] = []

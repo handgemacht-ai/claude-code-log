@@ -98,7 +98,9 @@ class SessionTree:
     junction_points: dict[str, JunctionPoint]
     # Parsed dynamic-workflow runs keyed by runId (issue #174 PR3), populated
     # by load_directory_transcripts. Empty for single-file / non-workflow loads.
-    workflow_runs: dict[str, "WorkflowRun"] = field(default_factory=dict)
+    workflow_runs: dict[str, "WorkflowRun"] = field(  # pyright: ignore[reportUnknownVariableType]
+        default_factory=dict
+    )
 
 
 # =============================================================================

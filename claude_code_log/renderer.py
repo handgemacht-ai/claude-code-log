@@ -14,6 +14,7 @@ from datetime import datetime
 if TYPE_CHECKING:
     from .cache import CacheManager
     from .dag import SessionTree
+    from .workflow import WorkflowRun
 
 from .models import (
     DetailLevel,
@@ -52,6 +53,7 @@ from .models import (
     ThinkingMessage,
     ToolResultMessage,
     ToolUseMessage,
+    WorkflowToolInput,
     UnknownMessage,
     UserMemoryMessage,
     UserSlashCommandMessage,
@@ -850,6 +852,14 @@ def generate_template_messages(
     # disappears at LOW.
     with log_timing("Link async notifications", t_start):
         _link_async_notifications(ctx, detail)
+
+    # Link parsed dynamic-workflow runs to their Workflow tool_use by taskId
+    # (#174 PR3) so the formatter can render snapshot-first meta (and step 3
+    # can splice the phase/agent tree).
+    with log_timing("Link workflow runs", t_start):
+        _link_workflow_runs(
+            ctx, session_tree.workflow_runs if session_tree is not None else {}
+        )
 
     # Independent pass: link tool-use-id-bearing notifications (e.g.
     # built-in Monitor task-end) back to their originating tool_use.
@@ -2691,6 +2701,62 @@ def _link_tool_use_notifications(ctx: RenderingContext) -> None:
         target_idx = tool_use_index.get(content.tool_use_id)
         if target_idx is not None:
             content.spawning_task_message_index = target_idx
+
+
+_WF_TASK_ID_RE = re.compile(r"Task ID:\s*(\S+)")
+
+
+def _result_text_for_taskid(output: Any) -> str:
+    """Best-effort plain text of a tool_result output for taskId extraction."""
+    for attr in ("content", "result"):
+        value = getattr(output, attr, None)
+        if isinstance(value, str):
+            return value
+    return ""
+
+
+def _link_workflow_runs(
+    ctx: RenderingContext, workflow_runs: "dict[str, WorkflowRun]"
+) -> None:
+    """Link each parsed WorkflowRun to its Workflow tool_use by taskId (#174 PR3).
+
+    The Workflow tool_result's content carries ``Task ID: <taskId>`` (the runId
+    lives only in the structured ``toolUseResult``, which the factory drops);
+    match that to ``WorkflowRun.task_id`` and stash the run on the paired
+    tool_use's ``WorkflowToolInput``. Enables the snapshot-first meta header
+    and (PR3 step 3) the phase/agent tree splice. No-op without runs.
+    """
+    if not workflow_runs:
+        return
+    runs_by_task = {r.task_id: r for r in workflow_runs.values() if r.task_id}
+    if not runs_by_task:
+        return
+    inputs_by_tool_use_id: dict[str, WorkflowToolInput] = {}
+    for tm in _visible(ctx.messages):
+        content = tm.content
+        if (
+            isinstance(content, ToolUseMessage)
+            and content.tool_name == "Workflow"
+            and isinstance(content.input, WorkflowToolInput)
+            and content.tool_use_id
+        ):
+            inputs_by_tool_use_id[content.tool_use_id] = content.input
+    if not inputs_by_tool_use_id:
+        return
+    for tm in _visible(ctx.messages):
+        content = tm.content
+        if not (
+            isinstance(content, ToolResultMessage) and content.tool_name == "Workflow"
+        ):
+            continue
+        wf_input = inputs_by_tool_use_id.get(content.tool_use_id)
+        if wf_input is None:
+            continue
+        match = _WF_TASK_ID_RE.search(_result_text_for_taskid(content.output))
+        if match:
+            run = runs_by_task.get(match.group(1))
+            if run is not None:
+                wf_input.workflow_run = run
 
 
 def _link_async_notifications(
