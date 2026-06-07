@@ -180,6 +180,32 @@ class TestUnrecognizedTypesWarn:
         assert "unrecognized message type" in captured.out
         assert repr(entry["type"]) in captured.out
 
+    def test_repeated_unknown_type_warns_only_once(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The same unrecognized type repeated within a file warns once,
+        but each distinct type still gets its own first-occurrence warning."""
+        jsonl = tmp_path / "session.jsonl"
+        _write_jsonl(
+            jsonl,
+            [
+                {"type": "mode", "payload": 1},
+                {"type": "pr-link", "url": "x"},
+                {"type": "mode", "payload": 2},
+                {"type": "pr-link", "url": "y"},
+                {"type": "mode", "payload": 3},
+            ],
+        )
+
+        messages = load_transcript(jsonl, silent=False)
+        captured = capsys.readouterr()
+
+        assert messages == []
+        # One warning per distinct type, not per occurrence.
+        assert captured.out.count("unrecognized message type") == 2
+        assert captured.out.count("'mode'") == 1
+        assert captured.out.count("'pr-link'") == 1
+
     def test_silent_mode_suppresses_warning(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
