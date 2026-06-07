@@ -720,13 +720,20 @@ def load_directory_transcripts(
 
     # Discover + parse any dynamic-workflow runs under this directory and stash
     # them on the tree, keyed by runId, for the renderer to splice in (#174 PR3).
-    from .workflow import load_workflow_runs
+    from .workflow import load_workflow_runs, map_workflow_runs_by_tool_use
 
     tree.workflow_runs = {
         run.run_id: run for run in load_workflow_runs(directory_path, silent=silent)
     }
+    # Resolve {tool_use_id: run} once, at full-session scope (BEFORE the renderer
+    # paginates), so a Workflow tool_use links to its run even when its
+    # tool_result lands on a different page (#174 PR3, pagination-boundary fix).
+    all_entries = dag_ordered + non_dag_entries
+    tree.workflow_links = map_workflow_runs_by_tool_use(
+        all_entries, list(tree.workflow_runs.values())
+    )
 
-    return dag_ordered + non_dag_entries, tree
+    return all_entries, tree
 
 
 # =============================================================================
@@ -1590,6 +1597,25 @@ def convert_jsonl_to(
         _integrate_agent_entries(messages)
         title = f"Claude Transcript - {input_path.stem}"
         cache_was_updated = False  # No cache in single file mode
+
+        # Single-file workflow support (#174 PR3): a lone ``<SID>.jsonl`` still
+        # has its run data in the sibling ``<SID>/subagents/workflows/`` dir, so
+        # discover + link it exactly like directory mode and splice the tree.
+        # Only build a SessionTree when runs exist — otherwise leave
+        # ``session_tree=None`` so the no-workflow single-file path (the common
+        # case) is byte-identical to before.
+        from .workflow import (
+            load_session_workflow_runs,
+            map_workflow_runs_by_tool_use,
+        )
+
+        single_file_runs = load_session_workflow_runs(input_path, silent=silent)
+        if single_file_runs:
+            session_tree = build_dag_from_entries(messages)
+            session_tree.workflow_runs = {r.run_id: r for r in single_file_runs}
+            session_tree.workflow_links = map_workflow_runs_by_tool_use(
+                messages, single_file_runs
+            )
     else:
         # Directory mode - Cache-First Approach
         # `output_root` (#151) decouples the output destination from

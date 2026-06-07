@@ -101,6 +101,13 @@ class SessionTree:
     workflow_runs: dict[str, "WorkflowRun"] = field(  # pyright: ignore[reportUnknownVariableType]
         default_factory=dict
     )
+    # {Workflow tool_use_id: WorkflowRun}, resolved at full-session scope BEFORE
+    # pagination splits messages into pages (#174 PR3). Lets the per-page linker
+    # attach a run to its Workflow tool_use even when the tool_use and its
+    # tool_result land on different pages. Empty for non-workflow loads.
+    workflow_links: dict[str, "WorkflowRun"] = field(  # pyright: ignore[reportUnknownVariableType]
+        default_factory=dict
+    )
 
 
 # =============================================================================

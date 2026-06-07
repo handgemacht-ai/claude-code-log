@@ -364,3 +364,89 @@ class TestWorkflowRunSplice:
         types = {tm.type for tm in ctx.messages if tm is not None}
         assert "workflow_phase" not in types
         assert "workflow_agent" not in types
+
+
+def _has_workflow_tool_use(entry) -> bool:
+    content = getattr(getattr(entry, "message", None), "content", None)
+    return isinstance(content, list) and any(
+        getattr(i, "type", None) == "tool_use" and getattr(i, "name", "") == "Workflow"
+        for i in content
+    )
+
+
+class TestSingleFileWorkflowRender:
+    """PR3: a lone ``<SID>.jsonl`` (cboos's natural usage,
+    ``claude-code-log <SID>.jsonl --detail high``) discovers the sibling
+    ``<SID>/subagents/workflows/`` runs and splices the tree, just like a
+    directory load."""
+
+    def test_single_file_html_shows_workflow_tree(self, tmp_path: Path) -> None:
+        from claude_code_log.converter import convert_jsonl_to
+        from claude_code_log.models import DetailLevel
+
+        out = tmp_path / "single.html"
+        convert_jsonl_to(
+            "html",
+            TRUNK,
+            output_path=out,
+            use_cache=False,
+            update_cache=False,
+            silent=True,
+            detail=DetailLevel.HIGH,
+        )
+        html = out.read_text(encoding="utf-8", errors="replace")
+        # Same rendered-card markers as the directory path.
+        assert "workflow-phase-meta" in html and "workflow-agent-meta" in html
+        assert "Phase: Map" in html and "review:loader" in html
+
+    def test_load_session_workflow_runs_finds_sibling_run(self) -> None:
+        from claude_code_log.workflow import load_session_workflow_runs
+
+        runs = load_session_workflow_runs(TRUNK, silent=True)
+        assert [r.run_id for r in runs] == ["wf_demo01"]
+
+
+class TestWorkflowPaginationBoundary:
+    """PR3: run↔tool_use linkage is resolved at full-session scope (stored on
+    ``SessionTree.workflow_links``) BEFORE pagination, so a Workflow tool_use
+    still links to its run when its tool_result is on a different page."""
+
+    def test_links_via_precomputed_map_without_tool_result_in_slice(self) -> None:
+        from claude_code_log.converter import load_directory_transcripts
+        from claude_code_log.models import ToolUseMessage
+        from claude_code_log.renderer import generate_template_messages
+
+        msgs, tree = load_directory_transcripts(TRUNK.parent, silent=True)
+        assert tree.workflow_links, "links map should be built at full scope"
+
+        # Slice up to & including the entry holding the Workflow tool_use — this
+        # EXCLUDES the later tool_result entry, mimicking a page boundary where
+        # tool_use is the last message of a page and tool_result the first of
+        # the next.
+        pos = next(i for i, e in enumerate(msgs) if _has_workflow_tool_use(e))
+        page = msgs[: pos + 1]
+
+        def _host(messages, session_tree):
+            _r, _n, ctx = generate_template_messages(
+                messages, session_tree=session_tree
+            )
+            return next(
+                tm
+                for tm in ctx.messages
+                if tm is not None
+                and isinstance(tm.content, ToolUseMessage)
+                and tm.content.tool_name == "Workflow"
+            )
+
+        # WITH the precomputed map: splice fires despite no tool_result in slice.
+        host = _host(page, tree)
+        assert any(c.type == "workflow_phase" for c in host.children), (
+            "full-scope links map should link a cross-page tool_use"
+        )
+
+        # WITHOUT it (clear the map → per-page fallback): the fallback scan can't
+        # find a tool_result in this slice, so no splice — proving the map is
+        # what enables cross-page linkage.
+        tree.workflow_links = {}
+        host_nolink = _host(page, tree)
+        assert not any(c.type == "workflow_phase" for c in host_nolink.children)

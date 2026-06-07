@@ -428,6 +428,19 @@ def discover_workflow_runs(session_dir: Path) -> list[tuple[Path, Optional[Path]
     return runs
 
 
+def _runs_in_session_dir(
+    session_dir: Path, *, silent: bool = True
+) -> list[WorkflowRun]:
+    """Parse every workflow run under one trunk session dir's
+    ``subagents/workflows/``. Shared by the directory and single-file loaders."""
+    runs: list[WorkflowRun] = []
+    for run_dir, snapshot in discover_workflow_runs(session_dir):
+        parsed = parse_workflow_run(run_dir, snapshot, silent=silent)
+        if parsed is not None:
+            runs.append(parsed)
+    return runs
+
+
 def load_workflow_runs(
     directory_path: Path, *, silent: bool = True
 ) -> list[WorkflowRun]:
@@ -439,8 +452,87 @@ def load_workflow_runs(
     """
     runs: list[WorkflowRun] = []
     for session_dir in sorted(p for p in directory_path.iterdir() if p.is_dir()):
-        for run_dir, snapshot in discover_workflow_runs(session_dir):
-            parsed = parse_workflow_run(run_dir, snapshot, silent=silent)
-            if parsed is not None:
-                runs.append(parsed)
+        runs.extend(_runs_in_session_dir(session_dir, silent=silent))
     return runs
+
+
+def load_session_workflow_runs(
+    transcript_path: Path, *, silent: bool = True
+) -> list[WorkflowRun]:
+    """Discover + parse workflow runs for a SINGLE session transcript file
+    (issue #174 PR3 — single-file rendering).
+
+    The runs live in the sibling ``<SID>/subagents/workflows/<runId>/`` dir
+    (snapshot ``<SID>/workflows/<runId>.json``), where ``<SID>`` is the
+    transcript filename without its ``.jsonl`` suffix. Mirrors
+    :func:`load_workflow_runs` scoped to one session, so
+    ``claude-code-log <project>/<SID>.jsonl`` renders the workflow tree just
+    like a directory load.
+    """
+    return _runs_in_session_dir(transcript_path.with_suffix(""), silent=silent)
+
+
+def _tool_result_text(content: Any) -> str:
+    """Best-effort plain text from a raw ``ToolResultContent.content`` (a
+    string, or a list of ``{type, text, ...}`` dicts) for ``Task ID:`` lookup."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in cast("list[Any]", content):
+            if isinstance(item, dict):
+                text = cast("dict[str, Any]", item).get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    return ""
+
+
+def map_workflow_runs_by_tool_use(
+    entries: "list[TranscriptEntry]", runs: "list[WorkflowRun]"
+) -> dict[str, WorkflowRun]:
+    """Resolve ``{Workflow tool_use_id: WorkflowRun}`` at full-session scope.
+
+    Matches each ``Workflow`` tool_use to its run via the paired tool_result's
+    ``Task ID: <taskId>`` (the ``runId`` lives only in the dropped
+    ``toolUseResult``) == ``run.task_id``. Built over the WHOLE entry list
+    *before* pagination splits it into pages, so a tool_use and its tool_result
+    on different pages still link (the per-page linker alone would miss it).
+    Also the linkage used for single-file rendering.
+    """
+    from .models import ToolResultContent, ToolUseContent
+
+    runs_by_task = {r.task_id: r for r in runs if r.task_id}
+    if not runs_by_task:
+        return {}
+
+    workflow_tool_use_ids: set[str] = set()
+    for entry in entries:
+        content = getattr(getattr(entry, "message", None), "content", None)
+        if not isinstance(content, list):
+            continue
+        for item in cast("list[Any]", content):
+            if isinstance(item, ToolUseContent) and item.name == "Workflow":
+                workflow_tool_use_ids.add(item.id)
+    if not workflow_tool_use_ids:
+        return {}
+
+    links: dict[str, WorkflowRun] = {}
+    for entry in entries:
+        content = getattr(getattr(entry, "message", None), "content", None)
+        if not isinstance(content, list):
+            continue
+        for item in cast("list[Any]", content):
+            if (
+                isinstance(item, ToolResultContent)
+                and item.tool_use_id in workflow_tool_use_ids
+            ):
+                match = _WF_TASK_ID_RE_RUNTIME.search(_tool_result_text(item.content))
+                if match:
+                    run = runs_by_task.get(match.group(1))
+                    if run is not None:
+                        links[item.tool_use_id] = run
+    return links
+
+
+_WF_TASK_ID_RE_RUNTIME = re.compile(r"Task ID:\s*(\S+)")

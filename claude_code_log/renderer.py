@@ -862,7 +862,9 @@ def generate_template_messages(
     # can splice the phase/agent tree).
     with log_timing("Link workflow runs", t_start):
         _link_workflow_runs(
-            ctx, session_tree.workflow_runs if session_tree is not None else {}
+            ctx,
+            session_tree.workflow_runs if session_tree is not None else {},
+            session_tree.workflow_links if session_tree is not None else None,
         )
 
     # Independent pass: link tool-use-id-bearing notifications (e.g.
@@ -2727,16 +2729,42 @@ def _result_text_for_taskid(output: Any) -> str:
 
 
 def _link_workflow_runs(
-    ctx: RenderingContext, workflow_runs: "dict[str, WorkflowRun]"
+    ctx: RenderingContext,
+    workflow_runs: "dict[str, WorkflowRun]",
+    links: "Optional[dict[str, WorkflowRun]]" = None,
 ) -> None:
     """Link each parsed WorkflowRun to its Workflow tool_use by taskId (#174 PR3).
 
-    The Workflow tool_result's content carries ``Task ID: <taskId>`` (the runId
-    lives only in the structured ``toolUseResult``, which the factory drops);
-    match that to ``WorkflowRun.task_id`` and stash the run on the paired
-    tool_use's ``WorkflowToolInput``. Enables the snapshot-first meta header
-    and (PR3 step 3) the phase/agent tree splice. No-op without runs.
+    Two paths:
+
+    1. **Preferred** — a precomputed ``{tool_use_id: WorkflowRun}`` map built at
+       full-session scope (``SessionTree.workflow_links``, via
+       :func:`workflow.map_workflow_runs_by_tool_use`). Resolved BEFORE
+       pagination, it links a Workflow tool_use to its run even when the
+       tool_use and its tool_result land on different pages — and it's how
+       single-file rendering links too.
+    2. **Fallback** — when no map is supplied (e.g. a direct
+       ``generate_template_messages`` call): scan this render's tool_results for
+       ``Task ID: <taskId>`` (the runId lives only in the dropped
+       ``toolUseResult``) and match to ``WorkflowRun.task_id``. Works when the
+       tool_use and its tool_result share this ``ctx.messages`` (no pagination).
+
+    Either way the run is stashed on the tool_use's ``WorkflowToolInput``,
+    enabling the snapshot-first meta header and the phase/agent tree splice.
     """
+    if links:
+        for tm in _visible(ctx.messages):
+            content = tm.content
+            if (
+                isinstance(content, ToolUseMessage)
+                and content.tool_name == "Workflow"
+                and isinstance(content.input, WorkflowToolInput)
+                and content.tool_use_id
+            ):
+                run = links.get(content.tool_use_id)
+                if run is not None:
+                    content.input.workflow_run = run
+        return
     if not workflow_runs:
         return
     runs_by_task = {r.task_id: r for r in workflow_runs.values() if r.task_id}
