@@ -17,7 +17,7 @@ import functools
 import html
 import re
 from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 import mistune
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -129,7 +129,13 @@ def resolve_memory_body_links(html: str, file_path: str) -> str:
     Rewriting them to ``file://`` URLs under the memory file's own directory
     fixes the target and is independent of where the page is written.
     """
-    base = "file://" + _normalize_sep(file_path).rsplit("/", 1)[0]
+    dir_path = _normalize_sep(file_path).rsplit("/", 1)[0]
+    # file:// URLs need a leading slash before the path. POSIX paths already
+    # start with "/" (-> file:///home/...); a Windows drive-letter path
+    # (C:/Users/...) does not, so add one (-> file:///C:/Users/...).
+    if not dir_path.startswith("/"):
+        dir_path = "/" + dir_path
+    base = "file://" + dir_path
 
     def _rewrite(m: "re.Match[str]") -> str:
         target = m.group(2)
@@ -593,27 +599,17 @@ def render_collapsible_code(
     </details>"""
 
 
-def render_markdown_collapsible(
+def _markdown_collapsible(
     raw_content: str,
     css_class: str,
-    line_threshold: int = 20,
-    preview_line_count: int = 5,
+    render_fn: "Callable[[str], str]",
+    line_threshold: int,
+    preview_line_count: int,
 ) -> str:
-    """Render markdown content, making it collapsible if it exceeds a line threshold.
-
-    For long content, creates a collapsible details element with a preview.
-    For short content, renders inline with the specified CSS class.
-
-    Args:
-        raw_content: The raw text content to render as markdown
-        css_class: CSS class for the wrapper div (e.g., "task-prompt", "task-result")
-        line_threshold: Number of lines above which content becomes collapsible (default 20)
-        preview_line_count: Number of lines to show in the preview (default 5)
-
-    Returns:
-        HTML string with rendered markdown, optionally wrapped in collapsible details
-    """
-    rendered_html = render_markdown(raw_content)
+    """Shared body for the collapsible-markdown helpers, parameterized by the
+    markdown render function (escape=False for assistant/tool output vs
+    escape=True for untrusted content)."""
+    rendered_html = render_fn(raw_content)
 
     lines = raw_content.splitlines()
     if len(lines) <= line_threshold:
@@ -626,12 +622,63 @@ def render_markdown_collapsible(
     if len(lines) > preview_line_count:
         preview_text += "\n\n..."
     # Render truncated markdown (produces valid HTML with proper tag closure)
-    preview_html = render_markdown(preview_text)
+    preview_html = render_fn(preview_text)
 
     collapsible = render_collapsible_code(
         preview_html, rendered_html, len(lines), is_markdown=True
     )
     return f'<div class="{css_class}">{collapsible}</div>'
+
+
+def render_markdown_collapsible(
+    raw_content: str,
+    css_class: str,
+    line_threshold: int = 20,
+    preview_line_count: int = 5,
+) -> str:
+    """Render markdown content, making it collapsible if it exceeds a line threshold.
+
+    For long content, creates a collapsible details element with a preview.
+    For short content, renders inline with the specified CSS class.
+
+    Uses the ``escape=False`` renderer — for assistant/tool-authored content
+    (Task results, WebSearch/WebFetch, plans) that may emit pre-formed HTML.
+    For untrusted content (e.g. memory files), use
+    ``render_user_markdown_collapsible`` instead.
+
+    Args:
+        raw_content: The raw text content to render as markdown
+        css_class: CSS class for the wrapper div (e.g., "task-prompt", "task-result")
+        line_threshold: Number of lines above which content becomes collapsible (default 20)
+        preview_line_count: Number of lines to show in the preview (default 5)
+
+    Returns:
+        HTML string with rendered markdown, optionally wrapped in collapsible details
+    """
+    return _markdown_collapsible(
+        raw_content, css_class, render_markdown, line_threshold, preview_line_count
+    )
+
+
+def render_user_markdown_collapsible(
+    raw_content: str,
+    css_class: str,
+    line_threshold: int = 20,
+    preview_line_count: int = 5,
+) -> str:
+    """Like ``render_markdown_collapsible`` but with HTML escaping enabled.
+
+    For content that is not trusted to emit pre-formed HTML — e.g. auto-memory
+    files (#192), whose markdown may contain literal ``<script>``/HTML that must
+    render as escaped text, not live DOM, when the transcript is opened.
+    """
+    return _markdown_collapsible(
+        raw_content,
+        css_class,
+        render_user_markdown,
+        line_threshold,
+        preview_line_count,
+    )
 
 
 def render_file_content_collapsible(

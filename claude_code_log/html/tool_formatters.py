@@ -27,6 +27,7 @@ from .utils import (
     render_file_content_collapsible,
     render_markdown_collapsible,
     render_markdown_inline,
+    render_user_markdown_collapsible,
     resolve_memory_body_links,
 )
 from ..utils import strip_error_tags
@@ -404,7 +405,9 @@ def format_read_output(output: ReadOutput) -> str:
     # recalled-memory body as rendered Markdown rather than syntax-highlighted
     # source — using the project's usual collapsible-markdown helper (#192).
     if is_memory_path(output.file_path):
-        body = render_markdown_collapsible(output.content, "read-tool-result")
+        # Escape HTML: memory files are untrusted content — raw <script>/HTML
+        # must render as text, not live DOM when the transcript is opened.
+        body = render_user_markdown_collapsible(output.content, "read-tool-result")
         return resolve_memory_body_links(body, output.file_path) + suffix_html
 
     return render_file_content_collapsible(
@@ -643,7 +646,10 @@ def format_write_input(write_input: WriteInput) -> str:
     # Memory files are Markdown — render a written memory body as rendered
     # Markdown rather than highlighted source (#192).
     if is_memory_path(write_input.file_path):
-        body = render_markdown_collapsible(write_input.content, "write-tool-content")
+        # Escape HTML (untrusted memory content) — see format_read_output.
+        body = render_user_markdown_collapsible(
+            write_input.content, "write-tool-content"
+        )
         return resolve_memory_body_links(body, write_input.file_path)
     return render_file_content_collapsible(
         write_input.content, write_input.file_path, "write-tool-content"

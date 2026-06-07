@@ -192,6 +192,16 @@ class TestMemoryBodyMarkdown:
         html = self._render()
         assert 'href="https://example.com"' in html
 
+    def test_memory_body_escapes_raw_html(self):
+        """Memory files are untrusted content: raw HTML in the body must render
+        as escaped text, not live DOM (#192 — uses the escape=True renderer)."""
+        from claude_code_log.html.tool_formatters import format_write_input
+
+        inp = WriteInput(file_path=MEM, content="# Note\n\n<script>alert(1)</script>")
+        html = format_write_input(inp)
+        assert "&lt;script&gt;" in html
+        assert "<script>alert(1)</script>" not in html
+
 
 class TestResolveMemoryBodyLinks:
     """Unit coverage for the relative-link anchoring helper."""
