@@ -276,3 +276,37 @@ class TestRecapVisibilityMatrix:
 
     def test_user_only_no_recaps_shows_user_only(self):
         assert self._seen(self._render("user-only", True)) == (True, False, False)
+
+
+class TestNoRecapsAllFormats:
+    """``--no-recaps`` must suppress recaps in EVERY message-rendering format —
+    html, markdown, and json. JSON honors ``--detail`` (it runs the ghost pass),
+    so it must honor ``--no-recaps`` too; this is the regression for the JSON
+    silent no-op found in the #179 review (json/renderer.py forwarded detail
+    but not no_recaps). The other matrix tests are HTML-only, which is why it
+    slipped — this exercises all three formats via the real get_renderer path."""
+
+    # Recap prose unique to the away_summary fixture; present in every format's
+    # output when the recap renders, absent when it's suppressed.
+    RECAP_TEXT = "project-level layout"
+    FORMATS = ("html", "md", "json")
+
+    def _render(self, fmt: str, no_recaps: bool) -> str:
+        from claude_code_log.renderer import get_renderer
+
+        entry = create_transcript_entry(AWAY_SUMMARY_RAW)
+        out = get_renderer(fmt, no_recaps=no_recaps).generate([entry], "T")
+        assert out is not None
+        return out
+
+    def test_recap_present_without_flag(self):
+        for fmt in self.FORMATS:
+            assert self.RECAP_TEXT in self._render(fmt, no_recaps=False), (
+                f"{fmt}: recap should be present without --no-recaps"
+            )
+
+    def test_no_recaps_suppresses_in_every_format(self):
+        for fmt in self.FORMATS:
+            assert self.RECAP_TEXT not in self._render(fmt, no_recaps=True), (
+                f"{fmt}: --no-recaps should suppress the recap"
+            )

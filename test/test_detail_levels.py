@@ -1020,6 +1020,11 @@ class TestMinimalRealProjects:
                 f"{jsonl_file.name}: unexpected types in minimal: {unexpected}"
             )
 
+            # Tighten the "system" allowance: every surviving system-typed
+            # message at MINIMAL must specifically be a recap (AwaySummaryMessage).
+            # Guards against a future system subclass silently leaking in.
+            _assert_system_messages_are_recaps(root_messages, jsonl_file.name)
+
     def test_minimal_directory_mode(self, real_projects_path, tmp_path):
         """Minimal mode works on a directory of JSONL files."""
         # Copy a project to tmp for isolated testing
@@ -1507,3 +1512,19 @@ def _collect_types(messages: list, types: set[str]) -> None:
         types.add(msg.type)
         if hasattr(msg, "children"):
             _collect_types(msg.children, types)
+
+
+def _assert_system_messages_are_recaps(messages: list, label: str) -> None:
+    """Assert every system-typed message in the tree is a recap (#179).
+
+    Recaps report ``message_type == "system"`` and are the only system content
+    kept below FULL; this verifies no other system subclass leaked in.
+    """
+    for msg in messages:
+        if msg.type == "system":
+            cls = type(msg.content).__name__
+            assert cls == "AwaySummaryMessage", (
+                f"{label}: non-recap system message survived: {cls}"
+            )
+        if hasattr(msg, "children"):
+            _assert_system_messages_are_recaps(msg.children, label)

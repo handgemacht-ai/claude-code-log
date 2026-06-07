@@ -102,7 +102,10 @@ class JsonRenderer(Renderer):
     ) -> str:
         """Serialize the processed transcript tree to JSON."""
         root_messages, session_nav, _ = generate_template_messages(
-            messages, session_tree=session_tree, detail=self.detail
+            messages,
+            session_tree=session_tree,
+            detail=self.detail,
+            no_recaps=self.no_recaps,
         )
 
         payload: dict[str, Any] = {
