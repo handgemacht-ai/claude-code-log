@@ -113,6 +113,34 @@ def memory_short_path(file_path: str) -> str:
     return parts[-1] if len(parts) > 1 else normalized
 
 
+# Relative href/src in rendered memory-file markdown (e.g. a MEMORY.md link to
+# a sibling topic file: ``feedback_x.md``). Absolute URLs (scheme://), in-page
+# anchors (#…), root-absolute (/…) and protocol-relative (//…) are left alone.
+_RELATIVE_LINK_ATTR_RE = re.compile(r'((?:href|src)=")([^"#/][^":]*)(")', re.IGNORECASE)
+
+
+def resolve_memory_body_links(html: str, file_path: str) -> str:
+    """Anchor relative links in rendered memory-file markdown to the memory dir.
+
+    Memory files live at ``…/<slug>/memory/`` and link to sibling memory files
+    with bare relative paths. When that markdown is rendered into a transcript
+    page that lives one level up (``…/<slug>/``), the browser resolves those
+    links against the page's directory and drops the ``memory/`` segment (#192).
+    Rewriting them to ``file://`` URLs under the memory file's own directory
+    fixes the target and is independent of where the page is written.
+    """
+    base = "file://" + _normalize_sep(file_path).rsplit("/", 1)[0]
+
+    def _rewrite(m: "re.Match[str]") -> str:
+        target = m.group(2)
+        # Skip anything with a scheme (foo://…, mailto:) — the ``[^":]`` guard
+        # in the pattern already excludes ``:`` so only truly relative targets
+        # reach here, but keep the wrapper resilient.
+        return f"{m.group(1)}{base}/{target}{m.group(3)}"
+
+    return _RELATIVE_LINK_ATTR_RE.sub(_rewrite, html)
+
+
 # -- CSS Class Registry -------------------------------------------------------
 # Maps content types to their CSS classes.
 # The first class is typically the base type (user, assistant, system, etc.),

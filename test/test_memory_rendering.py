@@ -174,6 +174,52 @@ class TestMemoryBodyMarkdown:
         html = self._render()
         assert re.search(r'class="write-tool-content markdown"', html)
 
+    def test_relative_link_anchored_to_memory_dir(self):
+        """A relative Markdown link in a memory body (e.g. `[build](build.md)`)
+        must resolve under the memory file's own directory — including the
+        `memory/` segment — not the transcript page's directory (#192)."""
+        html = self._render()
+        assert (
+            'href="file:///home/u/.claude/projects/-home-u-proj/memory/build.md"'
+            in html
+        )
+        # The bare relative target (missing the memory/ segment) must not survive.
+        assert 'href="build.md"' not in html
+
+    def test_absolute_link_in_memory_body_untouched(self):
+        """Absolute URLs in a memory body are left as-is (only relative links
+        are anchored to the memory directory)."""
+        html = self._render()
+        assert 'href="https://example.com"' in html
+
+
+class TestResolveMemoryBodyLinks:
+    """Unit coverage for the relative-link anchoring helper."""
+
+    BASE = "/home/u/.claude/projects/-home-u-proj/memory/MEMORY.md"
+
+    def test_relative_link_rewritten(self):
+        from claude_code_log.html.utils import resolve_memory_body_links
+
+        out = resolve_memory_body_links('<a href="topic.md">x</a>', self.BASE)
+        assert (
+            out
+            == '<a href="file:///home/u/.claude/projects/-home-u-proj/memory/topic.md">x</a>'
+        )
+
+    def test_subdir_relative_link_rewritten(self):
+        from claude_code_log.html.utils import resolve_memory_body_links
+
+        out = resolve_memory_body_links('<a href="sub/topic.md">x</a>', self.BASE)
+        assert "/memory/sub/topic.md" in out
+
+    def test_absolute_anchor_and_external_untouched(self):
+        from claude_code_log.html.utils import resolve_memory_body_links
+
+        for href in ("https://example.com", "#section", "/abs/path", "mailto:a@b.c"):
+            html = f'<a href="{href}">x</a>'
+            assert resolve_memory_body_links(html, self.BASE) == html
+
 
 class TestMemoryMarkdownTitles:
     """Markdown renderer mirrors the 🧠 memory titles (parity with HTML)."""
