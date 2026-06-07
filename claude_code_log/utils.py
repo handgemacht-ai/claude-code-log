@@ -50,6 +50,7 @@ def variant_suffix(
     compact: bool = False,
     format: str = "html",
     no_timestamps: bool = False,
+    no_recaps: bool = False,
 ) -> str:
     """Compute the filename infix for a given render variant.
 
@@ -65,6 +66,14 @@ def variant_suffix(
     parts: list[str] = []
     if detail != DetailLevel.FULL:
         parts.append(detail.value)
+    # `--no-recaps` filters *messages* out of the rendered tree, so it
+    # affects EVERY format (html/md/json) — unlike compact/no-timestamps
+    # below. It must earn a suffix slot regardless of format, else a
+    # `--no-recaps` export collides with the plain one on filename + cache
+    # key and the path-existence/cache check serves the stale variant
+    # (same class as the #165 no-timestamps finding; #179).
+    if no_recaps:
+        parts.append("no-recaps")
     # `--compact` and `--no-timestamps` are Markdown-only (merges of
     # same-category headings / suppression of per-message timestamp
     # lines). They are silent no-ops for HTML, so they don't earn a

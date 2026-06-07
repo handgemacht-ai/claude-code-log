@@ -1306,7 +1306,7 @@ def _generate_paginated_html(
     from .html.renderer import HtmlRenderer
     from .utils import format_timestamp, variant_suffix as _variant_suffix
 
-    suffix = _variant_suffix(detail, compact, "html")
+    suffix = _variant_suffix(detail, compact, "html", no_recaps=no_recaps)
 
     # Check if page size changed - if so, invalidate all pages
     cached_page_size = cache_manager.get_page_size_config()
@@ -1568,7 +1568,7 @@ def convert_jsonl_to(
 
     from .utils import variant_suffix as _variant_suffix
 
-    suffix = _variant_suffix(detail, compact, format, no_timestamps)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps, no_recaps)
 
     # Output destination decoupled from `input_path` (#151). Both
     # branches below assign to `effective_output_dir`; declare it
@@ -1982,7 +1982,7 @@ def _generate_individual_session_files(
     from .utils import variant_suffix as _variant_suffix
 
     ext = get_file_extension(format)
-    suffix = _variant_suffix(detail, compact, format, no_timestamps)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps, no_recaps)
     # Pre-compute warmup sessions to exclude them
     warmup_session_ids = get_warmup_session_ids(messages)
 
@@ -2229,7 +2229,7 @@ def generate_single_session_file(
     from .utils import variant_suffix as _variant_suffix
 
     ext = get_file_extension(format)
-    suffix = _variant_suffix(detail, compact, format, no_timestamps)
+    suffix = _variant_suffix(detail, compact, format, no_timestamps, no_recaps)
     output_dir = input_path
     if output is not None:
         # User's explicit path wins; no suffix appended.
@@ -2395,7 +2395,7 @@ def process_projects_hierarchy(
     # all need to use the same name. Hard-coding "combined_transcripts.html"
     # would make non-default --format / --detail / --compact
     # combinations cache-miss forever and link to the wrong file.
-    variant = _variant_suffix(detail, compact, output_format, no_timestamps)
+    variant = _variant_suffix(detail, compact, output_format, no_timestamps, no_recaps)
     combined_ext = get_file_extension(output_format)
     combined_name = f"combined_transcripts{variant}.{combined_ext}"
 

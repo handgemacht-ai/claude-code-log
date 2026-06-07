@@ -148,7 +148,9 @@ class JsonRenderer(Renderer):
         if cache_manager is not None and not suppress_combined_link:
             from ..utils import variant_suffix as _variant_suffix
 
-            suffix = _variant_suffix(self.detail, self.compact, "json")
+            suffix = _variant_suffix(
+                self.detail, self.compact, "json", no_recaps=self.no_recaps
+            )
             combined_link = f"combined_transcripts{suffix}.json"
 
         return self.generate(

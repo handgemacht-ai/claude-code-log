@@ -64,6 +64,31 @@ class TestVariantSuffix:
         assert variant_suffix(DetailLevel.FULL, True, "html") == ""
         assert variant_suffix(DetailLevel.LOW, True, "html") == ".low"
 
+    def test_no_recaps_all_formats(self) -> None:
+        # --no-recaps filters messages, so unlike compact/no-timestamps it
+        # earns a suffix slot for EVERY format (html/md/json), else the
+        # variant collides with the plain export on filename + cache key (#179).
+        assert variant_suffix(DetailLevel.FULL, False, "html", no_recaps=True) == (
+            ".no-recaps"
+        )
+        assert variant_suffix(DetailLevel.FULL, False, "json", no_recaps=True) == (
+            ".no-recaps"
+        )
+        assert variant_suffix(DetailLevel.FULL, False, "md", no_recaps=True) == (
+            ".no-recaps"
+        )
+        # Composes with detail (and stays ahead of the markdown-only flags).
+        assert (
+            variant_suffix(DetailLevel.USER_ONLY, False, "html", no_recaps=True)
+            == ".user-only.no-recaps"
+        )
+        assert (
+            variant_suffix(
+                DetailLevel.USER_ONLY, True, "md", no_timestamps=True, no_recaps=True
+            )
+            == ".user-only.no-recaps.compact.no-timestamps"
+        )
+
     def test_string_detail_accepted(self) -> None:
         # The CLI passes the already-normalised enum, but convenience callers
         # may pass the string form.
@@ -237,6 +262,17 @@ class TestConverterVariantPaths:
         assert low.name == "combined_transcripts.low.html"
         assert full.exists() and low.exists()
         assert full != low
+
+    def test_no_recaps_and_plain_coexist(self, tmp_path: Path) -> None:
+        # The plain and --no-recaps exports must land on distinct files so the
+        # second run isn't served the first's cached/stale output (#179).
+        _write_session(tmp_path / "sess1.jsonl", "sess1")
+        plain = convert_jsonl_to("html", tmp_path, silent=True)
+        norecaps = convert_jsonl_to("html", tmp_path, silent=True, no_recaps=True)
+        assert plain.name == "combined_transcripts.html"
+        assert norecaps.name == "combined_transcripts.no-recaps.html"
+        assert plain.exists() and norecaps.exists()
+        assert plain != norecaps
 
     def test_md_compact_variant(self, tmp_path: Path) -> None:
         _write_session(tmp_path / "sess1.jsonl", "sess1")

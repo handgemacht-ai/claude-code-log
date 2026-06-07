@@ -2121,7 +2121,7 @@ class MarkdownRenderer(Renderer):
             from ..utils import variant_suffix as _variant_suffix
 
             suffix = _variant_suffix(
-                self.detail, self.compact, "md", self.no_timestamps
+                self.detail, self.compact, "md", self.no_timestamps, self.no_recaps
             )
             combined_link = f"combined_transcripts{suffix}.md"
         else:

@@ -1529,7 +1529,9 @@ class HtmlRenderer(Renderer):
                 if project_cache and project_cache.sessions:
                     from ..utils import variant_suffix as _variant_suffix
 
-                    suffix = _variant_suffix(self.detail, self.compact, "html")
+                    suffix = _variant_suffix(
+                        self.detail, self.compact, "html", no_recaps=self.no_recaps
+                    )
                     combined_link = f"combined_transcripts{suffix}.html"
             except Exception:
                 pass
