@@ -534,11 +534,13 @@ class AwaySummaryMessage(MessageContent):
     and the level-bearing SystemMessage (info/warning/error).
     """
 
-    # Recaps are narrative content, not noise: visible at FULL and HIGH,
-    # dropped at LOW and below (alongside bash/thinking). Declared via the
-    # class-attribute detail-visibility mechanism so the rule lives with the
-    # content type rather than in renderer.py's exclude registries.
-    detail_visibility: ClassVar[DetailLevel] = DetailLevel.HIGH
+    # Recaps are a high-level summary of activity, so they stay visible at
+    # EVERY detail level — including user-only, where "user said this, agent
+    # did that (just the recap)" is exactly the wanted view (#179). Declared at
+    # the least-verbose threshold (USER_ONLY) via the class-attribute
+    # detail-visibility mechanism. Suppress them explicitly with ``--no-recaps``
+    # (handled in ``_ghost_template_by_detail``), not by lowering this.
+    detail_visibility: ClassVar[DetailLevel] = DetailLevel.USER_ONLY
 
     text: str  # Recap prose; may contain light markdown.
 

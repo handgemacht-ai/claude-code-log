@@ -144,8 +144,10 @@ class TestAwaySummaryRendering:
 
 
 class TestAwaySummaryDetailLevels:
-    """Detail-level filtering: recaps are content (kept at HIGH), not noise
-    (dropped at LOW and below — same tier as bash/thinking).
+    """Detail-level visibility: a recap is itself a high-level summary of
+    activity, so it stays visible at EVERY detail level — including user-only,
+    where "user said this, agent did that (just the recap)" is the wanted view
+    (#179). ``--no-recaps`` is the explicit opt-out, applied at all levels.
 
     The CSS rules for `.system-away-summary` ship with every page regardless
     of detail level, so these tests check whether a recap *message div* is
@@ -158,48 +160,119 @@ class TestAwaySummaryDetailLevels:
     # rendered recap entries (vs. the standalone CSS rule selectors).
     RECAP_DIV_MARKER = "message system system-away-summary"
 
-    def _render_at(self, detail):
+    _ALL_LEVELS = ("full", "high", "low", "minimal", "user-only")
+
+    def _render_at(self, detail, no_recaps: bool = False):
         """Render the fixture at a given detail level and return the HTML."""
         from claude_code_log.html.renderer import HtmlRenderer
 
         entry = create_transcript_entry(AWAY_SUMMARY_RAW)
         renderer = HtmlRenderer()
         renderer.detail = detail
+        renderer.no_recaps = no_recaps
         return renderer.generate([entry], "Detail Test")
 
-    def test_full_keeps_recap(self):
+    def test_recap_visible_at_every_level(self):
+        """#179: recaps survive at all detail levels, full → user-only."""
         from claude_code_log.models import DetailLevel
 
-        html = self._render_at(DetailLevel.FULL)
-        assert self.RECAP_DIV_MARKER in html
-        assert "project-level layout" in html
+        for level in self._ALL_LEVELS:
+            html = self._render_at(DetailLevel(level))
+            assert self.RECAP_DIV_MARKER in html, f"recap dropped at {level}"
+            assert "project-level layout" in html, f"recap text dropped at {level}"
 
-    def test_high_keeps_recap(self):
-        """Monk's #1 review note: recap is narrative content, must survive
-        the 'detailed but cleaned' HIGH level."""
+    def test_no_recaps_suppresses_at_every_level(self):
+        """#179: --no-recaps removes recaps regardless of detail level,
+        including FULL (`--detail full --no-recaps`)."""
         from claude_code_log.models import DetailLevel
 
-        html = self._render_at(DetailLevel.HIGH)
-        assert self.RECAP_DIV_MARKER in html
-        assert "project-level layout" in html
+        for level in self._ALL_LEVELS:
+            html = self._render_at(DetailLevel(level), no_recaps=True)
+            assert self.RECAP_DIV_MARKER not in html, (
+                f"--no-recaps failed to suppress recap at {level}"
+            )
 
-    def test_low_drops_recap(self):
-        """LOW is interaction-focused; recap (background narrative) is
-        dropped here alongside bash/thinking."""
+
+class TestRecapVisibilityMatrix:
+    """Pin the issue #179 matrix end-to-end (user / agent / recap visibility).
+
+    | user | agent | recap | how                            |
+    |  ✅  |  ✅   |  ✅   | --detail minimal               |
+    |  ✅  |  ✅   |      | --detail minimal --no-recaps   |
+    |  ✅  |      |  ✅   | --detail user-only             |
+    |  ✅  |      |      | --detail user-only --no-recaps |
+    """
+
+    USER_MARK = "please-remember-the-build-command"
+    AGENT_MARK = "saved-it-to-memory-now"
+    RECAP_MARK = "project-level layout"
+
+    def _entries(self):
+        user_raw = {
+            "parentUuid": None,
+            "isSidechain": False,
+            "userType": "external",
+            "cwd": "/app",
+            "sessionId": "4520f070-9e99-41bb-9400-2efd7eda4632",
+            "version": "2.1.110",
+            "type": "user",
+            "uuid": "u1",
+            "timestamp": "2026-04-16T11:50:00.000Z",
+            "message": {"role": "user", "content": self.USER_MARK},
+        }
+        asst_raw = {
+            "parentUuid": "u1",
+            "isSidechain": False,
+            "userType": "external",
+            "cwd": "/app",
+            "sessionId": "4520f070-9e99-41bb-9400-2efd7eda4632",
+            "version": "2.1.110",
+            "type": "assistant",
+            "uuid": "a1",
+            "requestId": "r1",
+            "timestamp": "2026-04-16T11:51:00.000Z",
+            "message": {
+                "id": "m_a1",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-4-20250514",
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 5, "output_tokens": 5},
+                "content": [{"type": "text", "text": self.AGENT_MARK}],
+            },
+        }
+        recap_raw = dict(AWAY_SUMMARY_RAW, parentUuid="a1", uuid="recap-1")
+        return [
+            create_transcript_entry(user_raw),
+            create_transcript_entry(asst_raw),
+            create_transcript_entry(recap_raw),
+        ]
+
+    def _render(self, detail: str, no_recaps: bool):
+        from claude_code_log.html.renderer import HtmlRenderer
         from claude_code_log.models import DetailLevel
 
-        html = self._render_at(DetailLevel.LOW)
-        assert self.RECAP_DIV_MARKER not in html
-        assert "project-level layout" not in html
+        renderer = HtmlRenderer()
+        renderer.detail = DetailLevel(detail)
+        renderer.no_recaps = no_recaps
+        return renderer.generate(self._entries(), "Matrix")
 
-    def test_minimal_drops_recap(self):
-        from claude_code_log.models import DetailLevel
+    def _seen(self, html: str):
+        return (
+            self.USER_MARK in html,
+            self.AGENT_MARK in html,
+            self.RECAP_MARK in html,
+        )
 
-        html = self._render_at(DetailLevel.MINIMAL)
-        assert self.RECAP_DIV_MARKER not in html
+    def test_minimal_shows_user_agent_recap(self):
+        assert self._seen(self._render("minimal", False)) == (True, True, True)
 
-    def test_user_only_drops_recap(self):
-        from claude_code_log.models import DetailLevel
+    def test_minimal_no_recaps_shows_user_agent(self):
+        assert self._seen(self._render("minimal", True)) == (True, True, False)
 
-        html = self._render_at(DetailLevel.USER_ONLY)
-        assert self.RECAP_DIV_MARKER not in html
+    def test_user_only_shows_user_recap(self):
+        assert self._seen(self._render("user-only", False)) == (True, False, True)
+
+    def test_user_only_no_recaps_shows_user_only(self):
+        assert self._seen(self._render("user-only", True)) == (True, False, False)

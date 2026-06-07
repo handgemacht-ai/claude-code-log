@@ -708,7 +708,7 @@ class HookSummaryMessage(MessageContent):
 - **Condition**: `subtype: "away_summary"`
 - **CSS Class**: `system system-away-summary`
 - **Header**: `📝 Recap` (icon from `get_message_emoji`, title from `title_AwaySummaryMessage`)
-- **Detail levels**: kept at FULL/HIGH (narrative content), dropped at LOW/MINIMAL/USER_ONLY (alongside bash/thinking)
+- **Detail levels**: visible at EVERY level (`detail_visibility = USER_ONLY`) — a recap is itself a high-level summary of activity (#179). Suppress with `--no-recaps` (handled in `_ghost_template_by_detail`), which drops them at all levels including FULL.
 
 Claude Code emits these system entries when a session resumes after a break — narrative prose summarising recent activity. The factory strips a trailing `" (disable recaps in /config)"` UI hint when present (suffix-match, not global) so all renderers inherit the polished form.
 

@@ -2063,7 +2063,10 @@ class MarkdownRenderer(Renderer):
 
         # Get root messages (tree), session navigation, and rendering context
         root_messages, session_nav, ctx = generate_template_messages(
-            messages, session_tree=session_tree, detail=self.detail
+            messages,
+            session_tree=session_tree,
+            detail=self.detail,
+            no_recaps=self.no_recaps,
         )
         self._ctx = ctx
         self._teammate_colors_by_session = {

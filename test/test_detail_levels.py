@@ -999,7 +999,7 @@ class TestMinimalRealProjects:
             all_types = set()
             _collect_types(root_messages, all_types)
 
-            # Should only have user/assistant text types (plus session headers)
+            # Should only have user/assistant text types (plus session headers).
             non_header_types = all_types - {
                 "session-header",
                 "session_header",
@@ -1009,6 +1009,11 @@ class TestMinimalRealProjects:
                 "assistant",
                 "user-steering",
                 "user-memory",
+                # Recaps (away_summary) report message_type "system" and are
+                # now kept at every detail level (#179). They're the only
+                # "system" type that survives MINIMAL — all other system
+                # messages declare detail_visibility=FULL and are dropped here.
+                "system",
             }
             unexpected = non_header_types - allowed
             assert not unexpected, (

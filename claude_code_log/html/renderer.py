@@ -1440,7 +1440,10 @@ class HtmlRenderer(Renderer):
 
         # Get root messages (tree) and session navigation from format-neutral renderer
         root_messages, session_nav, ctx = generate_template_messages(
-            messages, session_tree=session_tree, detail=self.detail
+            messages,
+            session_tree=session_tree,
+            detail=self.detail,
+            no_recaps=self.no_recaps,
         )
         # Snapshot the teammate-color map onto the renderer so per-message
         # format methods can consult it without threading ctx through every
