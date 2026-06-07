@@ -218,18 +218,20 @@ In code order, `generate_template_messages`:
 1. **Setup** — filters warmup sessions, then prepares session metadata:
    `prepare_session_summaries` + `prepare_session_ai_titles` (merged),
    `prepare_session_team_names`, and `_extract_session_hierarchy`.
-2. **Pre-render filtering** — `_filter_messages` (structural), then
-   `_filter_by_detail` (entry-level, only below FULL).
+2. **Pre-render filtering** — `_filter_messages` (structural only).
+   Detail-level filtering is no longer a pre-render pass — the
+   single-axis ghosting model moved it entirely to step 5.
 3. **Collect + render** — `_collect_session_info`, then
    `_render_messages` (**Phase 1**: wrappers, session headers,
-   registration), then `_pair_skill_tool_uses` (which calls
-   `_reindex_filtered_context` internally).
+   registration), then `_pair_skill_tool_uses` (which ghosts the
+   consumed slots in place and calls `_drop_anchor_refs_into_ghosts`).
 4. **Junction linking** — junction forward-link population on fork
    points (`_link_junction_forwards`). Branch-header previews are
    computed in step 3 by `_build_branch_header` scanning the
    branch's DAG-line uuids; there's no separate back-fill pass.
-5. **Post-render detail filter** — `_filter_template_by_detail`
-   followed immediately by `_reindex_filtered_context` (only below FULL).
+5. **Post-render detail filter** — `_ghost_template_by_detail` (only
+   below FULL): sets non-visible slots to `None` in place (no reindex),
+   then calls `_repair_stale_anchor_refs`.
 6. **Nav + structure** — `prepare_session_navigation`, then
    `_reorder_session_template_messages`, `_identify_message_pairs`
    (**Phase 2**), `_reorder_paired_messages`,

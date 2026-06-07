@@ -22,14 +22,12 @@ from .models import (
     MessageType,
     TranscriptEntry,
     AiTitleTranscriptEntry,
-    AssistantMessageModel,
     AssistantTranscriptEntry,
     AttachmentTranscriptEntry,
     PassthroughTranscriptEntry,
     SystemTranscriptEntry,
     SummaryTranscriptEntry,
     QueueOperationTranscriptEntry,
-    UserMessageModel,
     UserTranscriptEntry,
     ContentItem,
     TextContent,
@@ -729,10 +727,10 @@ def generate_template_messages(
     with log_timing("Filter messages", t_start):
         filtered_messages = _filter_messages(messages)
 
-    # Detail-level pre-render filter
-    if detail != DetailLevel.FULL:
-        with log_timing(f"Detail filter ({detail.value})", t_start):
-            filtered_messages = _filter_by_detail(filtered_messages, detail)
+    # Detail-level filtering happens entirely post-render via
+    # ``_ghost_template_by_detail`` (single-axis collapse — Phase 3 of the
+    # ghosting epic). The pre-render ``_filter_by_detail`` is gone; the
+    # per-class ``detail_visibility`` predicate now drives all stripping.
 
     # Pass 1: Collect session metadata and token tracking
     with log_timing("Collect session info", t_start):
@@ -955,9 +953,10 @@ def _build_uuid_to_render_sid(
     flipped on each branch-start trigger — a re-derivation of what
     the ``SessionTree`` already knew authoritatively. The loop
     variable carried a latent bug: if a branch's ``first_uuid`` was
-    dropped by ``_filter_by_detail`` at non-FULL detail, the trigger
-    never fired and subsequent branch messages silently inherited
-    the *previous* branch's sid (or ``None``).
+    dropped before rendering (structurally, by ``_filter_messages`` —
+    or, before the single-axis collapse, by the pre-render detail
+    filter), the trigger never fired and subsequent branch messages
+    silently inherited the *previous* branch's sid (or ``None``).
 
     Reading the map up front fixes this — every uuid in a branch
     DAG-line maps to that branch's sid regardless of which entries
@@ -2745,8 +2744,9 @@ def _link_async_notifications(
     - **Sidechain-only dedup:** when the last sub-assistant text
       matches the notification's ``result_text``, drop it from the
       tree. This branch is a no-op at LOW/MINIMAL/USER_ONLY where
-      ``_filter_by_detail`` has already removed sidechain entries —
-      and that's fine, because there's no duplicate left to remove.
+      ``_ghost_template_by_detail`` has ghosted the sidechain entries
+      (so they fall out of the rendered tree) — and that's fine,
+      because there's no duplicate left to remove.
 
     At MINIMAL/USER_ONLY the spawn fold is skipped entirely: the
     Task tool_result is dropped by ``_ghost_template_by_detail``,
@@ -2823,9 +2823,9 @@ def _link_async_notifications(
         # result body, drop the duplicate from the sidechain tree so
         # the answer only appears once (folded into the spawn). This
         # branch is the only piece that needs the sidechain — at
-        # LOW/MINIMAL/USER_ONLY ``_filter_by_detail`` has already
-        # removed sidechain entries, so ``_last_sidechain_assistant``
-        # returns None and we skip this branch.
+        # LOW/MINIMAL/USER_ONLY ``_ghost_template_by_detail`` ghosts the
+        # sidechain entries (excluded from the tree), so
+        # ``_last_sidechain_assistant`` returns None and we skip this branch.
         located = _last_sidechain_assistant(tm)
         if located is None:
             continue
@@ -3235,92 +3235,6 @@ def _content_visible_at(content: "MessageContent", detail: DetailLevel) -> bool:
     automatically through the same predicate.
     """
     return content.visible_at(detail)
-
-
-def _filter_by_detail(
-    messages: list[TranscriptEntry],
-    detail: DetailLevel,
-) -> list[TranscriptEntry]:
-    """Pre-render filter: strip content items per detail level.
-
-    - MINIMAL / USER_ONLY: keep only user/assistant text (no tools,
-      thinking, system). USER_ONLY drops assistant text in the post-
-      render pass so it behaves identically here.
-    - LOW: keep user/assistant text + WebSearch / WebFetch / Task / Agent
-      tools (Agent is the teammates spawn alias for Task).
-    - HIGH: keep user/assistant + all tools/thinking, drop system entries.
-    """
-    from copy import copy
-
-    if detail in (DetailLevel.MINIMAL, DetailLevel.USER_ONLY):
-        strip_types: tuple[type, ...] = (
-            ThinkingContent,
-            ToolUseContent,
-            ToolResultContent,
-        )
-    elif detail == DetailLevel.LOW:
-        strip_types = (ThinkingContent,)
-        # ToolUseContent and ToolResultContent kept for _LOW_KEEP_TOOLS;
-        # others removed in post-render by _ghost_template_by_detail.
-    else:
-        # HIGH: no content-item stripping needed
-        strip_types = ()
-
-    # Queue-operation entries (carrying UserSteeringMessage) pass through
-    # at every non-FULL detail level. Steering is user-authored content
-    # and belongs in any view of the user's side of the conversation —
-    # the post-render exclude chains (_HIGH/_LOW/_MINIMAL/_USER_ONLY)
-    # don't list UserSteeringMessage, so this allowlist is sufficient
-    # to keep it visible everywhere we already keep assistant/user text.
-    allowed_types: tuple[type, ...] = (
-        UserTranscriptEntry,
-        AssistantTranscriptEntry,
-        QueueOperationTranscriptEntry,
-    )
-
-    filtered: list[TranscriptEntry] = []
-    for message in messages:
-        # HIGH/LOW/MINIMAL/USER_ONLY: drop system entries (factory creates SystemMessage)
-        # — except `away_summary` recaps at HIGH detail, which must survive this
-        # pre-render pass to reach the post-render filter that keeps them at HIGH
-        # (see AwaySummaryMessage.detail_visibility in models.py).
-        if not isinstance(message, allowed_types):
-            if (
-                detail == DetailLevel.HIGH
-                and isinstance(message, SystemTranscriptEntry)
-                and message.subtype == "away_summary"
-            ):
-                filtered.append(message)
-            continue
-        # queue-operation entries don't have `.message` or `.isSidechain` —
-        # they are appended verbatim for downstream conversion.
-        if isinstance(message, QueueOperationTranscriptEntry):
-            filtered.append(message)
-            continue
-        # LOW/MINIMAL/USER_ONLY: drop sidechain (subagent) messages entirely
-        if (
-            detail in (DetailLevel.MINIMAL, DetailLevel.LOW, DetailLevel.USER_ONLY)
-            and message.isSidechain
-        ):
-            continue
-        if not strip_types:
-            filtered.append(message)
-            continue
-        text_items: list[ContentItem] = [
-            item
-            for item in message.message.content
-            if not isinstance(item, strip_types)
-        ]
-        if text_items:
-            msg_copy = copy(message)
-            msg_model = copy(message.message)
-            msg_model.content = text_items
-            if isinstance(msg_copy, UserTranscriptEntry):
-                msg_copy.message = cast("UserMessageModel", msg_model)
-            else:
-                msg_copy.message = cast("AssistantMessageModel", msg_model)
-            filtered.append(msg_copy)
-    return filtered
 
 
 _LAUNCHING_SKILL_PREFIX = "Launching skill:"
@@ -3868,7 +3782,7 @@ def _build_branch_header(
         original_session_id=original_sid,
         # Canonical first uuid of the branch DAG-line, NOT the
         # trigger's uuid. Post-D11 the trigger may be a later entry
-        # (the first one to survive ``_filter_by_detail``) rather
+        # (the first one to survive ``_filter_messages``) rather
         # than ``dag_line.uuids[0]`` itself, so reading from the
         # hierarchy keeps the header's ``first_uuid`` field pointing
         # at the canonical entry regardless of filtering.
