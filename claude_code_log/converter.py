@@ -262,6 +262,9 @@ def load_transcript(
     # Parse from source file
     messages: list[TranscriptEntry] = []
     agent_ids: set[str] = set()  # Collect agentId references while parsing
+    # Track unrecognized message types already warned about so we emit at
+    # most one warning per distinct type per file (these tend to repeat a lot).
+    warned_unrecognized_types: set[str | None] = set()
 
     try:
         f = open(jsonl_path, "r", encoding="utf-8", errors="replace")
@@ -347,7 +350,10 @@ def load_transcript(
                         # agent-name). Warn so we notice when Claude Code
                         # introduces new metadata worth supporting — add to
                         # SILENT_SKIP_TYPES once confirmed safe to drop.
-                        if not silent:
+                        # Only warn on the first occurrence of each distinct
+                        # type per file to avoid flooding the output.
+                        if not silent and entry_type not in warned_unrecognized_types:
+                            warned_unrecognized_types.add(entry_type)
                             print(
                                 f"Line {line_no} of {jsonl_path}: unrecognized message type "
                                 f"{entry_type!r} - skipping"
