@@ -1304,3 +1304,43 @@ details summary {
         margin-right: 2%;
     }
 }
+
+/* Workflow tool-input (issue #174) — meta header above the highlighted JS
+   orchestrator. The script body reuses the standard Pygments code styling
+   via render_file_content_collapsible. */
+.workflow-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+    margin-bottom: 8px;
+}
+
+.workflow-name {
+    font-weight: 600;
+    color: var(--tool-use-color);
+}
+
+.workflow-description {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+
+.workflow-phases {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.workflow-phase-pill {
+    font-size: 0.78em;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background-color: var(--highlight-dimmed);
+    border: 1px solid #00000011;
+    color: var(--text-secondary);
+}
+
+.workflow-script {
+    margin-top: 4px;
+}

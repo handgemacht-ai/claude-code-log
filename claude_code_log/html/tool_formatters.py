@@ -23,11 +23,13 @@ from typing import Any, Optional, cast
 from .utils import (
     escape_html,
     render_collapsible_code,
+    render_async_result_body,
     render_file_content_collapsible,
     render_markdown_collapsible,
     render_markdown_inline,
 )
 from ..utils import strip_error_tags
+from ..workflow import parse_workflow_meta
 from ..models import (
     AskUserQuestionInput,
     AskUserQuestionItem,
@@ -63,6 +65,7 @@ from ..models import (
     WebSearchOutput,
     WebFetchInput,
     WebFetchOutput,
+    WorkflowToolInput,
     WriteInput,
     WriteOutput,
 )
@@ -533,7 +536,7 @@ def format_task_output(output: TaskOutput) -> str:
             "</div>"
         )
         parts.append(
-            render_markdown_collapsible(output.async_final_answer, "task-async-answer")
+            render_async_result_body(output.async_final_answer, "task-async-answer")
         )
     return "".join(parts)
 
@@ -1159,6 +1162,47 @@ def format_tool_result_content_raw(tool_result: ToolResultContent) -> str:
     """
 
 
+# -- Workflow tool input (issue #174) -----------------------------------------
+
+
+def format_workflow_input(workflow_input: WorkflowToolInput) -> str:
+    """Format a ``Workflow`` tool_use (issue #174): a header from the script's
+    ``meta`` block (name / description / phase pills) above the JavaScript
+    orchestrator source, syntax-highlighted and collapsible when long."""
+    script = workflow_input.script or ""
+    name, description, phases = parse_workflow_meta(script)
+
+    header_parts: list[str] = []
+    if name:
+        header_parts.append(f"<span class='workflow-name'>{escape_html(name)}</span>")
+    if description:
+        header_parts.append(
+            f"<span class='workflow-description'>{escape_html(description)}</span>"
+        )
+    if phases:
+        pills = "".join(
+            f"<span class='workflow-phase-pill'>{escape_html(p)}</span>" for p in phases
+        )
+        header_parts.append(f"<span class='workflow-phases'>{pills}</span>")
+    header = (
+        f"<div class='workflow-meta'>{''.join(header_parts)}</div>"
+        if header_parts
+        else ""
+    )
+
+    if not script.strip():
+        return header
+
+    body = render_file_content_collapsible(
+        script,
+        "workflow.js",
+        "workflow-script",
+        line_threshold=12,
+        preview_line_count=6,
+    )
+    return f"{header}{body}"
+
+
 # -- Public Exports -----------------------------------------------------------
 
 __all__ = [
@@ -1176,6 +1220,7 @@ __all__ = [
     "format_grep_input",
     "format_websearch_input",
     "format_webfetch_input",
+    "format_workflow_input",
     "format_monitor_input",
     "format_schedulewakeup_input",
     "format_croncreate_input",

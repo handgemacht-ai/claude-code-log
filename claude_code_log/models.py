@@ -1545,6 +1545,20 @@ class TaskStopInput(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class WorkflowToolInput(BaseModel):
+    """Input parameters for the dynamic ``Workflow`` tool (issue #174).
+
+    A Workflow tool_use carries a single field: ``script``, the JavaScript
+    orchestrator source. Its ``export const meta = {...}`` block (name /
+    description / phases) is surfaced as a header and the script body is
+    syntax-highlighted as JavaScript by the formatter.
+    """
+
+    script: str = ""
+
+    model_config = {"extra": "allow"}
+
+
 # Union of all typed tool inputs
 ToolInput = Union[
     BashInput,
@@ -1574,6 +1588,7 @@ ToolInput = Union[
     SendMessageInput,
     TaskOutputInput,
     TaskStopInput,
+    WorkflowToolInput,
     ToolUseContent,  # Generic fallback when no specialized parser
 ]
 
