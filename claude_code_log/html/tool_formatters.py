@@ -1278,11 +1278,20 @@ def format_workflow_agent_content(content: WorkflowAgentMessage) -> str:
 
     result = content.result
     if isinstance(result, (dict, list)):
-        # Pretty-print + JSON-highlight via the shared async-result helper
-        # (it re-parses the `{"`/`[`-shaped text and indents it).
+        # Pretty-print + JSON-highlight directly. NOT via render_async_result_body
+        # — its JSON heuristic only fires on `{"`-shaped text, so a list-shaped
+        # StructuredOutput result (``[...]``) would fall through to the markdown
+        # path and lose JSON highlighting (and diverge from the Markdown renderer,
+        # which fences both dict and list as JSON). A real dict/list always
+        # serializes to valid JSON, so highlight it unconditionally (CR #210).
+        pretty = json.dumps(result, indent=2, ensure_ascii=False)
         parts.append(
-            render_async_result_body(
-                json.dumps(result, ensure_ascii=False), "workflow-agent-result"
+            render_file_content_collapsible(
+                pretty,
+                "result.json",
+                "workflow-agent-result",
+                line_threshold=10,
+                preview_line_count=6,
             )
         )
     elif isinstance(result, str) and result.strip():

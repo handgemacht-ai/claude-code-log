@@ -346,6 +346,34 @@ class TestWorkflowRunSplice:
         assert '"area": "loader"' in md
         assert "Land parsing first" in md
 
+    def test_list_shaped_agent_result_json_highlighted_in_both_formats(self) -> None:
+        # CR #210: a list-shaped StructuredOutput result must be JSON-highlighted
+        # (HTML) / JSON-fenced (Markdown) just like a dict — render_async_result_body's
+        # `{"` heuristic would skip a `[...]` payload, so the HTML formatter must
+        # JSON-render dict AND list directly. Guards against HTML/Markdown divergence.
+        from claude_code_log.html.tool_formatters import format_workflow_agent_content
+        from claude_code_log.markdown.renderer import MarkdownRenderer
+        from claude_code_log.models import MessageMeta, WorkflowAgentMessage
+
+        content = WorkflowAgentMessage(
+            meta=MessageMeta.empty(),
+            label="lister",
+            result=[{"area": "loader"}, {"area": "hierarchy"}],
+        )
+        html = format_workflow_agent_content(content)
+        assert "highlight" in html  # Pygments JSON highlight, not markdown
+        assert "workflow-agent-result" in html
+        # Content present (Pygments wraps tokens in <span>s, so check tokens, not
+        # a contiguous substring).
+        assert "area" in html and "loader" in html and "hierarchy" in html
+
+        md = MarkdownRenderer().format_WorkflowAgentMessage(
+            content,
+            None,  # type: ignore[arg-type]  # message unused by this formatter
+        )
+        assert "```json" in md
+        assert '"area": "loader"' in md
+
     def test_non_workflow_transcript_has_no_spliced_nodes(self) -> None:
         # The splice is gated on a linked workflow_run, so an ordinary
         # transcript must yield no workflow_phase / workflow_agent tree nodes.

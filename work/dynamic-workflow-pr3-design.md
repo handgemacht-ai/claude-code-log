@@ -209,10 +209,11 @@ to `components/message_styles.css`.
   state/tokens; body = result — dict → JSON-pygmentize (reuse
   `render_async_result_body`), str → markdown).
 
-**D. Splice pass** (`renderer.py`, new `_splice_workflow_runs(root_messages,
-ctx)` called AFTER `_build_message_tree` (~L821), BEFORE
-`_link_async_notifications`; guard: only when a Workflow tool_use has
-`input.workflow_run`).
+**D. Splice pass** (`renderer.py`, new `_splice_workflow_runs(ctx)` called
+**LAST** in `generate_template_messages` — after `_link_task_id_consumers`, the
+final link pass — so its `ctx.register` appends can't perturb any earlier
+`ctx.messages`-iterating pass (see REVALIDATION §1). Guard: only splices a
+Workflow tool_use whose `input.workflow_run` is set.)
 
   1. **Index allocation — use `ctx.register(node)`** (see REVALIDATION §1). It
      assigns `len(ctx.messages)` and appends, so it IS a single session-wide
@@ -264,6 +265,8 @@ workflow_basic shows phase/agent cards nested under the Workflow tool_use; each
 agent's side-channel entries present beneath it; HTML + Markdown; a fold
 Playwright test. Snapshot regen serial (`-n0`); `just ci` green.
 
-**EXACT NEXT ACTION**: implement A→B→C (node types + registry + formatters +
-CSS) first and unit-test rendering a synthesized node; THEN D→E (the splice +
-re-index) — the highest-risk part; THEN F (timeline) + tests.
+**STATUS — DONE.** A→F all implemented and merged into this branch (built in
+that order: A→B→C node types/registry/formatters/CSS, then D→E splice +
+re-index, then F timeline + tests). Plus the two POST-IMPLEMENTATION additions
+above (single-file support + pagination-boundary fix). `just ci` green;
+monk-approved (PR #210). This map is retained as as-built reference.
