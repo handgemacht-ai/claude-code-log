@@ -35,6 +35,7 @@ Re-run to regenerate: ``python3 scripts/gen_nested_agents_fixture.py``.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -309,6 +310,9 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 
 def main() -> None:
+    # Regenerate from scratch — stale files from a previous layout (renamed
+    # agent ids, removed scenarios) must not survive in the fixture.
+    shutil.rmtree(FIXTURE, ignore_errors=True)
     subagents = FIXTURE / TRUNK_SID / "subagents"
 
     _write_jsonl(FIXTURE / f"{TRUNK_SID}.jsonl", _trunk())
