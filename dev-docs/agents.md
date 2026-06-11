@@ -219,6 +219,10 @@ detail-level behaviour).
 Claude Code 2.1.172+ lets sub-agents spawn their own sub-agents. The
 announced "up to 5 levels deep" cap is **not enforced** (a linear chain
 was observed at depth 79), so nothing in the pipeline assumes a bound.
+(The *practical* bound is Python's ~1000-frame recursion limit — the
+loader's child loading, the block relocation and the depth chase all
+recurse one frame per level; a pathological multi-hundred-depth chain
+would fail as a RecursionError at load.)
 
 ### 5.1 On-disk shape
 
