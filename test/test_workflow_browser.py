@@ -133,7 +133,7 @@ class TestWorkflowRuntimeCss:
         # Workflow-level group line is suppressed; phase + agent lines drawn.
         assert result["phasesGroup"]["bw"] == "0px"
         assert result["agentsGroup"]["bw"] == "2px"
-        assert result["agentsGroup"]["bc"] == "rgb(27, 94, 32)"  # #1b5e20
+        assert result["agentsGroup"]["bc"] == "rgb(58, 125, 60)"  # #3a7d3c
         assert result["scGroup"]["bw"] == "2px"
         assert result["scGroup"]["bc"] == "rgb(158, 158, 158)"  # #9e9e9e
         # Each group border continues its parent card's border (same x).

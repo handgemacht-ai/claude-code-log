@@ -52,7 +52,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
@@ -6262,7 +6262,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
@@ -12371,7 +12371,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
@@ -14559,7 +14559,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
@@ -20884,7 +20884,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
@@ -27476,7 +27476,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
@@ -34030,7 +34030,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
@@ -40528,7 +40528,7 @@
   
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
-      --workflow-phase-color: #1b5e20;
+      --workflow-phase-color: #3a7d3c;
       --workflow-agent-color: #9e9e9e;
   
       /* Fork/branch structural colors */
