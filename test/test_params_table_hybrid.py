@@ -8,6 +8,7 @@ behavior.
 
 from claude_code_log.html.tool_formatters import (
     _PARAMS_TABLE_MAX_DEPTH,
+    _PARAMS_TABLE_MAX_ITEMS,
     format_tool_result_content_raw,
     render_params_table,
 )
@@ -214,6 +215,37 @@ class TestDepthGuard:
         html = render_params_table({"a": {"b": {"c": "leaf"}}})
         assert "tool-param-structured" not in html
         assert "leaf" in html
+
+
+class TestBreadthCap:
+    """Wider containers than _PARAMS_TABLE_MAX_ITEMS fall back to the
+    JSON dump — the table HTML must not even be generated."""
+
+    def test_wide_list_falls_back_to_json_dump(self):
+        value = list(range(_PARAMS_TABLE_MAX_ITEMS + 1))
+        html = render_params_table({"items": value})
+        assert "tool-param-structured" in html
+        assert "tool-params-nested" not in html
+
+    def test_wide_dict_falls_back_to_json_dump(self):
+        value = {f"k{i}": i for i in range(_PARAMS_TABLE_MAX_ITEMS + 1)}
+        html = render_params_table({"cfg": value})
+        assert "tool-param-structured" in html
+        assert "tool-params-nested" not in html
+
+    def test_at_cap_still_renders_table(self):
+        value = list(range(_PARAMS_TABLE_MAX_ITEMS))
+        html = render_params_table({"items": value})
+        assert "tool-params-nested" in html
+        assert "tool-param-structured" not in html
+
+    def test_wide_json_result_keeps_legacy_text_rendering(self):
+        import json
+
+        content = json.dumps(list(range(_PARAMS_TABLE_MAX_ITEMS + 1)))
+        html = format_tool_result_content_raw(_tool_result(content))
+        assert "tool-result-json" not in html
+        assert "collapsible-details" in html
 
 
 class TestScalarsAndLegacy:

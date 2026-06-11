@@ -1019,6 +1019,12 @@ def format_crondelete_output(output: CronDeleteOutput) -> str:
 # up the DOM.
 _PARAMS_TABLE_MAX_DEPTH = 4
 
+# Per-container breadth cap (CodeRabbit, PR #216): the depth guard and
+# the folded-by-default display don't stop the HTML for a huge array
+# from being GENERATED — one <tr> per element even when collapsed.
+# Wider containers fall back to the JSON dump.
+_PARAMS_TABLE_MAX_ITEMS = 200
+
 
 def _json_dump_value_html(formatted_value: str) -> str:
     """Escaped JSON dump in a ``<pre>``, collapsible when long."""
@@ -1090,7 +1096,11 @@ def _structured_value_html(value: "dict[Any, Any] | list[Any]", depth: int) -> s
         # Fallback: convert to string when JSON serialization fails
         return escape_html(str(cast(object, value)))
 
-    if not value or depth >= _PARAMS_TABLE_MAX_DEPTH:
+    if (
+        not value
+        or depth >= _PARAMS_TABLE_MAX_DEPTH
+        or len(value) > _PARAMS_TABLE_MAX_ITEMS
+    ):
         return _json_dump_value_html(formatted_value)
 
     if isinstance(value, dict):
@@ -1211,12 +1221,18 @@ def _json_result_table_html(raw_content: str) -> Optional[str]:
     except ValueError:
         return None
     if isinstance(parsed, dict) and parsed:
-        items: Iterable[tuple[Any, Any]] = cast("dict[Any, Any]", parsed).items()
+        container = cast("dict[Any, Any]", parsed)
+        items: Iterable[tuple[Any, Any]] = container.items()
         kind = "properties"
     elif isinstance(parsed, list) and parsed:
-        items = enumerate(cast("list[Any]", parsed))
+        container = cast("list[Any]", parsed)
+        items = enumerate(container)
         kind = "rows"
     else:
+        return None
+    if len(container) > _PARAMS_TABLE_MAX_ITEMS:
+        # Breadth cap: let huge results keep the legacy collapsible
+        # text rendering instead of generating one row per element.
         return None
     table_html = _params_table_html(items, 0)
     # Breadth guard: results past the legacy 200-char threshold keep
