@@ -47,6 +47,23 @@ AGENTS = [
         "phaseIndex": 1,
         "phaseTitle": "Map",
         "model": "claude-sonnet-4-6",
+        # Realistic prose+JSON prompt shape: workflow agent prompts routinely
+        # embed pretty-printed JSON blocks (a lone `{`/`[` line through a lone
+        # closer + blank line). Exercises the embedded-JSON extraction in the
+        # side-channel user rendering.
+        "prompt": (
+            "You are a focused reviewer. Map the **loader** area.\n"
+            "\n"
+            "A prior analysis proposed this opportunity:\n"
+            "\n"
+            "{\n"
+            '  "id": "loader-glob",\n'
+            '  "title": "Extend the discovery glob",\n'
+            '  "touches": ["converter.py"]\n'
+            "}\n"
+            "\n"
+            "Verify it against the current code and report findings."
+        ),
         "result": {
             "area": "loader",
             "summary": "Discovery glob misses subagents/workflows.",
@@ -283,7 +300,7 @@ def _agent_transcript(agent: dict) -> list[dict]:
             f"{aid}_u1",
             None,
             sid,
-            [{"type": "text", "text": agent["label"]}],
+            [{"type": "text", "text": agent.get("prompt", agent["label"])}],
             sidechain=True,
             agent_id=aid,
         ),

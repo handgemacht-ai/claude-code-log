@@ -1913,6 +1913,18 @@
       color: var(--text-muted);
       font-size: 0.9em;
   }
+  
+  /* Embedded JSON blocks extracted from workflow side-channel user prompts
+     (#174 follow-up): the block renders as a params table in place of the raw
+     JSON text; the hint marks a block whose table lives below the fold. */
+  .embedded-json {
+      margin: 0.5em 0;
+  }
+  
+  .embedded-json-hint {
+      color: var(--text-muted);
+      font-family: var(--font-monospace);
+  }
   /* Session navigation styles */
   .navigation {
       background-color: var(--bg-neutral);
@@ -8108,6 +8120,18 @@
   .workflow-agent-result-preview {
       color: var(--text-muted);
       font-size: 0.9em;
+  }
+  
+  /* Embedded JSON blocks extracted from workflow side-channel user prompts
+     (#174 follow-up): the block renders as a params table in place of the raw
+     JSON text; the hint marks a block whose table lives below the fold. */
+  .embedded-json {
+      margin: 0.5em 0;
+  }
+  
+  .embedded-json-hint {
+      color: var(--text-muted);
+      font-family: var(--font-monospace);
   }
   /* Session navigation styles */
   .navigation {
@@ -16392,6 +16416,18 @@
       color: var(--text-muted);
       font-size: 0.9em;
   }
+  
+  /* Embedded JSON blocks extracted from workflow side-channel user prompts
+     (#174 follow-up): the block renders as a params table in place of the raw
+     JSON text; the hint marks a block whose table lives below the fold. */
+  .embedded-json {
+      margin: 0.5em 0;
+  }
+  
+  .embedded-json-hint {
+      color: var(--text-muted);
+      font-family: var(--font-monospace);
+  }
   /* Session navigation styles */
   .navigation {
       background-color: var(--bg-neutral);
@@ -22702,6 +22738,18 @@
   .workflow-agent-result-preview {
       color: var(--text-muted);
       font-size: 0.9em;
+  }
+  
+  /* Embedded JSON blocks extracted from workflow side-channel user prompts
+     (#174 follow-up): the block renders as a params table in place of the raw
+     JSON text; the hint marks a block whose table lives below the fold. */
+  .embedded-json {
+      margin: 0.5em 0;
+  }
+  
+  .embedded-json-hint {
+      color: var(--text-muted);
+      font-family: var(--font-monospace);
   }
   /* Session navigation styles */
   .navigation {
@@ -29281,6 +29329,18 @@
       color: var(--text-muted);
       font-size: 0.9em;
   }
+  
+  /* Embedded JSON blocks extracted from workflow side-channel user prompts
+     (#174 follow-up): the block renders as a params table in place of the raw
+     JSON text; the hint marks a block whose table lives below the fold. */
+  .embedded-json {
+      margin: 0.5em 0;
+  }
+  
+  .embedded-json-hint {
+      color: var(--text-muted);
+      font-family: var(--font-monospace);
+  }
   /* Session navigation styles */
   .navigation {
       background-color: var(--bg-neutral);
@@ -35821,6 +35881,18 @@
       color: var(--text-muted);
       font-size: 0.9em;
   }
+  
+  /* Embedded JSON blocks extracted from workflow side-channel user prompts
+     (#174 follow-up): the block renders as a params table in place of the raw
+     JSON text; the hint marks a block whose table lives below the fold. */
+  .embedded-json {
+      margin: 0.5em 0;
+  }
+  
+  .embedded-json-hint {
+      color: var(--text-muted);
+      font-family: var(--font-monospace);
+  }
   /* Session navigation styles */
   .navigation {
       background-color: var(--bg-neutral);
@@ -42304,6 +42376,18 @@
   .workflow-agent-result-preview {
       color: var(--text-muted);
       font-size: 0.9em;
+  }
+  
+  /* Embedded JSON blocks extracted from workflow side-channel user prompts
+     (#174 follow-up): the block renders as a params table in place of the raw
+     JSON text; the hint marks a block whose table lives below the fold. */
+  .embedded-json {
+      margin: 0.5em 0;
+  }
+  
+  .embedded-json-hint {
+      color: var(--text-muted);
+      font-family: var(--font-monospace);
   }
   /* Session navigation styles */
   .navigation {
