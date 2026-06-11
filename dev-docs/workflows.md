@@ -152,10 +152,27 @@ on non-workflow rendering would be high). Key mechanics:
 - **Side-channel grafting** (`_graft_agent_sidechannel`): each agent's
   `entries` are re-rendered through a nested
   `generate_template_messages` call, then every produced node is
-  re-registered into the main ctx (fresh monotonic indices) and its
-  pairing references (`pair_first`/`pair_middle`/`pair_last`) remapped
-  into the new index space. The side-channel renders at FULL detail
-  regardless of the main render's level (see § 7).
+  re-registered into the main ctx (fresh monotonic indices), tagged
+  `in_workflow_sidechannel`, and its pairing references
+  (`pair_first`/`pair_middle`/`pair_last`) remapped into the new index
+  space. The side-channel renders at FULL detail regardless of the main
+  render's level (see § 7).
+- **Side-channel user prompts** (`format_workflow_sidechannel_user_content`
+  in `html/user_formatters.py`, gated on the graft tag): these prompts
+  are large prose+JSON hybrids, so they render as escaping collapsible
+  Markdown with embedded JSON blocks **extracted** first
+  (`extract_embedded_json`): a lone `{`/`[` on its own line, through a
+  lone matching closer followed by a blank line (or EOF), accepted only
+  when `json.loads` parses it. Each block is substituted with a
+  z-prefixed UUID placeholder (every uuid group gets a `z` so the
+  SHA→commit-URL linkifier can't match inside it), the remainder renders
+  as Markdown, and the placeholders are swapped for the generic
+  params-table rendering of the parsed value (so hybrid-renderer
+  upgrades apply automatically). Blocks wider than
+  `_EMBEDDED_JSON_MAX_ITEMS` fall back to an escaped `<pre>` fold —
+  generation-side breadth discipline. A placeholder landing in the
+  fold's preview becomes a compact `{…}` hint; the table renders once,
+  in the body.
 - **Counts**: `has_children`/`is_paired` are derived properties, and
   the stock `_mark_messages_with_children` ran pre-splice, so a
   bottom-up helper (`_recount_spliced_children`) computes the synthetic
