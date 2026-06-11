@@ -1344,3 +1344,45 @@ details summary {
 .workflow-script {
     margin-top: 4px;
 }
+
+/* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+.workflow-phase-meta,
+.workflow-agent-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.workflow-phase-detail {
+    color: var(--text-secondary);
+}
+
+.workflow-phase-count,
+.workflow-agent-tokens,
+.workflow-agent-tools {
+    font-size: 0.95em;
+    color: var(--text-muted);
+}
+
+.workflow-agent-model {
+    font-family: var(--font-mono, monospace);
+    color: var(--text-secondary);
+}
+
+.workflow-agent-state {
+    font-style: italic;
+}
+
+.workflow-agent-result,
+.workflow-agent-result-preview {
+    display: block;
+    margin-top: 6px;
+}
+
+.workflow-agent-result-preview {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}

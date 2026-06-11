@@ -134,6 +134,89 @@ class TestWorkflowMetaParsing:
     def test_no_meta_block_returns_empty(self) -> None:
         assert parse_workflow_meta("const x = 1\nawait agent('hi')\n") == ("", "", [])
 
+
+_JS_META = (
+    "export const meta = {\n"
+    "  name: 'js-name',\n"
+    "  description: 'js-desc',\n"
+    "  phases: [{ title: 'Map' }],\n"
+    "}\n"
+)
+
+
+class TestSnapshotFirstHeader:
+    """PR3 / cboos refinement: the header prefers the authoritative
+    <runId>.json snapshot over the best-effort JS-meta regex, warns on JS-meta
+    drift, and falls back to the regex for a running (no-snapshot) workflow."""
+
+    def _run(self, **kw):
+        from claude_code_log.workflow import WorkflowPhase, WorkflowRun
+
+        return WorkflowRun(
+            run_id="r",
+            workflow_name=kw.get("name", "SNAP-NAME"),
+            has_snapshot=kw.get("has_snapshot", True),
+            phases=kw.get(
+                "phases",
+                [
+                    WorkflowPhase(index=0, title="Alpha"),
+                    WorkflowPhase(index=1, title="Beta"),
+                ],
+            ),
+        )
+
+    def test_snapshot_name_and_phases_win_description_from_js(self) -> None:
+        from claude_code_log.workflow import resolve_workflow_header
+
+        name, desc, phases = resolve_workflow_header(self._run(), _JS_META)
+        assert name == "SNAP-NAME"  # snapshot workflowName wins over JS name
+        assert phases == ["Alpha", "Beta"]  # snapshot phases win over JS phases
+        assert desc == "js-desc"  # description has no snapshot source → JS
+
+    def test_no_snapshot_falls_back_to_js(self) -> None:
+        from claude_code_log.workflow import resolve_workflow_header
+
+        assert resolve_workflow_header(None, _JS_META) == (
+            "js-name",
+            "js-desc",
+            ["Map"],
+        )
+
+    def test_drift_warning_when_js_meta_misses(self, caplog) -> None:
+        import logging
+
+        from claude_code_log.workflow import resolve_workflow_header
+
+        with caplog.at_level(logging.WARNING, logger="claude_code_log.workflow"):
+            # snapshot has name+phases, but the script has no `export const meta`
+            resolve_workflow_header(self._run(), "const x = 1\n")
+        assert any("may have drifted" in r.message for r in caplog.records)
+
+
+class TestWorkflowRunLinkage:
+    """PR3 step 1-2: a parsed run links to its Workflow tool_use by taskId on a
+    directory load, so the formatter can render snapshot-first."""
+
+    def test_run_links_to_tool_use_input(self) -> None:
+        from claude_code_log.converter import load_directory_transcripts
+        from claude_code_log.models import ToolUseMessage, WorkflowToolInput
+        from claude_code_log.renderer import generate_template_messages
+
+        msgs, tree = load_directory_transcripts(TRUNK.parent, silent=True)
+        assert "wf_demo01" in tree.workflow_runs
+        _roots, _nav, ctx = generate_template_messages(msgs, session_tree=tree)
+        linked = [
+            tm.content.input.workflow_run
+            for tm in ctx.messages
+            if tm is not None
+            and isinstance(tm.content, ToolUseMessage)
+            and tm.content.tool_name == "Workflow"
+            and isinstance(tm.content.input, WorkflowToolInput)
+        ]
+        assert len(linked) == 1
+        assert linked[0] is not None
+        assert linked[0].run_id == "wf_demo01"
+
     def test_decoy_local_meta_ignored_for_exported_block(self) -> None:
         # CR #205: only the EXPORTED `meta` declaration is the header source;
         # a non-export local `meta = {...}` before it must not be mis-parsed.
@@ -175,3 +258,223 @@ class TestWorkflowMarkdownEscaping:
         assert "<b>" not in header
         # Neutralized text still readable in the header.
         assert "alert(1)" in header
+
+
+class TestWorkflowRunSplice:
+    """PR3 step 3: the parsed WorkflowRun tree is spliced under its Workflow
+    tool_use node — phases → agents → each agent's side-channel transcript —
+    on the nested DOM, in both HTML and Markdown."""
+
+    def _tree(self):
+        from claude_code_log.converter import load_directory_transcripts
+        from claude_code_log.models import ToolUseMessage
+        from claude_code_log.renderer import generate_template_messages
+
+        msgs, tree = load_directory_transcripts(TRUNK.parent, silent=True)
+        _roots, _nav, ctx = generate_template_messages(msgs, session_tree=tree)
+        host = next(
+            tm
+            for tm in ctx.messages
+            if tm is not None
+            and isinstance(tm.content, ToolUseMessage)
+            and tm.content.tool_name == "Workflow"
+        )
+        return host, ctx
+
+    def test_phases_and_agents_nested_under_tool_use(self) -> None:
+        host, _ctx = self._tree()
+        # Two phases (Map, Synthesize) attached to the Workflow tool_use.
+        from claude_code_log.models import WorkflowPhaseMessage
+
+        phases = [c for c in host.children if c.type == "workflow_phase"]
+        assert len(phases) == 2
+        titles = [
+            c.content.title
+            for c in phases
+            if isinstance(c.content, WorkflowPhaseMessage)
+        ]
+        assert titles == ["Map", "Synthesize"]
+        # Map has 2 agents, Synthesize 1; all are workflow_agent children.
+        agents_by_phase = [
+            [c for c in p.children if c.type == "workflow_agent"] for p in phases
+        ]
+        assert [len(a) for a in agents_by_phase] == [2, 1]
+
+    def test_agent_sidechannel_grafted_beneath_agent(self) -> None:
+        host, _ctx = self._tree()
+        first_phase = next(c for c in host.children if c.type == "workflow_phase")
+        first_agent = next(
+            c for c in first_phase.children if c.type == "workflow_agent"
+        )
+        # The agent's 3 side-channel entries (user, assistant, assistant) are
+        # grafted as its children; the assistant's tool_use nests one deeper.
+        child_types = [c.type for c in first_agent.children]
+        assert child_types == ["user", "assistant", "assistant"]
+        assert any(
+            gc.type == "tool_use" for c in first_agent.children for gc in c.children
+        )
+
+    def test_spliced_indices_unique_and_monotonic(self) -> None:
+        _host, ctx = self._tree()
+        indices = [tm.message_index for tm in ctx.messages if tm is not None]
+        assert len(indices) == len(set(indices))  # no collisions across the splice
+
+    def test_html_renders_phase_and_agent_cards(self) -> None:
+        from claude_code_log.converter import load_directory_transcripts
+
+        msgs, tree = load_directory_transcripts(TRUNK.parent, silent=True)
+        html = generate_html(msgs, session_tree=tree)
+        # Rendered-card markers (hyphenated) — distinct from the underscore
+        # `workflow_phase`/`workflow_agent` literals the timeline JS always
+        # carries, so these prove the cards actually rendered.
+        assert "workflow-phase-meta" in html and "workflow-agent-meta" in html
+        assert "Phase: Map" in html and "Phase: Synthesize" in html
+        assert "review:loader" in html and "review:hierarchy" in html
+        # StructuredOutput dict result is JSON-highlighted in the agent card.
+        assert "workflow-agent-result" in html
+        assert "Discovery glob misses" in html  # result content surfaced
+
+    def test_markdown_renders_phase_and_agent_tree(self) -> None:
+        from claude_code_log.converter import load_directory_transcripts
+
+        msgs, tree = load_directory_transcripts(TRUNK.parent, silent=True)
+        md = MarkdownRenderer().generate(msgs, session_tree=tree)
+        assert "Phase: Map" in md and "Phase: Synthesize" in md
+        assert "review:loader" in md
+        # Dict result fenced as JSON; the string-result agent's markdown body
+        # ("## Plan") renders directly.
+        assert '"area": "loader"' in md
+        assert "Land parsing first" in md
+
+    def test_list_shaped_agent_result_json_highlighted_in_both_formats(self) -> None:
+        # CR #210: a list-shaped StructuredOutput result must be JSON-highlighted
+        # (HTML) / JSON-fenced (Markdown) just like a dict — render_async_result_body's
+        # `{"` heuristic would skip a `[...]` payload, so the HTML formatter must
+        # JSON-render dict AND list directly. Guards against HTML/Markdown divergence.
+        from claude_code_log.html.tool_formatters import format_workflow_agent_content
+        from claude_code_log.markdown.renderer import MarkdownRenderer
+        from claude_code_log.models import MessageMeta, WorkflowAgentMessage
+
+        content = WorkflowAgentMessage(
+            meta=MessageMeta.empty(),
+            label="lister",
+            result=[{"area": "loader"}, {"area": "hierarchy"}],
+        )
+        html = format_workflow_agent_content(content)
+        assert "highlight" in html  # Pygments JSON highlight, not markdown
+        assert "workflow-agent-result" in html
+        # Content present (Pygments wraps tokens in <span>s, so check tokens, not
+        # a contiguous substring).
+        assert "area" in html and "loader" in html and "hierarchy" in html
+
+        md = MarkdownRenderer().format_WorkflowAgentMessage(
+            content,
+            None,  # type: ignore[arg-type]  # message unused by this formatter
+        )
+        assert "```json" in md
+        assert '"area": "loader"' in md
+
+    def test_non_workflow_transcript_has_no_spliced_nodes(self) -> None:
+        # The splice is gated on a linked workflow_run, so an ordinary
+        # transcript must yield no workflow_phase / workflow_agent tree nodes.
+        # (Asserting on the rendered tree, not on the HTML string — the timeline
+        # JS embeds the `workflow_phase`/`workflow_agent` literals on every
+        # page regardless of content.)
+        from claude_code_log.converter import load_transcript
+        from claude_code_log.renderer import generate_template_messages
+
+        other = Path(__file__).parent / "test_data" / "representative_messages.jsonl"
+        if not other.is_file():
+            import pytest
+
+            pytest.skip("no representative fixture available")
+        _roots, _nav, ctx = generate_template_messages(load_transcript(other))
+        types = {tm.type for tm in ctx.messages if tm is not None}
+        assert "workflow_phase" not in types
+        assert "workflow_agent" not in types
+
+
+def _has_workflow_tool_use(entry) -> bool:
+    content = getattr(getattr(entry, "message", None), "content", None)
+    return isinstance(content, list) and any(
+        getattr(i, "type", None) == "tool_use" and getattr(i, "name", "") == "Workflow"
+        for i in content
+    )
+
+
+class TestSingleFileWorkflowRender:
+    """PR3: a lone ``<SID>.jsonl`` (cboos's natural usage,
+    ``claude-code-log <SID>.jsonl --detail high``) discovers the sibling
+    ``<SID>/subagents/workflows/`` runs and splices the tree, just like a
+    directory load."""
+
+    def test_single_file_html_shows_workflow_tree(self, tmp_path: Path) -> None:
+        from claude_code_log.converter import convert_jsonl_to
+        from claude_code_log.models import DetailLevel
+
+        out = tmp_path / "single.html"
+        convert_jsonl_to(
+            "html",
+            TRUNK,
+            output_path=out,
+            use_cache=False,
+            update_cache=False,
+            silent=True,
+            detail=DetailLevel.HIGH,
+        )
+        html = out.read_text(encoding="utf-8", errors="replace")
+        # Same rendered-card markers as the directory path.
+        assert "workflow-phase-meta" in html and "workflow-agent-meta" in html
+        assert "Phase: Map" in html and "review:loader" in html
+
+    def test_load_session_workflow_runs_finds_sibling_run(self) -> None:
+        from claude_code_log.workflow import load_session_workflow_runs
+
+        runs = load_session_workflow_runs(TRUNK, silent=True)
+        assert [r.run_id for r in runs] == ["wf_demo01"]
+
+
+class TestWorkflowPaginationBoundary:
+    """PR3: run↔tool_use linkage is resolved at full-session scope (stored on
+    ``SessionTree.workflow_links``) BEFORE pagination, so a Workflow tool_use
+    still links to its run when its tool_result is on a different page."""
+
+    def test_links_via_precomputed_map_without_tool_result_in_slice(self) -> None:
+        from claude_code_log.converter import load_directory_transcripts
+        from claude_code_log.models import ToolUseMessage
+        from claude_code_log.renderer import generate_template_messages
+
+        msgs, tree = load_directory_transcripts(TRUNK.parent, silent=True)
+        assert tree.workflow_links, "links map should be built at full scope"
+
+        # Slice up to & including the entry holding the Workflow tool_use — this
+        # EXCLUDES the later tool_result entry, mimicking a page boundary where
+        # tool_use is the last message of a page and tool_result the first of
+        # the next.
+        pos = next(i for i, e in enumerate(msgs) if _has_workflow_tool_use(e))
+        page = msgs[: pos + 1]
+
+        def _host(messages, session_tree):
+            _r, _n, ctx = generate_template_messages(
+                messages, session_tree=session_tree
+            )
+            return next(
+                tm
+                for tm in ctx.messages
+                if tm is not None
+                and isinstance(tm.content, ToolUseMessage)
+                and tm.content.tool_name == "Workflow"
+            )
+
+        # WITH the precomputed map: splice fires despite no tool_result in slice.
+        host = _host(page, tree)
+        assert any(c.type == "workflow_phase" for c in host.children), (
+            "full-scope links map should link a cross-page tool_use"
+        )
+
+        # WITHOUT it (clear the map → per-page fallback): the fallback scan can't
+        # find a tool_result in this slice, so no splice — proving the map is
+        # what enables cross-page linkage.
+        tree.workflow_links = {}
+        host_nolink = _host(page, tree)
+        assert not any(c.type == "workflow_phase" for c in host_nolink.children)

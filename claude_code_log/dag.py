@@ -8,7 +8,10 @@ See dev-docs/dag.md for the full architecture spec.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .workflow import WorkflowRun
 
 from .models import (
     AiTitleTranscriptEntry,
@@ -93,6 +96,18 @@ class SessionTree:
     sessions: dict[str, SessionDAGLine]
     roots: list[str]  # Root session IDs (no parent session)
     junction_points: dict[str, JunctionPoint]
+    # Parsed dynamic-workflow runs keyed by runId (issue #174 PR3), populated
+    # by load_directory_transcripts. Empty for single-file / non-workflow loads.
+    workflow_runs: dict[str, "WorkflowRun"] = field(  # pyright: ignore[reportUnknownVariableType]
+        default_factory=dict
+    )
+    # {Workflow tool_use_id: WorkflowRun}, resolved at full-session scope BEFORE
+    # pagination splits messages into pages (#174 PR3). Lets the per-page linker
+    # attach a run to its Workflow tool_use even when the tool_use and its
+    # tool_result land on different pages. Empty for non-workflow loads.
+    workflow_links: dict[str, "WorkflowRun"] = field(  # pyright: ignore[reportUnknownVariableType]
+        default_factory=dict
+    )
 
 
 # =============================================================================

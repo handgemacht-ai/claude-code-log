@@ -32,7 +32,7 @@ from .utils import (
     resolve_memory_body_links,
 )
 from ..utils import strip_error_tags
-from ..workflow import parse_workflow_meta
+from ..workflow import resolve_workflow_header
 from ..models import (
     AskUserQuestionInput,
     AskUserQuestionItem,
@@ -68,6 +68,8 @@ from ..models import (
     WebSearchOutput,
     WebFetchInput,
     WebFetchOutput,
+    WorkflowAgentMessage,
+    WorkflowPhaseMessage,
     WorkflowToolInput,
     WriteInput,
     WriteOutput,
@@ -1190,7 +1192,9 @@ def format_workflow_input(workflow_input: WorkflowToolInput) -> str:
     ``meta`` block (name / description / phase pills) above the JavaScript
     orchestrator source, syntax-highlighted and collapsible when long."""
     script = workflow_input.script or ""
-    name, description, phases = parse_workflow_meta(script)
+    name, description, phases = resolve_workflow_header(
+        workflow_input.workflow_run, script
+    )
 
     header_parts: list[str] = []
     if name:
@@ -1223,6 +1227,83 @@ def format_workflow_input(workflow_input: WorkflowToolInput) -> str:
     return f"{header}{body}"
 
 
+# -- Workflow run tree: phase + agent cards (issue #174 PR3) -------------------
+
+
+def format_workflow_phase_content(content: WorkflowPhaseMessage) -> str:
+    """Format a spliced workflow *phase* card body: the phase ``detail`` plus
+    its agent count. The phase title is the card heading (``title_content``)."""
+    parts: list[str] = []
+    if content.detail:
+        parts.append(
+            f"<span class='workflow-phase-detail'>{escape_html(content.detail)}</span>"
+        )
+    if content.agent_count:
+        unit = "agent" if content.agent_count == 1 else "agents"
+        parts.append(
+            f"<span class='workflow-phase-count'>{content.agent_count} {unit}</span>"
+        )
+    if not parts:
+        return ""
+    return f"<div class='workflow-phase-meta'>{''.join(parts)}</div>"
+
+
+def format_workflow_agent_content(content: WorkflowAgentMessage) -> str:
+    """Format a spliced workflow *agent* card body: a metadata chrome line
+    (model / state / tokens / tool calls) above the agent's result — a
+    ``StructuredOutput`` dict pretty-printed + highlighted as JSON, a plain
+    string rendered as collapsible Markdown. The agent's side-channel
+    transcript renders separately as this node's ``.children``."""
+    meta_bits: list[str] = []
+    if content.model:
+        meta_bits.append(
+            f"<span class='workflow-agent-model'>{escape_html(content.model)}</span>"
+        )
+    if content.state:
+        meta_bits.append(
+            f"<span class='workflow-agent-state'>{escape_html(content.state)}</span>"
+        )
+    if content.tokens is not None:
+        meta_bits.append(
+            f"<span class='workflow-agent-tokens'>{content.tokens} tokens</span>"
+        )
+    if content.tool_calls is not None:
+        unit = "call" if content.tool_calls == 1 else "calls"
+        meta_bits.append(
+            f"<span class='workflow-agent-tools'>{content.tool_calls} tool {unit}</span>"
+        )
+    parts: list[str] = []
+    if meta_bits:
+        parts.append(f"<div class='workflow-agent-meta'>{''.join(meta_bits)}</div>")
+
+    result = content.result
+    if isinstance(result, (dict, list)):
+        # Pretty-print + JSON-highlight directly. NOT via render_async_result_body
+        # — its JSON heuristic only fires on `{"`-shaped text, so a list-shaped
+        # StructuredOutput result (``[...]``) would fall through to the markdown
+        # path and lose JSON highlighting (and diverge from the Markdown renderer,
+        # which fences both dict and list as JSON). A real dict/list always
+        # serializes to valid JSON, so highlight it unconditionally (CR #210).
+        pretty = json.dumps(result, indent=2, ensure_ascii=False)
+        parts.append(
+            render_file_content_collapsible(
+                pretty,
+                "result.json",
+                "workflow-agent-result",
+                line_threshold=10,
+                preview_line_count=6,
+            )
+        )
+    elif isinstance(result, str) and result.strip():
+        parts.append(render_markdown_collapsible(result, "workflow-agent-result"))
+    elif content.result_preview:
+        parts.append(
+            f"<span class='workflow-agent-result-preview'>"
+            f"{escape_html(content.result_preview)}</span>"
+        )
+    return "".join(parts)
+
+
 # -- Public Exports -----------------------------------------------------------
 
 __all__ = [
@@ -1241,6 +1322,8 @@ __all__ = [
     "format_websearch_input",
     "format_webfetch_input",
     "format_workflow_input",
+    "format_workflow_phase_content",
+    "format_workflow_agent_content",
     "format_monitor_input",
     "format_schedulewakeup_input",
     "format_croncreate_input",
