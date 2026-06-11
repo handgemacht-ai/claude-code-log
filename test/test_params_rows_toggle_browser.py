@@ -109,7 +109,7 @@ class TestParamsRowsToggleBrowser:
 
         outer.locator("summary").first.click()
         assert button.is_visible()
-        assert "expand rows" in (button.text_content() or "")
+        assert "expand all rows" in (button.text_content() or "")
         row_states = outer.evaluate(ROW_DETAILS_JS)
         assert row_states and not any(row_states), "rows must start collapsed"
 
@@ -119,14 +119,14 @@ class TestParamsRowsToggleBrowser:
             "button click must not toggle the enclosing details"
         )
         row_states = outer.evaluate(ROW_DETAILS_JS)
-        assert all(row_states), "all rows must be open after expand rows"
-        assert "collapse rows" in (button.text_content() or "")
+        assert all(row_states), "all rows must be open after expand all rows"
+        assert "collapse all rows" in (button.text_content() or "")
 
         # Collapse all rows back.
         button.click()
         row_states = outer.evaluate(ROW_DETAILS_JS)
-        assert not any(row_states), "all rows must close after collapse rows"
-        assert "expand rows" in (button.text_content() or "")
+        assert not any(row_states), "all rows must close after collapse all rows"
+        assert "expand all rows" in (button.text_content() or "")
 
     @pytest.mark.browser
     def test_closing_fold_restores_initial_state(self, page: Page) -> None:
@@ -147,4 +147,25 @@ class TestParamsRowsToggleBrowser:
 
         row_states = outer.evaluate(ROW_DETAILS_JS)
         assert not any(row_states), "reopened fold must show rows collapsed"
-        assert "expand rows" in (button.text_content() or "")
+        assert "expand all rows" in (button.text_content() or "")
+
+    @pytest.mark.browser
+    def test_toggle_all_keeps_button_in_sync(self, page: Page) -> None:
+        """The global toggle-all button opens row folds without going
+        through the rows-toggle; its label must still flip (the state is
+        derived from the actual row state, not from past clicks)."""
+        html = self._render(_entries_with_structured_list())
+        page.goto(f"file://{html}")
+
+        outer = page.locator("details.tool-param-collapsible-rows").first
+        button = outer.locator("summary .tool-param-rows-toggle").first
+
+        page.locator("#toggleDetails").click()
+        assert outer.evaluate("el => el.open")
+        assert all(outer.evaluate(ROW_DETAILS_JS))
+        assert "collapse all rows" in (button.text_content() or "")
+
+        # And the button still works from this externally-reached state.
+        button.click()
+        assert not any(outer.evaluate(ROW_DETAILS_JS))
+        assert "expand all rows" in (button.text_content() or "")

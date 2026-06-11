@@ -8,8 +8,16 @@ behavior.
 
 from claude_code_log.html.tool_formatters import (
     _PARAMS_TABLE_MAX_DEPTH,
+    format_tool_result_content_raw,
     render_params_table,
 )
+from claude_code_log.models import ToolResultContent
+
+
+def _tool_result(content: str, is_error: bool = False) -> ToolResultContent:
+    return ToolResultContent(
+        type="tool_result", tool_use_id="t1", content=content, is_error=is_error
+    )
 
 
 class TestMarkdownStrings:
@@ -83,6 +91,23 @@ class TestNestedStructures:
         assert "<td class='tool-param-key'>1</td>" in html
         assert "alpha" in html and "beta" in html
 
+    def test_structures_always_fold_regardless_of_size(self):
+        """Even short dict/list values render collapsed — sibling rows
+        must look consistent (no size-based auto-expand)."""
+        html = render_params_table({"a": {"k": 1}, "b": [1, 2]})
+        assert html.count("tool-param-collapsible-rows") == 2
+        # Short JSON: the preview is the full dump, no ellipsis.
+        assert "..." not in html
+
+    def test_fold_button_label_matches_container_kind(self):
+        dict_html = render_params_table({"cfg": {"k": "v"}})
+        assert "expand all properties" in dict_html
+        assert "data-kind='properties'" in dict_html
+
+        list_html = render_params_table({"items": [1, 2]})
+        assert "expand all rows" in list_html
+        assert "data-kind='rows'" in list_html
+
     def test_list_of_dicts_recurses_both_levels(self):
         html = render_params_table({"qs": [{"q": "one"}, {"q": "two"}]})
         # Outer + list + two element tables.
@@ -109,7 +134,7 @@ class TestNestedStructures:
         assert "tool-param-collapsible-rows" in html
         assert "tool-param-collapse-hint" in html
         assert "tool-param-rows-toggle" in html
-        assert "expand rows" in html
+        assert "expand all properties" in html
 
         string_fold = render_params_table({"v": "plain words " * 20})
         assert "tool-param-rows-toggle" not in string_fold
@@ -160,3 +185,48 @@ class TestScalarsAndLegacy:
     def test_key_is_escaped(self):
         html = render_params_table({"<key>": "v"})
         assert "&lt;key&gt;" in html
+
+
+class TestJsonToolResults:
+    """Generic tool results that parse as JSON render as tables."""
+
+    def test_object_result_renders_table(self):
+        result = _tool_result('{"status": "ok", "count": 3}')
+        html = format_tool_result_content_raw(result)
+        assert "tool-result-json" in html
+        assert "tool-params-table" in html
+        assert "status" in html and "ok" in html
+
+    def test_array_result_renders_indexed_table(self):
+        result = _tool_result('[{"id": 1}, {"id": 2}]')
+        html = format_tool_result_content_raw(result)
+        assert "tool-result-json" in html
+        assert "<td class='tool-param-key'>0</td>" in html
+        assert "<td class='tool-param-key'>1</td>" in html
+
+    def test_invalid_json_stays_text(self):
+        result = _tool_result('{"status": "ok", trailing')
+        html = format_tool_result_content_raw(result)
+        assert "tool-result-json" not in html
+        assert "<pre>" in html
+
+    def test_non_json_text_unchanged(self):
+        result = _tool_result("plain output\nlines")
+        html = format_tool_result_content_raw(result)
+        assert "tool-result-json" not in html
+
+    def test_scalar_and_empty_json_stay_text(self):
+        for content in ("42", '"quoted"', "{}", "[]"):
+            html = format_tool_result_content_raw(_tool_result(content))
+            assert "tool-result-json" not in html, content
+
+    def test_error_result_stays_text(self):
+        result = _tool_result('{"error": "boom"}', is_error=True)
+        html = format_tool_result_content_raw(result)
+        assert "tool-result-json" not in html
+
+    def test_json_result_values_are_escaped(self):
+        result = _tool_result('{"v": "<script>alert(1)</script>"}')
+        html = format_tool_result_content_raw(result)
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html

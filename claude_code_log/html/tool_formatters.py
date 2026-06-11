@@ -1080,8 +1080,9 @@ def _structured_value_html(value: "dict[Any, Any] | list[Any]", depth: int) -> s
 
     ``depth`` is the nesting level of the table containing this value;
     past ``_PARAMS_TABLE_MAX_DEPTH`` (and for empty containers) the
-    value falls back to the JSON dump. The >200-char collapsibility
-    keeps its JSON-text preview so deep structures fold, not flood.
+    value falls back to the JSON dump. The table always renders inside
+    a collapsed fold with a JSON-text preview — size-independent, so
+    sibling rows look consistent (no "auto-expanded" short values).
     """
     try:
         formatted_value = json.dumps(value, indent=2, ensure_ascii=False)
@@ -1092,21 +1093,26 @@ def _structured_value_html(value: "dict[Any, Any] | list[Any]", depth: int) -> s
     if not value or depth >= _PARAMS_TABLE_MAX_DEPTH:
         return _json_dump_value_html(formatted_value)
 
-    items = value.items() if isinstance(value, dict) else enumerate(value)
+    if isinstance(value, dict):
+        items: Iterable[tuple[Any, Any]] = value.items()
+        kind = "properties"
+    else:
+        items = enumerate(value)
+        kind = "rows"
     table_html = _params_table_html(items, depth + 1)
-    if len(formatted_value) > 200:
-        preview = escape_html(formatted_value[:100]) + "..."
-        # The summary carries an explicit collapse hint (instead of the
-        # generic ::after one) followed by a rows-toggle button that
-        # expands/collapses all row-level folds of this table at once
-        # (wired up in transcript.html).
-        return f"""
+    preview = escape_html(formatted_value[:100])
+    if len(formatted_value) > 100:
+        preview += "..."
+    # The summary carries an explicit collapse hint (instead of the
+    # generic ::after one) followed by a rows-toggle button that
+    # expands/collapses all row-level folds of this table at once
+    # (wired up in transcript.html).
+    return f"""
                         <details class='tool-param-collapsible tool-param-collapsible-rows'>
-                            <summary><span class='tool-param-preview'>{preview}</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed'>&#9654; expand rows</button></summary>
+                            <summary><span class='tool-param-preview'>{preview}</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='{kind}'>&#9654; expand all {kind}</button></summary>
                             {table_html}
                         </details>
                     """
-    return table_html
 
 
 def _param_value_html(value: Any, depth: int) -> str:
@@ -1151,6 +1157,29 @@ def render_params_table(params: dict[str, Any]) -> str:
 
 
 # -- Tool Result Content Fallback Formatter -----------------------------------
+
+
+def _json_result_table_html(raw_content: str) -> Optional[str]:
+    """Render a tool-result string as a params-style table when it
+    parses as a non-empty JSON object/array; ``None`` otherwise.
+
+    Objects become key/value tables, arrays become index/value tables,
+    with values rendered by the same hybrid rules as tool params
+    (Markdown-aware strings, nested structures folded).
+    """
+    if raw_content.lstrip()[:1] not in ("{", "["):
+        return None
+    try:
+        parsed = json.loads(raw_content)
+    except ValueError:
+        return None
+    if isinstance(parsed, dict) and parsed:
+        items: Iterable[tuple[Any, Any]] = cast("dict[Any, Any]", parsed).items()
+    elif isinstance(parsed, list) and parsed:
+        items = enumerate(cast("list[Any]", parsed))
+    else:
+        return None
+    return f"<div class='tool-result-json'>{_params_table_html(items, 0)}</div>"
 
 
 def format_tool_result_content_raw(tool_result: ToolResultContent) -> str:
@@ -1241,7 +1270,13 @@ def format_tool_result_content_raw(tool_result: ToolResultContent) -> str:
     </details>
     """
     else:
-        # Text-only content
+        # Text-only content that parses as structured JSON renders as a
+        # params-style table (not for errors — those read as text).
+        if not tool_result.is_error:
+            json_table = _json_result_table_html(raw_content)
+            if json_table is not None:
+                return json_table
+
         # For simple content, show directly without collapsible wrapper
         if len(raw_content) <= 200:
             return f"<pre>{full_html}</pre>"

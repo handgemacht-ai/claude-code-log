@@ -4819,9 +4819,20 @@
               // that table (direct rows only — nested tables have their own).
               const rowDetailsSelector = ':scope > table > tbody > tr > td > details';
   
-              function setRowsToggleState(button, expanded) {
-                  button.dataset.state = expanded ? 'expanded' : 'collapsed';
-                  button.textContent = expanded ? '▼ collapse rows' : '▶ expand rows';
+              // Derive the button label/state from the actual row state, so
+              // it stays in sync whatever opened the rows (button click,
+              // toggle-all, manual clicks).
+              function syncRowsToggle(details) {
+                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
+                  if (!button) return;
+                  const rows = details.querySelectorAll(rowDetailsSelector);
+                  const allOpen = rows.length > 0 &&
+                      Array.from(rows).every(row => row.open);
+                  const kind = button.dataset.kind || 'rows';
+                  button.dataset.state = allOpen ? 'expanded' : 'collapsed';
+                  button.textContent = allOpen
+                      ? '▼ collapse all ' + kind
+                      : '▶ expand all ' + kind;
               }
   
               document.addEventListener('click', function (event) {
@@ -4836,23 +4847,27 @@
                   details.querySelectorAll(rowDetailsSelector).forEach(row => {
                       row.open = expand;
                   });
-                  setRowsToggleState(button, expand);
+                  syncRowsToggle(details);
               });
   
-              // Closing a fold restores its initial state: all rows collapsed,
-              // button back to "expand rows". Rows that are themselves folds
-              // reset their own rows through this same (capturing — toggle
-              // doesn't bubble) listener.
+              // Capturing listener (toggle doesn't bubble) keeps every fold
+              // consistent: closing one restores its initial state (rows
+              // collapsed — nested folds reset recursively through this same
+              // listener); any row toggling re-syncs its parent's button.
               document.addEventListener('toggle', function (event) {
                   const details = event.target;
-                  if (!(details instanceof HTMLElement)) return;
-                  if (!details.classList.contains('tool-param-collapsible-rows')) return;
-                  if (details.open) return;
-                  details.querySelectorAll(rowDetailsSelector).forEach(row => {
-                      row.open = false;
-                  });
-                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
-                  if (button) setRowsToggleState(button, false);
+                  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS') return;
+                  if (details.classList.contains('tool-param-collapsible-rows')) {
+                      if (!details.open) {
+                          details.querySelectorAll(rowDetailsSelector).forEach(row => {
+                              row.open = false;
+                          });
+                      }
+                      syncRowsToggle(details);
+                  }
+                  const cell = details.parentElement;
+                  const parent = cell ? cell.closest('details.tool-param-collapsible-rows') : null;
+                  if (parent && parent !== details) syncRowsToggle(parent);
               }, true);
   
               // Filter toolbar toggle functionality
@@ -10753,9 +10768,20 @@
               // that table (direct rows only — nested tables have their own).
               const rowDetailsSelector = ':scope > table > tbody > tr > td > details';
   
-              function setRowsToggleState(button, expanded) {
-                  button.dataset.state = expanded ? 'expanded' : 'collapsed';
-                  button.textContent = expanded ? '▼ collapse rows' : '▶ expand rows';
+              // Derive the button label/state from the actual row state, so
+              // it stays in sync whatever opened the rows (button click,
+              // toggle-all, manual clicks).
+              function syncRowsToggle(details) {
+                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
+                  if (!button) return;
+                  const rows = details.querySelectorAll(rowDetailsSelector);
+                  const allOpen = rows.length > 0 &&
+                      Array.from(rows).every(row => row.open);
+                  const kind = button.dataset.kind || 'rows';
+                  button.dataset.state = allOpen ? 'expanded' : 'collapsed';
+                  button.textContent = allOpen
+                      ? '▼ collapse all ' + kind
+                      : '▶ expand all ' + kind;
               }
   
               document.addEventListener('click', function (event) {
@@ -10770,23 +10796,27 @@
                   details.querySelectorAll(rowDetailsSelector).forEach(row => {
                       row.open = expand;
                   });
-                  setRowsToggleState(button, expand);
+                  syncRowsToggle(details);
               });
   
-              // Closing a fold restores its initial state: all rows collapsed,
-              // button back to "expand rows". Rows that are themselves folds
-              // reset their own rows through this same (capturing — toggle
-              // doesn't bubble) listener.
+              // Capturing listener (toggle doesn't bubble) keeps every fold
+              // consistent: closing one restores its initial state (rows
+              // collapsed — nested folds reset recursively through this same
+              // listener); any row toggling re-syncs its parent's button.
               document.addEventListener('toggle', function (event) {
                   const details = event.target;
-                  if (!(details instanceof HTMLElement)) return;
-                  if (!details.classList.contains('tool-param-collapsible-rows')) return;
-                  if (details.open) return;
-                  details.querySelectorAll(rowDetailsSelector).forEach(row => {
-                      row.open = false;
-                  });
-                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
-                  if (button) setRowsToggleState(button, false);
+                  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS') return;
+                  if (details.classList.contains('tool-param-collapsible-rows')) {
+                      if (!details.open) {
+                          details.querySelectorAll(rowDetailsSelector).forEach(row => {
+                              row.open = false;
+                          });
+                      }
+                      syncRowsToggle(details);
+                  }
+                  const cell = details.parentElement;
+                  const parent = cell ? cell.closest('details.tool-param-collapsible-rows') : null;
+                  if (parent && parent !== details) syncRowsToggle(parent);
               }, true);
   
               // Filter toolbar toggle functionality
@@ -19086,9 +19116,20 @@
               // that table (direct rows only — nested tables have their own).
               const rowDetailsSelector = ':scope > table > tbody > tr > td > details';
   
-              function setRowsToggleState(button, expanded) {
-                  button.dataset.state = expanded ? 'expanded' : 'collapsed';
-                  button.textContent = expanded ? '▼ collapse rows' : '▶ expand rows';
+              // Derive the button label/state from the actual row state, so
+              // it stays in sync whatever opened the rows (button click,
+              // toggle-all, manual clicks).
+              function syncRowsToggle(details) {
+                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
+                  if (!button) return;
+                  const rows = details.querySelectorAll(rowDetailsSelector);
+                  const allOpen = rows.length > 0 &&
+                      Array.from(rows).every(row => row.open);
+                  const kind = button.dataset.kind || 'rows';
+                  button.dataset.state = allOpen ? 'expanded' : 'collapsed';
+                  button.textContent = allOpen
+                      ? '▼ collapse all ' + kind
+                      : '▶ expand all ' + kind;
               }
   
               document.addEventListener('click', function (event) {
@@ -19103,23 +19144,27 @@
                   details.querySelectorAll(rowDetailsSelector).forEach(row => {
                       row.open = expand;
                   });
-                  setRowsToggleState(button, expand);
+                  syncRowsToggle(details);
               });
   
-              // Closing a fold restores its initial state: all rows collapsed,
-              // button back to "expand rows". Rows that are themselves folds
-              // reset their own rows through this same (capturing — toggle
-              // doesn't bubble) listener.
+              // Capturing listener (toggle doesn't bubble) keeps every fold
+              // consistent: closing one restores its initial state (rows
+              // collapsed — nested folds reset recursively through this same
+              // listener); any row toggling re-syncs its parent's button.
               document.addEventListener('toggle', function (event) {
                   const details = event.target;
-                  if (!(details instanceof HTMLElement)) return;
-                  if (!details.classList.contains('tool-param-collapsible-rows')) return;
-                  if (details.open) return;
-                  details.querySelectorAll(rowDetailsSelector).forEach(row => {
-                      row.open = false;
-                  });
-                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
-                  if (button) setRowsToggleState(button, false);
+                  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS') return;
+                  if (details.classList.contains('tool-param-collapsible-rows')) {
+                      if (!details.open) {
+                          details.querySelectorAll(rowDetailsSelector).forEach(row => {
+                              row.open = false;
+                          });
+                      }
+                      syncRowsToggle(details);
+                  }
+                  const cell = details.parentElement;
+                  const parent = cell ? cell.closest('details.tool-param-collapsible-rows') : null;
+                  if (parent && parent !== details) syncRowsToggle(parent);
               }, true);
   
               // Filter toolbar toggle functionality
@@ -25503,9 +25548,20 @@
               // that table (direct rows only — nested tables have their own).
               const rowDetailsSelector = ':scope > table > tbody > tr > td > details';
   
-              function setRowsToggleState(button, expanded) {
-                  button.dataset.state = expanded ? 'expanded' : 'collapsed';
-                  button.textContent = expanded ? '▼ collapse rows' : '▶ expand rows';
+              // Derive the button label/state from the actual row state, so
+              // it stays in sync whatever opened the rows (button click,
+              // toggle-all, manual clicks).
+              function syncRowsToggle(details) {
+                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
+                  if (!button) return;
+                  const rows = details.querySelectorAll(rowDetailsSelector);
+                  const allOpen = rows.length > 0 &&
+                      Array.from(rows).every(row => row.open);
+                  const kind = button.dataset.kind || 'rows';
+                  button.dataset.state = allOpen ? 'expanded' : 'collapsed';
+                  button.textContent = allOpen
+                      ? '▼ collapse all ' + kind
+                      : '▶ expand all ' + kind;
               }
   
               document.addEventListener('click', function (event) {
@@ -25520,23 +25576,27 @@
                   details.querySelectorAll(rowDetailsSelector).forEach(row => {
                       row.open = expand;
                   });
-                  setRowsToggleState(button, expand);
+                  syncRowsToggle(details);
               });
   
-              // Closing a fold restores its initial state: all rows collapsed,
-              // button back to "expand rows". Rows that are themselves folds
-              // reset their own rows through this same (capturing — toggle
-              // doesn't bubble) listener.
+              // Capturing listener (toggle doesn't bubble) keeps every fold
+              // consistent: closing one restores its initial state (rows
+              // collapsed — nested folds reset recursively through this same
+              // listener); any row toggling re-syncs its parent's button.
               document.addEventListener('toggle', function (event) {
                   const details = event.target;
-                  if (!(details instanceof HTMLElement)) return;
-                  if (!details.classList.contains('tool-param-collapsible-rows')) return;
-                  if (details.open) return;
-                  details.querySelectorAll(rowDetailsSelector).forEach(row => {
-                      row.open = false;
-                  });
-                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
-                  if (button) setRowsToggleState(button, false);
+                  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS') return;
+                  if (details.classList.contains('tool-param-collapsible-rows')) {
+                      if (!details.open) {
+                          details.querySelectorAll(rowDetailsSelector).forEach(row => {
+                              row.open = false;
+                          });
+                      }
+                      syncRowsToggle(details);
+                  }
+                  const cell = details.parentElement;
+                  const parent = cell ? cell.closest('details.tool-param-collapsible-rows') : null;
+                  if (parent && parent !== details) syncRowsToggle(parent);
               }, true);
   
               // Filter toolbar toggle functionality
@@ -31412,7 +31472,7 @@
     {
       &quot;id&quot;: &quot;2&quot;,
       &quot;content&quot;: &quot;Implement core functionality&quot;,
-      &quot;status&quot;: &quot;...</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed'>&#9654; expand rows</button></summary>
+      &quot;status&quot;: &quot;...</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='rows'>&#9654; expand all rows</button></summary>
                               <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>0</td>
@@ -31421,7 +31481,14 @@
           
               <tr>
                   <td class='tool-param-key'>1</td>
-                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+                  <td class='tool-param-value'>
+                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                              <summary><span class='tool-param-preview'>{
+    &quot;id&quot;: &quot;2&quot;,
+    &quot;content&quot;: &quot;Implement core functionality&quot;,
+    &quot;status&quot;: &quot;in_progress&quot;,
+    &quot;priority&quot;:...</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+                              <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
                   <td class='tool-param-value'>2</td>
@@ -31441,12 +31508,21 @@
                   <td class='tool-param-key'>priority</td>
                   <td class='tool-param-value'>high</td>
               </tr>
-          </table></td>
+          </table>
+                          </details>
+                      </td>
               </tr>
           
               <tr>
                   <td class='tool-param-key'>2</td>
-                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+                  <td class='tool-param-value'>
+                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                              <summary><span class='tool-param-preview'>{
+    &quot;id&quot;: &quot;3&quot;,
+    &quot;content&quot;: &quot;Add comprehensive tests&quot;,
+    &quot;status&quot;: &quot;pending&quot;,
+    &quot;priority&quot;: &quot;medium&quot;...</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+                              <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
                   <td class='tool-param-value'>3</td>
@@ -31466,12 +31542,22 @@
                   <td class='tool-param-key'>priority</td>
                   <td class='tool-param-value'>medium</td>
               </tr>
-          </table></td>
+          </table>
+                          </details>
+                      </td>
               </tr>
           
               <tr>
                   <td class='tool-param-key'>3</td>
-                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+                  <td class='tool-param-value'>
+                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                              <summary><span class='tool-param-preview'>{
+    &quot;id&quot;: &quot;4&quot;,
+    &quot;content&quot;: &quot;Write user documentation&quot;,
+    &quot;status&quot;: &quot;pending&quot;,
+    &quot;priority&quot;: &quot;low&quot;
+  }</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+                              <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
                   <td class='tool-param-value'>4</td>
@@ -31491,12 +31577,22 @@
                   <td class='tool-param-key'>priority</td>
                   <td class='tool-param-value'>low</td>
               </tr>
-          </table></td>
+          </table>
+                          </details>
+                      </td>
               </tr>
           
               <tr>
                   <td class='tool-param-key'>4</td>
-                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+                  <td class='tool-param-value'>
+                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                              <summary><span class='tool-param-preview'>{
+    &quot;id&quot;: &quot;5&quot;,
+    &quot;content&quot;: &quot;Perform code review&quot;,
+    &quot;status&quot;: &quot;pending&quot;,
+    &quot;priority&quot;: &quot;medium&quot;
+  }</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+                              <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
                   <td class='tool-param-value'>5</td>
@@ -31516,7 +31612,9 @@
                   <td class='tool-param-key'>priority</td>
                   <td class='tool-param-value'>medium</td>
               </tr>
-          </table></td>
+          </table>
+                          </details>
+                      </td>
               </tr>
           </table>
                           </details>
@@ -31844,9 +31942,20 @@
               // that table (direct rows only — nested tables have their own).
               const rowDetailsSelector = ':scope > table > tbody > tr > td > details';
   
-              function setRowsToggleState(button, expanded) {
-                  button.dataset.state = expanded ? 'expanded' : 'collapsed';
-                  button.textContent = expanded ? '▼ collapse rows' : '▶ expand rows';
+              // Derive the button label/state from the actual row state, so
+              // it stays in sync whatever opened the rows (button click,
+              // toggle-all, manual clicks).
+              function syncRowsToggle(details) {
+                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
+                  if (!button) return;
+                  const rows = details.querySelectorAll(rowDetailsSelector);
+                  const allOpen = rows.length > 0 &&
+                      Array.from(rows).every(row => row.open);
+                  const kind = button.dataset.kind || 'rows';
+                  button.dataset.state = allOpen ? 'expanded' : 'collapsed';
+                  button.textContent = allOpen
+                      ? '▼ collapse all ' + kind
+                      : '▶ expand all ' + kind;
               }
   
               document.addEventListener('click', function (event) {
@@ -31861,23 +31970,27 @@
                   details.querySelectorAll(rowDetailsSelector).forEach(row => {
                       row.open = expand;
                   });
-                  setRowsToggleState(button, expand);
+                  syncRowsToggle(details);
               });
   
-              // Closing a fold restores its initial state: all rows collapsed,
-              // button back to "expand rows". Rows that are themselves folds
-              // reset their own rows through this same (capturing — toggle
-              // doesn't bubble) listener.
+              // Capturing listener (toggle doesn't bubble) keeps every fold
+              // consistent: closing one restores its initial state (rows
+              // collapsed — nested folds reset recursively through this same
+              // listener); any row toggling re-syncs its parent's button.
               document.addEventListener('toggle', function (event) {
                   const details = event.target;
-                  if (!(details instanceof HTMLElement)) return;
-                  if (!details.classList.contains('tool-param-collapsible-rows')) return;
-                  if (details.open) return;
-                  details.querySelectorAll(rowDetailsSelector).forEach(row => {
-                      row.open = false;
-                  });
-                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
-                  if (button) setRowsToggleState(button, false);
+                  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS') return;
+                  if (details.classList.contains('tool-param-collapsible-rows')) {
+                      if (!details.open) {
+                          details.querySelectorAll(rowDetailsSelector).forEach(row => {
+                              row.open = false;
+                          });
+                      }
+                      syncRowsToggle(details);
+                  }
+                  const cell = details.parentElement;
+                  const parent = cell ? cell.closest('details.tool-param-collapsible-rows') : null;
+                  if (parent && parent !== details) syncRowsToggle(parent);
               }, true);
   
               // Filter toolbar toggle functionality
@@ -38167,9 +38280,20 @@
               // that table (direct rows only — nested tables have their own).
               const rowDetailsSelector = ':scope > table > tbody > tr > td > details';
   
-              function setRowsToggleState(button, expanded) {
-                  button.dataset.state = expanded ? 'expanded' : 'collapsed';
-                  button.textContent = expanded ? '▼ collapse rows' : '▶ expand rows';
+              // Derive the button label/state from the actual row state, so
+              // it stays in sync whatever opened the rows (button click,
+              // toggle-all, manual clicks).
+              function syncRowsToggle(details) {
+                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
+                  if (!button) return;
+                  const rows = details.querySelectorAll(rowDetailsSelector);
+                  const allOpen = rows.length > 0 &&
+                      Array.from(rows).every(row => row.open);
+                  const kind = button.dataset.kind || 'rows';
+                  button.dataset.state = allOpen ? 'expanded' : 'collapsed';
+                  button.textContent = allOpen
+                      ? '▼ collapse all ' + kind
+                      : '▶ expand all ' + kind;
               }
   
               document.addEventListener('click', function (event) {
@@ -38184,23 +38308,27 @@
                   details.querySelectorAll(rowDetailsSelector).forEach(row => {
                       row.open = expand;
                   });
-                  setRowsToggleState(button, expand);
+                  syncRowsToggle(details);
               });
   
-              // Closing a fold restores its initial state: all rows collapsed,
-              // button back to "expand rows". Rows that are themselves folds
-              // reset their own rows through this same (capturing — toggle
-              // doesn't bubble) listener.
+              // Capturing listener (toggle doesn't bubble) keeps every fold
+              // consistent: closing one restores its initial state (rows
+              // collapsed — nested folds reset recursively through this same
+              // listener); any row toggling re-syncs its parent's button.
               document.addEventListener('toggle', function (event) {
                   const details = event.target;
-                  if (!(details instanceof HTMLElement)) return;
-                  if (!details.classList.contains('tool-param-collapsible-rows')) return;
-                  if (details.open) return;
-                  details.querySelectorAll(rowDetailsSelector).forEach(row => {
-                      row.open = false;
-                  });
-                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
-                  if (button) setRowsToggleState(button, false);
+                  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS') return;
+                  if (details.classList.contains('tool-param-collapsible-rows')) {
+                      if (!details.open) {
+                          details.querySelectorAll(rowDetailsSelector).forEach(row => {
+                              row.open = false;
+                          });
+                      }
+                      syncRowsToggle(details);
+                  }
+                  const cell = details.parentElement;
+                  const parent = cell ? cell.closest('details.tool-param-collapsible-rows') : null;
+                  if (parent && parent !== details) syncRowsToggle(parent);
               }, true);
   
               // Filter toolbar toggle functionality
@@ -44317,9 +44445,20 @@
               // that table (direct rows only — nested tables have their own).
               const rowDetailsSelector = ':scope > table > tbody > tr > td > details';
   
-              function setRowsToggleState(button, expanded) {
-                  button.dataset.state = expanded ? 'expanded' : 'collapsed';
-                  button.textContent = expanded ? '▼ collapse rows' : '▶ expand rows';
+              // Derive the button label/state from the actual row state, so
+              // it stays in sync whatever opened the rows (button click,
+              // toggle-all, manual clicks).
+              function syncRowsToggle(details) {
+                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
+                  if (!button) return;
+                  const rows = details.querySelectorAll(rowDetailsSelector);
+                  const allOpen = rows.length > 0 &&
+                      Array.from(rows).every(row => row.open);
+                  const kind = button.dataset.kind || 'rows';
+                  button.dataset.state = allOpen ? 'expanded' : 'collapsed';
+                  button.textContent = allOpen
+                      ? '▼ collapse all ' + kind
+                      : '▶ expand all ' + kind;
               }
   
               document.addEventListener('click', function (event) {
@@ -44334,23 +44473,27 @@
                   details.querySelectorAll(rowDetailsSelector).forEach(row => {
                       row.open = expand;
                   });
-                  setRowsToggleState(button, expand);
+                  syncRowsToggle(details);
               });
   
-              // Closing a fold restores its initial state: all rows collapsed,
-              // button back to "expand rows". Rows that are themselves folds
-              // reset their own rows through this same (capturing — toggle
-              // doesn't bubble) listener.
+              // Capturing listener (toggle doesn't bubble) keeps every fold
+              // consistent: closing one restores its initial state (rows
+              // collapsed — nested folds reset recursively through this same
+              // listener); any row toggling re-syncs its parent's button.
               document.addEventListener('toggle', function (event) {
                   const details = event.target;
-                  if (!(details instanceof HTMLElement)) return;
-                  if (!details.classList.contains('tool-param-collapsible-rows')) return;
-                  if (details.open) return;
-                  details.querySelectorAll(rowDetailsSelector).forEach(row => {
-                      row.open = false;
-                  });
-                  const button = details.querySelector(':scope > summary .tool-param-rows-toggle');
-                  if (button) setRowsToggleState(button, false);
+                  if (!(details instanceof HTMLElement) || details.tagName !== 'DETAILS') return;
+                  if (details.classList.contains('tool-param-collapsible-rows')) {
+                      if (!details.open) {
+                          details.querySelectorAll(rowDetailsSelector).forEach(row => {
+                              row.open = false;
+                          });
+                      }
+                      syncRowsToggle(details);
+                  }
+                  const cell = details.parentElement;
+                  const parent = cell ? cell.closest('details.tool-param-collapsible-rows') : null;
+                  if (parent && parent !== details) syncRowsToggle(parent);
               }, true);
   
               // Filter toolbar toggle functionality
