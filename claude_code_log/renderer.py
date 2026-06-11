@@ -262,6 +262,12 @@ class TemplateMessage:
         # Children for tree-based rendering
         self.children: list["TemplateMessage"] = []
 
+        # Set by _graft_agent_sidechannel (#174): True for every node grafted
+        # from a workflow agent's side-channel transcript. Formatters use it
+        # to render those user prompts as collapsible Markdown with embedded
+        # JSON blocks extracted into params tables.
+        self.in_workflow_sidechannel: bool = False
+
         # Per-render annotations populated by the HTML renderer's tree walk
         # (HtmlRenderer._annotate_tree_for_render). The recursive template
         # macro reads these instead of receiving a flat (msg, title, html,
@@ -3073,6 +3079,7 @@ def _graft_agent_sidechannel(
     def _reindex(node: TemplateMessage, parent: TemplateMessage) -> None:
         old = node.message_index
         ctx.register(node)
+        node.in_workflow_sidechannel = True
         if old is not None and node.message_index is not None:
             old_to_new[old] = node.message_index
         if parent.message_index is not None:

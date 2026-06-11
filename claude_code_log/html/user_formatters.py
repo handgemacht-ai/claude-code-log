@@ -8,7 +8,9 @@ Part of the thematic formatter organization:
 - tool_formatters.py: tool use/result content
 """
 
-from typing import Callable, Optional
+import json
+import uuid
+from typing import Any, Callable, Optional, cast
 
 from .ansi_colors import convert_ansi_to_html
 from ..models import (
@@ -33,6 +35,7 @@ from .utils import (
     render_collapsible_code,
     render_markdown_collapsible,
     render_user_markdown,
+    render_user_markdown_collapsible,
 )
 
 
@@ -269,6 +272,156 @@ def format_user_text_model_content(
             if item.text.strip():
                 parts.append(format_user_text_content(item.text))
 
+    return "\n".join(parts)
+
+
+def _json_placeholder() -> str:
+    """A substitution token that survives Markdown rendering verbatim.
+
+    Each uuid4 group is prefixed with ``z`` so no bare 7–40 char hex run
+    remains — otherwise the SHA→commit-URL linkifier (``SHA_PATTERN`` in
+    ``markdown_plugins.py``) would wrap parts of the placeholder in a link
+    and break the back-substitution.
+    """
+    return "-".join(f"z{part}" for part in str(uuid.uuid4()).split("-"))
+
+
+def extract_embedded_json(text: str) -> "tuple[str, dict[str, Any]]":
+    """Pull pretty-printed JSON blocks out of a prose+JSON prompt.
+
+    Workflow sub-agent prompts routinely embed large JSON objects/arrays in
+    otherwise-Markdown prose. The block shape (the only reliable hint): a
+    lone ``{`` or ``[`` on its own line, through a lone matching closer
+    whose next line is blank (or EOF). A candidate only counts when
+    ``json.loads`` accepts it — anything else is left untouched.
+
+    Returns ``(substituted_text, {placeholder: parsed_value})`` where each
+    block is replaced by a unique placeholder line (see
+    :func:`_json_placeholder`); the caller renders the remaining text as
+    Markdown and then swaps each placeholder for a structured rendering of
+    its parsed value. Multiple blocks are supported.
+    """
+    lines = text.split("\n")
+    out_lines: list[str] = []
+    blocks: dict[str, Any] = {}
+    closer_for = {"{": "}", "[": "]"}
+    i = 0
+    in_fence = False
+    while i < len(lines):
+        stripped = lines[i].strip()
+        # Track fence parity (backtick AND tilde fences — both CommonMark):
+        # a JSON example inside a fenced code block must stay verbatim —
+        # extracting it would substitute the table markup INSIDE the
+        # rendered <pre><code>. (A fence with no internal blank line is
+        # already rejected by the closer check; this covers fences that
+        # carry commentary after a blank line.) One shared toggle for both
+        # fence kinds is an approximation — CommonMark closes a fence only
+        # with the same character — but for this skip-heuristic's purposes
+        # mixing kinds at worst skips an extraction, never corrupts one.
+        if stripped.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            out_lines.append(lines[i])
+            i += 1
+            continue
+        if not in_fence and stripped in closer_for:
+            # Scan to the next blank line (or EOF) — the candidate block end.
+            j = i + 1
+            while j < len(lines) and lines[j].strip():
+                j += 1
+            if j - 1 > i and lines[j - 1].strip() == closer_for[stripped]:
+                candidate = "\n".join(lines[i:j])
+                try:
+                    parsed: Any = json.loads(candidate)
+                except ValueError:
+                    parsed = None
+                if isinstance(parsed, (dict, list)) and parsed:
+                    placeholder = _json_placeholder()
+                    blocks[placeholder] = parsed
+                    out_lines.append(placeholder)
+                    i = j
+                    continue
+        out_lines.append(lines[i])
+        i += 1
+    return "\n".join(out_lines), blocks
+
+
+# Top-level breadth cap for extracted blocks, mirroring the params-table
+# breadth discipline (CodeRabbit, PR #216): a folded table still GENERATES
+# one row per element, so a huge embedded array must not tabulate. The
+# fallback is an escaped <pre> in a fold — proportional to the source text,
+# like the un-extracted prompt would have been (and deliberately not
+# Pygments-highlighted, which is itself generation-heavy at this size).
+_EMBEDDED_JSON_MAX_ITEMS = 200
+
+
+def _embedded_json_html(parsed: Any) -> str:
+    """Structured rendering for an extracted JSON block — the generic tool
+    params table (upgraded to the hybrid JSON/Markdown renderer when that
+    lands), with arrays presented as index→value rows."""
+    if isinstance(parsed, dict):
+        params = {str(k): v for k, v in cast("dict[Any, Any]", parsed).items()}
+    else:
+        params = {str(i): v for i, v in enumerate(cast("list[Any]", parsed))}
+    if len(params) > _EMBEDDED_JSON_MAX_ITEMS:
+        dumped = escape_html(json.dumps(parsed, indent=2, ensure_ascii=False))
+        return (
+            "<div class='embedded-json'><details class='tool-param-collapsible'>"
+            f"<summary>{len(params)} items (JSON)</summary>"
+            f"<pre>{dumped}</pre></details></div>"
+        )
+    return f"<div class='embedded-json'>{render_params_table(params)}</div>"
+
+
+def format_workflow_sidechannel_user_text(text: str) -> str:
+    """Render a workflow sub-agent prompt: collapsible Markdown with embedded
+    JSON blocks extracted into params tables (#174 follow-up).
+
+    The text is preprocessed by :func:`extract_embedded_json`, rendered
+    through the escaping Markdown collapsible (these prompts are large), and
+    the placeholders are then swapped for table renderings. A placeholder
+    that lands in the fold's *preview* (the first few lines) becomes a
+    compact ``{…}`` hint there instead — the table belongs in the body, not
+    the summary.
+    """
+    substituted, blocks = extract_embedded_json(text)
+    html = render_user_markdown_collapsible(
+        substituted,
+        "workflow-sidechannel-user",
+        line_threshold=12,
+        preview_line_count=5,
+    )
+    for placeholder, parsed in blocks.items():
+        table = _embedded_json_html(parsed)
+        if "</summary>" in html:
+            head, tail = html.split("</summary>", 1)
+            head = head.replace(
+                placeholder, "<span class='embedded-json-hint'>{…}</span>"
+            )
+            html = head + "</summary>" + tail.replace(placeholder, table)
+        else:
+            html = html.replace(placeholder, table)
+    return html
+
+
+def format_workflow_sidechannel_user_content(
+    content: UserTextMessage,
+    image_formatter: Optional[Callable[[ImageContent], str]] = None,
+) -> str:
+    """Variant of :func:`format_user_text_model_content` for user messages
+    grafted from a workflow agent's side-channel: text items get the
+    collapsible + embedded-JSON treatment; other items render as usual."""
+    from .assistant_formatters import format_image_content
+
+    formatter = image_formatter or format_image_content
+    parts: list[str] = []
+    for item in content.items:
+        if isinstance(item, IdeNotificationContent):
+            parts.extend(format_ide_notification_content(item))
+        elif isinstance(item, ImageContent):
+            parts.append(formatter(item))
+        else:  # TextContent
+            if item.text.strip():
+                parts.append(format_workflow_sidechannel_user_text(item.text))
     return "\n".join(parts)
 
 

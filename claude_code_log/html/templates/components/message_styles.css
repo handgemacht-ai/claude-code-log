@@ -1014,27 +1014,15 @@ pre > code {
     word-break: break-all;
 }
 
-/* Structured-table folds carry an explicit collapse hint plus a
-   rows-toggle button in the summary, so suppress the generic ::after
-   "collapse" hint for them and show the real elements only when open. */
-.tool-param-collapsible-rows[open] > summary::after {
-    content: none;
+/* The rows-toggle lives in a controls strip AFTER the summary — never
+   inside it (an interactive element within <summary> is an accessibility
+   violation: not consistently reachable by keyboard/AT). The strip is
+   details content, so it's natively hidden while the fold is closed. */
+.tool-param-fold-controls {
+    margin: 2px 0;
 }
 
-.tool-param-collapse-hint,
 .tool-param-rows-toggle {
-    display: none;
-}
-
-.tool-param-collapsible-rows[open] > summary > .tool-param-collapse-hint {
-    display: inline;
-    color: var(--text-muted);
-    font-style: italic;
-}
-
-.tool-param-collapsible-rows[open] > summary > .tool-param-rows-toggle {
-    display: inline;
-    margin-left: 1.5em;
     padding: 0;
     background: none;
     border: none;
@@ -1046,6 +1034,86 @@ pre > code {
 
 .tool-param-rows-toggle:hover {
     color: var(--text-primary);
+}
+
+/* Fold-valued rows hoist their toggle into the KEY column: the key cell's
+   ▶/▼ button (wired in transcript.html, state derived from toggle events)
+   replaces the per-fold in-summary collapse chrome, which only remained
+   useful en masse — every row showing "▼ collapse" drowned the content.
+   Scoped to keyed rows: the top-level root fold has no key column and
+   keeps its summary affordances (the pure-CSS ::after "collapse" hint —
+   no interactive child). */
+.tool-param-key-toggle {
+    /* The whole key (glyph + text) is the click target — inherit the key
+       cell's look so fold keys read exactly like scalar keys. */
+    padding: 0;
+    background: none;
+    border: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.tool-param-key-toggle:hover {
+    color: var(--text-primary);
+}
+
+/* The shared fold glyph: the BROWSER'S native disclosure marker (the same
+   UA-drawn icon a <summary> shows) via display:list-item — geometrically
+   symmetric open/closed, and immune to the italic style of the button
+   labels (font glyphs like ▶/▼ skew in italics; the marker icon doesn't).
+   The empty span doubles as the key-column alignment slot: every key cell
+   renders one (markerless on scalar rows), so all key texts start at the
+   same x. */
+.tool-param-fold-glyph {
+    display: inline-block;
+    width: 1.3em;
+    color: var(--text-muted);
+    font-style: normal;
+}
+
+/* Marker only inside the toggle buttons — the scalar-row spacer stays
+   empty. list-style-type string values are the fallback where the
+   disclosure-* keywords are unsupported. */
+button > .tool-param-fold-glyph {
+    display: list-item;
+    list-style-position: inside;
+    list-style-type: "\25B8";
+    list-style-type: disclosure-closed;
+}
+
+.tool-param-key-toggle[aria-expanded='true'] > .tool-param-fold-glyph,
+[data-state='expanded'] > .tool-param-fold-glyph {
+    list-style-type: "\25BE";
+    list-style-type: disclosure-open;
+}
+
+/* display:list-item is block-level — lay the buttons out as inline-flex so
+   the marker slot and the label sit on one line. */
+.tool-param-key-toggle,
+.tool-params-expand-all,
+.tool-param-rows-toggle {
+    display: inline-flex;
+    align-items: baseline;
+}
+
+/* The key glyph is THE marker for these rows — drop the duplicate native
+   one from the value summary (preview text stays clickable). */
+.tool-param-row-fold > .tool-param-value > details > summary {
+    list-style: none;
+}
+
+.tool-param-row-fold > .tool-param-value > details > summary::-webkit-details-marker {
+    display: none;
+}
+
+/* A keyed fold's open summary carries nothing (the key glyph shows ▼ and
+   the rows-toggle sits in the controls strip below) — drop the line it
+   would occupy. This also suppresses the generic ::after "collapse". */
+.tool-param-row-fold > .tool-param-value > details[open] > summary {
+    display: none;
 }
 
 /* Top-level expand/collapse-all control above a params/result table —
@@ -1464,14 +1532,16 @@ details summary {
 
 /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
    async, teammates): the agent's transcript hangs under the spawning
-   tool_result, framed by ONE grey line (the same color/concept as a
-   workflow agent's side-channel — an agent transcript is an agent
-   transcript). The :not(.sidechain) parent filter keeps the line at the
-   block's top level only (containers deeper inside the sidechain hang
-   under .sidechain-flagged cards). */
+   tool_result, framed by ONE line in tool-green — per the color-pairing
+   principle, the group line CONTINUES its parent card's border, and the
+   spawning tool_result card's border is tool-green. (Workflow agents use
+   the same principle with their own grey: grey workflow_agent card →
+   grey side-channel line.) The :not(.sidechain) parent filter keeps the
+   line at the block's top level only (containers deeper inside the
+   sidechain hang under .sidechain-flagged cards). */
 .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
     margin-left: 2em;
-    border-left: 2px solid var(--workflow-agent-color);
+    border-left: 2px solid var(--tool-use-color);
 }
 
 /* A phase's agents group — continues the phase card's dark green. */
@@ -1553,4 +1623,16 @@ a.workflow-phase-pill:hover {
 .workflow-agent-result-preview {
     color: var(--text-muted);
     font-size: 0.9em;
+}
+
+/* Embedded JSON blocks extracted from workflow side-channel user prompts
+   (#174 follow-up): the block renders as a params table in place of the raw
+   JSON text; the hint marks a block whose table lives below the fold. */
+.embedded-json {
+    margin: 0.5em 0;
+}
+
+.embedded-json-hint {
+    color: var(--text-muted);
+    font-family: var(--font-monospace);
 }

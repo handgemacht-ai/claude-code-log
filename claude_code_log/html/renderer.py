@@ -122,6 +122,7 @@ from .user_formatters import (
     format_user_memory_content,
     format_user_slash_command_content,
     format_user_text_model_content,
+    format_workflow_sidechannel_user_content,
 )
 from .assistant_formatters import (
     format_assistant_text_content,
@@ -498,8 +499,15 @@ class HtmlRenderer(Renderer):
     # -------------------------------------------------------------------------
 
     def format_UserTextMessage(
-        self, content: UserTextMessage, _: TemplateMessage
+        self, content: UserTextMessage, message: TemplateMessage
     ) -> str:
+        # User prompts grafted from a workflow agent's side-channel are large
+        # prose+JSON hybrids: render them as collapsible Markdown with the
+        # embedded JSON blocks extracted into params tables (#174 follow-up).
+        if message.in_workflow_sidechannel:
+            return format_workflow_sidechannel_user_content(
+                content, image_formatter=self._format_image
+            )
         return format_user_text_model_content(
             content, image_formatter=self._format_image
         )
