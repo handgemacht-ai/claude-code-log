@@ -208,6 +208,14 @@ class BaseTranscriptEntry(BaseModel):
     agentId: Optional[str] = None  # Agent ID for sidechain messages
     gitBranch: Optional[str] = None  # Git branch name when available
     teamName: Optional[str] = None  # Active team name (teammates feature)
+    # Synthetic (set by the loader, never by Claude Code): the id of the
+    # sub-agent spawned by this entry's Agent/Task tool_use or tool_result,
+    # resolved from ``subagents/agent-<id>.meta.json`` (``toolUseId``) or the
+    # trunk's ``toolUseResult.agentId``. Distinct from ``agentId``, which is
+    # *membership* (whose transcript this entry belongs to) — inside an agent
+    # transcript the two necessarily differ, which is what makes nested
+    # agent→agent spawns (issue #213) linkable.
+    spawnedAgentId: Optional[str] = None
 
 
 class UserTranscriptEntry(BaseTranscriptEntry):
@@ -390,6 +398,10 @@ class MessageMeta:
         None  # Skill pairing (see UserTranscriptEntry.sourceToolUseID)
     )
     agent_id: Optional[str] = None
+    # Sub-agent spawned by this entry's Agent/Task tool call (issue #213);
+    # see BaseTranscriptEntry.spawnedAgentId for the membership/reference
+    # distinction.
+    spawned_agent_id: Optional[str] = None
     cwd: str = ""
     git_branch: Optional[str] = None
     team_name: Optional[str] = None  # Active team name (teammates feature)
