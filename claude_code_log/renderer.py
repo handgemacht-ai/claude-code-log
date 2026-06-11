@@ -1889,21 +1889,68 @@ def _try_pair_triple(
     return False
 
 
+def _is_continuation_content(msg: TemplateMessage) -> bool:
+    """Is this message assistant *continuation* content (prose/thinking)?
+
+    Used by the tool_use↔tool_result pairing rule: when the assistant kept
+    talking between issuing a tool call and receiving its (lagging) result —
+    a ``max_tokens`` split, a thinking block, the prose of a next turn —
+    the result must stay in its chronological place rather than be pulled
+    back across the continuation (the DAG linearizes this shape instead of
+    forking; see ``dag._is_continuation_fork``).
+
+    Sidechain / subagent-session messages don't count: they interleave
+    between every Task/Agent tool_use and its result by construction and
+    are relocated after pair-reordering (``_relocate_subagent_blocks``).
+    Sibling tool_use/tool_result messages don't count either, so parallel
+    tool batches keep pairing adjacent as before.
+    """
+    if msg.is_sidechain or "#agent-" in msg.session_id:
+        return False
+    if isinstance(msg.content, AssistantTextMessage):
+        return bool(msg.content.items)  # an empty split carries no visible content
+    return msg.type == "thinking"
+
+
+def _continuation_between(
+    first: TemplateMessage,
+    last: TemplateMessage,
+    positions: dict[int, int],
+    continuation_prefix: list[int],
+) -> bool:
+    """True when assistant continuation content sits strictly between
+    ``first`` and ``last`` in the current linear order."""
+    i = positions.get(id(first))
+    j = positions.get(id(last))
+    if i is None or j is None or j <= i + 1:
+        return False
+    return continuation_prefix[j] - continuation_prefix[i + 1] > 0
+
+
 def _try_pair_by_index(
     current: TemplateMessage,
     indices: PairingIndices,
+    positions: dict[int, int],
+    continuation_prefix: list[int],
 ) -> None:
     """Try to pair current message with another using index lookups.
 
     Index-based pairing rules (can be any distance apart):
-    - tool_use + tool_result (by tool_use_id within same session)
+    - tool_use + tool_result (by tool_use_id within same session) —
+      *unless* assistant continuation content sits between them, in which
+      case the lagging result keeps its chronological position so the
+      continuation renders in between (see ``_is_continuation_content``)
     - system parent + system child (by uuid/parent_uuid)
     """
     # Tool use + tool result (by tool_use_id within same session)
     if current.type == "tool_use" and current.tool_use_id and current.session_id:
         key = (current.session_id, current.tool_use_id)
         if key in indices.tool_result:
-            _mark_pair(current, indices.tool_result[key])
+            result = indices.tool_result[key]
+            if not _continuation_between(
+                current, result, positions, continuation_prefix
+            ):
+                _mark_pair(current, result)
 
     # System child message finding its parent (by parent_uuid).
     # The uuid index only contains system messages, so this is a
@@ -1967,6 +2014,17 @@ def _identify_message_pairs(messages: list[TemplateMessage]) -> None:
     # Pass 1: Build all indices for efficient lookups
     indices = _build_pairing_indices(messages)
 
+    # Positions + prefix counts of continuation content, so the tool
+    # pairing rule can tell in O(1) whether assistant prose/thinking sits
+    # between a tool_use and its lagging result (in which case they must
+    # not pair — the continuation renders in between).
+    positions = {id(msg): pos for pos, msg in enumerate(messages)}
+    continuation_prefix = [0]
+    for msg in messages:
+        continuation_prefix.append(
+            continuation_prefix[-1] + (1 if _is_continuation_content(msg) else 0)
+        )
+
     # Pass 2: Sequential scan to identify pairs
     i = 0
     while i < len(messages):
@@ -1995,7 +2053,7 @@ def _identify_message_pairs(messages: list[TemplateMessage]) -> None:
                 continue
 
         # Try index-based pairing (doesn't skip, continues to next message)
-        _try_pair_by_index(current, indices)
+        _try_pair_by_index(current, indices, positions, continuation_prefix)
 
         i += 1
 
