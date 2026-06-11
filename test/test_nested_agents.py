@@ -208,6 +208,97 @@ class TestNestedTree:
         assert lines_above.get(INTR) == []
 
 
+class TestNestedCacheInvalidation:
+    def test_new_sidecar_invalidates_cached_trunk(self, tmp_path: Path) -> None:
+        """Sidecar inputs are part of the cache key (PR #218 review).
+
+        The trunk jsonl's mtime alone can't see a sidecar that appears
+        AFTER the transcript was cached (nested spawns never touch the
+        trunk file): without the subagents fingerprint the cached —
+        agent-less — parse would be served forever."""
+        import shutil
+
+        from claude_code_log.cache import CacheManager
+
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        trunk = proj / TRUNK.name
+        shutil.copy(TRUNK, trunk)
+
+        cm = CacheManager(proj, "0.0.0-test", db_path=tmp_path / "cache.db")
+        first = load_transcript(trunk, cache_manager=cm, silent=True)
+        assert _members(first) == set(), "no agent transcripts on disk yet"
+        # Baseline cache hit while the world is unchanged.
+        assert cm.is_file_cached(trunk)
+
+        # The agents finish: transcripts + sidecars appear, trunk untouched.
+        shutil.copytree(TRUNK.parent / TRUNK_SID, proj / TRUNK_SID)
+
+        assert not cm.is_file_cached(trunk), (
+            "new sidecars must invalidate the cached parse"
+        )
+        rediscovered = load_transcript(trunk, cache_manager=cm, silent=True)
+        assert _members(rediscovered) == set(ALL_AGENTS)
+        # And the refreshed cache entry is valid again.
+        assert cm.is_file_cached(trunk)
+
+
+class TestMultiSpawnGuard:
+    def test_resultless_parallel_spawns_in_one_entry_degrade_safely(self) -> None:
+        """Degenerate shape (unobserved in real transcripts — Claude Code
+        streams one content block per assistant entry): a single entry
+        with TWO resultless spawn tool_uses. The single spawnedAgentId
+        keeps the first link, never silently overwrites, and both
+        transcripts still join the loading set."""
+        from claude_code_log.converter import _apply_subagent_meta_links
+        from claude_code_log.factories import create_transcript_entry
+
+        entry = create_transcript_entry(
+            {
+                "type": "assistant",
+                "uuid": "ms-a1",
+                "parentUuid": None,
+                "isSidechain": False,
+                "userType": "external",
+                "cwd": "/repo",
+                "sessionId": "ms-trunk",
+                "version": "2.1.173",
+                "timestamp": "2026-06-12T09:00:00.000Z",
+                "message": {
+                    "id": "msg_ms-a1",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-haiku-4-5-20251001",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_ms_1",
+                            "name": "Agent",
+                            "input": {"prompt": "one"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_ms_2",
+                            "name": "Agent",
+                            "input": {"prompt": "two"},
+                        },
+                    ],
+                },
+            }
+        )
+        assert isinstance(entry, BaseTranscriptEntry)
+        agent_ids: set[str] = set()
+        _apply_subagent_meta_links(
+            [entry],
+            {"toolu_ms_1": "agms0001", "toolu_ms_2": "agms0002"},
+            agent_ids,
+            Path("ms-trunk.jsonl"),
+        )
+        assert agent_ids == {"agms0001", "agms0002"}, "both transcripts load"
+        # Deterministic first link kept (sorted iteration), second skipped.
+        assert entry.spawnedAgentId == "agms0001"
+
+
 class TestNestedRendering:
     def test_html_renders_nested_content(self) -> None:
         from claude_code_log.html.renderer import generate_html
