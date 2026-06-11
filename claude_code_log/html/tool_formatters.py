@@ -18,6 +18,7 @@ import base64
 import binascii
 import json
 import re
+from collections.abc import Iterable
 from typing import Any, Optional, cast
 
 from .utils import (
@@ -28,6 +29,7 @@ from .utils import (
     render_file_content_collapsible,
     render_markdown_collapsible,
     render_markdown_inline,
+    render_user_markdown,
     render_user_markdown_collapsible,
     resolve_memory_body_links,
 )
@@ -1012,67 +1014,136 @@ def format_crondelete_output(output: CronDeleteOutput) -> str:
 # -- Generic Parameter Table --------------------------------------------------
 
 
-def render_params_table(params: dict[str, Any]) -> str:
-    """Render a dictionary of parameters as an HTML table.
+# Nesting depth at which structured values stop recursing into tables
+# and fall back to the JSON dump, so a pathological payload can't blow
+# up the DOM.
+_PARAMS_TABLE_MAX_DEPTH = 4
 
-    Reusable for tool parameters, diagnostic objects, etc.
-    """
-    if not params:
-        return "<div class='tool-params-empty'>No parameters</div>"
 
-    html_parts = ["<table class='tool-params-table'>"]
-
-    for key, value in params.items():
-        escaped_key = escape_html(str(key))
-
-        # If value is structured (dict/list), render as JSON
-        if isinstance(value, (dict, list)):
-            try:
-                formatted_value = json.dumps(value, indent=2, ensure_ascii=False)
-                escaped_value = escape_html(formatted_value)
-
-                # Make long structured values collapsible
-                if len(formatted_value) > 200:
-                    preview = escape_html(formatted_value[:100]) + "..."
-                    value_html = f"""
+def _json_dump_value_html(formatted_value: str) -> str:
+    """Escaped JSON dump in a ``<pre>``, collapsible when long."""
+    escaped_value = escape_html(formatted_value)
+    if len(formatted_value) > 200:
+        preview = escape_html(formatted_value[:100]) + "..."
+        return f"""
                         <details class='tool-param-collapsible'>
                             <summary><span class='tool-param-preview'>{preview}</span></summary>
                             <pre class='tool-param-structured'>{escaped_value}</pre>
                         </details>
                     """
-                else:
-                    value_html = (
-                        f"<pre class='tool-param-structured'>{escaped_value}</pre>"
-                    )
-            except (TypeError, ValueError):
-                # Fallback: convert to string when JSON serialization fails
-                escaped_value = escape_html(str(cast(object, value)))
-                value_html = escaped_value
-        else:
-            # Simple value, render as-is (or collapsible if long)
-            escaped_value = escape_html(str(value))
+    return f"<pre class='tool-param-structured'>{escaped_value}</pre>"
 
-            # Make long string values collapsible
-            if len(str(value)) > 100:
-                preview = escape_html(str(value)[:80]) + "..."
-                value_html = f"""
+
+def _raw_string_value_html(value: str) -> str:
+    """Escaped plain text, collapsible when long."""
+    escaped_value = escape_html(value)
+    if len(value) > 100:
+        preview = escape_html(value[:80]) + "..."
+        return f"""
                     <details class='tool-param-collapsible'>
                         <summary><span class='tool-param-preview'>{preview}</span></summary>
                         <div class='tool-param-full'>{escaped_value}</div>
                     </details>
                 """
-            else:
-                value_html = escaped_value
+    return escaped_value
 
+
+def _string_value_html(value: str) -> str:
+    """Render a string param value, treating it as potential Markdown.
+
+    Strings that are obviously markup rather than Markdown — XML/HTML
+    (``<``) or JSON (``{`` / ``[``) after leading whitespace — keep the
+    escaped raw-text rendering. Both Markdown paths use the
+    ``escape=True`` renderers: params were always HTML-escaped, so the
+    Markdown upgrade must not open a raw-HTML injection route.
+
+    Long values keep the legacy >100-char ``<details>`` fold (length-,
+    not line-based — a long single-line prompt must fold too), with the
+    rendered Markdown as the expanded body.
+    """
+    if value.lstrip()[:1] in ("<", "{", "["):
+        return _raw_string_value_html(value)
+    if len(value) > 100:
+        preview = escape_html(value[:80]) + "..."
+        rendered = render_user_markdown(value)
+        return f"""
+                    <details class='tool-param-collapsible'>
+                        <summary><span class='tool-param-preview'>{preview}</span></summary>
+                        <div class='tool-param-markdown markdown'>{rendered}</div>
+                    </details>
+                """
+    return render_markdown_inline(value)
+
+
+def _structured_value_html(value: "dict[Any, Any] | list[Any]", depth: int) -> str:
+    """Render a dict/list param value as a nested key/value table.
+
+    ``depth`` is the nesting level of the table containing this value;
+    past ``_PARAMS_TABLE_MAX_DEPTH`` (and for empty containers) the
+    value falls back to the JSON dump. The >200-char collapsibility
+    keeps its JSON-text preview so deep structures fold, not flood.
+    """
+    try:
+        formatted_value = json.dumps(value, indent=2, ensure_ascii=False)
+    except (TypeError, ValueError):
+        # Fallback: convert to string when JSON serialization fails
+        return escape_html(str(cast(object, value)))
+
+    if not value or depth >= _PARAMS_TABLE_MAX_DEPTH:
+        return _json_dump_value_html(formatted_value)
+
+    items = value.items() if isinstance(value, dict) else enumerate(value)
+    table_html = _params_table_html(items, depth + 1)
+    if len(formatted_value) > 200:
+        preview = escape_html(formatted_value[:100]) + "..."
+        return f"""
+                        <details class='tool-param-collapsible'>
+                            <summary><span class='tool-param-preview'>{preview}</span></summary>
+                            {table_html}
+                        </details>
+                    """
+    return table_html
+
+
+def _param_value_html(value: Any, depth: int) -> str:
+    """Dispatch a single param value to its hybrid rendering."""
+    if isinstance(value, (dict, list)):
+        return _structured_value_html(cast("dict[Any, Any] | list[Any]", value), depth)
+    if isinstance(value, str):
+        return _string_value_html(value)
+    # Scalars (int/float/bool/None): plain escaped text as before.
+    return _raw_string_value_html(str(value))
+
+
+def _params_table_html(items: "Iterable[tuple[Any, Any]]", depth: int) -> str:
+    """Build one key/value table; nested levels get a marker class."""
+    css = "tool-params-table" if depth == 0 else "tool-params-table tool-params-nested"
+    html_parts = [f"<table class='{css}'>"]
+    for key, value in items:
+        escaped_key = escape_html(str(key))
+        value_html = _param_value_html(value, depth)
         html_parts.append(f"""
             <tr>
                 <td class='tool-param-key'>{escaped_key}</td>
                 <td class='tool-param-value'>{value_html}</td>
             </tr>
         """)
-
     html_parts.append("</table>")
     return "".join(html_parts)
+
+
+def render_params_table(params: dict[str, Any]) -> str:
+    """Render a dictionary of parameters as an HTML table.
+
+    Reusable for tool parameters, diagnostic objects, etc. Values render
+    as a JSON/Markdown hybrid: strings are treated as Markdown (unless
+    they look like XML/HTML or JSON), dicts and lists recurse into
+    nested tables, scalars stay plain.
+    """
+    if not params:
+        return "<div class='tool-params-empty'>No parameters</div>"
+
+    return _params_table_html(params.items(), 0)
 
 
 # -- Tool Result Content Fallback Formatter -----------------------------------

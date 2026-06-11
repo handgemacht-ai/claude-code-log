@@ -963,6 +963,24 @@ pre > code {
     border-radius: 3px;
 }
 
+/* Nested tables produced by the recursive params renderer: keep the
+   flat look but let the key column shrink (index/short keys) so depth
+   doesn't eat horizontal space. */
+.tool-params-nested .tool-param-key {
+    width: auto;
+    min-width: 4em;
+}
+
+/* Markdown-rendered string values: suppress the outer paragraph
+   margins so a prose value aligns with plain-text cells. */
+.tool-param-value .tool-param-markdown > p:first-child {
+    margin-top: 0;
+}
+
+.tool-param-value .tool-param-markdown > p:last-child {
+    margin-bottom: 0;
+}
+
 .tool-param-collapsible {
     margin: 0;
 }

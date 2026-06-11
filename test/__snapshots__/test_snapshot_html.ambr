@@ -1317,6 +1317,24 @@
       border-radius: 3px;
   }
   
+  /* Nested tables produced by the recursive params renderer: keep the
+     flat look but let the key column shrink (index/short keys) so depth
+     doesn't eat horizontal space. */
+  .tool-params-nested .tool-param-key {
+      width: auto;
+      min-width: 4em;
+  }
+  
+  /* Markdown-rendered string values: suppress the outer paragraph
+     margins so a prose value aligns with plain-text cells. */
+  .tool-param-value .tool-param-markdown > p:first-child {
+      margin-top: 0;
+  }
+  
+  .tool-param-value .tool-param-markdown > p:last-child {
+      margin-bottom: 0;
+  }
+  
   .tool-param-collapsible {
       margin: 0;
   }
@@ -7254,6 +7272,24 @@
       background-color: var(--bg-neutral);
       padding: 4px;
       border-radius: 3px;
+  }
+  
+  /* Nested tables produced by the recursive params renderer: keep the
+     flat look but let the key column shrink (index/short keys) so depth
+     doesn't eat horizontal space. */
+  .tool-params-nested .tool-param-key {
+      width: auto;
+      min-width: 4em;
+  }
+  
+  /* Markdown-rendered string values: suppress the outer paragraph
+     margins so a prose value aligns with plain-text cells. */
+  .tool-param-value .tool-param-markdown > p:first-child {
+      margin-top: 0;
+  }
+  
+  .tool-param-value .tool-param-markdown > p:last-child {
+      margin-bottom: 0;
   }
   
   .tool-param-collapsible {
@@ -15277,6 +15313,24 @@
       border-radius: 3px;
   }
   
+  /* Nested tables produced by the recursive params renderer: keep the
+     flat look but let the key column shrink (index/short keys) so depth
+     doesn't eat horizontal space. */
+  .tool-params-nested .tool-param-key {
+      width: auto;
+      min-width: 4em;
+  }
+  
+  /* Markdown-rendered string values: suppress the outer paragraph
+     margins so a prose value aligns with plain-text cells. */
+  .tool-param-value .tool-param-markdown > p:first-child {
+      margin-top: 0;
+  }
+  
+  .tool-param-value .tool-param-markdown > p:last-child {
+      margin-bottom: 0;
+  }
+  
   .tool-param-collapsible {
       margin: 0;
   }
@@ -21329,6 +21383,24 @@
       background-color: var(--bg-neutral);
       padding: 4px;
       border-radius: 3px;
+  }
+  
+  /* Nested tables produced by the recursive params renderer: keep the
+     flat look but let the key column shrink (index/short keys) so depth
+     doesn't eat horizontal space. */
+  .tool-params-nested .tool-param-key {
+      width: auto;
+      min-width: 4em;
+  }
+  
+  /* Markdown-rendered string values: suppress the outer paragraph
+     margins so a prose value aligns with plain-text cells. */
+  .tool-param-value .tool-param-markdown > p:first-child {
+      margin-top: 0;
+  }
+  
+  .tool-param-value .tool-param-markdown > p:last-child {
+      margin-bottom: 0;
   }
   
   .tool-param-collapsible {
@@ -27652,6 +27724,24 @@
       border-radius: 3px;
   }
   
+  /* Nested tables produced by the recursive params renderer: keep the
+     flat look but let the key column shrink (index/short keys) so depth
+     doesn't eat horizontal space. */
+  .tool-params-nested .tool-param-key {
+      width: auto;
+      min-width: 4em;
+  }
+  
+  /* Markdown-rendered string values: suppress the outer paragraph
+     margins so a prose value aligns with plain-text cells. */
+  .tool-param-value .tool-param-markdown > p:first-child {
+      margin-top: 0;
+  }
+  
+  .tool-param-value .tool-param-markdown > p:last-child {
+      margin-bottom: 0;
+  }
+  
   .tool-param-collapsible {
       margin: 0;
   }
@@ -30974,33 +31064,112 @@
       &quot;id&quot;: &quot;2&quot;,
       &quot;content&quot;: &quot;Implement core functionality&quot;,
       &quot;status&quot;: &quot;...</span></summary>
-                              <pre class='tool-param-structured'>[
-    &quot;broken_todo&quot;,
-    {
-      &quot;id&quot;: &quot;2&quot;,
-      &quot;content&quot;: &quot;Implement core functionality&quot;,
-      &quot;status&quot;: &quot;in_progress&quot;,
-      &quot;priority&quot;: &quot;high&quot;
-    },
-    {
-      &quot;id&quot;: &quot;3&quot;,
-      &quot;content&quot;: &quot;Add comprehensive tests&quot;,
-      &quot;status&quot;: &quot;pending&quot;,
-      &quot;priority&quot;: &quot;medium&quot;
-    },
-    {
-      &quot;id&quot;: &quot;4&quot;,
-      &quot;content&quot;: &quot;Write user documentation&quot;,
-      &quot;status&quot;: &quot;pending&quot;,
-      &quot;priority&quot;: &quot;low&quot;
-    },
-    {
-      &quot;id&quot;: &quot;5&quot;,
-      &quot;content&quot;: &quot;Perform code review&quot;,
-      &quot;status&quot;: &quot;pending&quot;,
-      &quot;priority&quot;: &quot;medium&quot;
-    }
-  ]</pre>
+                              <table class='tool-params-table tool-params-nested'>
+              <tr>
+                  <td class='tool-param-key'>0</td>
+                  <td class='tool-param-value'>broken_todo</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>1</td>
+                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+              <tr>
+                  <td class='tool-param-key'>id</td>
+                  <td class='tool-param-value'>2</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>content</td>
+                  <td class='tool-param-value'>Implement core functionality</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>status</td>
+                  <td class='tool-param-value'>in_progress</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>priority</td>
+                  <td class='tool-param-value'>high</td>
+              </tr>
+          </table></td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>2</td>
+                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+              <tr>
+                  <td class='tool-param-key'>id</td>
+                  <td class='tool-param-value'>3</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>content</td>
+                  <td class='tool-param-value'>Add comprehensive tests</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>status</td>
+                  <td class='tool-param-value'>pending</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>priority</td>
+                  <td class='tool-param-value'>medium</td>
+              </tr>
+          </table></td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>3</td>
+                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+              <tr>
+                  <td class='tool-param-key'>id</td>
+                  <td class='tool-param-value'>4</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>content</td>
+                  <td class='tool-param-value'>Write user documentation</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>status</td>
+                  <td class='tool-param-value'>pending</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>priority</td>
+                  <td class='tool-param-value'>low</td>
+              </tr>
+          </table></td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>4</td>
+                  <td class='tool-param-value'><table class='tool-params-table tool-params-nested'>
+              <tr>
+                  <td class='tool-param-key'>id</td>
+                  <td class='tool-param-value'>5</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>content</td>
+                  <td class='tool-param-value'>Perform code review</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>status</td>
+                  <td class='tool-param-value'>pending</td>
+              </tr>
+          
+              <tr>
+                  <td class='tool-param-key'>priority</td>
+                  <td class='tool-param-value'>medium</td>
+              </tr>
+          </table></td>
+              </tr>
+          </table>
                           </details>
                       </td>
               </tr>
@@ -33816,6 +33985,24 @@
       background-color: var(--bg-neutral);
       padding: 4px;
       border-radius: 3px;
+  }
+  
+  /* Nested tables produced by the recursive params renderer: keep the
+     flat look but let the key column shrink (index/short keys) so depth
+     doesn't eat horizontal space. */
+  .tool-params-nested .tool-param-key {
+      width: auto;
+      min-width: 4em;
+  }
+  
+  /* Markdown-rendered string values: suppress the outer paragraph
+     margins so a prose value aligns with plain-text cells. */
+  .tool-param-value .tool-param-markdown > p:first-child {
+      margin-top: 0;
+  }
+  
+  .tool-param-value .tool-param-markdown > p:last-child {
+      margin-bottom: 0;
   }
   
   .tool-param-collapsible {
@@ -40043,6 +40230,24 @@
       background-color: var(--bg-neutral);
       padding: 4px;
       border-radius: 3px;
+  }
+  
+  /* Nested tables produced by the recursive params renderer: keep the
+     flat look but let the key column shrink (index/short keys) so depth
+     doesn't eat horizontal space. */
+  .tool-params-nested .tool-param-key {
+      width: auto;
+      min-width: 4em;
+  }
+  
+  /* Markdown-rendered string values: suppress the outer paragraph
+     margins so a prose value aligns with plain-text cells. */
+  .tool-param-value .tool-param-markdown > p:first-child {
+      margin-top: 0;
+  }
+  
+  .tool-param-value .tool-param-markdown > p:last-child {
+      margin-bottom: 0;
   }
   
   .tool-param-collapsible {
