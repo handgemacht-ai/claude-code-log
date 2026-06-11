@@ -82,3 +82,106 @@ class TestWorkflowPhaseFold:
         # restores it — the fold machine operates on the synthetic phase node.
         assert result["d1"] != result["d0"]
         assert result["d2"] == result["d0"]
+
+
+class TestWorkflowRuntimeCss:
+    """Runtime contract for the workflow group borders (CR on the polish PR):
+    snapshots embed the CSS *text*, so a DOM-structure change that silently
+    breaks the ``:has()`` selectors would not fail them — only computed-style
+    assertions pin the selector↔DOM contract."""
+
+    @pytest.mark.browser
+    def test_group_borders_and_alignment(self, page: Page, tmp_path: Path) -> None:
+        page.goto(_render(tmp_path))
+        page.wait_for_timeout(300)
+
+        result = page.evaluate(
+            """() => {
+                const phase = document.querySelector('.message.workflow_phase');
+                if (!phase) return { found: false };
+                const phaseNode = phase.parentElement;            // .message-node
+                const phasesGroup = phaseNode.parentElement;      // .children (of the pair)
+                const agentsGroup = phaseNode.querySelector(':scope > .children');
+                const agentNode = agentsGroup &&
+                    agentsGroup.querySelector(':scope > .message-node');
+                const agent = agentNode &&
+                    agentNode.querySelector(':scope > .message.workflow_agent');
+                const scGroup = agentNode &&
+                    agentNode.querySelector(':scope > .children');
+                if (!agent || !scGroup) return { found: false };
+                // Reveal folded containers so geometry is honest.
+                for (const c of [phasesGroup, agentsGroup, scGroup]) {
+                    c.style.display = '';
+                }
+                const cs = (el) => {
+                    const s = getComputedStyle(el);
+                    return { bw: s.borderLeftWidth, bc: s.borderLeftColor };
+                };
+                const x = (el) => el.getBoundingClientRect().left;
+                return {
+                    found: true,
+                    phasesGroup: cs(phasesGroup),     // suppressed: 0px
+                    agentsGroup: cs(agentsGroup),     // dark green, 2px
+                    scGroup: cs(scGroup),             // grey, 2px
+                    phaseAligned: Math.abs(x(phase) - x(agentsGroup)) < 1,
+                    agentAligned: Math.abs(x(agent) - x(scGroup)) < 1,
+                };
+            }"""
+        )
+
+        assert result.get("found"), "workflow phase/agent structure not found"
+        # Workflow-level group line is suppressed; phase + agent lines drawn.
+        assert result["phasesGroup"]["bw"] == "0px"
+        assert result["agentsGroup"]["bw"] == "2px"
+        assert result["agentsGroup"]["bc"] == "rgb(27, 94, 32)"  # #1b5e20
+        assert result["scGroup"]["bw"] == "2px"
+        assert result["scGroup"]["bc"] == "rgb(158, 158, 158)"  # #9e9e9e
+        # Each group border continues its parent card's border (same x).
+        assert result["phaseAligned"] is True
+        assert result["agentAligned"] is True
+
+
+class TestPhasePillNavigation:
+    """Clicking a phase pill in the Workflow header navigates to the phase
+    card: the hash updates and the ``hashchange`` handler unfolds the folded
+    ancestors so the target becomes visible (CR on the polish PR)."""
+
+    @pytest.mark.browser
+    def test_pill_click_navigates_and_unfolds(self, page: Page, tmp_path: Path) -> None:
+        page.goto(_render(tmp_path))
+        page.wait_for_timeout(300)
+
+        target_id = page.evaluate(
+            """() => {
+                const pill = document.querySelector('a.workflow-phase-pill');
+                return pill ? pill.getAttribute('href').slice(1) : null;
+            }"""
+        )
+        assert target_id, "no linked phase pill found"
+
+        hidden_before = page.evaluate(
+            f"() => document.getElementById('{target_id}').offsetParent === null"
+        )
+        assert hidden_before, "phase card should start folded away"
+
+        # The Workflow card itself starts inside folded ancestors — reveal it
+        # the way a user arriving from the session nav would: jump to its
+        # anchor and let the built-in hashchange unfold expose it.
+        page.evaluate(
+            """() => {
+                const card = document.querySelector(
+                    '.message.tool_use:has(.workflow-meta)');
+                window.location.hash = '#' + card.id;
+            }"""
+        )
+        page.wait_for_function(
+            "() => document.querySelector('a.workflow-phase-pill')"
+            ".offsetParent !== null"
+        )
+
+        page.click("a.workflow-phase-pill")
+        # The hashchange handler runs asynchronously — poll, don't assume.
+        page.wait_for_function(f"() => window.location.hash === '#{target_id}'")
+        page.wait_for_function(
+            f"() => document.getElementById('{target_id}').offsetParent !== null"
+        )

@@ -176,7 +176,9 @@ class TestWorkflowFixtureIntegration:
         assert "loader-glob" in html  # value surfaced in the table
         i = html.find("<div class='embedded-json'>")
         assert i != -1
-        assert "tool-params-table" in html[i : i + 200]
+        # The hybrid renderer may wrap the table in a tool-params-root with
+        # an expand-all control — allow for that chrome before the table.
+        assert "tool-params-table" in html[i : i + 600]
 
     def test_trunk_user_messages_unaffected(self) -> None:
         from claude_code_log.converter import load_transcript
