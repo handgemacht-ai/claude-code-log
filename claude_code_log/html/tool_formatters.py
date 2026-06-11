@@ -1133,7 +1133,7 @@ def _table_fold_html(formatted_value: str, table_html: str, kind: str) -> str:
         return f"""
                         <details class='tool-param-collapsible tool-param-collapsible-rows'>
                             <summary><span class='tool-param-preview'>{preview}</span></summary>
-                            <div class='tool-param-fold-controls'><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='{kind}'><span class='tool-param-fold-glyph'>&#9656;</span><span class='tool-param-fold-label'>expand all {kind}</span></button></div>
+                            <div class='tool-param-fold-controls'><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='{kind}'><span class='tool-param-fold-glyph'></span><span class='tool-param-fold-label'>expand all {kind}</span></button></div>
                             {table_html}
                         </details>
                     """
@@ -1160,7 +1160,7 @@ def _params_root_html(table_html: str) -> str:
         "<div class='tool-params-controls'>"
         "<button type='button' class='tool-params-expand-all'"
         " data-state='collapsed'>"
-        "<span class='tool-param-fold-glyph'>&#9656;</span>"
+        "<span class='tool-param-fold-glyph'></span>"
         "<span class='tool-param-fold-label'>expand all</span></button>"
         "</div>"
         f"{table_html}"
@@ -1196,12 +1196,13 @@ def _params_table_html(items: "Iterable[tuple[Any, Any]]", depth: int) -> str:
         if value_html.lstrip().startswith("<details"):
             # The button wraps glyph AND key text — the whole key is the
             # click target (and keyboard-reachable, unlike a td handler).
-            # One glyph (▸), rotated 90° by CSS when open: symmetric by
-            # construction, unlike the ▶/▼ pair whose metrics differ.
+            # The empty glyph span carries the browser's native disclosure
+            # marker (CSS display:list-item) — the same symmetric icon a
+            # <summary> shows, immune to italic contexts.
             key_cell = (
                 "<button type='button' class='tool-param-key-toggle'"
                 " aria-expanded='false'>"
-                "<span class='tool-param-fold-glyph'>&#9656;</span>"
+                "<span class='tool-param-fold-glyph'></span>"
                 f"{escaped_key}</button>"
             )
             row_attr = " class='tool-param-row-fold'"

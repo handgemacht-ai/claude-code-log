@@ -1060,23 +1060,43 @@ pre > code {
     color: var(--text-primary);
 }
 
-/* The shared fold glyph: one constant ▸, CSS-rotated 90° when its control
-   is expanded — symmetric open/closed by construction. Centered in a fixed
-   slot so the box-center rotation pivots on the glyph itself (a left-
-   aligned glyph in a wide box swings sideways when the box rotates). The
-   slot doubles as the key-column alignment spacer: every key cell renders
-   one (empty on scalar rows), so all key texts start at the same x. */
+/* The shared fold glyph: the BROWSER'S native disclosure marker (the same
+   UA-drawn icon a <summary> shows) via display:list-item — geometrically
+   symmetric open/closed, and immune to the italic style of the button
+   labels (font glyphs like ▶/▼ skew in italics; the marker icon doesn't).
+   The empty span doubles as the key-column alignment slot: every key cell
+   renders one (markerless on scalar rows), so all key texts start at the
+   same x. */
 .tool-param-fold-glyph {
     display: inline-block;
     width: 1.3em;
-    text-align: center;
     color: var(--text-muted);
-    transition: transform 0.15s ease;
+    font-style: normal;
+}
+
+/* Marker only inside the toggle buttons — the scalar-row spacer stays
+   empty. list-style-type string values are the fallback where the
+   disclosure-* keywords are unsupported. */
+button > .tool-param-fold-glyph {
+    display: list-item;
+    list-style-position: inside;
+    list-style-type: "\25B8";
+    list-style-type: disclosure-closed;
 }
 
 .tool-param-key-toggle[aria-expanded='true'] > .tool-param-fold-glyph,
 [data-state='expanded'] > .tool-param-fold-glyph {
-    transform: rotate(90deg);
+    list-style-type: "\25BE";
+    list-style-type: disclosure-open;
+}
+
+/* display:list-item is block-level — lay the buttons out as inline-flex so
+   the marker slot and the label sit on one line. */
+.tool-param-key-toggle,
+.tool-params-expand-all,
+.tool-param-rows-toggle {
+    display: inline-flex;
+    align-items: baseline;
 }
 
 /* The key glyph is THE marker for these rows — drop the duplicate native

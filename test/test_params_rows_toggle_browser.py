@@ -251,7 +251,7 @@ class TestParamsRowsToggleBrowser:
     @pytest.mark.browser
     def test_key_column_toggle_cycle_and_glyph_sync(self, page: Page) -> None:
         """The whole-key button drives the row's fold; its state
-        (aria-expanded → CSS-rotated ▸ glyph) is derived from the actual
+        (aria-expanded → native disclosure marker) is derived from the actual
         open state, so the expand-all path flips it too, not just direct
         clicks."""
         html = self._render(_entries_with_structured_list())
@@ -262,8 +262,8 @@ class TestParamsRowsToggleBrowser:
             "tr.tool-param-row-fold > td.tool-param-key > .tool-param-key-toggle"
         ).first
 
-        # One constant ▸ glyph; open/closed is aria-expanded (CSS rotates).
-        assert "▸" in (key_toggle.text_content() or "")
+        # The glyph is the native disclosure marker (a ::marker pseudo-
+        # element, not text); open/closed state is carried by aria-expanded.
         expect(key_toggle).to_have_attribute("aria-expanded", "false")
         key_toggle.click()
         assert outer.evaluate("el => el.open")
