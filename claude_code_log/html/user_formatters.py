@@ -306,9 +306,20 @@ def extract_embedded_json(text: str) -> "tuple[str, dict[str, Any]]":
     blocks: dict[str, Any] = {}
     closer_for = {"{": "}", "[": "]"}
     i = 0
+    in_fence = False
     while i < len(lines):
         stripped = lines[i].strip()
-        if stripped in closer_for:
+        # Track ``` fence parity: a JSON example inside a fenced code block
+        # must stay verbatim — extracting it would substitute the table
+        # markup INSIDE the rendered <pre><code>. (A fence with no internal
+        # blank line is already rejected by the closer check; this covers
+        # fences that carry commentary after a blank line.)
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            out_lines.append(lines[i])
+            i += 1
+            continue
+        if not in_fence and stripped in closer_for:
             # Scan to the next blank line (or EOF) — the candidate block end.
             j = i + 1
             while j < len(lines) and lines[j].strip():

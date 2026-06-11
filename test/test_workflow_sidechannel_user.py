@@ -90,6 +90,27 @@ class TestExtractEmbeddedJson:
         assert blocks == {}
         assert "this is prose" in substituted
 
+    def test_fenced_json_with_internal_blank_line_left_untouched(self) -> None:
+        # Reviewer repro: a fenced example whose commentary follows a blank
+        # line INSIDE the fence — without fence tracking, the scan terminates
+        # at the lone closer, json.loads accepts, and the table markup would
+        # be substituted inside the rendered <pre><code>.
+        text = (
+            "Spec:\n\n```\n{\n"
+            '  "a": 1\n'
+            "}\n\nplus commentary in the same fence\n```\n\nend"
+        )
+        substituted, blocks = extract_embedded_json(text)
+        assert blocks == {}
+        assert substituted == text
+
+    def test_json_after_closed_fence_still_extracts(self) -> None:
+        # Fence parity resets: a block AFTER a properly closed fence is fair
+        # game again.
+        text = f"```\ncode example\n```\n\nReal data:\n\n{_OBJECT_BLOCK}\n\nend"
+        _substituted, blocks = extract_embedded_json(text)
+        assert len(blocks) == 1
+
     def test_placeholder_has_no_bare_hex_run(self) -> None:
         # Every uuid group is z-prefixed so the SHA→commit-URL linkifier
         # (\b[0-9a-f]{7,40}\b) can never match inside a placeholder.
