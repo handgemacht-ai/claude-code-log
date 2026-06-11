@@ -1716,9 +1716,11 @@
      through DOM nesting, so arbitrarily deep nests (e.g. a future sub-agent
      spawning its own sub-agents) indent correctly with no new rules.
   
-     Color pairing: the Workflow pair + its phases group line are tool-green;
-     a phase card + its agents group line are dark green; an agent card + its
-     side-channel group line are grey. */
+     Color pairing: a phase card + its agents group line are dark green; an
+     agent card + its side-channel group line are grey. The Workflow-level
+     phases group keeps its indent but draws NO line — two levels of lines
+     (phase + agent) already distinguish a workflow from a standard
+     sub-agent's single line, and a third outer line read as noise. */
   .workflow_phase,
   .workflow_agent {
       margin-right: 4em;
@@ -1732,12 +1734,27 @@
       border-left-color: var(--workflow-agent-color);
   }
   
-  /* The phases group (children of the Workflow tool_result) — continues the
-     pair's tool-green border. Selected by its CONTENT (the parent card is a
-     plain tool_result, so :has on the parent would over-match). */
+  /* The phases group (children of the Workflow tool_result) — indent only.
+     Selected by its CONTENT (the parent card is a plain tool_result, so :has
+     on the parent would over-match). The border is deliberately suppressed
+     (0px, was tool-green): with the phase and agent lines below it, a third
+     parallel line at full depth read as noise. Restore the width if a
+     Workflow-level line ever proves useful. */
   .children:has(> .message-node > .message.workflow_phase) {
       margin-left: 2em;
-      border-left: 2px solid var(--tool-use-color);
+      border-left: 0px solid var(--tool-use-color);
+  }
+  
+  /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
+     async, teammates): the agent's transcript hangs under the spawning
+     tool_result, framed by ONE grey line (the same color/concept as a
+     workflow agent's side-channel — an agent transcript is an agent
+     transcript). The :not(.sidechain) parent filter keeps the line at the
+     block's top level only (containers deeper inside the sidechain hang
+     under .sidechain-flagged cards). */
+  .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
+      margin-left: 2em;
+      border-left: 2px solid var(--workflow-agent-color);
   }
   
   /* A phase's agents group — continues the phase card's dark green. */
@@ -1763,7 +1780,8 @@
   
       .children:has(> .message-node > .message.workflow_phase),
       .message-node:has(> .message.workflow_phase) > .children,
-      .message-node:has(> .message.workflow_agent) > .children {
+      .message-node:has(> .message.workflow_agent) > .children,
+      .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
           margin-left: 2%;
       }
   }
@@ -7734,9 +7752,11 @@
      through DOM nesting, so arbitrarily deep nests (e.g. a future sub-agent
      spawning its own sub-agents) indent correctly with no new rules.
   
-     Color pairing: the Workflow pair + its phases group line are tool-green;
-     a phase card + its agents group line are dark green; an agent card + its
-     side-channel group line are grey. */
+     Color pairing: a phase card + its agents group line are dark green; an
+     agent card + its side-channel group line are grey. The Workflow-level
+     phases group keeps its indent but draws NO line — two levels of lines
+     (phase + agent) already distinguish a workflow from a standard
+     sub-agent's single line, and a third outer line read as noise. */
   .workflow_phase,
   .workflow_agent {
       margin-right: 4em;
@@ -7750,12 +7770,27 @@
       border-left-color: var(--workflow-agent-color);
   }
   
-  /* The phases group (children of the Workflow tool_result) — continues the
-     pair's tool-green border. Selected by its CONTENT (the parent card is a
-     plain tool_result, so :has on the parent would over-match). */
+  /* The phases group (children of the Workflow tool_result) — indent only.
+     Selected by its CONTENT (the parent card is a plain tool_result, so :has
+     on the parent would over-match). The border is deliberately suppressed
+     (0px, was tool-green): with the phase and agent lines below it, a third
+     parallel line at full depth read as noise. Restore the width if a
+     Workflow-level line ever proves useful. */
   .children:has(> .message-node > .message.workflow_phase) {
       margin-left: 2em;
-      border-left: 2px solid var(--tool-use-color);
+      border-left: 0px solid var(--tool-use-color);
+  }
+  
+  /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
+     async, teammates): the agent's transcript hangs under the spawning
+     tool_result, framed by ONE grey line (the same color/concept as a
+     workflow agent's side-channel — an agent transcript is an agent
+     transcript). The :not(.sidechain) parent filter keeps the line at the
+     block's top level only (containers deeper inside the sidechain hang
+     under .sidechain-flagged cards). */
+  .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
+      margin-left: 2em;
+      border-left: 2px solid var(--workflow-agent-color);
   }
   
   /* A phase's agents group — continues the phase card's dark green. */
@@ -7781,7 +7816,8 @@
   
       .children:has(> .message-node > .message.workflow_phase),
       .message-node:has(> .message.workflow_phase) > .children,
-      .message-node:has(> .message.workflow_agent) > .children {
+      .message-node:has(> .message.workflow_agent) > .children,
+      .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
           margin-left: 2%;
       }
   }
@@ -15839,9 +15875,11 @@
      through DOM nesting, so arbitrarily deep nests (e.g. a future sub-agent
      spawning its own sub-agents) indent correctly with no new rules.
   
-     Color pairing: the Workflow pair + its phases group line are tool-green;
-     a phase card + its agents group line are dark green; an agent card + its
-     side-channel group line are grey. */
+     Color pairing: a phase card + its agents group line are dark green; an
+     agent card + its side-channel group line are grey. The Workflow-level
+     phases group keeps its indent but draws NO line — two levels of lines
+     (phase + agent) already distinguish a workflow from a standard
+     sub-agent's single line, and a third outer line read as noise. */
   .workflow_phase,
   .workflow_agent {
       margin-right: 4em;
@@ -15855,12 +15893,27 @@
       border-left-color: var(--workflow-agent-color);
   }
   
-  /* The phases group (children of the Workflow tool_result) — continues the
-     pair's tool-green border. Selected by its CONTENT (the parent card is a
-     plain tool_result, so :has on the parent would over-match). */
+  /* The phases group (children of the Workflow tool_result) — indent only.
+     Selected by its CONTENT (the parent card is a plain tool_result, so :has
+     on the parent would over-match). The border is deliberately suppressed
+     (0px, was tool-green): with the phase and agent lines below it, a third
+     parallel line at full depth read as noise. Restore the width if a
+     Workflow-level line ever proves useful. */
   .children:has(> .message-node > .message.workflow_phase) {
       margin-left: 2em;
-      border-left: 2px solid var(--tool-use-color);
+      border-left: 0px solid var(--tool-use-color);
+  }
+  
+  /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
+     async, teammates): the agent's transcript hangs under the spawning
+     tool_result, framed by ONE grey line (the same color/concept as a
+     workflow agent's side-channel — an agent transcript is an agent
+     transcript). The :not(.sidechain) parent filter keeps the line at the
+     block's top level only (containers deeper inside the sidechain hang
+     under .sidechain-flagged cards). */
+  .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
+      margin-left: 2em;
+      border-left: 2px solid var(--workflow-agent-color);
   }
   
   /* A phase's agents group — continues the phase card's dark green. */
@@ -15886,7 +15939,8 @@
   
       .children:has(> .message-node > .message.workflow_phase),
       .message-node:has(> .message.workflow_phase) > .children,
-      .message-node:has(> .message.workflow_agent) > .children {
+      .message-node:has(> .message.workflow_agent) > .children,
+      .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
           margin-left: 2%;
       }
   }
@@ -21972,9 +22026,11 @@
      through DOM nesting, so arbitrarily deep nests (e.g. a future sub-agent
      spawning its own sub-agents) indent correctly with no new rules.
   
-     Color pairing: the Workflow pair + its phases group line are tool-green;
-     a phase card + its agents group line are dark green; an agent card + its
-     side-channel group line are grey. */
+     Color pairing: a phase card + its agents group line are dark green; an
+     agent card + its side-channel group line are grey. The Workflow-level
+     phases group keeps its indent but draws NO line — two levels of lines
+     (phase + agent) already distinguish a workflow from a standard
+     sub-agent's single line, and a third outer line read as noise. */
   .workflow_phase,
   .workflow_agent {
       margin-right: 4em;
@@ -21988,12 +22044,27 @@
       border-left-color: var(--workflow-agent-color);
   }
   
-  /* The phases group (children of the Workflow tool_result) — continues the
-     pair's tool-green border. Selected by its CONTENT (the parent card is a
-     plain tool_result, so :has on the parent would over-match). */
+  /* The phases group (children of the Workflow tool_result) — indent only.
+     Selected by its CONTENT (the parent card is a plain tool_result, so :has
+     on the parent would over-match). The border is deliberately suppressed
+     (0px, was tool-green): with the phase and agent lines below it, a third
+     parallel line at full depth read as noise. Restore the width if a
+     Workflow-level line ever proves useful. */
   .children:has(> .message-node > .message.workflow_phase) {
       margin-left: 2em;
-      border-left: 2px solid var(--tool-use-color);
+      border-left: 0px solid var(--tool-use-color);
+  }
+  
+  /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
+     async, teammates): the agent's transcript hangs under the spawning
+     tool_result, framed by ONE grey line (the same color/concept as a
+     workflow agent's side-channel — an agent transcript is an agent
+     transcript). The :not(.sidechain) parent filter keeps the line at the
+     block's top level only (containers deeper inside the sidechain hang
+     under .sidechain-flagged cards). */
+  .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
+      margin-left: 2em;
+      border-left: 2px solid var(--workflow-agent-color);
   }
   
   /* A phase's agents group — continues the phase card's dark green. */
@@ -22019,7 +22090,8 @@
   
       .children:has(> .message-node > .message.workflow_phase),
       .message-node:has(> .message.workflow_phase) > .children,
-      .message-node:has(> .message.workflow_agent) > .children {
+      .message-node:has(> .message.workflow_agent) > .children,
+      .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
           margin-left: 2%;
       }
   }
@@ -28372,9 +28444,11 @@
      through DOM nesting, so arbitrarily deep nests (e.g. a future sub-agent
      spawning its own sub-agents) indent correctly with no new rules.
   
-     Color pairing: the Workflow pair + its phases group line are tool-green;
-     a phase card + its agents group line are dark green; an agent card + its
-     side-channel group line are grey. */
+     Color pairing: a phase card + its agents group line are dark green; an
+     agent card + its side-channel group line are grey. The Workflow-level
+     phases group keeps its indent but draws NO line — two levels of lines
+     (phase + agent) already distinguish a workflow from a standard
+     sub-agent's single line, and a third outer line read as noise. */
   .workflow_phase,
   .workflow_agent {
       margin-right: 4em;
@@ -28388,12 +28462,27 @@
       border-left-color: var(--workflow-agent-color);
   }
   
-  /* The phases group (children of the Workflow tool_result) — continues the
-     pair's tool-green border. Selected by its CONTENT (the parent card is a
-     plain tool_result, so :has on the parent would over-match). */
+  /* The phases group (children of the Workflow tool_result) — indent only.
+     Selected by its CONTENT (the parent card is a plain tool_result, so :has
+     on the parent would over-match). The border is deliberately suppressed
+     (0px, was tool-green): with the phase and agent lines below it, a third
+     parallel line at full depth read as noise. Restore the width if a
+     Workflow-level line ever proves useful. */
   .children:has(> .message-node > .message.workflow_phase) {
       margin-left: 2em;
-      border-left: 2px solid var(--tool-use-color);
+      border-left: 0px solid var(--tool-use-color);
+  }
+  
+  /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
+     async, teammates): the agent's transcript hangs under the spawning
+     tool_result, framed by ONE grey line (the same color/concept as a
+     workflow agent's side-channel — an agent transcript is an agent
+     transcript). The :not(.sidechain) parent filter keeps the line at the
+     block's top level only (containers deeper inside the sidechain hang
+     under .sidechain-flagged cards). */
+  .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
+      margin-left: 2em;
+      border-left: 2px solid var(--workflow-agent-color);
   }
   
   /* A phase's agents group — continues the phase card's dark green. */
@@ -28419,7 +28508,8 @@
   
       .children:has(> .message-node > .message.workflow_phase),
       .message-node:has(> .message.workflow_phase) > .children,
-      .message-node:has(> .message.workflow_agent) > .children {
+      .message-node:has(> .message.workflow_agent) > .children,
+      .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
           margin-left: 2%;
       }
   }
@@ -34617,9 +34707,11 @@
      through DOM nesting, so arbitrarily deep nests (e.g. a future sub-agent
      spawning its own sub-agents) indent correctly with no new rules.
   
-     Color pairing: the Workflow pair + its phases group line are tool-green;
-     a phase card + its agents group line are dark green; an agent card + its
-     side-channel group line are grey. */
+     Color pairing: a phase card + its agents group line are dark green; an
+     agent card + its side-channel group line are grey. The Workflow-level
+     phases group keeps its indent but draws NO line — two levels of lines
+     (phase + agent) already distinguish a workflow from a standard
+     sub-agent's single line, and a third outer line read as noise. */
   .workflow_phase,
   .workflow_agent {
       margin-right: 4em;
@@ -34633,12 +34725,27 @@
       border-left-color: var(--workflow-agent-color);
   }
   
-  /* The phases group (children of the Workflow tool_result) — continues the
-     pair's tool-green border. Selected by its CONTENT (the parent card is a
-     plain tool_result, so :has on the parent would over-match). */
+  /* The phases group (children of the Workflow tool_result) — indent only.
+     Selected by its CONTENT (the parent card is a plain tool_result, so :has
+     on the parent would over-match). The border is deliberately suppressed
+     (0px, was tool-green): with the phase and agent lines below it, a third
+     parallel line at full depth read as noise. Restore the width if a
+     Workflow-level line ever proves useful. */
   .children:has(> .message-node > .message.workflow_phase) {
       margin-left: 2em;
-      border-left: 2px solid var(--tool-use-color);
+      border-left: 0px solid var(--tool-use-color);
+  }
+  
+  /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
+     async, teammates): the agent's transcript hangs under the spawning
+     tool_result, framed by ONE grey line (the same color/concept as a
+     workflow agent's side-channel — an agent transcript is an agent
+     transcript). The :not(.sidechain) parent filter keeps the line at the
+     block's top level only (containers deeper inside the sidechain hang
+     under .sidechain-flagged cards). */
+  .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
+      margin-left: 2em;
+      border-left: 2px solid var(--workflow-agent-color);
   }
   
   /* A phase's agents group — continues the phase card's dark green. */
@@ -34664,7 +34771,8 @@
   
       .children:has(> .message-node > .message.workflow_phase),
       .message-node:has(> .message.workflow_phase) > .children,
-      .message-node:has(> .message.workflow_agent) > .children {
+      .message-node:has(> .message.workflow_agent) > .children,
+      .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
           margin-left: 2%;
       }
   }
@@ -40923,9 +41031,11 @@
      through DOM nesting, so arbitrarily deep nests (e.g. a future sub-agent
      spawning its own sub-agents) indent correctly with no new rules.
   
-     Color pairing: the Workflow pair + its phases group line are tool-green;
-     a phase card + its agents group line are dark green; an agent card + its
-     side-channel group line are grey. */
+     Color pairing: a phase card + its agents group line are dark green; an
+     agent card + its side-channel group line are grey. The Workflow-level
+     phases group keeps its indent but draws NO line — two levels of lines
+     (phase + agent) already distinguish a workflow from a standard
+     sub-agent's single line, and a third outer line read as noise. */
   .workflow_phase,
   .workflow_agent {
       margin-right: 4em;
@@ -40939,12 +41049,27 @@
       border-left-color: var(--workflow-agent-color);
   }
   
-  /* The phases group (children of the Workflow tool_result) — continues the
-     pair's tool-green border. Selected by its CONTENT (the parent card is a
-     plain tool_result, so :has on the parent would over-match). */
+  /* The phases group (children of the Workflow tool_result) — indent only.
+     Selected by its CONTENT (the parent card is a plain tool_result, so :has
+     on the parent would over-match). The border is deliberately suppressed
+     (0px, was tool-green): with the phase and agent lines below it, a third
+     parallel line at full depth read as noise. Restore the width if a
+     Workflow-level line ever proves useful. */
   .children:has(> .message-node > .message.workflow_phase) {
       margin-left: 2em;
-      border-left: 2px solid var(--tool-use-color);
+      border-left: 0px solid var(--tool-use-color);
+  }
+  
+  /* A standard sub-agent's sidechain group (Task-spawned agents — sync,
+     async, teammates): the agent's transcript hangs under the spawning
+     tool_result, framed by ONE grey line (the same color/concept as a
+     workflow agent's side-channel — an agent transcript is an agent
+     transcript). The :not(.sidechain) parent filter keeps the line at the
+     block's top level only (containers deeper inside the sidechain hang
+     under .sidechain-flagged cards). */
+  .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
+      margin-left: 2em;
+      border-left: 2px solid var(--workflow-agent-color);
   }
   
   /* A phase's agents group — continues the phase card's dark green. */
@@ -40970,7 +41095,8 @@
   
       .children:has(> .message-node > .message.workflow_phase),
       .message-node:has(> .message.workflow_phase) > .children,
-      .message-node:has(> .message.workflow_agent) > .children {
+      .message-node:has(> .message.workflow_agent) > .children,
+      .message-node:has(> .message.tool_result:not(.sidechain)) > .children:has(> .message-node > .message.sidechain) {
           margin-left: 2%;
       }
   }
