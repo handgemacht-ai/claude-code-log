@@ -1,6 +1,6 @@
 # #213: Support hierarchies of agents — investigation & design
 
-> Status: investigation complete, design proposed — awaiting steering.
+> Status: design approved 2026-06-12 (see §7 decisions) — implementing.
 > Branch: `dev/agent-hierarchies`. Builds on the #174 nested DOM /
 > splice work (all merged through #217).
 
@@ -191,11 +191,15 @@ fixtures must come from real spawns, not from trusting the narrative.
 - **Pagination**: a nested block split across page boundaries (the
   depth-1 variant of this is pre-existing behavior).
 
-## 7. Open questions
+## 7. Decisions (2026-06-12)
 
-1. Color ramp for depths 2–5 (and the >5 wrap) — preferences?
-2. A depth badge on nested agent cards (e.g. nothing at d1, "d3" chip
-   deeper), or rely purely on indentation + line colors?
-3. Report the unenforced 5-level cap upstream? (Clean repro available;
-   one transcript per level, linear chain to depth 79.)
-4. PR slicing per §5 OK?
+1. **Color ramp for depths 2–5**: not strictly needed (line counting +
+   indentation are clues enough), but include it if it's low-effort and
+   looks nicer — keep it simple, it's polish not structure (PR2).
+2. **Depth badge on nested agent cards**: yes — useful (PR2; e.g.
+   nothing at d1, a small "d3" chip deeper).
+3. **No upstream report** on the unenforced 5-level cap. Position: at
+   this tool's level, better to support anything that comes in — depth
+   is treated as unbounded throughout.
+4. **PR slicing per §5 approved**: PR1 structural (Phases A+B+D),
+   PR2 visual (Phase C).
