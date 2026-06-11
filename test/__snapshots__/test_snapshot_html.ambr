@@ -1700,6 +1700,37 @@
   }
   
   /* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+  
+  /* Depth-driven indentation. Phase/agent cards sit one level right of the
+     Workflow tool pair (4em vs the tool level's 2em), and each workflow node's
+     .children container shifts its whole subtree another level right — depth
+     accumulates through DOM nesting, so arbitrarily deep nests (e.g. a future
+     sub-agent spawning its own sub-agents) indent correctly with no new rules.
+     A dim guide line marks each nesting level. */
+  .workflow_phase,
+  .workflow_agent {
+      margin-left: 4em;
+      margin-right: 4em;
+  }
+  
+  .message-node:has(> .message.workflow_phase) > .children,
+  .message-node:has(> .message.workflow_agent) > .children {
+      margin-left: 2em;
+      padding-left: 0.8em;
+      border-left: 2px solid var(--tool-param-sep-color);
+  }
+  
+  /* Phase pills double as anchor links to their phase card when the splice
+     recorded the targets — keep the pill look, add link affordance on hover. */
+  a.workflow-phase-pill {
+      text-decoration: none;
+  }
+  
+  a.workflow-phase-pill:hover {
+      border-color: var(--tool-use-color);
+      color: var(--tool-use-color);
+  }
+  
   .workflow-phase-meta,
   .workflow-agent-meta {
       display: flex;
@@ -7639,6 +7670,37 @@
   }
   
   /* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+  
+  /* Depth-driven indentation. Phase/agent cards sit one level right of the
+     Workflow tool pair (4em vs the tool level's 2em), and each workflow node's
+     .children container shifts its whole subtree another level right — depth
+     accumulates through DOM nesting, so arbitrarily deep nests (e.g. a future
+     sub-agent spawning its own sub-agents) indent correctly with no new rules.
+     A dim guide line marks each nesting level. */
+  .workflow_phase,
+  .workflow_agent {
+      margin-left: 4em;
+      margin-right: 4em;
+  }
+  
+  .message-node:has(> .message.workflow_phase) > .children,
+  .message-node:has(> .message.workflow_agent) > .children {
+      margin-left: 2em;
+      padding-left: 0.8em;
+      border-left: 2px solid var(--tool-param-sep-color);
+  }
+  
+  /* Phase pills double as anchor links to their phase card when the splice
+     recorded the targets — keep the pill look, add link affordance on hover. */
+  a.workflow-phase-pill {
+      text-decoration: none;
+  }
+  
+  a.workflow-phase-pill:hover {
+      border-color: var(--tool-use-color);
+      color: var(--tool-use-color);
+  }
+  
   .workflow-phase-meta,
   .workflow-agent-meta {
       display: flex;
@@ -15660,6 +15722,37 @@
   }
   
   /* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+  
+  /* Depth-driven indentation. Phase/agent cards sit one level right of the
+     Workflow tool pair (4em vs the tool level's 2em), and each workflow node's
+     .children container shifts its whole subtree another level right — depth
+     accumulates through DOM nesting, so arbitrarily deep nests (e.g. a future
+     sub-agent spawning its own sub-agents) indent correctly with no new rules.
+     A dim guide line marks each nesting level. */
+  .workflow_phase,
+  .workflow_agent {
+      margin-left: 4em;
+      margin-right: 4em;
+  }
+  
+  .message-node:has(> .message.workflow_phase) > .children,
+  .message-node:has(> .message.workflow_agent) > .children {
+      margin-left: 2em;
+      padding-left: 0.8em;
+      border-left: 2px solid var(--tool-param-sep-color);
+  }
+  
+  /* Phase pills double as anchor links to their phase card when the splice
+     recorded the targets — keep the pill look, add link affordance on hover. */
+  a.workflow-phase-pill {
+      text-decoration: none;
+  }
+  
+  a.workflow-phase-pill:hover {
+      border-color: var(--tool-use-color);
+      color: var(--tool-use-color);
+  }
+  
   .workflow-phase-meta,
   .workflow-agent-meta {
       display: flex;
@@ -21714,6 +21807,37 @@
   }
   
   /* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+  
+  /* Depth-driven indentation. Phase/agent cards sit one level right of the
+     Workflow tool pair (4em vs the tool level's 2em), and each workflow node's
+     .children container shifts its whole subtree another level right — depth
+     accumulates through DOM nesting, so arbitrarily deep nests (e.g. a future
+     sub-agent spawning its own sub-agents) indent correctly with no new rules.
+     A dim guide line marks each nesting level. */
+  .workflow_phase,
+  .workflow_agent {
+      margin-left: 4em;
+      margin-right: 4em;
+  }
+  
+  .message-node:has(> .message.workflow_phase) > .children,
+  .message-node:has(> .message.workflow_agent) > .children {
+      margin-left: 2em;
+      padding-left: 0.8em;
+      border-left: 2px solid var(--tool-param-sep-color);
+  }
+  
+  /* Phase pills double as anchor links to their phase card when the splice
+     recorded the targets — keep the pill look, add link affordance on hover. */
+  a.workflow-phase-pill {
+      text-decoration: none;
+  }
+  
+  a.workflow-phase-pill:hover {
+      border-color: var(--tool-use-color);
+      color: var(--tool-use-color);
+  }
+  
   .workflow-phase-meta,
   .workflow-agent-meta {
       display: flex;
@@ -28035,6 +28159,37 @@
   }
   
   /* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+  
+  /* Depth-driven indentation. Phase/agent cards sit one level right of the
+     Workflow tool pair (4em vs the tool level's 2em), and each workflow node's
+     .children container shifts its whole subtree another level right — depth
+     accumulates through DOM nesting, so arbitrarily deep nests (e.g. a future
+     sub-agent spawning its own sub-agents) indent correctly with no new rules.
+     A dim guide line marks each nesting level. */
+  .workflow_phase,
+  .workflow_agent {
+      margin-left: 4em;
+      margin-right: 4em;
+  }
+  
+  .message-node:has(> .message.workflow_phase) > .children,
+  .message-node:has(> .message.workflow_agent) > .children {
+      margin-left: 2em;
+      padding-left: 0.8em;
+      border-left: 2px solid var(--tool-param-sep-color);
+  }
+  
+  /* Phase pills double as anchor links to their phase card when the splice
+     recorded the targets — keep the pill look, add link affordance on hover. */
+  a.workflow-phase-pill {
+      text-decoration: none;
+  }
+  
+  a.workflow-phase-pill:hover {
+      border-color: var(--tool-use-color);
+      color: var(--tool-use-color);
+  }
+  
   .workflow-phase-meta,
   .workflow-agent-meta {
       display: flex;
@@ -34201,6 +34356,37 @@
   }
   
   /* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+  
+  /* Depth-driven indentation. Phase/agent cards sit one level right of the
+     Workflow tool pair (4em vs the tool level's 2em), and each workflow node's
+     .children container shifts its whole subtree another level right — depth
+     accumulates through DOM nesting, so arbitrarily deep nests (e.g. a future
+     sub-agent spawning its own sub-agents) indent correctly with no new rules.
+     A dim guide line marks each nesting level. */
+  .workflow_phase,
+  .workflow_agent {
+      margin-left: 4em;
+      margin-right: 4em;
+  }
+  
+  .message-node:has(> .message.workflow_phase) > .children,
+  .message-node:has(> .message.workflow_agent) > .children {
+      margin-left: 2em;
+      padding-left: 0.8em;
+      border-left: 2px solid var(--tool-param-sep-color);
+  }
+  
+  /* Phase pills double as anchor links to their phase card when the splice
+     recorded the targets — keep the pill look, add link affordance on hover. */
+  a.workflow-phase-pill {
+      text-decoration: none;
+  }
+  
+  a.workflow-phase-pill:hover {
+      border-color: var(--tool-use-color);
+      color: var(--tool-use-color);
+  }
+  
   .workflow-phase-meta,
   .workflow-agent-meta {
       display: flex;
@@ -40428,6 +40614,37 @@
   }
   
   /* Spliced dynamic-workflow run tree (#174 PR3): phase + agent cards. */
+  
+  /* Depth-driven indentation. Phase/agent cards sit one level right of the
+     Workflow tool pair (4em vs the tool level's 2em), and each workflow node's
+     .children container shifts its whole subtree another level right — depth
+     accumulates through DOM nesting, so arbitrarily deep nests (e.g. a future
+     sub-agent spawning its own sub-agents) indent correctly with no new rules.
+     A dim guide line marks each nesting level. */
+  .workflow_phase,
+  .workflow_agent {
+      margin-left: 4em;
+      margin-right: 4em;
+  }
+  
+  .message-node:has(> .message.workflow_phase) > .children,
+  .message-node:has(> .message.workflow_agent) > .children {
+      margin-left: 2em;
+      padding-left: 0.8em;
+      border-left: 2px solid var(--tool-param-sep-color);
+  }
+  
+  /* Phase pills double as anchor links to their phase card when the splice
+     recorded the targets — keep the pill look, add link affordance on hover. */
+  a.workflow-phase-pill {
+      text-decoration: none;
+  }
+  
+  a.workflow-phase-pill:hover {
+      border-color: var(--tool-use-color);
+      color: var(--tool-use-color);
+  }
+  
   .workflow-phase-meta,
   .workflow-agent-meta {
       display: flex;
