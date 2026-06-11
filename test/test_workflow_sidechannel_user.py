@@ -104,6 +104,17 @@ class TestExtractEmbeddedJson:
         assert blocks == {}
         assert substituted == text
 
+    def test_tilde_fenced_json_with_internal_blank_line_left_untouched(self) -> None:
+        # Tilde fences are CommonMark too — same false-accept shape.
+        text = (
+            "Spec:\n\n~~~\n{\n"
+            '  "a": 1\n'
+            "}\n\nplus commentary in the same fence\n~~~\n\nend"
+        )
+        substituted, blocks = extract_embedded_json(text)
+        assert blocks == {}
+        assert substituted == text
+
     def test_json_after_closed_fence_still_extracts(self) -> None:
         # Fence parity resets: a block AFTER a properly closed fence is fair
         # game again.

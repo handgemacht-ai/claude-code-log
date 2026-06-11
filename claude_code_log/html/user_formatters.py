@@ -309,12 +309,16 @@ def extract_embedded_json(text: str) -> "tuple[str, dict[str, Any]]":
     in_fence = False
     while i < len(lines):
         stripped = lines[i].strip()
-        # Track ``` fence parity: a JSON example inside a fenced code block
-        # must stay verbatim — extracting it would substitute the table
-        # markup INSIDE the rendered <pre><code>. (A fence with no internal
-        # blank line is already rejected by the closer check; this covers
-        # fences that carry commentary after a blank line.)
-        if stripped.startswith("```"):
+        # Track fence parity (backtick AND tilde fences — both CommonMark):
+        # a JSON example inside a fenced code block must stay verbatim —
+        # extracting it would substitute the table markup INSIDE the
+        # rendered <pre><code>. (A fence with no internal blank line is
+        # already rejected by the closer check; this covers fences that
+        # carry commentary after a blank line.) One shared toggle for both
+        # fence kinds is an approximation — CommonMark closes a fence only
+        # with the same character — but for this skip-heuristic's purposes
+        # mixing kinds at worst skips an extraction, never corrupts one.
+        if stripped.startswith(("```", "~~~")):
             in_fence = not in_fence
             out_lines.append(lines[i])
             i += 1
