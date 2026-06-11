@@ -95,18 +95,31 @@ class TestNestedStructures:
         """Even short dict/list values render collapsed — sibling rows
         must look consistent (no size-based auto-expand)."""
         html = render_params_table({"a": {"k": 1}, "b": [1, 2]})
-        assert html.count("tool-param-collapsible-rows") == 2
+        assert html.count("<details class='tool-param-collapsible") == 2
         # Short JSON: the preview is the full dump, no ellipsis.
         assert "..." not in html
 
     def test_fold_button_label_matches_container_kind(self):
-        dict_html = render_params_table({"cfg": {"k": "v"}})
+        dict_html = render_params_table({"cfg": {"k": {"nested": 1}}})
         assert "expand all properties" in dict_html
         assert "data-kind='properties'" in dict_html
 
-        list_html = render_params_table({"items": [1, 2]})
+        list_html = render_params_table({"items": [[1], [2]]})
         assert "expand all rows" in list_html
         assert "data-kind='rows'" in list_html
+
+    def test_no_rows_toggle_without_row_folds(self):
+        """All-scalar containers fold but carry no dead button; a long
+        string value counts as a row fold (it opens via the button)."""
+        scalar_only = render_params_table({"cfg": {"id": 2, "status": "ok"}})
+        assert "tool-param-collapsible" in scalar_only
+        assert "tool-param-rows-toggle" not in scalar_only
+        assert "tool-param-collapsible-rows" not in scalar_only
+
+        with_string_fold = render_params_table(
+            {"cfg": {"id": 2, "desc": "long prose " * 20}}
+        )
+        assert "tool-param-rows-toggle" in with_string_fold
 
     def test_list_of_dicts_recurses_both_levels(self):
         html = render_params_table({"qs": [{"q": "one"}, {"q": "two"}]})
@@ -127,9 +140,10 @@ class TestNestedStructures:
         assert "tool-params-nested" in html
 
     def test_table_fold_carries_rows_toggle(self):
-        """Structured-table folds get the explicit hint + rows-toggle
-        button; plain string folds and the JSON fallback do not."""
-        value = {f"key_{i}": f"value {i}" for i in range(20)}
+        """Structured-table folds with foldable rows get the explicit
+        hint + rows-toggle button; plain string folds and the JSON
+        fallback do not."""
+        value = {f"key_{i}": {"nested": i} for i in range(5)}
         html = render_params_table({"cfg": value})
         assert "tool-param-collapsible-rows" in html
         assert "tool-param-collapse-hint" in html

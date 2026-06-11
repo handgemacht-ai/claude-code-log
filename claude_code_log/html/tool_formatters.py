@@ -1103,13 +1103,23 @@ def _structured_value_html(value: "dict[Any, Any] | list[Any]", depth: int) -> s
     preview = escape_html(formatted_value[:100])
     if len(formatted_value) > 100:
         preview += "..."
-    # The summary carries an explicit collapse hint (instead of the
-    # generic ::after one) followed by a rows-toggle button that
-    # expands/collapses all row-level folds of this table at once
-    # (wired up in transcript.html).
-    return f"""
+    # When the table has row-level folds, the summary carries an
+    # explicit collapse hint (instead of the generic ::after one)
+    # followed by a rows-toggle button that expands/collapses them all
+    # at once (wired up in transcript.html). The "<details" probe is
+    # exact: structures always fold, so a deeper fold can only exist
+    # inside a direct-row fold. All-scalar containers get a plain fold —
+    # no dead button.
+    if "<details" in table_html:
+        return f"""
                         <details class='tool-param-collapsible tool-param-collapsible-rows'>
                             <summary><span class='tool-param-preview'>{preview}</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='{kind}'>&#9654; expand all {kind}</button></summary>
+                            {table_html}
+                        </details>
+                    """
+    return f"""
+                        <details class='tool-param-collapsible'>
+                            <summary><span class='tool-param-preview'>{preview}</span></summary>
                             {table_html}
                         </details>
                     """

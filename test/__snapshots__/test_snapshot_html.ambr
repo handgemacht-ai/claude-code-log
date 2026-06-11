@@ -31482,12 +31482,12 @@
               <tr>
                   <td class='tool-param-key'>1</td>
                   <td class='tool-param-value'>
-                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                          <details class='tool-param-collapsible'>
                               <summary><span class='tool-param-preview'>{
     &quot;id&quot;: &quot;2&quot;,
     &quot;content&quot;: &quot;Implement core functionality&quot;,
     &quot;status&quot;: &quot;in_progress&quot;,
-    &quot;priority&quot;:...</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+    &quot;priority&quot;:...</span></summary>
                               <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
@@ -31516,12 +31516,12 @@
               <tr>
                   <td class='tool-param-key'>2</td>
                   <td class='tool-param-value'>
-                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                          <details class='tool-param-collapsible'>
                               <summary><span class='tool-param-preview'>{
     &quot;id&quot;: &quot;3&quot;,
     &quot;content&quot;: &quot;Add comprehensive tests&quot;,
     &quot;status&quot;: &quot;pending&quot;,
-    &quot;priority&quot;: &quot;medium&quot;...</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+    &quot;priority&quot;: &quot;medium&quot;...</span></summary>
                               <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
@@ -31550,13 +31550,13 @@
               <tr>
                   <td class='tool-param-key'>3</td>
                   <td class='tool-param-value'>
-                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                          <details class='tool-param-collapsible'>
                               <summary><span class='tool-param-preview'>{
     &quot;id&quot;: &quot;4&quot;,
     &quot;content&quot;: &quot;Write user documentation&quot;,
     &quot;status&quot;: &quot;pending&quot;,
     &quot;priority&quot;: &quot;low&quot;
-  }</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+  }</span></summary>
                               <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
@@ -31585,13 +31585,13 @@
               <tr>
                   <td class='tool-param-key'>4</td>
                   <td class='tool-param-value'>
-                          <details class='tool-param-collapsible tool-param-collapsible-rows'>
+                          <details class='tool-param-collapsible'>
                               <summary><span class='tool-param-preview'>{
     &quot;id&quot;: &quot;5&quot;,
     &quot;content&quot;: &quot;Perform code review&quot;,
     &quot;status&quot;: &quot;pending&quot;,
     &quot;priority&quot;: &quot;medium&quot;
-  }</span><span class='tool-param-collapse-hint'>collapse</span><button type='button' class='tool-param-rows-toggle' data-state='collapsed' data-kind='properties'>&#9654; expand all properties</button></summary>
+  }</span></summary>
                               <table class='tool-params-table tool-params-nested'>
               <tr>
                   <td class='tool-param-key'>id</td>
