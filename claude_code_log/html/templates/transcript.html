@@ -109,7 +109,7 @@
        SIBLINGS here, so the card's border/background/margins frame only the
        card itself, not the whole subtree (issue #174 nested-DOM follow-up). #}
     <div class='message-node'>
-    <div class='message session-header{% if message.is_branch_header %} branch-header{% endif %}' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}' id='msg-{{ message.message_id }}'{% if message.branch_depth %} style='margin-left: {{ message.branch_depth * 2 }}em'{% endif %}>
+    <div class='message session-header{% if message.is_branch_header %} branch-header{% endif %}' data-message-id='{{ message.message_id }}' data-session-id='{{ message.session_id }}'{% if message.meta %} data-message-uuid='{{ message.meta.uuid }}'{% endif %} id='msg-{{ message.message_id }}'{% if message.branch_depth %} style='margin-left: {{ message.branch_depth * 2 }}em'{% endif %}>
         <div class='header'>{% if message.is_branch_header %}&#x21b3; {% else %}Session: {% endif %}{{ html_content|safe }}</div>
         {% if message.has_children %}
         <div class='fold-bar' data-message-id='{{ message.message_id }}' data-border-color='session-header'>
@@ -156,7 +156,7 @@
     {%- set msg_css_class = css_class_from_message(message) %}
     {% set markdown = message.content.has_markdown if message.content else false %}
     <div class='message-node'>
-    <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
+    <div class='message {{ msg_css_class }}{% if message.is_paired %} {{ message.pair_role }}{% endif %}'{% if message.meta %} data-message-uuid='{{ message.meta.uuid }}' data-session-id='{{ message.stable_session_id }}'{% endif %} data-message-type='{{ message.type }}' data-message-id='{{ message.message_id }}' id='msg-{{ message.message_id }}'>
         <div class='header'>
             {% set msg_emoji = get_message_emoji(message) -%}
             <span{% if message.title_hint %} title="{{ message.title_hint }}"{% endif %}>{% if message_title %}{%
