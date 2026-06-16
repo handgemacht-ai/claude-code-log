@@ -191,9 +191,59 @@ def test_load_transcript_missing_file_silent_mode():
     print("✓ Test passed: Missing file in silent mode returns empty list")
 
 
+def test_message_card_carries_stable_identity_attributes():
+    """Rendered message cards expose the source uuid/session_id/type as data-* attributes.
+
+    HAVI pins visual annotations to a message card via a stable CSS selector, so the
+    card must carry the JSONL line's real identity (uuid + session_id) plus a semantic
+    type handle — not just the page-position data-message-id.
+    """
+    uuid = "fed7d585-dfef-4dac-bb78-b3f34caa84dc"
+    session_id = "connect-ui-session"
+    user_message = {
+        "type": "user",
+        "timestamp": "2025-06-11T22:45:17.436Z",
+        "parentUuid": None,
+        "isSidechain": False,
+        "userType": "human",
+        "cwd": "/tmp",
+        "sessionId": session_id,
+        "version": "1.0.0",
+        "uuid": uuid,
+        "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello, this is a test message."}],
+        },
+    }
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+        f.write(json.dumps(user_message) + "\n")
+        f.flush()
+        test_file_path = Path(f.name)
+
+    try:
+        messages = load_transcript(test_file_path)
+        html = generate_html(messages, "Test Transcript")
+
+        assert f"data-message-uuid='{uuid}'" in html, (
+            "Message card should carry the source uuid as data-message-uuid"
+        )
+        assert f"data-session-id='{session_id}'" in html, (
+            "Message card should carry the source session_id as data-session-id"
+        )
+        assert "data-message-type='user'" in html, (
+            "Message card should carry the semantic message type"
+        )
+
+        print("✓ Test passed: Message cards carry stable identity attributes")
+    finally:
+        test_file_path.unlink()
+
+
 if __name__ == "__main__":
     test_summary_type_support()
     test_queue_operation_type_support()
     # test_load_transcript_missing_file_returns_empty_list requires pytest's capsys fixture
     test_load_transcript_missing_file_silent_mode()
+    test_message_card_carries_stable_identity_attributes()
     print("\n✅ All message type tests passed!")

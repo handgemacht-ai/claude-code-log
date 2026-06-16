@@ -4471,7 +4471,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-0' data-session-id='eb000000-0000-4000-8000-000000000001' id='msg-d-0'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-uuid='' id='msg-d-0'>
           <div class='header'>Session: eb000000</div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
@@ -4495,7 +4495,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user' data-message-uuid='11111111-0000-4000-8000-000000000001' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='user' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -4530,7 +4530,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-2' id='msg-d-2'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000002' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span title="ID: tu_Task_async_001">🔧 Task <span class='tool-summary'>Coverage analysis</span> <span class='tool-subagent'>(Explore)</span> <span class='task-async-hint'>[async <a class='task-id-forward-link' href='#msg-d-7'><code>#cccc333</code></a>]</span></span>
               <div class='header-info'>
@@ -4552,7 +4552,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-3' id='msg-d-3'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000003' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span title="ID: tu_Task_async_001"></span>
               <div class='header-info'>
@@ -4590,7 +4590,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant sidechain' data-message-id='d-5' id='msg-d-5'>
+      <div class='message assistant sidechain' data-message-uuid='cccccccc-0000-4000-8000-000000000002' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span>🔗 Sub-assistant</span>
               <div class='header-info'>
@@ -4617,7 +4617,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-7' id='msg-d-7'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000004' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span title="ID: tu_TaskOutput_001">🔍 TaskOutput <a class='task-id-backlink' href='#msg-d-2'><code>#cccc333</code></a></span>
               <div class='header-info'>
@@ -4638,7 +4638,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000005' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tu_TaskOutput_001"></span>
               <div class='header-info'>
@@ -4659,7 +4659,7 @@
       
       
       <div class='message-node'>
-      <div class='message user task-notification' data-message-id='d-9' id='msg-d-9'>
+      <div class='message user task-notification' data-message-uuid='11111111-0000-4000-8000-000000000006' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='task_notification' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span>🔄 Async result <span class='tool-summary'>Agent &quot;Coverage analysis&quot; completed</span></span>
               <div class='header-info'>
@@ -4680,7 +4680,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant' data-message-uuid='22222222-0000-4000-8000-000000000007' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -10780,7 +10780,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-0' data-session-id='eb000000-0000-4000-8000-000000000001' id='msg-d-0'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-uuid='' id='msg-d-0'>
           <div class='header'>Session: eb000000</div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
@@ -10804,7 +10804,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user' data-message-uuid='11111111-0000-4000-8000-000000000001' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='user' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -10835,7 +10835,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-2' id='msg-d-2'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000002' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span title="ID: tu_Task_async_001">🔧 Task <span class='tool-summary'>Coverage analysis</span> <span class='tool-subagent'>(Explore)</span> <span class='task-async-hint'>[async <code>#cccc333</code>]</span></span>
               <div class='header-info'>
@@ -10857,7 +10857,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-3' id='msg-d-3'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000003' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span title="ID: tu_Task_async_001"></span>
               <div class='header-info'>
@@ -10888,7 +10888,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant' data-message-uuid='22222222-0000-4000-8000-000000000007' data-session-id='eb000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -19176,7 +19176,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-0' data-session-id='test_session' id='msg-d-0'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='test_session' data-message-uuid='' id='msg-d-0'>
           <div class='header'>Session: test_ses</div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
@@ -19200,7 +19200,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user' data-message-uuid='msg_001' data-session-id='test_session' data-message-type='user' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -19231,7 +19231,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-2' id='msg-d-2'>
+      <div class='message assistant' data-message-uuid='msg_002' data-session-id='test_session' data-message-type='assistant' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -19279,7 +19279,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user' data-message-uuid='msg_003' data-session-id='test_session' data-message-type='user' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -19310,7 +19310,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-4' id='msg-d-4'>
+      <div class='message tool_use pair_first' data-message-uuid='msg_004' data-session-id='test_session' data-message-type='tool_use' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -19331,7 +19331,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-5' id='msg-d-5'>
+      <div class='message tool_result pair_last' data-message-uuid='msg_005' data-session-id='test_session' data-message-type='tool_result' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -19352,7 +19352,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-6' id='msg-d-6'>
+      <div class='message assistant' data-message-uuid='msg_006' data-session-id='test_session' data-message-type='assistant' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -19393,7 +19393,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user' data-message-uuid='msg_007' data-session-id='test_session' data-message-type='user' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -19424,7 +19424,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use pair_first' data-message-uuid='msg_008' data-session-id='test_session' data-message-type='tool_use' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_002">💻 Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -19445,7 +19445,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_result pair_last' data-message-uuid='msg_009' data-session-id='test_session' data-message-type='tool_result' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -19468,7 +19468,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant' data-message-uuid='msg_010' data-session-id='test_session' data-message-type='assistant' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -19505,7 +19505,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-11' id='msg-d-11'>
+      <div class='message user' data-message-uuid='msg_011' data-session-id='test_session' data-message-type='user' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -25600,7 +25600,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-0' data-session-id='ef000000-0000-4000-8000-000000000001' id='msg-d-0'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-uuid='' id='msg-d-0'>
           <div class='header'>Session: ef000000<span class="session-team-badge" style="--cc-color: var(--cc-purple); --cc-color-bg: var(--cc-purple-bg);"><span class="session-team-icon">👥</span>Team: test-coverage</span></div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
@@ -25624,7 +25624,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user' data-message-uuid='11111111-0000-4000-8000-000000000001' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='user' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -25659,7 +25659,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-2' id='msg-d-2'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000002' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span title="ID: tu_TeamCreate_001">🛠️ TeamCreate</span>
               <div class='header-info'>
@@ -25680,7 +25680,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-3' id='msg-d-3'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000003' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span title="ID: tu_TeamCreate_001"></span>
               <div class='header-info'>
@@ -25701,7 +25701,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use' data-message-id='d-4' id='msg-d-4'>
+      <div class='message tool_use' data-message-uuid='22222222-0000-4000-8000-000000000004' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span title="ID: tu_TaskCreate_alice">🛠️ Task <code>#1</code> <span class='tool-summary'>Add relay tests</span> <span class='task-action'>[created]</span></span>
               <div class='header-info'>
@@ -25726,7 +25726,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use' data-message-id='d-6' id='msg-d-6'>
+      <div class='message tool_use' data-message-uuid='22222222-0000-4000-8000-000000000006' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span title="ID: tu_TaskCreate_bob">🛠️ Task <code>#2</code> <span class='tool-summary'>Add server tests</span> <span class='task-action'>[created]</span></span>
               <div class='header-info'>
@@ -25751,7 +25751,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use' data-message-uuid='22222222-0000-4000-8000-000000000008' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tu_TaskUpdate_001">🛠️ Task <a class='task-id-backlink' href='#msg-d-4'><code>#1</code></a> <span class='tool-summary'>Add relay tests</span> <span class='task-action'>[updated]</span></span>
               <div class='header-info'>
@@ -25774,7 +25774,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-10' id='msg-d-10'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000010' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span title="ID: tu_Task_alice">🔧 Task <span class='tool-summary'>Run alice&#x27;s test work</span> <span class='tool-subagent'>(general-purpose)</span></span>
               <div class='header-info'>
@@ -25796,7 +25796,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-11' id='msg-d-11'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000011' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span title="ID: tu_Task_alice"></span>
               <div class='header-info'>
@@ -25827,7 +25827,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant sidechain' data-message-id='d-13' id='msg-d-13'>
+      <div class='message assistant sidechain' data-message-uuid='aaaaaaaa-0000-4000-8000-000000000002' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-13' id='msg-d-13'>
           <div class='header'>
               <span>🔗 Sub-assistant</span>
               <div class='header-info'>
@@ -25849,7 +25849,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant sidechain' data-message-id='d-14' id='msg-d-14'>
+      <div class='message assistant sidechain' data-message-uuid='aaaaaaaa-0000-4000-8000-000000000003' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-14' id='msg-d-14'>
           <div class='header'>
               <span>🔗 Sub-assistant</span>
               <div class='header-info'>
@@ -25876,7 +25876,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-15' id='msg-d-15'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000012' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-15' id='msg-d-15'>
           <div class='header'>
               <span title="ID: tu_Task_bob">🔧 Task <span class='tool-summary'>Run bob&#x27;s test work</span> <span class='tool-subagent'>(general-purpose)</span></span>
               <div class='header-info'>
@@ -25898,7 +25898,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-16' id='msg-d-16'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000013' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-16' id='msg-d-16'>
           <div class='header'>
               <span title="ID: tu_Task_bob"></span>
               <div class='header-info'>
@@ -25929,7 +25929,7 @@
       
       
       <div class='message-node'>
-      <div class='message user teammate sidechain' data-message-id='d-17' id='msg-d-17'>
+      <div class='message user teammate sidechain' data-message-uuid='bbbbbbbb-0000-4000-8000-000000000001' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='teammate' data-message-id='d-17' id='msg-d-17'>
           <div class='header'>
               <span>Teammate</span>
               <div class='header-info'>
@@ -25951,7 +25951,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant sidechain' data-message-id='d-18' id='msg-d-18'>
+      <div class='message assistant sidechain' data-message-uuid='bbbbbbbb-0000-4000-8000-000000000002' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-18' id='msg-d-18'>
           <div class='header'>
               <span>🔗 Sub-assistant</span>
               <div class='header-info'>
@@ -25973,7 +25973,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant sidechain' data-message-id='d-19' id='msg-d-19'>
+      <div class='message assistant sidechain' data-message-uuid='bbbbbbbb-0000-4000-8000-000000000003' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-19' id='msg-d-19'>
           <div class='header'>
               <span>🔗 Sub-assistant</span>
               <div class='header-info'>
@@ -26005,7 +26005,7 @@
       
       
       <div class='message-node'>
-      <div class='message user teammate' data-message-id='d-20' id='msg-d-20'>
+      <div class='message user teammate' data-message-uuid='11111111-0000-4000-8000-000000000014' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='teammate' data-message-id='d-20' id='msg-d-20'>
           <div class='header'>
               <span>Teammate</span>
               <div class='header-info'>
@@ -26031,7 +26031,7 @@
       
       
       <div class='message-node'>
-      <div class='message user teammate' data-message-id='d-21' id='msg-d-21'>
+      <div class='message user teammate' data-message-uuid='11111111-0000-4000-8000-000000000015' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='teammate' data-message-id='d-21' id='msg-d-21'>
           <div class='header'>
               <span>Teammate</span>
               <div class='header-info'>
@@ -26064,7 +26064,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-22' id='msg-d-22'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000016' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-22' id='msg-d-22'>
           <div class='header'>
               <span title="ID: tu_TaskList_001">🛠️ TaskList</span>
               <div class='header-info'>
@@ -26085,7 +26085,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-23' id='msg-d-23'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000017' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-23' id='msg-d-23'>
           <div class='header'>
               <span title="ID: tu_TaskList_001"></span>
               <div class='header-info'>
@@ -26106,7 +26106,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-24' id='msg-d-24'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000018' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-24' id='msg-d-24'>
           <div class='header'>
               <span title="ID: tu_SendMessage_001">✉️ SendMessage <span class='tool-summary'>to <span class="teammate-badge" style="--cc-color: var(--cc-blue); --cc-color-bg: var(--cc-blue-bg);"><span class="teammate-icon">▎</span>alice</span></span></span>
               <div class='header-info'>
@@ -26128,7 +26128,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-25' id='msg-d-25'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000019' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-25' id='msg-d-25'>
           <div class='header'>
               <span title="ID: tu_SendMessage_001"></span>
               <div class='header-info'>
@@ -26149,7 +26149,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-26' id='msg-d-26'>
+      <div class='message tool_use pair_first' data-message-uuid='22222222-0000-4000-8000-000000000020' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_use' data-message-id='d-26' id='msg-d-26'>
           <div class='header'>
               <span title="ID: tu_TeamDelete_001">🛠️ TeamDelete</span>
               <div class='header-info'>
@@ -26170,7 +26170,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-27' id='msg-d-27'>
+      <div class='message tool_result pair_last' data-message-uuid='11111111-0000-4000-8000-000000000021' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='tool_result' data-message-id='d-27' id='msg-d-27'>
           <div class='header'>
               <span title="ID: tu_TeamDelete_001"></span>
               <div class='header-info'>
@@ -26191,7 +26191,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-28' id='msg-d-28'>
+      <div class='message assistant' data-message-uuid='22222222-0000-4000-8000-000000000022' data-session-id='ef000000-0000-4000-8000-000000000001' data-message-type='assistant' data-message-id='d-28' id='msg-d-28'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -32291,7 +32291,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-0' data-session-id='edge_cases' id='msg-d-0'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='edge_cases' data-message-uuid='' id='msg-d-0'>
           <div class='header'>Session: Tested various edge cases including markdown formatting, long text, tool errors, system messages, command outputs, special characters and emojis. All message types render correctly in the transcript viewer. • edge_cas</div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
@@ -32315,7 +32315,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user' data-message-uuid='edge_001' data-session-id='edge_cases' data-message-type='user' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -32346,7 +32346,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-2' id='msg-d-2'>
+      <div class='message assistant' data-message-uuid='edge_002' data-session-id='edge_cases' data-message-type='assistant' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -32413,7 +32413,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user' data-message-uuid='edge_003' data-session-id='edge_cases' data-message-type='user' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -32444,7 +32444,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-4' id='msg-d-4'>
+      <div class='message tool_use pair_first' data-message-uuid='edge_004' data-session-id='edge_cases' data-message-type='tool_use' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span title="ID: tool_edge_001">🛠️ FailingTool</span>
               <div class='header-info'>
@@ -32470,7 +32470,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result error pair_last' data-message-id='d-5' id='msg-d-5'>
+      <div class='message tool_result error pair_last' data-message-uuid='edge_005' data-session-id='edge_cases' data-message-type='tool_result' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span title="ID: tool_edge_001">🚨 Error</span>
               <div class='header-info'>
@@ -32496,7 +32496,7 @@
       
       
       <div class='message-node'>
-      <div class='message user slash-command pair_first' data-message-id='d-6' id='msg-d-6'>
+      <div class='message user slash-command pair_first' data-message-uuid='edge_007' data-session-id='edge_cases' data-message-type='user' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤷 Slash Command</span>
               <div class='header-info'>
@@ -32519,7 +32519,7 @@
       
       
       <div class='message-node'>
-      <div class='message user command-output pair_last' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user command-output pair_last' data-message-uuid='edge_008' data-session-id='edge_cases' data-message-type='user' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span></span>
               <div class='header-info'>
@@ -32558,7 +32558,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-8' id='msg-d-8'>
+      <div class='message assistant' data-message-uuid='edge_009' data-session-id='edge_cases' data-message-type='assistant' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -32591,7 +32591,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_use' data-message-uuid='edge_009' data-session-id='edge_cases' data-message-type='tool_use' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_edge_002">🛠️ MultiEdit</span>
               <div class='header-info'>
@@ -32622,7 +32622,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-10' id='msg-d-10'>
+      <div class='message user' data-message-uuid='edge_011' data-session-id='edge_cases' data-message-type='user' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -32644,7 +32644,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-13' id='msg-d-13'>
+      <div class='message user' data-message-uuid='edge_010' data-session-id='edge_cases' data-message-type='user' data-message-id='d-13' id='msg-d-13'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -32672,7 +32672,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-11' data-session-id='todowrite_session' id='msg-d-11'>
+      <div class='message session-header' data-message-id='d-11' data-session-id='todowrite_session' data-message-uuid='' id='msg-d-11'>
           <div class='header'>Session: todowrit</div>
           
           <div class='fold-bar' data-message-id='d-11' data-border-color='session-header'>
@@ -32692,7 +32692,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use' data-message-id='d-12' id='msg-d-12'>
+      <div class='message tool_use' data-message-uuid='assistant_004' data-session-id='todowrite_session' data-message-type='tool_use' data-message-id='d-12' id='msg-d-12'>
           <div class='header'>
               <span title="ID: toolu_todowrite_002">🛠️ TodoWrite</span>
               <div class='header-info'>
@@ -39006,7 +39006,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-0' data-session-id='session_b' id='msg-d-0'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='session_b' data-message-uuid='' id='msg-d-0'>
           <div class='header'>Session: session_</div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
@@ -39030,7 +39030,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user' data-message-uuid='session_b_001' data-session-id='session_b' data-message-type='user' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -39061,7 +39061,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-2' id='msg-d-2'>
+      <div class='message assistant' data-message-uuid='session_b_002' data-session-id='session_b' data-message-type='assistant' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -39090,7 +39090,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user' data-message-uuid='session_b_003' data-session-id='session_b' data-message-type='user' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -39118,7 +39118,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-4' data-session-id='test_session' id='msg-d-4'>
+      <div class='message session-header' data-message-id='d-4' data-session-id='test_session' data-message-uuid='' id='msg-d-4'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
           
           <div class='fold-bar' data-message-id='d-4' data-border-color='session-header'>
@@ -39142,7 +39142,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-5' id='msg-d-5'>
+      <div class='message user' data-message-uuid='msg_001' data-session-id='test_session' data-message-type='user' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -39173,7 +39173,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-6' id='msg-d-6'>
+      <div class='message assistant' data-message-uuid='msg_002' data-session-id='test_session' data-message-type='assistant' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -39221,7 +39221,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user' data-message-uuid='msg_003' data-session-id='test_session' data-message-type='user' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -39252,7 +39252,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use pair_first' data-message-uuid='msg_004' data-session-id='test_session' data-message-type='tool_use' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -39273,7 +39273,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_result pair_last' data-message-uuid='msg_005' data-session-id='test_session' data-message-type='tool_result' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -39294,7 +39294,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant' data-message-uuid='msg_006' data-session-id='test_session' data-message-type='assistant' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -39335,7 +39335,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-11' id='msg-d-11'>
+      <div class='message user' data-message-uuid='msg_007' data-session-id='test_session' data-message-type='user' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -39366,7 +39366,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-12' id='msg-d-12'>
+      <div class='message tool_use pair_first' data-message-uuid='msg_008' data-session-id='test_session' data-message-type='tool_use' data-message-id='d-12' id='msg-d-12'>
           <div class='header'>
               <span title="ID: tool_002">💻 Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -39387,7 +39387,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-13' id='msg-d-13'>
+      <div class='message tool_result pair_last' data-message-uuid='msg_009' data-session-id='test_session' data-message-type='tool_result' data-message-id='d-13' id='msg-d-13'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -39410,7 +39410,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-14' id='msg-d-14'>
+      <div class='message assistant' data-message-uuid='msg_010' data-session-id='test_session' data-message-type='assistant' data-message-id='d-14' id='msg-d-14'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -39447,7 +39447,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-15' id='msg-d-15'>
+      <div class='message user' data-message-uuid='msg_011' data-session-id='test_session' data-message-type='user' data-message-id='d-15' id='msg-d-15'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -45542,7 +45542,7 @@
       <div class="session-divider"></div>
       
       <div class='message-node'>
-      <div class='message session-header' data-message-id='d-0' data-session-id='test_session' id='msg-d-0'>
+      <div class='message session-header' data-message-id='d-0' data-session-id='test_session' data-message-uuid='' id='msg-d-0'>
           <div class='header'>Session: User learned about Python decorators, including basic decorators and parameterized decorators. Created and ran examples showing how decorators work with functions. User is now ready to implement their own timing decorator. • test_ses</div>
           
           <div class='fold-bar' data-message-id='d-0' data-border-color='session-header'>
@@ -45566,7 +45566,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-1' id='msg-d-1'>
+      <div class='message user' data-message-uuid='msg_001' data-session-id='test_session' data-message-type='user' data-message-id='d-1' id='msg-d-1'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -45597,7 +45597,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-2' id='msg-d-2'>
+      <div class='message assistant' data-message-uuid='msg_002' data-session-id='test_session' data-message-type='assistant' data-message-id='d-2' id='msg-d-2'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -45645,7 +45645,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-3' id='msg-d-3'>
+      <div class='message user' data-message-uuid='msg_003' data-session-id='test_session' data-message-type='user' data-message-id='d-3' id='msg-d-3'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -45676,7 +45676,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-4' id='msg-d-4'>
+      <div class='message tool_use pair_first' data-message-uuid='msg_004' data-session-id='test_session' data-message-type='tool_use' data-message-id='d-4' id='msg-d-4'>
           <div class='header'>
               <span title="ID: tool_001">📝 Edit <span class='tool-summary'>/tmp/decorator_example.py</span></span>
               <div class='header-info'>
@@ -45697,7 +45697,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-5' id='msg-d-5'>
+      <div class='message tool_result pair_last' data-message-uuid='msg_005' data-session-id='test_session' data-message-type='tool_result' data-message-id='d-5' id='msg-d-5'>
           <div class='header'>
               <span title="ID: tool_001"></span>
               <div class='header-info'>
@@ -45718,7 +45718,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-6' id='msg-d-6'>
+      <div class='message assistant' data-message-uuid='msg_006' data-session-id='test_session' data-message-type='assistant' data-message-id='d-6' id='msg-d-6'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -45759,7 +45759,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-7' id='msg-d-7'>
+      <div class='message user' data-message-uuid='msg_007' data-session-id='test_session' data-message-type='user' data-message-id='d-7' id='msg-d-7'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>
@@ -45790,7 +45790,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_use pair_first' data-message-id='d-8' id='msg-d-8'>
+      <div class='message tool_use pair_first' data-message-uuid='msg_008' data-session-id='test_session' data-message-type='tool_use' data-message-id='d-8' id='msg-d-8'>
           <div class='header'>
               <span title="ID: tool_002">💻 Bash <span class='tool-summary'>Run the decorator example to show output</span></span>
               <div class='header-info'>
@@ -45811,7 +45811,7 @@
       
       
       <div class='message-node'>
-      <div class='message tool_result pair_last' data-message-id='d-9' id='msg-d-9'>
+      <div class='message tool_result pair_last' data-message-uuid='msg_009' data-session-id='test_session' data-message-type='tool_result' data-message-id='d-9' id='msg-d-9'>
           <div class='header'>
               <span title="ID: tool_002"></span>
               <div class='header-info'>
@@ -45834,7 +45834,7 @@
       
       
       <div class='message-node'>
-      <div class='message assistant' data-message-id='d-10' id='msg-d-10'>
+      <div class='message assistant' data-message-uuid='msg_010' data-session-id='test_session' data-message-type='assistant' data-message-id='d-10' id='msg-d-10'>
           <div class='header'>
               <span>🤖 Assistant</span>
               <div class='header-info'>
@@ -45871,7 +45871,7 @@
       
       
       <div class='message-node'>
-      <div class='message user' data-message-id='d-11' id='msg-d-11'>
+      <div class='message user' data-message-uuid='msg_011' data-session-id='test_session' data-message-type='user' data-message-id='d-11' id='msg-d-11'>
           <div class='header'>
               <span>🤷 User</span>
               <div class='header-info'>

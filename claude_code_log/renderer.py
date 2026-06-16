@@ -376,6 +376,16 @@ class TemplateMessage:
         return self.meta.session_id
 
     @property
+    def stable_session_id(self) -> str:
+        """Real trunk session ID for the message card's ``data-session-id``.
+
+        Coalesces the synthetic ``{trunk}#agent-{id}`` session of a subagent
+        message back to its trunk so the attribute is a stable, real session
+        identifier (the per-message ``data-message-uuid`` still pins identity).
+        """
+        return get_parent_session_id(self.meta.session_id)
+
+    @property
     def render_session_id(self) -> str:
         """Get effective session/branch ID for grouping.
 
