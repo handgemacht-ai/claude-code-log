@@ -1,0 +1,143 @@
+/* Token-usage chart overlay (fixed bottom panel) */
+
+.token-chart-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+    max-height: 35vh;
+    padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+    flex-direction: column;
+    gap: 8px;
+    background: var(--white-dimmed);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border-light);
+    box-shadow: 0 -4px 12px #00000018;
+}
+
+.token-chart-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.token-chart-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.token-chart-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.token-chart-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.token-chart-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.token-chart-swatch-input {
+    background-color: var(--token-input-color);
+}
+
+.token-chart-swatch-cache-read {
+    background-color: var(--token-cache-read-color);
+}
+
+.token-chart-swatch-output {
+    background-color: var(--token-output-color);
+}
+
+.token-chart-swatch-cache-write {
+    background-color: var(--token-cache-write-color);
+}
+
+.token-chart-scale-toggle {
+    display: inline-flex;
+    margin-left: auto;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.token-chart-scale-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.78em;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.token-chart-scale-toggle button:hover {
+    background-color: var(--bg-hover);
+}
+
+.token-chart-scale-toggle button.active {
+    background-color: #d4e8f7;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.token-chart-close {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1em;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.token-chart-close:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.token-chart-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+#token-chart-svg {
+    display: block;
+}
+
+.token-bar {
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.token-bar:hover {
+    opacity: 0.78;
+}
+
+.token-chart-tick {
+    font-size: 9px;
+    fill: var(--text-muted);
+    font-family: var(--font-ui);
+}
+
+.token-chart-empty {
+    display: none;
+    color: var(--text-muted);
+    font-size: 0.9em;
+    padding: 16px 0;
+}
