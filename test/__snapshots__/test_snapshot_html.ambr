@@ -50,6 +50,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -348,6 +355,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -3854,6 +3870,149 @@
   .session-team-icon {
       font-size: 0.95em;
   }
+  /* Token-usage chart overlay (fixed bottom panel) */
+  
+  .token-chart-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+      max-height: 35vh;
+      padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+      flex-direction: column;
+      gap: 8px;
+      background: var(--white-dimmed);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-light);
+      box-shadow: 0 -4px 12px #00000018;
+  }
+  
+  .token-chart-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+  }
+  
+  .token-chart-title {
+      font-weight: 600;
+      color: var(--text-primary);
+  }
+  
+  .token-chart-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8em;
+      color: var(--text-muted);
+  }
+  
+  .token-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+  }
+  
+  .token-chart-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+  }
+  
+  .token-chart-swatch-input {
+      background-color: var(--token-input-color);
+  }
+  
+  .token-chart-swatch-cache-read {
+      background-color: var(--token-cache-read-color);
+  }
+  
+  .token-chart-swatch-output {
+      background-color: var(--token-output-color);
+  }
+  
+  .token-chart-swatch-cache-write {
+      background-color: var(--token-cache-write-color);
+  }
+  
+  .token-chart-scale-toggle {
+      display: inline-flex;
+      margin-left: auto;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  
+  .token-chart-scale-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78em;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-scale-toggle button:hover {
+      background-color: var(--bg-hover);
+  }
+  
+  .token-chart-scale-toggle button.active {
+      background-color: #d4e8f7;
+      color: var(--text-primary);
+      font-weight: 600;
+  }
+  
+  .token-chart-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-close:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+  }
+  
+  .token-chart-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+  }
+  
+  #token-chart-svg {
+      display: block;
+  }
+  
+  .token-bar {
+      cursor: pointer;
+      transition: opacity 0.15s;
+  }
+  
+  .token-bar:hover {
+      opacity: 0.78;
+  }
+  
+  .token-chart-tick {
+      font-size: 9px;
+      fill: var(--text-muted);
+      font-family: var(--font-ui);
+  }
+  
+  .token-chart-empty {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.9em;
+      padding: 16px 0;
+  }
       </style>
   </head>
   
@@ -4399,6 +4558,290 @@
       })();
   </script>
   
+      <!-- Token Usage Chart Component -->
+      <!-- Token Usage Chart Component -->
+  <!-- Hand-rolled inline SVG stacked-bar timeline of per-response token usage. -->
+  <!-- One bar per assistant API response, split into Input / Cache Read /
+       Output / Cache Write. Data comes from the Python-built JSON island below
+       (numbers only), so it is immune to the CSS-class drift the DOM-scraped
+       timeline has to guard against. -->
+  
+  <script type="application/json" id="token-chart-data">[]</script>
+  
+  <div class="token-chart-panel" id="token-chart-panel" style="display: none;">
+      <div class="token-chart-header">
+          <span class="token-chart-title">📊 Token usage</span>
+          <div class="token-chart-legend">
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-input"></span>Input</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-read"></span>Cache Read</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-output"></span>Output</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-write"></span>Cache Write</span>
+          </div>
+          <div class="token-chart-scale-toggle" role="group" aria-label="Token chart scale">
+              <button type="button" data-scale="linear" class="active">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+          </div>
+          <button type="button" class="token-chart-close" id="closeTokenChart" title="Close token chart" aria-label="Close token chart">✕</button>
+      </div>
+      <div class="token-chart-scroll">
+          <svg id="token-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="token-chart-empty">No token usage to chart for this page.</div>
+  </div>
+  
+  <script id="token-chart-script">
+      // Token-usage chart - inline for self-contained HTML.
+      (function () {
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+  
+          // Layout constants (px).
+          const BAR_WIDTH = 16;
+          const BAR_GAP = 6;
+          const SIDE_PAD = 8;
+          const TOP_PAD = 10;
+          const CHART_HEIGHT = 150;
+          const AXIS_HEIGHT = 20;
+          const SLOT = BAR_WIDTH + BAR_GAP;
+  
+          // Stacked segment order (bottom → top) with their CSS-var fills.
+          const SEGMENTS = [
+              { key: 'input', label: 'Input', fill: 'var(--token-input-color)' },
+              { key: 'cache_read', label: 'Cache Read', fill: 'var(--token-cache-read-color)' },
+              { key: 'output', label: 'Output', fill: 'var(--token-output-color)' },
+              { key: 'cache_write', label: 'Cache Write', fill: 'var(--token-cache-write-color)' },
+          ];
+  
+          let chartData = [];
+          let scaleMode = 'linear';
+  
+          function parseData() {
+              const island = document.getElementById('token-chart-data');
+              if (!island) return [];
+              try {
+                  const parsed = JSON.parse(island.textContent || '[]');
+                  return Array.isArray(parsed) ? parsed : [];
+              } catch (err) {
+                  console.error('Failed to parse token chart data', err);
+                  return [];
+              }
+          }
+  
+          // Honor the existing 🔗 Sub-assistant filter toggle: when it is off,
+          // sidechain bars are hidden (same dimension as the message filter).
+          function sidechainVisible() {
+              const toggle = document.querySelector('.filter-toggle[data-type="sidechain"]');
+              return !toggle || toggle.classList.contains('active');
+          }
+  
+          function visibleData() {
+              const showSidechain = sidechainVisible();
+              return chartData.filter(d => showSidechain || !d.sidechain);
+          }
+  
+          function scaleValue(v) {
+              if (v <= 0) return 0;
+              return scaleMode === 'log' ? Math.log10(v + 1) : v;
+          }
+  
+          function shortTime(iso) {
+              if (!iso) return '';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return '';
+              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+  
+          function renderChart() {
+              const svg = document.getElementById('token-chart-svg');
+              const empty = document.querySelector('.token-chart-empty');
+              if (!svg) return;
+  
+              // Clear previous render.
+              while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
+              const data = visibleData();
+              if (data.length === 0) {
+                  svg.style.display = 'none';
+                  if (empty) empty.style.display = 'block';
+                  return;
+              }
+              svg.style.display = 'block';
+              if (empty) empty.style.display = 'none';
+  
+              // Max scaled total across visible bars sets the full chart height.
+              let maxScaled = 0;
+              data.forEach(d => {
+                  let sum = 0;
+                  SEGMENTS.forEach(seg => { sum += scaleValue(d[seg.key] || 0); });
+                  if (sum > maxScaled) maxScaled = sum;
+              });
+              if (maxScaled <= 0) maxScaled = 1;
+  
+              const width = SIDE_PAD * 2 + data.length * SLOT;
+              const height = TOP_PAD + CHART_HEIGHT + AXIS_HEIGHT;
+              svg.setAttribute('width', String(width));
+              svg.setAttribute('height', String(height));
+              svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+              const baseline = TOP_PAD + CHART_HEIGHT;
+              // Sparse x-axis labels: aim for roughly 8 ticks.
+              const tickEvery = Math.max(1, Math.ceil(data.length / 8));
+  
+              data.forEach((d, i) => {
+                  const x = SIDE_PAD + i * SLOT;
+                  const group = document.createElementNS(SVG_NS, 'g');
+                  group.setAttribute('class', 'token-bar');
+                  group.setAttribute('data-message-id', d.id);
+  
+                  // Whole-bar tooltip: timestamp + exact counts + total.
+                  const total = SEGMENTS.reduce((acc, seg) => acc + (d[seg.key] || 0), 0);
+                  const titleEl = document.createElementNS(SVG_NS, 'title');
+                  const lines = [];
+                  if (d.ts) lines.push(shortTime(d.ts));
+                  SEGMENTS.forEach(seg => {
+                      lines.push(`${seg.label}: ${(d[seg.key] || 0).toLocaleString()}`);
+                  });
+                  lines.push(`Total: ${total.toLocaleString()}`);
+                  if (d.sidechain) lines.push('🔗 Sub-assistant');
+                  titleEl.textContent = lines.join('\n');
+                  group.appendChild(titleEl);
+  
+                  let yBottom = baseline;
+                  SEGMENTS.forEach(seg => {
+                      const v = d[seg.key] || 0;
+                      const sv = scaleValue(v);
+                      const h = (sv / maxScaled) * CHART_HEIGHT;
+                      if (h > 0) {
+                          const rect = document.createElementNS(SVG_NS, 'rect');
+                          rect.setAttribute('x', String(x));
+                          rect.setAttribute('y', String(yBottom - h));
+                          rect.setAttribute('width', String(BAR_WIDTH));
+                          rect.setAttribute('height', String(h));
+                          rect.setAttribute('fill', seg.fill);
+                          group.appendChild(rect);
+                          yBottom -= h;
+                      }
+                  });
+  
+                  svg.appendChild(group);
+  
+                  // Sparse time tick under the bar.
+                  if (i % tickEvery === 0) {
+                      const label = shortTime(d.ts);
+                      if (label) {
+                          const text = document.createElementNS(SVG_NS, 'text');
+                          text.setAttribute('x', String(x + BAR_WIDTH / 2));
+                          text.setAttribute('y', String(baseline + 14));
+                          text.setAttribute('class', 'token-chart-tick');
+                          text.setAttribute('text-anchor', 'middle');
+                          text.textContent = label;
+                          svg.appendChild(text);
+                      }
+                  }
+              });
+          }
+  
+          // Click a bar → scroll to the response message and flash it. The panel
+          // is fixed at the BOTTOM, so we only subtract any open top-sticky
+          // element (filter toolbar / timeline) and otherwise put the target
+          // near the top of the area above the panel.
+          function navigateToBar(messageId) {
+              if (!messageId) return;
+              const messageEl = document.getElementById('msg-' + messageId);
+              if (!messageEl) return;
+  
+              let topOffset = 0;
+              const timeline = document.getElementById('timeline-container');
+              if (timeline && timeline.style.display !== 'none') {
+                  topOffset = Math.max(topOffset, timeline.offsetHeight);
+              }
+              const filterToolbar = document.querySelector('.filter-toolbar');
+              if (filterToolbar && getComputedStyle(filterToolbar).display !== 'none') {
+                  topOffset = Math.max(topOffset, filterToolbar.offsetHeight);
+              }
+  
+              const scrollPosition = messageEl.offsetTop - topOffset - 16;
+              window.scrollTo({ top: Math.max(0, scrollPosition), behavior: 'smooth' });
+  
+              messageEl.style.backgroundColor = '#fff3cd';
+              setTimeout(() => {
+                  messageEl.style.backgroundColor = '';
+              }, 2000);
+          }
+  
+          function setScale(mode) {
+              if (mode !== 'linear' && mode !== 'log') return;
+              scaleMode = mode;
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.classList.toggle('active', btn.dataset.scale === mode);
+              });
+              renderChart();
+          }
+  
+          function isOpen() {
+              const panel = document.getElementById('token-chart-panel');
+              return panel && panel.style.display !== 'none';
+          }
+  
+          function toggleTokenChart() {
+              const panel = document.getElementById('token-chart-panel');
+              const button = document.getElementById('toggleTokenChart');
+              if (!panel) return;
+              if (panel.style.display === 'none') {
+                  panel.style.display = 'flex';
+                  if (button) button.classList.add('active');
+                  renderChart();
+              } else {
+                  panel.style.display = 'none';
+                  if (button) button.classList.remove('active');
+              }
+          }
+  
+          // Re-render on filter changes so sidechain bars appear/disappear with
+          // the 🔗 Sub-assistant toggle (mirrors the timeline's filter wiring).
+          function onFilterChange() {
+              if (isOpen()) setTimeout(renderChart, 50);
+          }
+  
+          window.toggleTokenChart = toggleTokenChart;
+  
+          document.addEventListener('DOMContentLoaded', function () {
+              chartData = parseData();
+  
+              const button = document.getElementById('toggleTokenChart');
+              if (button) {
+                  button.addEventListener('click', toggleTokenChart);
+              }
+  
+              const closeButton = document.getElementById('closeTokenChart');
+              if (closeButton) {
+                  closeButton.addEventListener('click', toggleTokenChart);
+              }
+  
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.addEventListener('click', () => setScale(btn.dataset.scale));
+              });
+  
+              // Event-delegated bar click.
+              const svg = document.getElementById('token-chart-svg');
+              if (svg) {
+                  svg.addEventListener('click', function (event) {
+                      const bar = event.target.closest('.token-bar');
+                      if (bar) navigateToBar(bar.getAttribute('data-message-id'));
+                  });
+              }
+  
+              // Filter parity wiring.
+              document.querySelectorAll('.filter-toggle').forEach(toggle => {
+                  toggle.addEventListener('click', onFilterChange);
+              });
+              const selectAllButton = document.getElementById('selectAll');
+              const selectNoneButton = document.getElementById('selectNone');
+              if (selectAllButton) selectAllButton.addEventListener('click', onFilterChange);
+              if (selectNoneButton) selectNoneButton.addEventListener('click', onFilterChange);
+          });
+      })();
+  </script>
+  
       <!-- Combined Search & Filter Toolbar -->
       <div class="filter-toolbar">
           <div class="toolbar-header">
@@ -4711,6 +5154,7 @@
       
   
       <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+      <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
       <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
       <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
       <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>
@@ -6359,6 +6803,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -6657,6 +7108,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -10163,6 +10623,149 @@
   .session-team-icon {
       font-size: 0.95em;
   }
+  /* Token-usage chart overlay (fixed bottom panel) */
+  
+  .token-chart-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+      max-height: 35vh;
+      padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+      flex-direction: column;
+      gap: 8px;
+      background: var(--white-dimmed);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-light);
+      box-shadow: 0 -4px 12px #00000018;
+  }
+  
+  .token-chart-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+  }
+  
+  .token-chart-title {
+      font-weight: 600;
+      color: var(--text-primary);
+  }
+  
+  .token-chart-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8em;
+      color: var(--text-muted);
+  }
+  
+  .token-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+  }
+  
+  .token-chart-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+  }
+  
+  .token-chart-swatch-input {
+      background-color: var(--token-input-color);
+  }
+  
+  .token-chart-swatch-cache-read {
+      background-color: var(--token-cache-read-color);
+  }
+  
+  .token-chart-swatch-output {
+      background-color: var(--token-output-color);
+  }
+  
+  .token-chart-swatch-cache-write {
+      background-color: var(--token-cache-write-color);
+  }
+  
+  .token-chart-scale-toggle {
+      display: inline-flex;
+      margin-left: auto;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  
+  .token-chart-scale-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78em;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-scale-toggle button:hover {
+      background-color: var(--bg-hover);
+  }
+  
+  .token-chart-scale-toggle button.active {
+      background-color: #d4e8f7;
+      color: var(--text-primary);
+      font-weight: 600;
+  }
+  
+  .token-chart-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-close:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+  }
+  
+  .token-chart-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+  }
+  
+  #token-chart-svg {
+      display: block;
+  }
+  
+  .token-bar {
+      cursor: pointer;
+      transition: opacity 0.15s;
+  }
+  
+  .token-bar:hover {
+      opacity: 0.78;
+  }
+  
+  .token-chart-tick {
+      font-size: 9px;
+      fill: var(--text-muted);
+      font-family: var(--font-ui);
+  }
+  
+  .token-chart-empty {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.9em;
+      padding: 16px 0;
+  }
       </style>
   </head>
   
@@ -10708,6 +11311,290 @@
       })();
   </script>
   
+      <!-- Token Usage Chart Component -->
+      <!-- Token Usage Chart Component -->
+  <!-- Hand-rolled inline SVG stacked-bar timeline of per-response token usage. -->
+  <!-- One bar per assistant API response, split into Input / Cache Read /
+       Output / Cache Write. Data comes from the Python-built JSON island below
+       (numbers only), so it is immune to the CSS-class drift the DOM-scraped
+       timeline has to guard against. -->
+  
+  <script type="application/json" id="token-chart-data">[]</script>
+  
+  <div class="token-chart-panel" id="token-chart-panel" style="display: none;">
+      <div class="token-chart-header">
+          <span class="token-chart-title">📊 Token usage</span>
+          <div class="token-chart-legend">
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-input"></span>Input</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-read"></span>Cache Read</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-output"></span>Output</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-write"></span>Cache Write</span>
+          </div>
+          <div class="token-chart-scale-toggle" role="group" aria-label="Token chart scale">
+              <button type="button" data-scale="linear" class="active">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+          </div>
+          <button type="button" class="token-chart-close" id="closeTokenChart" title="Close token chart" aria-label="Close token chart">✕</button>
+      </div>
+      <div class="token-chart-scroll">
+          <svg id="token-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="token-chart-empty">No token usage to chart for this page.</div>
+  </div>
+  
+  <script id="token-chart-script">
+      // Token-usage chart - inline for self-contained HTML.
+      (function () {
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+  
+          // Layout constants (px).
+          const BAR_WIDTH = 16;
+          const BAR_GAP = 6;
+          const SIDE_PAD = 8;
+          const TOP_PAD = 10;
+          const CHART_HEIGHT = 150;
+          const AXIS_HEIGHT = 20;
+          const SLOT = BAR_WIDTH + BAR_GAP;
+  
+          // Stacked segment order (bottom → top) with their CSS-var fills.
+          const SEGMENTS = [
+              { key: 'input', label: 'Input', fill: 'var(--token-input-color)' },
+              { key: 'cache_read', label: 'Cache Read', fill: 'var(--token-cache-read-color)' },
+              { key: 'output', label: 'Output', fill: 'var(--token-output-color)' },
+              { key: 'cache_write', label: 'Cache Write', fill: 'var(--token-cache-write-color)' },
+          ];
+  
+          let chartData = [];
+          let scaleMode = 'linear';
+  
+          function parseData() {
+              const island = document.getElementById('token-chart-data');
+              if (!island) return [];
+              try {
+                  const parsed = JSON.parse(island.textContent || '[]');
+                  return Array.isArray(parsed) ? parsed : [];
+              } catch (err) {
+                  console.error('Failed to parse token chart data', err);
+                  return [];
+              }
+          }
+  
+          // Honor the existing 🔗 Sub-assistant filter toggle: when it is off,
+          // sidechain bars are hidden (same dimension as the message filter).
+          function sidechainVisible() {
+              const toggle = document.querySelector('.filter-toggle[data-type="sidechain"]');
+              return !toggle || toggle.classList.contains('active');
+          }
+  
+          function visibleData() {
+              const showSidechain = sidechainVisible();
+              return chartData.filter(d => showSidechain || !d.sidechain);
+          }
+  
+          function scaleValue(v) {
+              if (v <= 0) return 0;
+              return scaleMode === 'log' ? Math.log10(v + 1) : v;
+          }
+  
+          function shortTime(iso) {
+              if (!iso) return '';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return '';
+              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+  
+          function renderChart() {
+              const svg = document.getElementById('token-chart-svg');
+              const empty = document.querySelector('.token-chart-empty');
+              if (!svg) return;
+  
+              // Clear previous render.
+              while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
+              const data = visibleData();
+              if (data.length === 0) {
+                  svg.style.display = 'none';
+                  if (empty) empty.style.display = 'block';
+                  return;
+              }
+              svg.style.display = 'block';
+              if (empty) empty.style.display = 'none';
+  
+              // Max scaled total across visible bars sets the full chart height.
+              let maxScaled = 0;
+              data.forEach(d => {
+                  let sum = 0;
+                  SEGMENTS.forEach(seg => { sum += scaleValue(d[seg.key] || 0); });
+                  if (sum > maxScaled) maxScaled = sum;
+              });
+              if (maxScaled <= 0) maxScaled = 1;
+  
+              const width = SIDE_PAD * 2 + data.length * SLOT;
+              const height = TOP_PAD + CHART_HEIGHT + AXIS_HEIGHT;
+              svg.setAttribute('width', String(width));
+              svg.setAttribute('height', String(height));
+              svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+              const baseline = TOP_PAD + CHART_HEIGHT;
+              // Sparse x-axis labels: aim for roughly 8 ticks.
+              const tickEvery = Math.max(1, Math.ceil(data.length / 8));
+  
+              data.forEach((d, i) => {
+                  const x = SIDE_PAD + i * SLOT;
+                  const group = document.createElementNS(SVG_NS, 'g');
+                  group.setAttribute('class', 'token-bar');
+                  group.setAttribute('data-message-id', d.id);
+  
+                  // Whole-bar tooltip: timestamp + exact counts + total.
+                  const total = SEGMENTS.reduce((acc, seg) => acc + (d[seg.key] || 0), 0);
+                  const titleEl = document.createElementNS(SVG_NS, 'title');
+                  const lines = [];
+                  if (d.ts) lines.push(shortTime(d.ts));
+                  SEGMENTS.forEach(seg => {
+                      lines.push(`${seg.label}: ${(d[seg.key] || 0).toLocaleString()}`);
+                  });
+                  lines.push(`Total: ${total.toLocaleString()}`);
+                  if (d.sidechain) lines.push('🔗 Sub-assistant');
+                  titleEl.textContent = lines.join('\n');
+                  group.appendChild(titleEl);
+  
+                  let yBottom = baseline;
+                  SEGMENTS.forEach(seg => {
+                      const v = d[seg.key] || 0;
+                      const sv = scaleValue(v);
+                      const h = (sv / maxScaled) * CHART_HEIGHT;
+                      if (h > 0) {
+                          const rect = document.createElementNS(SVG_NS, 'rect');
+                          rect.setAttribute('x', String(x));
+                          rect.setAttribute('y', String(yBottom - h));
+                          rect.setAttribute('width', String(BAR_WIDTH));
+                          rect.setAttribute('height', String(h));
+                          rect.setAttribute('fill', seg.fill);
+                          group.appendChild(rect);
+                          yBottom -= h;
+                      }
+                  });
+  
+                  svg.appendChild(group);
+  
+                  // Sparse time tick under the bar.
+                  if (i % tickEvery === 0) {
+                      const label = shortTime(d.ts);
+                      if (label) {
+                          const text = document.createElementNS(SVG_NS, 'text');
+                          text.setAttribute('x', String(x + BAR_WIDTH / 2));
+                          text.setAttribute('y', String(baseline + 14));
+                          text.setAttribute('class', 'token-chart-tick');
+                          text.setAttribute('text-anchor', 'middle');
+                          text.textContent = label;
+                          svg.appendChild(text);
+                      }
+                  }
+              });
+          }
+  
+          // Click a bar → scroll to the response message and flash it. The panel
+          // is fixed at the BOTTOM, so we only subtract any open top-sticky
+          // element (filter toolbar / timeline) and otherwise put the target
+          // near the top of the area above the panel.
+          function navigateToBar(messageId) {
+              if (!messageId) return;
+              const messageEl = document.getElementById('msg-' + messageId);
+              if (!messageEl) return;
+  
+              let topOffset = 0;
+              const timeline = document.getElementById('timeline-container');
+              if (timeline && timeline.style.display !== 'none') {
+                  topOffset = Math.max(topOffset, timeline.offsetHeight);
+              }
+              const filterToolbar = document.querySelector('.filter-toolbar');
+              if (filterToolbar && getComputedStyle(filterToolbar).display !== 'none') {
+                  topOffset = Math.max(topOffset, filterToolbar.offsetHeight);
+              }
+  
+              const scrollPosition = messageEl.offsetTop - topOffset - 16;
+              window.scrollTo({ top: Math.max(0, scrollPosition), behavior: 'smooth' });
+  
+              messageEl.style.backgroundColor = '#fff3cd';
+              setTimeout(() => {
+                  messageEl.style.backgroundColor = '';
+              }, 2000);
+          }
+  
+          function setScale(mode) {
+              if (mode !== 'linear' && mode !== 'log') return;
+              scaleMode = mode;
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.classList.toggle('active', btn.dataset.scale === mode);
+              });
+              renderChart();
+          }
+  
+          function isOpen() {
+              const panel = document.getElementById('token-chart-panel');
+              return panel && panel.style.display !== 'none';
+          }
+  
+          function toggleTokenChart() {
+              const panel = document.getElementById('token-chart-panel');
+              const button = document.getElementById('toggleTokenChart');
+              if (!panel) return;
+              if (panel.style.display === 'none') {
+                  panel.style.display = 'flex';
+                  if (button) button.classList.add('active');
+                  renderChart();
+              } else {
+                  panel.style.display = 'none';
+                  if (button) button.classList.remove('active');
+              }
+          }
+  
+          // Re-render on filter changes so sidechain bars appear/disappear with
+          // the 🔗 Sub-assistant toggle (mirrors the timeline's filter wiring).
+          function onFilterChange() {
+              if (isOpen()) setTimeout(renderChart, 50);
+          }
+  
+          window.toggleTokenChart = toggleTokenChart;
+  
+          document.addEventListener('DOMContentLoaded', function () {
+              chartData = parseData();
+  
+              const button = document.getElementById('toggleTokenChart');
+              if (button) {
+                  button.addEventListener('click', toggleTokenChart);
+              }
+  
+              const closeButton = document.getElementById('closeTokenChart');
+              if (closeButton) {
+                  closeButton.addEventListener('click', toggleTokenChart);
+              }
+  
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.addEventListener('click', () => setScale(btn.dataset.scale));
+              });
+  
+              // Event-delegated bar click.
+              const svg = document.getElementById('token-chart-svg');
+              if (svg) {
+                  svg.addEventListener('click', function (event) {
+                      const bar = event.target.closest('.token-bar');
+                      if (bar) navigateToBar(bar.getAttribute('data-message-id'));
+                  });
+              }
+  
+              // Filter parity wiring.
+              document.querySelectorAll('.filter-toggle').forEach(toggle => {
+                  toggle.addEventListener('click', onFilterChange);
+              });
+              const selectAllButton = document.getElementById('selectAll');
+              const selectNoneButton = document.getElementById('selectNone');
+              if (selectAllButton) selectAllButton.addEventListener('click', onFilterChange);
+              if (selectNoneButton) selectNoneButton.addEventListener('click', onFilterChange);
+          });
+      })();
+  </script>
+  
       <!-- Combined Search & Filter Toolbar -->
       <div class="filter-toolbar">
           <div class="toolbar-header">
@@ -10919,6 +11806,7 @@
       
   
       <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+      <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
       <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
       <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
       <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>
@@ -12567,6 +13455,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -12865,6 +13760,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -14755,6 +15659,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -15053,6 +15964,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -18559,6 +19479,149 @@
   .session-team-icon {
       font-size: 0.95em;
   }
+  /* Token-usage chart overlay (fixed bottom panel) */
+  
+  .token-chart-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+      max-height: 35vh;
+      padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+      flex-direction: column;
+      gap: 8px;
+      background: var(--white-dimmed);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-light);
+      box-shadow: 0 -4px 12px #00000018;
+  }
+  
+  .token-chart-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+  }
+  
+  .token-chart-title {
+      font-weight: 600;
+      color: var(--text-primary);
+  }
+  
+  .token-chart-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8em;
+      color: var(--text-muted);
+  }
+  
+  .token-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+  }
+  
+  .token-chart-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+  }
+  
+  .token-chart-swatch-input {
+      background-color: var(--token-input-color);
+  }
+  
+  .token-chart-swatch-cache-read {
+      background-color: var(--token-cache-read-color);
+  }
+  
+  .token-chart-swatch-output {
+      background-color: var(--token-output-color);
+  }
+  
+  .token-chart-swatch-cache-write {
+      background-color: var(--token-cache-write-color);
+  }
+  
+  .token-chart-scale-toggle {
+      display: inline-flex;
+      margin-left: auto;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  
+  .token-chart-scale-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78em;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-scale-toggle button:hover {
+      background-color: var(--bg-hover);
+  }
+  
+  .token-chart-scale-toggle button.active {
+      background-color: #d4e8f7;
+      color: var(--text-primary);
+      font-weight: 600;
+  }
+  
+  .token-chart-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-close:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+  }
+  
+  .token-chart-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+  }
+  
+  #token-chart-svg {
+      display: block;
+  }
+  
+  .token-bar {
+      cursor: pointer;
+      transition: opacity 0.15s;
+  }
+  
+  .token-bar:hover {
+      opacity: 0.78;
+  }
+  
+  .token-chart-tick {
+      font-size: 9px;
+      fill: var(--text-muted);
+      font-family: var(--font-ui);
+  }
+  
+  .token-chart-empty {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.9em;
+      padding: 16px 0;
+  }
       </style>
   </head>
   
@@ -19104,6 +20167,290 @@
       })();
   </script>
   
+      <!-- Token Usage Chart Component -->
+      <!-- Token Usage Chart Component -->
+  <!-- Hand-rolled inline SVG stacked-bar timeline of per-response token usage. -->
+  <!-- One bar per assistant API response, split into Input / Cache Read /
+       Output / Cache Write. Data comes from the Python-built JSON island below
+       (numbers only), so it is immune to the CSS-class drift the DOM-scraped
+       timeline has to guard against. -->
+  
+  <script type="application/json" id="token-chart-data">[{"id":"d-2","ts":"2025-07-03T15:52:07.874907Z","type":"assistant","input":25,"cache_read":0,"output":120,"cache_write":0,"sidechain":false},{"id":"d-6","ts":"2025-07-03T16:00:07.874907Z","type":"assistant","input":78,"cache_read":0,"output":95,"cache_write":0,"sidechain":false},{"id":"d-10","ts":"2025-07-03T16:08:07.874907Z","type":"assistant","input":45,"cache_read":0,"output":110,"cache_write":0,"sidechain":false}]</script>
+  
+  <div class="token-chart-panel" id="token-chart-panel" style="display: none;">
+      <div class="token-chart-header">
+          <span class="token-chart-title">📊 Token usage</span>
+          <div class="token-chart-legend">
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-input"></span>Input</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-read"></span>Cache Read</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-output"></span>Output</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-write"></span>Cache Write</span>
+          </div>
+          <div class="token-chart-scale-toggle" role="group" aria-label="Token chart scale">
+              <button type="button" data-scale="linear" class="active">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+          </div>
+          <button type="button" class="token-chart-close" id="closeTokenChart" title="Close token chart" aria-label="Close token chart">✕</button>
+      </div>
+      <div class="token-chart-scroll">
+          <svg id="token-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="token-chart-empty">No token usage to chart for this page.</div>
+  </div>
+  
+  <script id="token-chart-script">
+      // Token-usage chart - inline for self-contained HTML.
+      (function () {
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+  
+          // Layout constants (px).
+          const BAR_WIDTH = 16;
+          const BAR_GAP = 6;
+          const SIDE_PAD = 8;
+          const TOP_PAD = 10;
+          const CHART_HEIGHT = 150;
+          const AXIS_HEIGHT = 20;
+          const SLOT = BAR_WIDTH + BAR_GAP;
+  
+          // Stacked segment order (bottom → top) with their CSS-var fills.
+          const SEGMENTS = [
+              { key: 'input', label: 'Input', fill: 'var(--token-input-color)' },
+              { key: 'cache_read', label: 'Cache Read', fill: 'var(--token-cache-read-color)' },
+              { key: 'output', label: 'Output', fill: 'var(--token-output-color)' },
+              { key: 'cache_write', label: 'Cache Write', fill: 'var(--token-cache-write-color)' },
+          ];
+  
+          let chartData = [];
+          let scaleMode = 'linear';
+  
+          function parseData() {
+              const island = document.getElementById('token-chart-data');
+              if (!island) return [];
+              try {
+                  const parsed = JSON.parse(island.textContent || '[]');
+                  return Array.isArray(parsed) ? parsed : [];
+              } catch (err) {
+                  console.error('Failed to parse token chart data', err);
+                  return [];
+              }
+          }
+  
+          // Honor the existing 🔗 Sub-assistant filter toggle: when it is off,
+          // sidechain bars are hidden (same dimension as the message filter).
+          function sidechainVisible() {
+              const toggle = document.querySelector('.filter-toggle[data-type="sidechain"]');
+              return !toggle || toggle.classList.contains('active');
+          }
+  
+          function visibleData() {
+              const showSidechain = sidechainVisible();
+              return chartData.filter(d => showSidechain || !d.sidechain);
+          }
+  
+          function scaleValue(v) {
+              if (v <= 0) return 0;
+              return scaleMode === 'log' ? Math.log10(v + 1) : v;
+          }
+  
+          function shortTime(iso) {
+              if (!iso) return '';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return '';
+              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+  
+          function renderChart() {
+              const svg = document.getElementById('token-chart-svg');
+              const empty = document.querySelector('.token-chart-empty');
+              if (!svg) return;
+  
+              // Clear previous render.
+              while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
+              const data = visibleData();
+              if (data.length === 0) {
+                  svg.style.display = 'none';
+                  if (empty) empty.style.display = 'block';
+                  return;
+              }
+              svg.style.display = 'block';
+              if (empty) empty.style.display = 'none';
+  
+              // Max scaled total across visible bars sets the full chart height.
+              let maxScaled = 0;
+              data.forEach(d => {
+                  let sum = 0;
+                  SEGMENTS.forEach(seg => { sum += scaleValue(d[seg.key] || 0); });
+                  if (sum > maxScaled) maxScaled = sum;
+              });
+              if (maxScaled <= 0) maxScaled = 1;
+  
+              const width = SIDE_PAD * 2 + data.length * SLOT;
+              const height = TOP_PAD + CHART_HEIGHT + AXIS_HEIGHT;
+              svg.setAttribute('width', String(width));
+              svg.setAttribute('height', String(height));
+              svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+              const baseline = TOP_PAD + CHART_HEIGHT;
+              // Sparse x-axis labels: aim for roughly 8 ticks.
+              const tickEvery = Math.max(1, Math.ceil(data.length / 8));
+  
+              data.forEach((d, i) => {
+                  const x = SIDE_PAD + i * SLOT;
+                  const group = document.createElementNS(SVG_NS, 'g');
+                  group.setAttribute('class', 'token-bar');
+                  group.setAttribute('data-message-id', d.id);
+  
+                  // Whole-bar tooltip: timestamp + exact counts + total.
+                  const total = SEGMENTS.reduce((acc, seg) => acc + (d[seg.key] || 0), 0);
+                  const titleEl = document.createElementNS(SVG_NS, 'title');
+                  const lines = [];
+                  if (d.ts) lines.push(shortTime(d.ts));
+                  SEGMENTS.forEach(seg => {
+                      lines.push(`${seg.label}: ${(d[seg.key] || 0).toLocaleString()}`);
+                  });
+                  lines.push(`Total: ${total.toLocaleString()}`);
+                  if (d.sidechain) lines.push('🔗 Sub-assistant');
+                  titleEl.textContent = lines.join('\n');
+                  group.appendChild(titleEl);
+  
+                  let yBottom = baseline;
+                  SEGMENTS.forEach(seg => {
+                      const v = d[seg.key] || 0;
+                      const sv = scaleValue(v);
+                      const h = (sv / maxScaled) * CHART_HEIGHT;
+                      if (h > 0) {
+                          const rect = document.createElementNS(SVG_NS, 'rect');
+                          rect.setAttribute('x', String(x));
+                          rect.setAttribute('y', String(yBottom - h));
+                          rect.setAttribute('width', String(BAR_WIDTH));
+                          rect.setAttribute('height', String(h));
+                          rect.setAttribute('fill', seg.fill);
+                          group.appendChild(rect);
+                          yBottom -= h;
+                      }
+                  });
+  
+                  svg.appendChild(group);
+  
+                  // Sparse time tick under the bar.
+                  if (i % tickEvery === 0) {
+                      const label = shortTime(d.ts);
+                      if (label) {
+                          const text = document.createElementNS(SVG_NS, 'text');
+                          text.setAttribute('x', String(x + BAR_WIDTH / 2));
+                          text.setAttribute('y', String(baseline + 14));
+                          text.setAttribute('class', 'token-chart-tick');
+                          text.setAttribute('text-anchor', 'middle');
+                          text.textContent = label;
+                          svg.appendChild(text);
+                      }
+                  }
+              });
+          }
+  
+          // Click a bar → scroll to the response message and flash it. The panel
+          // is fixed at the BOTTOM, so we only subtract any open top-sticky
+          // element (filter toolbar / timeline) and otherwise put the target
+          // near the top of the area above the panel.
+          function navigateToBar(messageId) {
+              if (!messageId) return;
+              const messageEl = document.getElementById('msg-' + messageId);
+              if (!messageEl) return;
+  
+              let topOffset = 0;
+              const timeline = document.getElementById('timeline-container');
+              if (timeline && timeline.style.display !== 'none') {
+                  topOffset = Math.max(topOffset, timeline.offsetHeight);
+              }
+              const filterToolbar = document.querySelector('.filter-toolbar');
+              if (filterToolbar && getComputedStyle(filterToolbar).display !== 'none') {
+                  topOffset = Math.max(topOffset, filterToolbar.offsetHeight);
+              }
+  
+              const scrollPosition = messageEl.offsetTop - topOffset - 16;
+              window.scrollTo({ top: Math.max(0, scrollPosition), behavior: 'smooth' });
+  
+              messageEl.style.backgroundColor = '#fff3cd';
+              setTimeout(() => {
+                  messageEl.style.backgroundColor = '';
+              }, 2000);
+          }
+  
+          function setScale(mode) {
+              if (mode !== 'linear' && mode !== 'log') return;
+              scaleMode = mode;
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.classList.toggle('active', btn.dataset.scale === mode);
+              });
+              renderChart();
+          }
+  
+          function isOpen() {
+              const panel = document.getElementById('token-chart-panel');
+              return panel && panel.style.display !== 'none';
+          }
+  
+          function toggleTokenChart() {
+              const panel = document.getElementById('token-chart-panel');
+              const button = document.getElementById('toggleTokenChart');
+              if (!panel) return;
+              if (panel.style.display === 'none') {
+                  panel.style.display = 'flex';
+                  if (button) button.classList.add('active');
+                  renderChart();
+              } else {
+                  panel.style.display = 'none';
+                  if (button) button.classList.remove('active');
+              }
+          }
+  
+          // Re-render on filter changes so sidechain bars appear/disappear with
+          // the 🔗 Sub-assistant toggle (mirrors the timeline's filter wiring).
+          function onFilterChange() {
+              if (isOpen()) setTimeout(renderChart, 50);
+          }
+  
+          window.toggleTokenChart = toggleTokenChart;
+  
+          document.addEventListener('DOMContentLoaded', function () {
+              chartData = parseData();
+  
+              const button = document.getElementById('toggleTokenChart');
+              if (button) {
+                  button.addEventListener('click', toggleTokenChart);
+              }
+  
+              const closeButton = document.getElementById('closeTokenChart');
+              if (closeButton) {
+                  closeButton.addEventListener('click', toggleTokenChart);
+              }
+  
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.addEventListener('click', () => setScale(btn.dataset.scale));
+              });
+  
+              // Event-delegated bar click.
+              const svg = document.getElementById('token-chart-svg');
+              if (svg) {
+                  svg.addEventListener('click', function (event) {
+                      const bar = event.target.closest('.token-bar');
+                      if (bar) navigateToBar(bar.getAttribute('data-message-id'));
+                  });
+              }
+  
+              // Filter parity wiring.
+              document.querySelectorAll('.filter-toggle').forEach(toggle => {
+                  toggle.addEventListener('click', onFilterChange);
+              });
+              const selectAllButton = document.getElementById('selectAll');
+              const selectNoneButton = document.getElementById('selectNone');
+              if (selectAllButton) selectAllButton.addEventListener('click', onFilterChange);
+              if (selectNoneButton) selectNoneButton.addEventListener('click', onFilterChange);
+          });
+      })();
+  </script>
+  
       <!-- Combined Search & Filter Toolbar -->
       <div class="filter-toolbar">
           <div class="toolbar-header">
@@ -19531,6 +20878,7 @@
       
   
       <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+      <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
       <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
       <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
       <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>
@@ -21179,6 +22527,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -21477,6 +22832,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -24983,6 +26347,149 @@
   .session-team-icon {
       font-size: 0.95em;
   }
+  /* Token-usage chart overlay (fixed bottom panel) */
+  
+  .token-chart-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+      max-height: 35vh;
+      padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+      flex-direction: column;
+      gap: 8px;
+      background: var(--white-dimmed);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-light);
+      box-shadow: 0 -4px 12px #00000018;
+  }
+  
+  .token-chart-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+  }
+  
+  .token-chart-title {
+      font-weight: 600;
+      color: var(--text-primary);
+  }
+  
+  .token-chart-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8em;
+      color: var(--text-muted);
+  }
+  
+  .token-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+  }
+  
+  .token-chart-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+  }
+  
+  .token-chart-swatch-input {
+      background-color: var(--token-input-color);
+  }
+  
+  .token-chart-swatch-cache-read {
+      background-color: var(--token-cache-read-color);
+  }
+  
+  .token-chart-swatch-output {
+      background-color: var(--token-output-color);
+  }
+  
+  .token-chart-swatch-cache-write {
+      background-color: var(--token-cache-write-color);
+  }
+  
+  .token-chart-scale-toggle {
+      display: inline-flex;
+      margin-left: auto;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  
+  .token-chart-scale-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78em;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-scale-toggle button:hover {
+      background-color: var(--bg-hover);
+  }
+  
+  .token-chart-scale-toggle button.active {
+      background-color: #d4e8f7;
+      color: var(--text-primary);
+      font-weight: 600;
+  }
+  
+  .token-chart-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-close:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+  }
+  
+  .token-chart-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+  }
+  
+  #token-chart-svg {
+      display: block;
+  }
+  
+  .token-bar {
+      cursor: pointer;
+      transition: opacity 0.15s;
+  }
+  
+  .token-bar:hover {
+      opacity: 0.78;
+  }
+  
+  .token-chart-tick {
+      font-size: 9px;
+      fill: var(--text-muted);
+      font-family: var(--font-ui);
+  }
+  
+  .token-chart-empty {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.9em;
+      padding: 16px 0;
+  }
       </style>
   </head>
   
@@ -25524,6 +27031,290 @@
   
               // Update timeline position on window resize
               window.addEventListener('resize', updateTimelinePosition);
+          });
+      })();
+  </script>
+  
+      <!-- Token Usage Chart Component -->
+      <!-- Token Usage Chart Component -->
+  <!-- Hand-rolled inline SVG stacked-bar timeline of per-response token usage. -->
+  <!-- One bar per assistant API response, split into Input / Cache Read /
+       Output / Cache Write. Data comes from the Python-built JSON island below
+       (numbers only), so it is immune to the CSS-class drift the DOM-scraped
+       timeline has to guard against. -->
+  
+  <script type="application/json" id="token-chart-data">[]</script>
+  
+  <div class="token-chart-panel" id="token-chart-panel" style="display: none;">
+      <div class="token-chart-header">
+          <span class="token-chart-title">📊 Token usage</span>
+          <div class="token-chart-legend">
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-input"></span>Input</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-read"></span>Cache Read</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-output"></span>Output</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-write"></span>Cache Write</span>
+          </div>
+          <div class="token-chart-scale-toggle" role="group" aria-label="Token chart scale">
+              <button type="button" data-scale="linear" class="active">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+          </div>
+          <button type="button" class="token-chart-close" id="closeTokenChart" title="Close token chart" aria-label="Close token chart">✕</button>
+      </div>
+      <div class="token-chart-scroll">
+          <svg id="token-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="token-chart-empty">No token usage to chart for this page.</div>
+  </div>
+  
+  <script id="token-chart-script">
+      // Token-usage chart - inline for self-contained HTML.
+      (function () {
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+  
+          // Layout constants (px).
+          const BAR_WIDTH = 16;
+          const BAR_GAP = 6;
+          const SIDE_PAD = 8;
+          const TOP_PAD = 10;
+          const CHART_HEIGHT = 150;
+          const AXIS_HEIGHT = 20;
+          const SLOT = BAR_WIDTH + BAR_GAP;
+  
+          // Stacked segment order (bottom → top) with their CSS-var fills.
+          const SEGMENTS = [
+              { key: 'input', label: 'Input', fill: 'var(--token-input-color)' },
+              { key: 'cache_read', label: 'Cache Read', fill: 'var(--token-cache-read-color)' },
+              { key: 'output', label: 'Output', fill: 'var(--token-output-color)' },
+              { key: 'cache_write', label: 'Cache Write', fill: 'var(--token-cache-write-color)' },
+          ];
+  
+          let chartData = [];
+          let scaleMode = 'linear';
+  
+          function parseData() {
+              const island = document.getElementById('token-chart-data');
+              if (!island) return [];
+              try {
+                  const parsed = JSON.parse(island.textContent || '[]');
+                  return Array.isArray(parsed) ? parsed : [];
+              } catch (err) {
+                  console.error('Failed to parse token chart data', err);
+                  return [];
+              }
+          }
+  
+          // Honor the existing 🔗 Sub-assistant filter toggle: when it is off,
+          // sidechain bars are hidden (same dimension as the message filter).
+          function sidechainVisible() {
+              const toggle = document.querySelector('.filter-toggle[data-type="sidechain"]');
+              return !toggle || toggle.classList.contains('active');
+          }
+  
+          function visibleData() {
+              const showSidechain = sidechainVisible();
+              return chartData.filter(d => showSidechain || !d.sidechain);
+          }
+  
+          function scaleValue(v) {
+              if (v <= 0) return 0;
+              return scaleMode === 'log' ? Math.log10(v + 1) : v;
+          }
+  
+          function shortTime(iso) {
+              if (!iso) return '';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return '';
+              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+  
+          function renderChart() {
+              const svg = document.getElementById('token-chart-svg');
+              const empty = document.querySelector('.token-chart-empty');
+              if (!svg) return;
+  
+              // Clear previous render.
+              while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
+              const data = visibleData();
+              if (data.length === 0) {
+                  svg.style.display = 'none';
+                  if (empty) empty.style.display = 'block';
+                  return;
+              }
+              svg.style.display = 'block';
+              if (empty) empty.style.display = 'none';
+  
+              // Max scaled total across visible bars sets the full chart height.
+              let maxScaled = 0;
+              data.forEach(d => {
+                  let sum = 0;
+                  SEGMENTS.forEach(seg => { sum += scaleValue(d[seg.key] || 0); });
+                  if (sum > maxScaled) maxScaled = sum;
+              });
+              if (maxScaled <= 0) maxScaled = 1;
+  
+              const width = SIDE_PAD * 2 + data.length * SLOT;
+              const height = TOP_PAD + CHART_HEIGHT + AXIS_HEIGHT;
+              svg.setAttribute('width', String(width));
+              svg.setAttribute('height', String(height));
+              svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+              const baseline = TOP_PAD + CHART_HEIGHT;
+              // Sparse x-axis labels: aim for roughly 8 ticks.
+              const tickEvery = Math.max(1, Math.ceil(data.length / 8));
+  
+              data.forEach((d, i) => {
+                  const x = SIDE_PAD + i * SLOT;
+                  const group = document.createElementNS(SVG_NS, 'g');
+                  group.setAttribute('class', 'token-bar');
+                  group.setAttribute('data-message-id', d.id);
+  
+                  // Whole-bar tooltip: timestamp + exact counts + total.
+                  const total = SEGMENTS.reduce((acc, seg) => acc + (d[seg.key] || 0), 0);
+                  const titleEl = document.createElementNS(SVG_NS, 'title');
+                  const lines = [];
+                  if (d.ts) lines.push(shortTime(d.ts));
+                  SEGMENTS.forEach(seg => {
+                      lines.push(`${seg.label}: ${(d[seg.key] || 0).toLocaleString()}`);
+                  });
+                  lines.push(`Total: ${total.toLocaleString()}`);
+                  if (d.sidechain) lines.push('🔗 Sub-assistant');
+                  titleEl.textContent = lines.join('\n');
+                  group.appendChild(titleEl);
+  
+                  let yBottom = baseline;
+                  SEGMENTS.forEach(seg => {
+                      const v = d[seg.key] || 0;
+                      const sv = scaleValue(v);
+                      const h = (sv / maxScaled) * CHART_HEIGHT;
+                      if (h > 0) {
+                          const rect = document.createElementNS(SVG_NS, 'rect');
+                          rect.setAttribute('x', String(x));
+                          rect.setAttribute('y', String(yBottom - h));
+                          rect.setAttribute('width', String(BAR_WIDTH));
+                          rect.setAttribute('height', String(h));
+                          rect.setAttribute('fill', seg.fill);
+                          group.appendChild(rect);
+                          yBottom -= h;
+                      }
+                  });
+  
+                  svg.appendChild(group);
+  
+                  // Sparse time tick under the bar.
+                  if (i % tickEvery === 0) {
+                      const label = shortTime(d.ts);
+                      if (label) {
+                          const text = document.createElementNS(SVG_NS, 'text');
+                          text.setAttribute('x', String(x + BAR_WIDTH / 2));
+                          text.setAttribute('y', String(baseline + 14));
+                          text.setAttribute('class', 'token-chart-tick');
+                          text.setAttribute('text-anchor', 'middle');
+                          text.textContent = label;
+                          svg.appendChild(text);
+                      }
+                  }
+              });
+          }
+  
+          // Click a bar → scroll to the response message and flash it. The panel
+          // is fixed at the BOTTOM, so we only subtract any open top-sticky
+          // element (filter toolbar / timeline) and otherwise put the target
+          // near the top of the area above the panel.
+          function navigateToBar(messageId) {
+              if (!messageId) return;
+              const messageEl = document.getElementById('msg-' + messageId);
+              if (!messageEl) return;
+  
+              let topOffset = 0;
+              const timeline = document.getElementById('timeline-container');
+              if (timeline && timeline.style.display !== 'none') {
+                  topOffset = Math.max(topOffset, timeline.offsetHeight);
+              }
+              const filterToolbar = document.querySelector('.filter-toolbar');
+              if (filterToolbar && getComputedStyle(filterToolbar).display !== 'none') {
+                  topOffset = Math.max(topOffset, filterToolbar.offsetHeight);
+              }
+  
+              const scrollPosition = messageEl.offsetTop - topOffset - 16;
+              window.scrollTo({ top: Math.max(0, scrollPosition), behavior: 'smooth' });
+  
+              messageEl.style.backgroundColor = '#fff3cd';
+              setTimeout(() => {
+                  messageEl.style.backgroundColor = '';
+              }, 2000);
+          }
+  
+          function setScale(mode) {
+              if (mode !== 'linear' && mode !== 'log') return;
+              scaleMode = mode;
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.classList.toggle('active', btn.dataset.scale === mode);
+              });
+              renderChart();
+          }
+  
+          function isOpen() {
+              const panel = document.getElementById('token-chart-panel');
+              return panel && panel.style.display !== 'none';
+          }
+  
+          function toggleTokenChart() {
+              const panel = document.getElementById('token-chart-panel');
+              const button = document.getElementById('toggleTokenChart');
+              if (!panel) return;
+              if (panel.style.display === 'none') {
+                  panel.style.display = 'flex';
+                  if (button) button.classList.add('active');
+                  renderChart();
+              } else {
+                  panel.style.display = 'none';
+                  if (button) button.classList.remove('active');
+              }
+          }
+  
+          // Re-render on filter changes so sidechain bars appear/disappear with
+          // the 🔗 Sub-assistant toggle (mirrors the timeline's filter wiring).
+          function onFilterChange() {
+              if (isOpen()) setTimeout(renderChart, 50);
+          }
+  
+          window.toggleTokenChart = toggleTokenChart;
+  
+          document.addEventListener('DOMContentLoaded', function () {
+              chartData = parseData();
+  
+              const button = document.getElementById('toggleTokenChart');
+              if (button) {
+                  button.addEventListener('click', toggleTokenChart);
+              }
+  
+              const closeButton = document.getElementById('closeTokenChart');
+              if (closeButton) {
+                  closeButton.addEventListener('click', toggleTokenChart);
+              }
+  
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.addEventListener('click', () => setScale(btn.dataset.scale));
+              });
+  
+              // Event-delegated bar click.
+              const svg = document.getElementById('token-chart-svg');
+              if (svg) {
+                  svg.addEventListener('click', function (event) {
+                      const bar = event.target.closest('.token-bar');
+                      if (bar) navigateToBar(bar.getAttribute('data-message-id'));
+                  });
+              }
+  
+              // Filter parity wiring.
+              document.querySelectorAll('.filter-toggle').forEach(toggle => {
+                  toggle.addEventListener('click', onFilterChange);
+              });
+              const selectAllButton = document.getElementById('selectAll');
+              const selectNoneButton = document.getElementById('selectNone');
+              if (selectAllButton) selectAllButton.addEventListener('click', onFilterChange);
+              if (selectNoneButton) selectNoneButton.addEventListener('click', onFilterChange);
           });
       })();
   </script>
@@ -26222,6 +28013,7 @@
       
   
       <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+      <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
       <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
       <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
       <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>
@@ -27870,6 +29662,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -28168,6 +29967,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -31674,6 +33482,149 @@
   .session-team-icon {
       font-size: 0.95em;
   }
+  /* Token-usage chart overlay (fixed bottom panel) */
+  
+  .token-chart-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+      max-height: 35vh;
+      padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+      flex-direction: column;
+      gap: 8px;
+      background: var(--white-dimmed);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-light);
+      box-shadow: 0 -4px 12px #00000018;
+  }
+  
+  .token-chart-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+  }
+  
+  .token-chart-title {
+      font-weight: 600;
+      color: var(--text-primary);
+  }
+  
+  .token-chart-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8em;
+      color: var(--text-muted);
+  }
+  
+  .token-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+  }
+  
+  .token-chart-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+  }
+  
+  .token-chart-swatch-input {
+      background-color: var(--token-input-color);
+  }
+  
+  .token-chart-swatch-cache-read {
+      background-color: var(--token-cache-read-color);
+  }
+  
+  .token-chart-swatch-output {
+      background-color: var(--token-output-color);
+  }
+  
+  .token-chart-swatch-cache-write {
+      background-color: var(--token-cache-write-color);
+  }
+  
+  .token-chart-scale-toggle {
+      display: inline-flex;
+      margin-left: auto;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  
+  .token-chart-scale-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78em;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-scale-toggle button:hover {
+      background-color: var(--bg-hover);
+  }
+  
+  .token-chart-scale-toggle button.active {
+      background-color: #d4e8f7;
+      color: var(--text-primary);
+      font-weight: 600;
+  }
+  
+  .token-chart-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-close:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+  }
+  
+  .token-chart-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+  }
+  
+  #token-chart-svg {
+      display: block;
+  }
+  
+  .token-bar {
+      cursor: pointer;
+      transition: opacity 0.15s;
+  }
+  
+  .token-bar:hover {
+      opacity: 0.78;
+  }
+  
+  .token-chart-tick {
+      font-size: 9px;
+      fill: var(--text-muted);
+      font-family: var(--font-ui);
+  }
+  
+  .token-chart-empty {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.9em;
+      padding: 16px 0;
+  }
       </style>
   </head>
   
@@ -32215,6 +34166,290 @@
   
               // Update timeline position on window resize
               window.addEventListener('resize', updateTimelinePosition);
+          });
+      })();
+  </script>
+  
+      <!-- Token Usage Chart Component -->
+      <!-- Token Usage Chart Component -->
+  <!-- Hand-rolled inline SVG stacked-bar timeline of per-response token usage. -->
+  <!-- One bar per assistant API response, split into Input / Cache Read /
+       Output / Cache Write. Data comes from the Python-built JSON island below
+       (numbers only), so it is immune to the CSS-class drift the DOM-scraped
+       timeline has to guard against. -->
+  
+  <script type="application/json" id="token-chart-data">[{"id":"d-2","ts":"2025-06-14T11:00:30Z","type":"assistant","input":35,"cache_read":0,"output":145,"cache_write":0,"sidechain":false},{"id":"d-8","ts":"2025-06-14T11:03:00Z","type":"assistant","input":85,"cache_read":0,"output":180,"cache_write":0,"sidechain":false}]</script>
+  
+  <div class="token-chart-panel" id="token-chart-panel" style="display: none;">
+      <div class="token-chart-header">
+          <span class="token-chart-title">📊 Token usage</span>
+          <div class="token-chart-legend">
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-input"></span>Input</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-read"></span>Cache Read</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-output"></span>Output</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-write"></span>Cache Write</span>
+          </div>
+          <div class="token-chart-scale-toggle" role="group" aria-label="Token chart scale">
+              <button type="button" data-scale="linear" class="active">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+          </div>
+          <button type="button" class="token-chart-close" id="closeTokenChart" title="Close token chart" aria-label="Close token chart">✕</button>
+      </div>
+      <div class="token-chart-scroll">
+          <svg id="token-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="token-chart-empty">No token usage to chart for this page.</div>
+  </div>
+  
+  <script id="token-chart-script">
+      // Token-usage chart - inline for self-contained HTML.
+      (function () {
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+  
+          // Layout constants (px).
+          const BAR_WIDTH = 16;
+          const BAR_GAP = 6;
+          const SIDE_PAD = 8;
+          const TOP_PAD = 10;
+          const CHART_HEIGHT = 150;
+          const AXIS_HEIGHT = 20;
+          const SLOT = BAR_WIDTH + BAR_GAP;
+  
+          // Stacked segment order (bottom → top) with their CSS-var fills.
+          const SEGMENTS = [
+              { key: 'input', label: 'Input', fill: 'var(--token-input-color)' },
+              { key: 'cache_read', label: 'Cache Read', fill: 'var(--token-cache-read-color)' },
+              { key: 'output', label: 'Output', fill: 'var(--token-output-color)' },
+              { key: 'cache_write', label: 'Cache Write', fill: 'var(--token-cache-write-color)' },
+          ];
+  
+          let chartData = [];
+          let scaleMode = 'linear';
+  
+          function parseData() {
+              const island = document.getElementById('token-chart-data');
+              if (!island) return [];
+              try {
+                  const parsed = JSON.parse(island.textContent || '[]');
+                  return Array.isArray(parsed) ? parsed : [];
+              } catch (err) {
+                  console.error('Failed to parse token chart data', err);
+                  return [];
+              }
+          }
+  
+          // Honor the existing 🔗 Sub-assistant filter toggle: when it is off,
+          // sidechain bars are hidden (same dimension as the message filter).
+          function sidechainVisible() {
+              const toggle = document.querySelector('.filter-toggle[data-type="sidechain"]');
+              return !toggle || toggle.classList.contains('active');
+          }
+  
+          function visibleData() {
+              const showSidechain = sidechainVisible();
+              return chartData.filter(d => showSidechain || !d.sidechain);
+          }
+  
+          function scaleValue(v) {
+              if (v <= 0) return 0;
+              return scaleMode === 'log' ? Math.log10(v + 1) : v;
+          }
+  
+          function shortTime(iso) {
+              if (!iso) return '';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return '';
+              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+  
+          function renderChart() {
+              const svg = document.getElementById('token-chart-svg');
+              const empty = document.querySelector('.token-chart-empty');
+              if (!svg) return;
+  
+              // Clear previous render.
+              while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
+              const data = visibleData();
+              if (data.length === 0) {
+                  svg.style.display = 'none';
+                  if (empty) empty.style.display = 'block';
+                  return;
+              }
+              svg.style.display = 'block';
+              if (empty) empty.style.display = 'none';
+  
+              // Max scaled total across visible bars sets the full chart height.
+              let maxScaled = 0;
+              data.forEach(d => {
+                  let sum = 0;
+                  SEGMENTS.forEach(seg => { sum += scaleValue(d[seg.key] || 0); });
+                  if (sum > maxScaled) maxScaled = sum;
+              });
+              if (maxScaled <= 0) maxScaled = 1;
+  
+              const width = SIDE_PAD * 2 + data.length * SLOT;
+              const height = TOP_PAD + CHART_HEIGHT + AXIS_HEIGHT;
+              svg.setAttribute('width', String(width));
+              svg.setAttribute('height', String(height));
+              svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+              const baseline = TOP_PAD + CHART_HEIGHT;
+              // Sparse x-axis labels: aim for roughly 8 ticks.
+              const tickEvery = Math.max(1, Math.ceil(data.length / 8));
+  
+              data.forEach((d, i) => {
+                  const x = SIDE_PAD + i * SLOT;
+                  const group = document.createElementNS(SVG_NS, 'g');
+                  group.setAttribute('class', 'token-bar');
+                  group.setAttribute('data-message-id', d.id);
+  
+                  // Whole-bar tooltip: timestamp + exact counts + total.
+                  const total = SEGMENTS.reduce((acc, seg) => acc + (d[seg.key] || 0), 0);
+                  const titleEl = document.createElementNS(SVG_NS, 'title');
+                  const lines = [];
+                  if (d.ts) lines.push(shortTime(d.ts));
+                  SEGMENTS.forEach(seg => {
+                      lines.push(`${seg.label}: ${(d[seg.key] || 0).toLocaleString()}`);
+                  });
+                  lines.push(`Total: ${total.toLocaleString()}`);
+                  if (d.sidechain) lines.push('🔗 Sub-assistant');
+                  titleEl.textContent = lines.join('\n');
+                  group.appendChild(titleEl);
+  
+                  let yBottom = baseline;
+                  SEGMENTS.forEach(seg => {
+                      const v = d[seg.key] || 0;
+                      const sv = scaleValue(v);
+                      const h = (sv / maxScaled) * CHART_HEIGHT;
+                      if (h > 0) {
+                          const rect = document.createElementNS(SVG_NS, 'rect');
+                          rect.setAttribute('x', String(x));
+                          rect.setAttribute('y', String(yBottom - h));
+                          rect.setAttribute('width', String(BAR_WIDTH));
+                          rect.setAttribute('height', String(h));
+                          rect.setAttribute('fill', seg.fill);
+                          group.appendChild(rect);
+                          yBottom -= h;
+                      }
+                  });
+  
+                  svg.appendChild(group);
+  
+                  // Sparse time tick under the bar.
+                  if (i % tickEvery === 0) {
+                      const label = shortTime(d.ts);
+                      if (label) {
+                          const text = document.createElementNS(SVG_NS, 'text');
+                          text.setAttribute('x', String(x + BAR_WIDTH / 2));
+                          text.setAttribute('y', String(baseline + 14));
+                          text.setAttribute('class', 'token-chart-tick');
+                          text.setAttribute('text-anchor', 'middle');
+                          text.textContent = label;
+                          svg.appendChild(text);
+                      }
+                  }
+              });
+          }
+  
+          // Click a bar → scroll to the response message and flash it. The panel
+          // is fixed at the BOTTOM, so we only subtract any open top-sticky
+          // element (filter toolbar / timeline) and otherwise put the target
+          // near the top of the area above the panel.
+          function navigateToBar(messageId) {
+              if (!messageId) return;
+              const messageEl = document.getElementById('msg-' + messageId);
+              if (!messageEl) return;
+  
+              let topOffset = 0;
+              const timeline = document.getElementById('timeline-container');
+              if (timeline && timeline.style.display !== 'none') {
+                  topOffset = Math.max(topOffset, timeline.offsetHeight);
+              }
+              const filterToolbar = document.querySelector('.filter-toolbar');
+              if (filterToolbar && getComputedStyle(filterToolbar).display !== 'none') {
+                  topOffset = Math.max(topOffset, filterToolbar.offsetHeight);
+              }
+  
+              const scrollPosition = messageEl.offsetTop - topOffset - 16;
+              window.scrollTo({ top: Math.max(0, scrollPosition), behavior: 'smooth' });
+  
+              messageEl.style.backgroundColor = '#fff3cd';
+              setTimeout(() => {
+                  messageEl.style.backgroundColor = '';
+              }, 2000);
+          }
+  
+          function setScale(mode) {
+              if (mode !== 'linear' && mode !== 'log') return;
+              scaleMode = mode;
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.classList.toggle('active', btn.dataset.scale === mode);
+              });
+              renderChart();
+          }
+  
+          function isOpen() {
+              const panel = document.getElementById('token-chart-panel');
+              return panel && panel.style.display !== 'none';
+          }
+  
+          function toggleTokenChart() {
+              const panel = document.getElementById('token-chart-panel');
+              const button = document.getElementById('toggleTokenChart');
+              if (!panel) return;
+              if (panel.style.display === 'none') {
+                  panel.style.display = 'flex';
+                  if (button) button.classList.add('active');
+                  renderChart();
+              } else {
+                  panel.style.display = 'none';
+                  if (button) button.classList.remove('active');
+              }
+          }
+  
+          // Re-render on filter changes so sidechain bars appear/disappear with
+          // the 🔗 Sub-assistant toggle (mirrors the timeline's filter wiring).
+          function onFilterChange() {
+              if (isOpen()) setTimeout(renderChart, 50);
+          }
+  
+          window.toggleTokenChart = toggleTokenChart;
+  
+          document.addEventListener('DOMContentLoaded', function () {
+              chartData = parseData();
+  
+              const button = document.getElementById('toggleTokenChart');
+              if (button) {
+                  button.addEventListener('click', toggleTokenChart);
+              }
+  
+              const closeButton = document.getElementById('closeTokenChart');
+              if (closeButton) {
+                  closeButton.addEventListener('click', toggleTokenChart);
+              }
+  
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.addEventListener('click', () => setScale(btn.dataset.scale));
+              });
+  
+              // Event-delegated bar click.
+              const svg = document.getElementById('token-chart-svg');
+              if (svg) {
+                  svg.addEventListener('click', function (event) {
+                      const bar = event.target.closest('.token-bar');
+                      if (bar) navigateToBar(bar.getAttribute('data-message-id'));
+                  });
+              }
+  
+              // Filter parity wiring.
+              document.querySelectorAll('.filter-toggle').forEach(toggle => {
+                  toggle.addEventListener('click', onFilterChange);
+              });
+              const selectAllButton = document.getElementById('selectAll');
+              const selectNoneButton = document.getElementById('selectNone');
+              if (selectAllButton) selectAllButton.addEventListener('click', onFilterChange);
+              if (selectNoneButton) selectNoneButton.addEventListener('click', onFilterChange);
           });
       })();
   </script>
@@ -32876,6 +35111,7 @@
       
   
       <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+      <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
       <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
       <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
       <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>
@@ -34524,6 +36760,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -34822,6 +37065,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -38328,6 +40580,149 @@
   .session-team-icon {
       font-size: 0.95em;
   }
+  /* Token-usage chart overlay (fixed bottom panel) */
+  
+  .token-chart-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+      max-height: 35vh;
+      padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+      flex-direction: column;
+      gap: 8px;
+      background: var(--white-dimmed);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-light);
+      box-shadow: 0 -4px 12px #00000018;
+  }
+  
+  .token-chart-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+  }
+  
+  .token-chart-title {
+      font-weight: 600;
+      color: var(--text-primary);
+  }
+  
+  .token-chart-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8em;
+      color: var(--text-muted);
+  }
+  
+  .token-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+  }
+  
+  .token-chart-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+  }
+  
+  .token-chart-swatch-input {
+      background-color: var(--token-input-color);
+  }
+  
+  .token-chart-swatch-cache-read {
+      background-color: var(--token-cache-read-color);
+  }
+  
+  .token-chart-swatch-output {
+      background-color: var(--token-output-color);
+  }
+  
+  .token-chart-swatch-cache-write {
+      background-color: var(--token-cache-write-color);
+  }
+  
+  .token-chart-scale-toggle {
+      display: inline-flex;
+      margin-left: auto;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  
+  .token-chart-scale-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78em;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-scale-toggle button:hover {
+      background-color: var(--bg-hover);
+  }
+  
+  .token-chart-scale-toggle button.active {
+      background-color: #d4e8f7;
+      color: var(--text-primary);
+      font-weight: 600;
+  }
+  
+  .token-chart-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-close:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+  }
+  
+  .token-chart-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+  }
+  
+  #token-chart-svg {
+      display: block;
+  }
+  
+  .token-bar {
+      cursor: pointer;
+      transition: opacity 0.15s;
+  }
+  
+  .token-bar:hover {
+      opacity: 0.78;
+  }
+  
+  .token-chart-tick {
+      font-size: 9px;
+      fill: var(--text-muted);
+      font-family: var(--font-ui);
+  }
+  
+  .token-chart-empty {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.9em;
+      padding: 16px 0;
+  }
       </style>
   </head>
   
@@ -38869,6 +41264,290 @@
   
               // Update timeline position on window resize
               window.addEventListener('resize', updateTimelinePosition);
+          });
+      })();
+  </script>
+  
+      <!-- Token Usage Chart Component -->
+      <!-- Token Usage Chart Component -->
+  <!-- Hand-rolled inline SVG stacked-bar timeline of per-response token usage. -->
+  <!-- One bar per assistant API response, split into Input / Cache Read /
+       Output / Cache Write. Data comes from the Python-built JSON island below
+       (numbers only), so it is immune to the CSS-class drift the DOM-scraped
+       timeline has to guard against. -->
+  
+  <script type="application/json" id="token-chart-data">[{"id":"d-2","ts":"2025-07-03T15:52:07.874717Z","type":"assistant","input":20,"cache_read":0,"output":35,"cache_write":0,"sidechain":false},{"id":"d-6","ts":"2025-07-03T15:52:07.874907Z","type":"assistant","input":25,"cache_read":0,"output":120,"cache_write":0,"sidechain":false},{"id":"d-10","ts":"2025-07-03T16:00:07.874907Z","type":"assistant","input":78,"cache_read":0,"output":95,"cache_write":0,"sidechain":false},{"id":"d-14","ts":"2025-07-03T16:08:07.874907Z","type":"assistant","input":45,"cache_read":0,"output":110,"cache_write":0,"sidechain":false}]</script>
+  
+  <div class="token-chart-panel" id="token-chart-panel" style="display: none;">
+      <div class="token-chart-header">
+          <span class="token-chart-title">📊 Token usage</span>
+          <div class="token-chart-legend">
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-input"></span>Input</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-read"></span>Cache Read</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-output"></span>Output</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-write"></span>Cache Write</span>
+          </div>
+          <div class="token-chart-scale-toggle" role="group" aria-label="Token chart scale">
+              <button type="button" data-scale="linear" class="active">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+          </div>
+          <button type="button" class="token-chart-close" id="closeTokenChart" title="Close token chart" aria-label="Close token chart">✕</button>
+      </div>
+      <div class="token-chart-scroll">
+          <svg id="token-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="token-chart-empty">No token usage to chart for this page.</div>
+  </div>
+  
+  <script id="token-chart-script">
+      // Token-usage chart - inline for self-contained HTML.
+      (function () {
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+  
+          // Layout constants (px).
+          const BAR_WIDTH = 16;
+          const BAR_GAP = 6;
+          const SIDE_PAD = 8;
+          const TOP_PAD = 10;
+          const CHART_HEIGHT = 150;
+          const AXIS_HEIGHT = 20;
+          const SLOT = BAR_WIDTH + BAR_GAP;
+  
+          // Stacked segment order (bottom → top) with their CSS-var fills.
+          const SEGMENTS = [
+              { key: 'input', label: 'Input', fill: 'var(--token-input-color)' },
+              { key: 'cache_read', label: 'Cache Read', fill: 'var(--token-cache-read-color)' },
+              { key: 'output', label: 'Output', fill: 'var(--token-output-color)' },
+              { key: 'cache_write', label: 'Cache Write', fill: 'var(--token-cache-write-color)' },
+          ];
+  
+          let chartData = [];
+          let scaleMode = 'linear';
+  
+          function parseData() {
+              const island = document.getElementById('token-chart-data');
+              if (!island) return [];
+              try {
+                  const parsed = JSON.parse(island.textContent || '[]');
+                  return Array.isArray(parsed) ? parsed : [];
+              } catch (err) {
+                  console.error('Failed to parse token chart data', err);
+                  return [];
+              }
+          }
+  
+          // Honor the existing 🔗 Sub-assistant filter toggle: when it is off,
+          // sidechain bars are hidden (same dimension as the message filter).
+          function sidechainVisible() {
+              const toggle = document.querySelector('.filter-toggle[data-type="sidechain"]');
+              return !toggle || toggle.classList.contains('active');
+          }
+  
+          function visibleData() {
+              const showSidechain = sidechainVisible();
+              return chartData.filter(d => showSidechain || !d.sidechain);
+          }
+  
+          function scaleValue(v) {
+              if (v <= 0) return 0;
+              return scaleMode === 'log' ? Math.log10(v + 1) : v;
+          }
+  
+          function shortTime(iso) {
+              if (!iso) return '';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return '';
+              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+  
+          function renderChart() {
+              const svg = document.getElementById('token-chart-svg');
+              const empty = document.querySelector('.token-chart-empty');
+              if (!svg) return;
+  
+              // Clear previous render.
+              while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
+              const data = visibleData();
+              if (data.length === 0) {
+                  svg.style.display = 'none';
+                  if (empty) empty.style.display = 'block';
+                  return;
+              }
+              svg.style.display = 'block';
+              if (empty) empty.style.display = 'none';
+  
+              // Max scaled total across visible bars sets the full chart height.
+              let maxScaled = 0;
+              data.forEach(d => {
+                  let sum = 0;
+                  SEGMENTS.forEach(seg => { sum += scaleValue(d[seg.key] || 0); });
+                  if (sum > maxScaled) maxScaled = sum;
+              });
+              if (maxScaled <= 0) maxScaled = 1;
+  
+              const width = SIDE_PAD * 2 + data.length * SLOT;
+              const height = TOP_PAD + CHART_HEIGHT + AXIS_HEIGHT;
+              svg.setAttribute('width', String(width));
+              svg.setAttribute('height', String(height));
+              svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+              const baseline = TOP_PAD + CHART_HEIGHT;
+              // Sparse x-axis labels: aim for roughly 8 ticks.
+              const tickEvery = Math.max(1, Math.ceil(data.length / 8));
+  
+              data.forEach((d, i) => {
+                  const x = SIDE_PAD + i * SLOT;
+                  const group = document.createElementNS(SVG_NS, 'g');
+                  group.setAttribute('class', 'token-bar');
+                  group.setAttribute('data-message-id', d.id);
+  
+                  // Whole-bar tooltip: timestamp + exact counts + total.
+                  const total = SEGMENTS.reduce((acc, seg) => acc + (d[seg.key] || 0), 0);
+                  const titleEl = document.createElementNS(SVG_NS, 'title');
+                  const lines = [];
+                  if (d.ts) lines.push(shortTime(d.ts));
+                  SEGMENTS.forEach(seg => {
+                      lines.push(`${seg.label}: ${(d[seg.key] || 0).toLocaleString()}`);
+                  });
+                  lines.push(`Total: ${total.toLocaleString()}`);
+                  if (d.sidechain) lines.push('🔗 Sub-assistant');
+                  titleEl.textContent = lines.join('\n');
+                  group.appendChild(titleEl);
+  
+                  let yBottom = baseline;
+                  SEGMENTS.forEach(seg => {
+                      const v = d[seg.key] || 0;
+                      const sv = scaleValue(v);
+                      const h = (sv / maxScaled) * CHART_HEIGHT;
+                      if (h > 0) {
+                          const rect = document.createElementNS(SVG_NS, 'rect');
+                          rect.setAttribute('x', String(x));
+                          rect.setAttribute('y', String(yBottom - h));
+                          rect.setAttribute('width', String(BAR_WIDTH));
+                          rect.setAttribute('height', String(h));
+                          rect.setAttribute('fill', seg.fill);
+                          group.appendChild(rect);
+                          yBottom -= h;
+                      }
+                  });
+  
+                  svg.appendChild(group);
+  
+                  // Sparse time tick under the bar.
+                  if (i % tickEvery === 0) {
+                      const label = shortTime(d.ts);
+                      if (label) {
+                          const text = document.createElementNS(SVG_NS, 'text');
+                          text.setAttribute('x', String(x + BAR_WIDTH / 2));
+                          text.setAttribute('y', String(baseline + 14));
+                          text.setAttribute('class', 'token-chart-tick');
+                          text.setAttribute('text-anchor', 'middle');
+                          text.textContent = label;
+                          svg.appendChild(text);
+                      }
+                  }
+              });
+          }
+  
+          // Click a bar → scroll to the response message and flash it. The panel
+          // is fixed at the BOTTOM, so we only subtract any open top-sticky
+          // element (filter toolbar / timeline) and otherwise put the target
+          // near the top of the area above the panel.
+          function navigateToBar(messageId) {
+              if (!messageId) return;
+              const messageEl = document.getElementById('msg-' + messageId);
+              if (!messageEl) return;
+  
+              let topOffset = 0;
+              const timeline = document.getElementById('timeline-container');
+              if (timeline && timeline.style.display !== 'none') {
+                  topOffset = Math.max(topOffset, timeline.offsetHeight);
+              }
+              const filterToolbar = document.querySelector('.filter-toolbar');
+              if (filterToolbar && getComputedStyle(filterToolbar).display !== 'none') {
+                  topOffset = Math.max(topOffset, filterToolbar.offsetHeight);
+              }
+  
+              const scrollPosition = messageEl.offsetTop - topOffset - 16;
+              window.scrollTo({ top: Math.max(0, scrollPosition), behavior: 'smooth' });
+  
+              messageEl.style.backgroundColor = '#fff3cd';
+              setTimeout(() => {
+                  messageEl.style.backgroundColor = '';
+              }, 2000);
+          }
+  
+          function setScale(mode) {
+              if (mode !== 'linear' && mode !== 'log') return;
+              scaleMode = mode;
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.classList.toggle('active', btn.dataset.scale === mode);
+              });
+              renderChart();
+          }
+  
+          function isOpen() {
+              const panel = document.getElementById('token-chart-panel');
+              return panel && panel.style.display !== 'none';
+          }
+  
+          function toggleTokenChart() {
+              const panel = document.getElementById('token-chart-panel');
+              const button = document.getElementById('toggleTokenChart');
+              if (!panel) return;
+              if (panel.style.display === 'none') {
+                  panel.style.display = 'flex';
+                  if (button) button.classList.add('active');
+                  renderChart();
+              } else {
+                  panel.style.display = 'none';
+                  if (button) button.classList.remove('active');
+              }
+          }
+  
+          // Re-render on filter changes so sidechain bars appear/disappear with
+          // the 🔗 Sub-assistant toggle (mirrors the timeline's filter wiring).
+          function onFilterChange() {
+              if (isOpen()) setTimeout(renderChart, 50);
+          }
+  
+          window.toggleTokenChart = toggleTokenChart;
+  
+          document.addEventListener('DOMContentLoaded', function () {
+              chartData = parseData();
+  
+              const button = document.getElementById('toggleTokenChart');
+              if (button) {
+                  button.addEventListener('click', toggleTokenChart);
+              }
+  
+              const closeButton = document.getElementById('closeTokenChart');
+              if (closeButton) {
+                  closeButton.addEventListener('click', toggleTokenChart);
+              }
+  
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.addEventListener('click', () => setScale(btn.dataset.scale));
+              });
+  
+              // Event-delegated bar click.
+              const svg = document.getElementById('token-chart-svg');
+              if (svg) {
+                  svg.addEventListener('click', function (event) {
+                      const bar = event.target.closest('.token-bar');
+                      if (bar) navigateToBar(bar.getAttribute('data-message-id'));
+                  });
+              }
+  
+              // Filter parity wiring.
+              document.querySelectorAll('.filter-toggle').forEach(toggle => {
+                  toggle.addEventListener('click', onFilterChange);
+              });
+              const selectAllButton = document.getElementById('selectAll');
+              const selectNoneButton = document.getElementById('selectNone');
+              if (selectAllButton) selectAllButton.addEventListener('click', onFilterChange);
+              if (selectNoneButton) selectNoneButton.addEventListener('click', onFilterChange);
           });
       })();
   </script>
@@ -39473,6 +42152,7 @@
       
   
       <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+      <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
       <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
       <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
       <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>
@@ -41121,6 +43801,13 @@
       --system-error-color: #f44336;
       --tool-use-color: #4caf50;
   
+      /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+         distinct from the message-type colors above). */
+      --token-input-color: #1f77b4;
+      --token-cache-read-color: #17becf;
+      --token-output-color: #d62728;
+      --token-cache-write-color: #9467bd;
+  
       /* Dynamic-workflow tree colors (#174): each level's card border and its
          group border (the line framing the card's subtree) share a color. */
       --workflow-phase-color: #3a7d3c;
@@ -41419,6 +44106,15 @@
   }
   
   .user-view-global.floating-btn.active {
+      background-color: #d4e8f7;
+      color: #333;
+  }
+  
+  .token-chart-toggle.floating-btn {
+      bottom: 360px;
+  }
+  
+  .token-chart-toggle.floating-btn.active {
       background-color: #d4e8f7;
       color: #333;
   }
@@ -44925,6 +47621,149 @@
   .session-team-icon {
       font-size: 0.95em;
   }
+  /* Token-usage chart overlay (fixed bottom panel) */
+  
+  .token-chart-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 900; /* below the floating buttons (1000) so 📊 stays clickable */
+      max-height: 35vh;
+      padding: 10px 90px 10px 16px; /* right padding clears the floating-button column */
+      flex-direction: column;
+      gap: 8px;
+      background: var(--white-dimmed);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-light);
+      box-shadow: 0 -4px 12px #00000018;
+  }
+  
+  .token-chart-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+  }
+  
+  .token-chart-title {
+      font-weight: 600;
+      color: var(--text-primary);
+  }
+  
+  .token-chart-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.8em;
+      color: var(--text-muted);
+  }
+  
+  .token-chart-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+  }
+  
+  .token-chart-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+  }
+  
+  .token-chart-swatch-input {
+      background-color: var(--token-input-color);
+  }
+  
+  .token-chart-swatch-cache-read {
+      background-color: var(--token-cache-read-color);
+  }
+  
+  .token-chart-swatch-output {
+      background-color: var(--token-output-color);
+  }
+  
+  .token-chart-swatch-cache-write {
+      background-color: var(--token-cache-write-color);
+  }
+  
+  .token-chart-scale-toggle {
+      display: inline-flex;
+      margin-left: auto;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      overflow: hidden;
+  }
+  
+  .token-chart-scale-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78em;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-scale-toggle button:hover {
+      background-color: var(--bg-hover);
+  }
+  
+  .token-chart-scale-toggle button.active {
+      background-color: #d4e8f7;
+      color: var(--text-primary);
+      font-weight: 600;
+  }
+  
+  .token-chart-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1em;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .token-chart-close:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+  }
+  
+  .token-chart-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+  }
+  
+  #token-chart-svg {
+      display: block;
+  }
+  
+  .token-bar {
+      cursor: pointer;
+      transition: opacity 0.15s;
+  }
+  
+  .token-bar:hover {
+      opacity: 0.78;
+  }
+  
+  .token-chart-tick {
+      font-size: 9px;
+      fill: var(--text-muted);
+      font-family: var(--font-ui);
+  }
+  
+  .token-chart-empty {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.9em;
+      padding: 16px 0;
+  }
       </style>
   </head>
   
@@ -45470,6 +48309,290 @@
       })();
   </script>
   
+      <!-- Token Usage Chart Component -->
+      <!-- Token Usage Chart Component -->
+  <!-- Hand-rolled inline SVG stacked-bar timeline of per-response token usage. -->
+  <!-- One bar per assistant API response, split into Input / Cache Read /
+       Output / Cache Write. Data comes from the Python-built JSON island below
+       (numbers only), so it is immune to the CSS-class drift the DOM-scraped
+       timeline has to guard against. -->
+  
+  <script type="application/json" id="token-chart-data">[{"id":"d-2","ts":"2025-07-03T15:52:07.874907Z","type":"assistant","input":25,"cache_read":0,"output":120,"cache_write":0,"sidechain":false},{"id":"d-6","ts":"2025-07-03T16:00:07.874907Z","type":"assistant","input":78,"cache_read":0,"output":95,"cache_write":0,"sidechain":false},{"id":"d-10","ts":"2025-07-03T16:08:07.874907Z","type":"assistant","input":45,"cache_read":0,"output":110,"cache_write":0,"sidechain":false}]</script>
+  
+  <div class="token-chart-panel" id="token-chart-panel" style="display: none;">
+      <div class="token-chart-header">
+          <span class="token-chart-title">📊 Token usage</span>
+          <div class="token-chart-legend">
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-input"></span>Input</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-read"></span>Cache Read</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-output"></span>Output</span>
+              <span class="token-chart-legend-item"><span class="token-chart-swatch token-chart-swatch-cache-write"></span>Cache Write</span>
+          </div>
+          <div class="token-chart-scale-toggle" role="group" aria-label="Token chart scale">
+              <button type="button" data-scale="linear" class="active">Linear</button>
+              <button type="button" data-scale="log">Log</button>
+          </div>
+          <button type="button" class="token-chart-close" id="closeTokenChart" title="Close token chart" aria-label="Close token chart">✕</button>
+      </div>
+      <div class="token-chart-scroll">
+          <svg id="token-chart-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="token-chart-empty">No token usage to chart for this page.</div>
+  </div>
+  
+  <script id="token-chart-script">
+      // Token-usage chart - inline for self-contained HTML.
+      (function () {
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+  
+          // Layout constants (px).
+          const BAR_WIDTH = 16;
+          const BAR_GAP = 6;
+          const SIDE_PAD = 8;
+          const TOP_PAD = 10;
+          const CHART_HEIGHT = 150;
+          const AXIS_HEIGHT = 20;
+          const SLOT = BAR_WIDTH + BAR_GAP;
+  
+          // Stacked segment order (bottom → top) with their CSS-var fills.
+          const SEGMENTS = [
+              { key: 'input', label: 'Input', fill: 'var(--token-input-color)' },
+              { key: 'cache_read', label: 'Cache Read', fill: 'var(--token-cache-read-color)' },
+              { key: 'output', label: 'Output', fill: 'var(--token-output-color)' },
+              { key: 'cache_write', label: 'Cache Write', fill: 'var(--token-cache-write-color)' },
+          ];
+  
+          let chartData = [];
+          let scaleMode = 'linear';
+  
+          function parseData() {
+              const island = document.getElementById('token-chart-data');
+              if (!island) return [];
+              try {
+                  const parsed = JSON.parse(island.textContent || '[]');
+                  return Array.isArray(parsed) ? parsed : [];
+              } catch (err) {
+                  console.error('Failed to parse token chart data', err);
+                  return [];
+              }
+          }
+  
+          // Honor the existing 🔗 Sub-assistant filter toggle: when it is off,
+          // sidechain bars are hidden (same dimension as the message filter).
+          function sidechainVisible() {
+              const toggle = document.querySelector('.filter-toggle[data-type="sidechain"]');
+              return !toggle || toggle.classList.contains('active');
+          }
+  
+          function visibleData() {
+              const showSidechain = sidechainVisible();
+              return chartData.filter(d => showSidechain || !d.sidechain);
+          }
+  
+          function scaleValue(v) {
+              if (v <= 0) return 0;
+              return scaleMode === 'log' ? Math.log10(v + 1) : v;
+          }
+  
+          function shortTime(iso) {
+              if (!iso) return '';
+              const d = new Date(iso);
+              if (isNaN(d.getTime())) return '';
+              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+  
+          function renderChart() {
+              const svg = document.getElementById('token-chart-svg');
+              const empty = document.querySelector('.token-chart-empty');
+              if (!svg) return;
+  
+              // Clear previous render.
+              while (svg.firstChild) svg.removeChild(svg.firstChild);
+  
+              const data = visibleData();
+              if (data.length === 0) {
+                  svg.style.display = 'none';
+                  if (empty) empty.style.display = 'block';
+                  return;
+              }
+              svg.style.display = 'block';
+              if (empty) empty.style.display = 'none';
+  
+              // Max scaled total across visible bars sets the full chart height.
+              let maxScaled = 0;
+              data.forEach(d => {
+                  let sum = 0;
+                  SEGMENTS.forEach(seg => { sum += scaleValue(d[seg.key] || 0); });
+                  if (sum > maxScaled) maxScaled = sum;
+              });
+              if (maxScaled <= 0) maxScaled = 1;
+  
+              const width = SIDE_PAD * 2 + data.length * SLOT;
+              const height = TOP_PAD + CHART_HEIGHT + AXIS_HEIGHT;
+              svg.setAttribute('width', String(width));
+              svg.setAttribute('height', String(height));
+              svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+              const baseline = TOP_PAD + CHART_HEIGHT;
+              // Sparse x-axis labels: aim for roughly 8 ticks.
+              const tickEvery = Math.max(1, Math.ceil(data.length / 8));
+  
+              data.forEach((d, i) => {
+                  const x = SIDE_PAD + i * SLOT;
+                  const group = document.createElementNS(SVG_NS, 'g');
+                  group.setAttribute('class', 'token-bar');
+                  group.setAttribute('data-message-id', d.id);
+  
+                  // Whole-bar tooltip: timestamp + exact counts + total.
+                  const total = SEGMENTS.reduce((acc, seg) => acc + (d[seg.key] || 0), 0);
+                  const titleEl = document.createElementNS(SVG_NS, 'title');
+                  const lines = [];
+                  if (d.ts) lines.push(shortTime(d.ts));
+                  SEGMENTS.forEach(seg => {
+                      lines.push(`${seg.label}: ${(d[seg.key] || 0).toLocaleString()}`);
+                  });
+                  lines.push(`Total: ${total.toLocaleString()}`);
+                  if (d.sidechain) lines.push('🔗 Sub-assistant');
+                  titleEl.textContent = lines.join('\n');
+                  group.appendChild(titleEl);
+  
+                  let yBottom = baseline;
+                  SEGMENTS.forEach(seg => {
+                      const v = d[seg.key] || 0;
+                      const sv = scaleValue(v);
+                      const h = (sv / maxScaled) * CHART_HEIGHT;
+                      if (h > 0) {
+                          const rect = document.createElementNS(SVG_NS, 'rect');
+                          rect.setAttribute('x', String(x));
+                          rect.setAttribute('y', String(yBottom - h));
+                          rect.setAttribute('width', String(BAR_WIDTH));
+                          rect.setAttribute('height', String(h));
+                          rect.setAttribute('fill', seg.fill);
+                          group.appendChild(rect);
+                          yBottom -= h;
+                      }
+                  });
+  
+                  svg.appendChild(group);
+  
+                  // Sparse time tick under the bar.
+                  if (i % tickEvery === 0) {
+                      const label = shortTime(d.ts);
+                      if (label) {
+                          const text = document.createElementNS(SVG_NS, 'text');
+                          text.setAttribute('x', String(x + BAR_WIDTH / 2));
+                          text.setAttribute('y', String(baseline + 14));
+                          text.setAttribute('class', 'token-chart-tick');
+                          text.setAttribute('text-anchor', 'middle');
+                          text.textContent = label;
+                          svg.appendChild(text);
+                      }
+                  }
+              });
+          }
+  
+          // Click a bar → scroll to the response message and flash it. The panel
+          // is fixed at the BOTTOM, so we only subtract any open top-sticky
+          // element (filter toolbar / timeline) and otherwise put the target
+          // near the top of the area above the panel.
+          function navigateToBar(messageId) {
+              if (!messageId) return;
+              const messageEl = document.getElementById('msg-' + messageId);
+              if (!messageEl) return;
+  
+              let topOffset = 0;
+              const timeline = document.getElementById('timeline-container');
+              if (timeline && timeline.style.display !== 'none') {
+                  topOffset = Math.max(topOffset, timeline.offsetHeight);
+              }
+              const filterToolbar = document.querySelector('.filter-toolbar');
+              if (filterToolbar && getComputedStyle(filterToolbar).display !== 'none') {
+                  topOffset = Math.max(topOffset, filterToolbar.offsetHeight);
+              }
+  
+              const scrollPosition = messageEl.offsetTop - topOffset - 16;
+              window.scrollTo({ top: Math.max(0, scrollPosition), behavior: 'smooth' });
+  
+              messageEl.style.backgroundColor = '#fff3cd';
+              setTimeout(() => {
+                  messageEl.style.backgroundColor = '';
+              }, 2000);
+          }
+  
+          function setScale(mode) {
+              if (mode !== 'linear' && mode !== 'log') return;
+              scaleMode = mode;
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.classList.toggle('active', btn.dataset.scale === mode);
+              });
+              renderChart();
+          }
+  
+          function isOpen() {
+              const panel = document.getElementById('token-chart-panel');
+              return panel && panel.style.display !== 'none';
+          }
+  
+          function toggleTokenChart() {
+              const panel = document.getElementById('token-chart-panel');
+              const button = document.getElementById('toggleTokenChart');
+              if (!panel) return;
+              if (panel.style.display === 'none') {
+                  panel.style.display = 'flex';
+                  if (button) button.classList.add('active');
+                  renderChart();
+              } else {
+                  panel.style.display = 'none';
+                  if (button) button.classList.remove('active');
+              }
+          }
+  
+          // Re-render on filter changes so sidechain bars appear/disappear with
+          // the 🔗 Sub-assistant toggle (mirrors the timeline's filter wiring).
+          function onFilterChange() {
+              if (isOpen()) setTimeout(renderChart, 50);
+          }
+  
+          window.toggleTokenChart = toggleTokenChart;
+  
+          document.addEventListener('DOMContentLoaded', function () {
+              chartData = parseData();
+  
+              const button = document.getElementById('toggleTokenChart');
+              if (button) {
+                  button.addEventListener('click', toggleTokenChart);
+              }
+  
+              const closeButton = document.getElementById('closeTokenChart');
+              if (closeButton) {
+                  closeButton.addEventListener('click', toggleTokenChart);
+              }
+  
+              document.querySelectorAll('.token-chart-scale-toggle button').forEach(btn => {
+                  btn.addEventListener('click', () => setScale(btn.dataset.scale));
+              });
+  
+              // Event-delegated bar click.
+              const svg = document.getElementById('token-chart-svg');
+              if (svg) {
+                  svg.addEventListener('click', function (event) {
+                      const bar = event.target.closest('.token-bar');
+                      if (bar) navigateToBar(bar.getAttribute('data-message-id'));
+                  });
+              }
+  
+              // Filter parity wiring.
+              document.querySelectorAll('.filter-toggle').forEach(toggle => {
+                  toggle.addEventListener('click', onFilterChange);
+              });
+              const selectAllButton = document.getElementById('selectAll');
+              const selectNoneButton = document.getElementById('selectNone');
+              if (selectAllButton) selectAllButton.addEventListener('click', onFilterChange);
+              if (selectNoneButton) selectNoneButton.addEventListener('click', onFilterChange);
+          });
+      })();
+  </script>
+  
       <!-- Combined Search & Filter Toolbar -->
       <div class="filter-toolbar">
           <div class="toolbar-header">
@@ -45897,6 +49020,7 @@
       
   
       <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+      <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
       <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
       <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
       <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>

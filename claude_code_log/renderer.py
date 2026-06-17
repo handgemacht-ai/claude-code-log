@@ -414,6 +414,32 @@ class TemplateMessage:
         return getattr(self.content, "token_usage", None)
 
     @property
+    def token_segments(self) -> Optional[dict[str, int]]:
+        """Raw token counts for the token-usage chart.
+
+        Returns ``{"input", "cache_read", "output", "cache_write"}`` for the
+        one content chunk per API response that carries the ``UsageInfo``
+        (text- or thinking-first), or ``None`` when no usage is attached.
+        """
+        input_tokens = getattr(self.content, "usage_input_tokens", None)
+        cache_read = getattr(self.content, "usage_cache_read_tokens", None)
+        output_tokens = getattr(self.content, "usage_output_tokens", None)
+        cache_write = getattr(self.content, "usage_cache_creation_tokens", None)
+        if (
+            input_tokens is None
+            and cache_read is None
+            and output_tokens is None
+            and cache_write is None
+        ):
+            return None
+        return {
+            "input": input_tokens or 0,
+            "cache_read": cache_read or 0,
+            "output": output_tokens or 0,
+            "cache_write": cache_write or 0,
+        }
+
+    @property
     def is_sidechain(self) -> bool:
         """Check if this is a sidechain message."""
         return self.meta.is_sidechain

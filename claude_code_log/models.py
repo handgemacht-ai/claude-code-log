@@ -974,6 +974,12 @@ class AssistantTextMessage(MessageContent):
     # Token usage string (formatted from UsageInfo when available)
     token_usage: Optional[str] = None
 
+    # Raw token counts for the token-usage chart (None when no usage attached).
+    usage_input_tokens: Optional[int] = None
+    usage_cache_read_tokens: Optional[int] = None
+    usage_output_tokens: Optional[int] = None
+    usage_cache_creation_tokens: Optional[int] = None
+
     @property
     def message_type(self) -> str:
         return "assistant"
@@ -1002,6 +1008,12 @@ class ThinkingMessage(MessageContent):
 
     # Token usage string (formatted from UsageInfo when available)
     token_usage: Optional[str] = None
+
+    # Raw token counts for the token-usage chart (None when no usage attached).
+    usage_input_tokens: Optional[int] = None
+    usage_cache_read_tokens: Optional[int] = None
+    usage_output_tokens: Optional[int] = None
+    usage_cache_creation_tokens: Optional[int] = None
 
     @property
     def message_type(self) -> str:

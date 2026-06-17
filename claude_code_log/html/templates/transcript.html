@@ -19,6 +19,7 @@
 {% include 'components/pygments_styles.css' %}
 {% include 'components/page_nav_styles.css' %}
 {% include 'components/teammate_styles.css' %}
+{% include 'components/token_chart.css' %}
     </style>
 </head>
 
@@ -53,6 +54,9 @@
 
     <!-- Timeline Component -->
     {% include 'components/timeline.html' %}
+
+    <!-- Token Usage Chart Component -->
+    {% include 'components/token_chart.html' %}
 
     <!-- Combined Search & Filter Toolbar -->
     <div class="filter-toolbar">
@@ -220,6 +224,7 @@
     {% for root in roots %}{{ render_message(root) }}{% endfor %}
 
     <button class="timeline-toggle floating-btn" id="toggleTimeline" title="Show timeline">📆</button>
+    <button class="token-chart-toggle floating-btn" id="toggleTokenChart" title="Token usage chart">📊</button>
     <button class="filter-messages floating-btn" id="filterMessages" title="Search & Filter">🔍</button>
     <button class="toggle-details floating-btn" id="toggleDetails" title="Toggle all details">📋</button>
     <button class="debug-toggle floating-btn" id="toggleDebug" title="Show UUIDs">uuid</button>

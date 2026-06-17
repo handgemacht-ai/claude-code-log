@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Tuple, cast
 
@@ -271,6 +272,45 @@ def _build_html_project_tree(template_projects: list[Any]) -> dict[str, Any]:
             node = node[part]
         node.setdefault("_projects", []).append(project)
     return root
+
+
+def build_token_chart_data(ctx: RenderingContext) -> str:
+    """Build the JSON island feeding the token-usage chart overlay.
+
+    Emits one entry per assistant API response carrying token usage. The
+    upstream message-build loop attaches the ``UsageInfo`` to exactly one
+    content chunk per response (text- or thinking-first), so each response is
+    counted once here for free. All-zero bars are dropped. Returns a compact
+    JSON array string — ``"[]"`` when there is nothing to chart — so the
+    template can always emit the island and the JS can show an empty state.
+    """
+    entries: list[dict[str, Any]] = []
+    for m in ctx.messages:
+        if m is None:
+            continue  # ghosted slot
+        segments = m.token_segments
+        if segments is None:
+            continue
+        if (
+            segments["input"]
+            + segments["cache_read"]
+            + segments["output"]
+            + segments["cache_write"]
+        ) == 0:
+            continue
+        entries.append(
+            {
+                "id": m.message_id,
+                "ts": m.meta.timestamp if m.meta else "",
+                "type": m.type,
+                "input": segments["input"],
+                "cache_read": segments["cache_read"],
+                "output": segments["output"],
+                "cache_write": segments["cache_write"],
+                "sidechain": m.is_sidechain,
+            }
+        )
+    return json.dumps(entries, separators=(",", ":"))
 
 
 class HtmlRenderer(Renderer):
@@ -1491,6 +1531,9 @@ class HtmlRenderer(Renderer):
         with log_timing("Content formatting (pre-order)", t_start):
             render_roots = self._annotate_tree_for_render(root_messages)
 
+        # Per-page token-usage chart data (numbers only — page-scoped via ctx).
+        token_chart_json = build_token_chart_data(ctx)
+
         # Render template
         with log_timing("Template environment setup", t_start):
             env = get_template_environment()
@@ -1511,6 +1554,7 @@ class HtmlRenderer(Renderer):
                     is_session_header=is_session_header,
                     page_info=page_info,
                     page_stats=page_stats,
+                    token_chart_json=token_chart_json,
                 )
             )
 

@@ -38,6 +38,13 @@
     --system-error-color: #f44336;
     --tool-use-color: #4caf50;
 
+    /* Token-usage chart segments (Tableau-10 family, colorblind-safe and
+       distinct from the message-type colors above). */
+    --token-input-color: #1f77b4;
+    --token-cache-read-color: #17becf;
+    --token-output-color: #d62728;
+    --token-cache-write-color: #9467bd;
+
     /* Dynamic-workflow tree colors (#174): each level's card border and its
        group border (the line framing the card's subtree) share a color. */
     --workflow-phase-color: #3a7d3c;
@@ -336,6 +343,15 @@ body.show-raw-user .user-content:not([data-user-view="md"]) .user-raw {
 }
 
 .user-view-global.floating-btn.active {
+    background-color: #d4e8f7;
+    color: #333;
+}
+
+.token-chart-toggle.floating-btn {
+    bottom: 360px;
+}
+
+.token-chart-toggle.floating-btn.active {
     background-color: #d4e8f7;
     color: #333;
 }

@@ -72,6 +72,12 @@ def create_assistant_message(
             meta,
             items=items,  # type: ignore[arg-type]
             token_usage=format_token_usage(usage) if usage else None,
+            usage_input_tokens=usage.input_tokens if usage else None,
+            usage_cache_read_tokens=usage.cache_read_input_tokens if usage else None,
+            usage_output_tokens=usage.output_tokens if usage else None,
+            usage_cache_creation_tokens=usage.cache_creation_input_tokens
+            if usage
+            else None,
         )
     return None
 
@@ -96,4 +102,10 @@ def create_thinking_message(
         thinking=thinking.thinking.strip(),
         signature=thinking.signature,
         token_usage=format_token_usage(usage) if usage else None,
+        usage_input_tokens=usage.input_tokens if usage else None,
+        usage_cache_read_tokens=usage.cache_read_input_tokens if usage else None,
+        usage_output_tokens=usage.output_tokens if usage else None,
+        usage_cache_creation_tokens=usage.cache_creation_input_tokens
+        if usage
+        else None,
     )
