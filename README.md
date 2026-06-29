@@ -2,6 +2,8 @@
 
 A Python CLI tool that converts Claude Code transcript JSONL files into readable HTML and Markdown formats.
 
+> Fork of [claude-code-log](https://github.com/daaain/claude-code-log) by Daniel Demmel, MIT-licensed.
+
 Browser log demo:
 
 [Browser log](https://github.com/user-attachments/assets/12d94faf-6901-4429-b4e6-ea5f102d0c1c)
@@ -20,10 +22,16 @@ This tool generates clean, minimalist HTML pages showing user prompts and assist
 
 ## Quickstart
 
-TL;DR: run the command below and browse the pages generated from your entire Claude Code archives:
+TL;DR: point it at a single transcript — it opens in your browser from a temp file, leaving nothing behind:
 
 ```sh
-uvx claude-code-log@latest --open-browser
+uvx handgemacht-claude-code-log <transcript>.jsonl --view
+```
+
+Or browse the pages generated from your entire Claude Code archives:
+
+```sh
+uvx handgemacht-claude-code-log --open-browser
 ```
 
 ## Key Features
@@ -250,13 +258,13 @@ Markdown export provides a lightweight, portable alternative to HTML:
 Install using pip:
 
 ```bash
-pip install claude-code-log
+pip install handgemacht-claude-code-log
 ```
 
 Or run directly with uvx (no separate installation step required):
 
 ```bash
-uvx claude-code-log@latest
+uvx handgemacht-claude-code-log
 ```
 
 Or install from source:

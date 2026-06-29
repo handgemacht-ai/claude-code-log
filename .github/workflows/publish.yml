@@ -1,0 +1,41 @@
+# Publish to PyPI via Trusted Publishing (OIDC — no API token stored).
+#
+# FIRST-RUN SETUP: Before this workflow can publish, a "pending publisher"
+# must be created on PyPI (https://pypi.org/manage/account/publishing/) for:
+#   - PyPI project:    handgemacht-claude-code-log
+#   - Owner/repo:      handgemacht-ai/claude-code-log
+#   - Workflow name:   publish.yml
+#   - Environment:     (leave blank — no environment is used here)
+# Trusted publishing authenticates via short-lived OIDC tokens, so no
+# password/token is passed to the publish step.
+#
+# An `environment:` block (e.g. for manual approval gating) can be added to
+# the job later; if you do, set the matching environment on the PyPI
+# publisher too.
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # OIDC token for trusted publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build distributions
+        run: uv build  # writes sdist + wheel to dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No password: trusted publishing uses OIDC. Default packages-dir is
+        # dist/, which is where `uv build` writes.
