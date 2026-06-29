@@ -173,11 +173,17 @@ def scrub_surrogates(s: Optional[str]) -> Optional[str]:
 
 def get_library_version() -> str:
     """Get the current library version from package metadata or pyproject.toml."""
-    # First try to get version from installed package metadata
+    # First try to get version from installed package metadata. The
+    # distribution may be installed under the Handgemacht fork name or the
+    # original upstream name (dist name != import package name), so try both.
     try:
         from importlib.metadata import version as get_version
 
-        return get_version("claude-code-log")
+        for dist_name in ("handgemacht-claude-code-log", "claude-code-log"):
+            try:
+                return get_version(dist_name)
+            except Exception:
+                continue
     except Exception:
         # Package not installed or other error, continue to file-based detection
         pass

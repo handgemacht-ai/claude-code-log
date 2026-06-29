@@ -2,6 +2,7 @@
 """Tests for CLI functionality and helper functions."""
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Generator
 
@@ -434,6 +435,93 @@ class TestCLIMainCommand:
 
         assert result.exit_code == 0
         assert output_path.exists()
+
+
+class TestViewOption:
+    """Tests for the --view (throwaway temp file + browser) option."""
+
+    def _write_single_transcript(self, directory: Path, jsonl_data: list[dict]) -> Path:
+        """Write a standalone .jsonl transcript (not inside a project dir)."""
+        jsonl_file = directory / "standalone-transcript.jsonl"
+        with open(jsonl_file, "w") as f:
+            for entry in jsonl_data:
+                f.write(json.dumps(entry) + "\n")
+        return jsonl_file
+
+    def test_view_renders_to_tempdir_not_next_to_source(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        sample_jsonl_content: list[dict],
+    ):
+        """--view writes HTML under the system temp dir, never beside the source."""
+        # Isolate any cache writes.
+        monkeypatch.setenv("CLAUDE_CODE_LOG_CACHE_PATH", str(tmp_path / "cache.db"))
+
+        source_dir = tmp_path / "transcripts"
+        source_dir.mkdir()
+        jsonl_file = self._write_single_transcript(source_dir, sample_jsonl_content)
+
+        # Don't actually open a browser: capture the path click.launch is asked
+        # to open instead of spawning one.
+        launched: list[str] = []
+        monkeypatch.setattr(
+            "claude_code_log.cli.click.launch",
+            lambda target: launched.append(target),
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(main, [str(jsonl_file), "--view"])
+
+        assert result.exit_code == 0, result.output
+
+        # Browser launch was requested exactly once (so --view implies it).
+        assert len(launched) == 1
+        launched_path = Path(launched[0])
+
+        # The opened file lives under the system temp dir...
+        system_tmp = Path(tempfile.gettempdir()).resolve()
+        assert launched_path.resolve().is_relative_to(system_tmp)
+        # ...exists, and is the HTML render of our transcript.
+        assert launched_path.exists()
+        assert launched_path.suffix == ".html"
+
+        # Nothing was written beside the source transcript.
+        assert not jsonl_file.with_suffix(".html").exists()
+        siblings = {p.name for p in source_dir.iterdir()}
+        assert siblings == {jsonl_file.name}
+
+    def test_view_with_output_conflicts(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        sample_jsonl_content: list[dict],
+    ):
+        """--view and --output/-o are mutually exclusive (fail fast)."""
+        monkeypatch.setenv("CLAUDE_CODE_LOG_CACHE_PATH", str(tmp_path / "cache.db"))
+        jsonl_file = self._write_single_transcript(tmp_path, sample_jsonl_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [str(jsonl_file), "--view", "--output", str(tmp_path / "out.html")],
+        )
+        assert result.exit_code != 0
+        assert "--output" in result.output
+
+    def test_view_on_directory_fails_fast(
+        self,
+        cli_projects_setup: ProjectsSetup,
+        sample_jsonl_content: list[dict],
+    ):
+        """--view on a directory (not a single file) fails fast."""
+        project_dir = create_project_with_jsonl(
+            cli_projects_setup.projects_dir, "a-project", sample_jsonl_content
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, [str(project_dir), "--view"])
+        assert result.exit_code != 0
+        assert "single transcript file" in result.output
 
 
 class TestSessionIdOption:

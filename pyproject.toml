@@ -1,7 +1,7 @@
 [project]
-name = "claude-code-log"
+name = "handgemacht-claude-code-log"
 version = "1.4.0"
-description = "Convert Claude Code transcript JSONL files to HTML"
+description = "Convert Claude Code transcript JSONL files to HTML. Handgemacht fork (by Marco Rotili) of daaain/claude-code-log."
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
@@ -11,6 +11,7 @@ classifiers = [
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 authors = [
+    { name = "Marco Rotili", email = "marco.livio.rotili@gmail.com" },
     { name = "Daniel Demmel", email = "hello@danieldemmel.me" },
     { name = "Edward Z. Yang", email = "ezyang@mit.edu" },
 ]
@@ -29,11 +30,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/daaain/claude-code-log"
-Issues = "https://github.com/daaain/claude-code-log/issues"
+"Original project" = "https://github.com/daaain/claude-code-log"
 
 [project.scripts]
 claude-code-log = "claude_code_log.cli:main"
+handgemacht-claude-code-log = "claude_code_log.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -41,6 +42,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 exclude = ["/docs", "/test", "/scripts"]
+
+[tool.hatch.build.targets.wheel]
+# Dist name (handgemacht-claude-code-log) differs from the import package
+# (claude_code_log), so name the package explicitly for the wheel build.
+packages = ["claude_code_log"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
