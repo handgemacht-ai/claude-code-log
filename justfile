@@ -310,7 +310,7 @@ github-release version="":
     # Add a link to the full changelog if we have a previous tag
     if [[ -n "$PREVIOUS_TAG" ]]; then
         echo "" >> "$RELEASE_NOTES_FILE"
-        echo "**Full Changelog**: https://github.com/daaain/claude-code-log/compare/$PREVIOUS_TAG...$TARGET_TAG" >> "$RELEASE_NOTES_FILE"
+        echo "**Full Changelog**: https://github.com/handgemacht-ai/claude-code-log/compare/$PREVIOUS_TAG...$TARGET_TAG" >> "$RELEASE_NOTES_FILE"
     fi
 
     # Check if the release already exists
@@ -343,7 +343,7 @@ github-release version="":
 
     rm "$RELEASE_NOTES_FILE"
     echo "✅ GitHub release created/updated successfully!"
-    echo "🔗 View it at: https://github.com/daaain/claude-code-log/releases/tag/$TARGET_TAG"
+    echo "🔗 View it at: https://github.com/handgemacht-ai/claude-code-log/releases/tag/$TARGET_TAG"
 
 # Helper command to preview what would be in the GitHub release
 release-preview version="":

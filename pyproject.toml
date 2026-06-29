@@ -30,6 +30,9 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/handgemacht-ai/claude-code-log"
+Repository = "https://github.com/handgemacht-ai/claude-code-log"
+Issues = "https://github.com/handgemacht-ai/claude-code-log/issues"
 "Original project" = "https://github.com/daaain/claude-code-log"
 
 [project.scripts]
