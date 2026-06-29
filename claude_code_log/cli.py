@@ -6,6 +6,7 @@ import logging
 import os
 import signal
 import sys
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -568,6 +569,16 @@ def _validate_git_link_template(template: str) -> None:
     help="Open the generated HTML file in the default browser",
 )
 @click.option(
+    "--view",
+    is_flag=True,
+    help=(
+        "Render a single transcript file to a throwaway temp file and open "
+        "it in the browser (implies --open-browser). Nothing is written next "
+        "to the source transcript. Single-file only — fails fast if combined "
+        "with --all-projects, --tui, --session-id, --output, or a directory."
+    ),
+)
+@click.option(
     "--from-date",
     type=str,
     help='Filter messages from this date/time (e.g., "2 hours ago", "yesterday", "2025-06-08")',
@@ -729,6 +740,7 @@ def main(
     filter_path: Optional[str],
     combined: Optional[str],
     open_browser: bool,
+    view: bool,
     from_date: Optional[str],
     to_date: Optional[str],
     all_projects: bool,
@@ -855,6 +867,40 @@ def main(
     from .models import DetailLevel
 
     detail_level = DetailLevel(detail.lower())
+
+    # `--view`: render a single transcript into a throwaway temp file and open
+    # it in the browser, leaving nothing next to the source. It is a single-file
+    # convenience, so reject the project-wide / alternate modes up front (fail
+    # fast) rather than silently doing something surprising. Validated before
+    # the `try` below so a misuse surfaces as a Click usage error, not as the
+    # generic "Error converting file" path.
+    if view:
+        if all_projects or tui or session_id is not None:
+            raise click.UsageError(
+                "--view renders a single transcript file; it cannot be "
+                "combined with --all-projects, --tui, or --session-id."
+            )
+        if output is not None:
+            raise click.UsageError(
+                "--view renders to a throwaway temp file, so it conflicts "
+                "with --output/-o (which names an explicit destination). "
+                "Pick one."
+            )
+        if input_path is None or not input_path.is_file():
+            got = f" (got: {input_path})" if input_path is not None else ""
+            raise click.UsageError(
+                "--view requires a path to a single transcript file, e.g. "
+                "`claude-code-log path/to/transcript.jsonl --view`" + got + "."
+            )
+        # Fresh system temp dir so nothing lands beside the source; `mkdtemp`
+        # yields a unique, owner-only directory.
+        ext = get_file_extension(output_format)
+        view_dir = Path(tempfile.mkdtemp(prefix="claude-code-log-"))
+        output = view_dir / f"{input_path.stem}.{ext}"
+        # `--view` implies opening the browser — looking at it is the whole
+        # point — so the user needn't also pass --open-browser.
+        open_browser = True
+        click.echo(f"Rendering transcript to temporary file: {output}")
 
     try:
         # Handle TUI mode
