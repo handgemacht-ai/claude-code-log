@@ -34,6 +34,22 @@ Or browse the pages generated from your entire Claude Code archives:
 uvx handgemacht-claude-code-log --open-browser
 ```
 
+## Run instantly — no install (great for workshops)
+
+Run it straight from GitHub — no PyPI, no clone. If you already have (or will get) [uv](https://docs.astral.sh/uv/), one line:
+
+```sh
+uvx --from git+https://github.com/handgemacht-ai/claude-code-log@v1.4.0 handgemacht-claude-code-log ~/transcript.jsonl --view
+```
+
+No uv yet? The zero-dependency bootstrap installs uv for you, then runs the tool:
+
+```sh
+curl -LsSf https://raw.githubusercontent.com/handgemacht-ai/claude-code-log/main/scripts/view.sh | bash -s -- ~/transcript.jsonl --view
+```
+
+Both fetch the tool directly from GitHub (no PyPI needed). The first run may take ~15s while it downloads; after that it's instant.
+
 ## Key Features
 
 - **Interactive TUI (Terminal User Interface)**: Browse and manage Claude Code sessions with real-time navigation, summaries, and quick actions for HTML export and session resuming
